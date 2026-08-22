@@ -1,0 +1,23 @@
+# .NET
+bin/
+obj/
+artifacts/
+TestResults/
+*.user
+*.suo
+
+# IDEs and operating systems
+.vs/
+.vscode/
+.idea/
+.DS_Store
+
+# Samsung credentials and captured traffic
+tokens.json
+settings.json
+sessions/
+*.ndjson
+
+# Local overrides
+appsettings.json
+*.local.json
