@@ -11,6 +11,7 @@ internal sealed class CliArguments
         "--log",
         "--token-file",
         "--config-dir",
+        "--macro-file",
         "--pairing-timeout"
     };
 

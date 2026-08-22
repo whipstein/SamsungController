@@ -18,12 +18,13 @@ validated; see the [verification checklist](docs/architecture.md#s95f-verificati
 - Complete RX/TX NDJSON session recording
 - Unknown/malformed message preservation
 - Connection state and bounded automatic reconnect
-- CLI commands: `connect`, `key`, `console`, `listen`, `status`, and `forget`
+- Hierarchical YAML macros with variables, repeats, delays, cancellation, and execution progress
+- CLI commands: `connect`, `key`, `macro`, `console`, `listen`, `status`, and `forget`
 - Cross-platform console line editing with persistent, privacy-filtered history
 - Fake-transport tests that do not require a TV
 
-Automatic discovery, macros, menu-state prediction, and the Blazor UI are
-deliberately deferred until the S95F transport is proven.
+Automatic discovery, menu-state prediction, and the Blazor UI remain subsequent
+milestones.
 
 ## Requirements
 
@@ -88,6 +89,35 @@ dotnet publish src/SamsungController.Cli -c Release -o artifacts/samsungctl
 
 On Windows, run `artifacts\samsungctl\samsungctl.exe`.
 
+## Run macros
+
+The next project milestone is available through the independent
+`SamsungController.Automation` library. It supports nested YAML macros,
+variables, Click/Press/Release, repeat counts, delays, validation, cancellation,
+and operation-by-operation progress.
+
+Validate and inspect the included example without connecting to the TV:
+
+```bash
+dotnet run --project src/SamsungController.Cli -- \
+  macro validate --macro-file samples/macros/macros.example.yaml
+
+dotnet run --project src/SamsungController.Cli -- \
+  macro list --macro-file samples/macros/macros.example.yaml
+```
+
+After reviewing its key sequence, run the primer's verification macro:
+
+```bash
+dotnet run --project src/SamsungController.Cli -- \
+  macro TestNavigation --macro-file samples/macros/macros.example.yaml
+```
+
+Without `--macro-file`, the CLI uses `macros.yaml` in the per-user configuration
+directory. Macros are fully parsed and validated before the first key is sent.
+Ctrl+C cancels execution, and every key/delay operation is printed and logged.
+See the [macro format and safety notes](docs/macros.md).
+
 ## Listen and capture traffic
 
 For active protocol work, start the interactive console:
@@ -103,6 +133,8 @@ samsungctl> state
 samsungctl> key KEY_UP
 samsungctl> key KEY_RIGHT Press
 samsungctl> key KEY_RIGHT Release
+samsungctl> macro list
+samsungctl> macro TestNavigation
 samsungctl> query apps
 samsungctl> exit
 ```
@@ -198,6 +230,7 @@ Samsung documents Access Notification and Device List in its
 
 - [Architecture, token lifecycle, and assumptions](docs/architecture.md)
 - [Protocol notes](docs/protocol.md)
+- [Macro format, execution, and safety](docs/macros.md)
 - [Initial key list](docs/samsung-keys.md)
 - [Research log template](docs/research-notes.md)
 

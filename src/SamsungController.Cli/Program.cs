@@ -1,3 +1,4 @@
+using SamsungController.Automation.Macros;
 using SamsungController.Core.Connection;
 using SamsungController.Core.Devices;
 using SamsungController.Core.Diagnostics;
@@ -48,6 +49,9 @@ internal static class Program
             arguments.GetOption("--config-dir")
             ?? ApplicationPaths.GetDefaultConfigurationDirectory());
         var settingsPath = Path.Combine(configurationDirectory, "settings.json");
+        var macroFilePath = Path.GetFullPath(
+            arguments.GetOption("--macro-file")
+            ?? Path.Combine(configurationDirectory, "macros.yaml"));
         var tokenPath = Path.GetFullPath(
             arguments.GetOption("--token-file")
             ?? Path.Combine(configurationDirectory, "tokens.json"));
@@ -75,6 +79,32 @@ internal static class Program
             Console.WriteLine($"Token: {(hasToken ? "saved" : "not saved")}");
             Console.WriteLine($"Configuration: {configurationDirectory}");
             return 0;
+        }
+
+        if (arguments.Command.Equals("macro", StringComparison.OrdinalIgnoreCase)
+            && !MacroInvocationRequiresConnection(arguments))
+        {
+            var macroCommands = new MacroCommandService(
+                macroFilePath,
+                target: null,
+                Console.WriteLine);
+            await macroCommands.ExecuteAsync(
+                    string.Join(' ', arguments.Positionals),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return 0;
+        }
+
+        if (arguments.Command.Equals("macro", StringComparison.OrdinalIgnoreCase))
+        {
+            var catalog = await new MacroParser()
+                .ParseFileAsync(macroFilePath, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            new MacroValidator().ValidateAndThrow(catalog);
+            catalog.GetRequiredMacro(
+                arguments.Positionals.Count == 1
+                    ? arguments.Positionals[0]
+                    : arguments.Positionals[1]);
         }
 
         if (!IsConnectionCommand(arguments.Command))
@@ -210,6 +240,19 @@ internal static class Program
             return 0;
         }
 
+        if (arguments.Command.Equals("macro", StringComparison.OrdinalIgnoreCase))
+        {
+            var macroCommands = new MacroCommandService(
+                macroFilePath,
+                new SamsungTvMacroCommandTarget(client),
+                Console.WriteLine);
+            await macroCommands.ExecuteAsync(
+                    string.Join(' ', arguments.Positionals),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return 0;
+        }
+
         if (interactiveConsole)
         {
             consoleTerminal!.WriteLine($"Console connected to {host}.");
@@ -217,10 +260,15 @@ internal static class Program
                 historyPath is null
                     ? "History: session only; persistent history is disabled."
                     : $"History: {historyPath} (raw commands are excluded).");
+            consoleTerminal.WriteLine($"Macros: {macroFilePath}.");
             var session = new InteractiveConsoleSession(
                 new InteractiveSamsungClient(client),
                 consoleTerminal,
-                arguments.HasFlag("--allow-raw"));
+                arguments.HasFlag("--allow-raw"),
+                new MacroCommandService(
+                    macroFilePath,
+                    new SamsungTvMacroCommandTarget(client),
+                    consoleTerminal.WriteLine));
             await session.RunAsync(cancellationToken).ConfigureAwait(false);
             return 0;
         }
@@ -261,6 +309,7 @@ internal static class Program
     private static bool IsConnectionCommand(string command) =>
         command.Equals("connect", StringComparison.OrdinalIgnoreCase)
         || command.Equals("key", StringComparison.OrdinalIgnoreCase)
+        || command.Equals("macro", StringComparison.OrdinalIgnoreCase)
         || command.Equals("console", StringComparison.OrdinalIgnoreCase)
         || command.Equals("listen", StringComparison.OrdinalIgnoreCase);
 
@@ -274,6 +323,23 @@ internal static class Program
         return Enum.TryParse<RemoteKeyAction>(value, ignoreCase: true, out var action)
             ? action
             : throw new ArgumentException("Action must be Click, Press, or Release.");
+    }
+
+    private static bool MacroInvocationRequiresConnection(CliArguments arguments)
+    {
+        if (!arguments.Command.Equals("macro", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return arguments.Positionals.Count switch
+        {
+            1 => !arguments.Positionals[0].Equals("list", StringComparison.OrdinalIgnoreCase)
+                 && !arguments.Positionals[0].Equals("validate", StringComparison.OrdinalIgnoreCase)
+                 && !arguments.Positionals[0].Equals("run", StringComparison.OrdinalIgnoreCase),
+            2 => arguments.Positionals[0].Equals("run", StringComparison.OrdinalIgnoreCase),
+            _ => false
+        };
     }
 
     private static int? ParseNullableInt(string? value)
@@ -303,6 +369,8 @@ internal static class Program
             Usage:
               samsungctl connect <TV-IP> [options]
               samsungctl key <KEY_NAME> [--action Click|Press|Release] [options]
+              samsungctl macro <NAME> [options]
+              samsungctl macro list|validate [options]
               samsungctl console [--allow-raw] [--no-history] [options]
               samsungctl listen [options]
               samsungctl status [options]
@@ -321,6 +389,7 @@ internal static class Program
               --log <path>               NDJSON protocol log path
               --token-file <path>        Pairing token store path
               --config-dir <path>        Settings/session directory
+              --macro-file <path>        YAML macro file (default: <config>/macros.yaml)
               --quiet                    Suppress diagnostic terminal output
               --help                     Show this help
 
@@ -329,6 +398,8 @@ internal static class Program
               samsungctl key KEY_UP
               samsungctl key KEY_RIGHT --action Press
               samsungctl key KEY_RIGHT --action Release
+              samsungctl macro list
+              samsungctl macro TestNavigation
               samsungctl console
               samsungctl listen
             """);

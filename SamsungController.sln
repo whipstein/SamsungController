@@ -10,6 +10,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SamsungController.Core.Test
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SamsungController.Cli.Tests", "tests\SamsungController.Cli.Tests\SamsungController.Cli.Tests.csproj", "{AEB6D3B1-3C2C-4F75-A760-7F05CDE8A2BA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SamsungController.Automation", "src\SamsungController.Automation\SamsungController.Automation.csproj", "{62F91839-7E40-43C9-95AF-BC09BA72D460}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SamsungController.Automation.Tests", "tests\SamsungController.Automation.Tests\SamsungController.Automation.Tests.csproj", "{4DA591B6-2327-4674-9D5C-E4332B9DCA01}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -32,5 +36,13 @@ Global
 		{AEB6D3B1-3C2C-4F75-A760-7F05CDE8A2BA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AEB6D3B1-3C2C-4F75-A760-7F05CDE8A2BA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AEB6D3B1-3C2C-4F75-A760-7F05CDE8A2BA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{62F91839-7E40-43C9-95AF-BC09BA72D460}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{62F91839-7E40-43C9-95AF-BC09BA72D460}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{62F91839-7E40-43C9-95AF-BC09BA72D460}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{62F91839-7E40-43C9-95AF-BC09BA72D460}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4DA591B6-2327-4674-9D5C-E4332B9DCA01}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4DA591B6-2327-4674-9D5C-E4332B9DCA01}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4DA591B6-2327-4674-9D5C-E4332B9DCA01}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4DA591B6-2327-4674-9D5C-E4332B9DCA01}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

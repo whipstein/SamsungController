@@ -1,0 +1,32 @@
+version: 1
+
+variables:
+  navigationDelay: 150ms
+  settleDelay: 500ms
+
+macros:
+  BackToVideo:
+    description: Close open menus and return toward normal video
+    steps:
+      - key: KEY_RETURN
+        repeat: 5
+        delay: ${navigationDelay}
+
+  OpenSettings:
+    description: Return to video and open the normal settings menu
+    steps:
+      - call: BackToVideo
+      - key: KEY_MENU
+      - delay: ${settleDelay}
+
+  TestNavigation:
+    description: Phase 3 repeat, delay, and nesting verification macro
+    steps:
+      - call: BackToVideo
+      - delay: ${settleDelay}
+      - key: KEY_MENU
+      - delay: ${settleDelay}
+      - key: KEY_DOWN
+        repeat: 4
+        delay: ${navigationDelay}
+      - key: KEY_ENTER

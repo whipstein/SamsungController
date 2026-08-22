@@ -7,10 +7,12 @@ behavioral reference; no ColorControl source is copied.
 ## Boundaries and dependency direction
 
 ```text
-Samsung TV
-    <-> ClientWebSocketSamsungTransport
-    <-> SamsungTvClient
-    <-> samsungctl
+samsungctl
+    -> SamsungController.Automation
+    -> IMacroCommandTarget adapter
+    -> SamsungTvClient
+    -> ClientWebSocketSamsungTransport
+    -> Samsung TV
 ```
 
 - `SamsungController.Core` targets plain `net10.0` and contains no desktop,
@@ -19,14 +21,18 @@ Samsung TV
   in-memory transport.
 - `SamsungTvClient` owns handshake interpretation, token lifecycle, remote-key
   messages, state, retry/reconnect behavior, and message publication.
+- `SamsungController.Automation` owns macro models, YAML parsing, validation,
+  plan expansion, cancellation, and progress events. It targets plain `net10.0`
+  and reaches the TV only through `IMacroCommandTarget`.
 - `ISamsungTokenStore` keeps persistence outside protocol logic.
 - `ISamsungMessageSink` receives every complete TX/RX message. The initial
   `NdjsonProtocolLogger` records sessions without interpreting away unknown data.
 - `samsungctl` owns user configuration, paths, terminal output, and process
   lifetime. The core library does not depend on the CLI.
 
-Automation and UI projects are intentionally deferred until the transport has
-been verified against a Samsung S95F.
+Menu navigation and UI projects remain deferred. The macro automation project
+was introduced after pairing, token reuse, and remote keys were verified against
+the Samsung S95F.
 
 ## WebSocket handshake
 

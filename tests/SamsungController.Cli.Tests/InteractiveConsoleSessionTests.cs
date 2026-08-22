@@ -95,6 +95,27 @@ public sealed class InteractiveConsoleSessionTests
         Assert.Contains("State: Connected", output.ToString(), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task MacroCommandUsesConfiguredMacroService()
+    {
+        var client = new FakeInteractiveSamsungClient();
+        var output = new StringWriter();
+        var macros = new FakeMacroCommandService();
+        var terminal = new TextInteractiveConsoleTerminal(
+            new StringReader("macro run TestNavigation\nexit\n"),
+            output,
+            new ConsoleCommandHistory(path: null));
+        var session = new InteractiveConsoleSession(
+            client,
+            terminal,
+            allowRaw: false,
+            macros);
+
+        await session.RunAsync();
+
+        Assert.Equal("run TestNavigation", Assert.Single(macros.Arguments));
+    }
+
     private static InteractiveConsoleSession CreateSession(
         FakeInteractiveSamsungClient client,
         string input,
@@ -132,6 +153,19 @@ public sealed class InteractiveConsoleSessionTests
         public Task SendRawAsync(string rawJson, CancellationToken cancellationToken)
         {
             RawMessages.Add(rawJson);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FakeMacroCommandService : IMacroCommandService
+    {
+        public List<string> Arguments { get; } = [];
+
+        public Task ExecuteAsync(
+            string arguments,
+            CancellationToken cancellationToken = default)
+        {
+            Arguments.Add(arguments);
             return Task.CompletedTask;
         }
     }

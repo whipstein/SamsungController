@@ -8,15 +8,18 @@ internal sealed class InteractiveConsoleSession
     private readonly IInteractiveSamsungClient _client;
     private readonly IInteractiveConsoleTerminal _terminal;
     private readonly bool _allowRaw;
+    private readonly IMacroCommandService? _macros;
 
     public InteractiveConsoleSession(
         IInteractiveSamsungClient client,
         IInteractiveConsoleTerminal terminal,
-        bool allowRaw)
+        bool allowRaw,
+        IMacroCommandService? macros = null)
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _terminal = terminal ?? throw new ArgumentNullException(nameof(terminal));
         _allowRaw = allowRaw;
+        _macros = macros;
     }
 
     public InteractiveConsoleSession(
@@ -107,6 +110,18 @@ internal sealed class InteractiveConsoleSession
 
             case "key":
                 await SendKeyAsync(arguments, cancellationToken).ConfigureAwait(false);
+                return false;
+
+            case "macro":
+                if (_macros is null)
+                {
+                    _terminal.WriteLine("Macro commands are not configured for this console.");
+                }
+                else
+                {
+                    await _macros.ExecuteAsync(arguments, cancellationToken).ConfigureAwait(false);
+                }
+
                 return false;
 
             case "query":
@@ -238,6 +253,10 @@ internal sealed class InteractiveConsoleSession
             Commands:
               key <KEY_NAME> [Click|Press|Release]
                   Send a Samsung remote key on this connection.
+              macro <name> | macro run <name>
+                  Run a validated YAML macro on this connection.
+              macro list | macro validate
+                  Inspect the configured macro file.
               query apps
                   Request both Eden and installed application lists.
               query eden-apps
