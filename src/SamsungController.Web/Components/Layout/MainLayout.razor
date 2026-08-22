@@ -1,0 +1,76 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject SamsungControllerService Controller
+
+<div class="app-shell">
+    <aside class="sidebar">
+        <div class="brand-lockup">
+            <div class="brand-mark" aria-hidden="true"><span></span></div>
+            <div>
+                <strong>SamsungController</strong>
+                <span>Calibration workspace</span>
+            </div>
+        </div>
+
+        <nav class="main-nav" aria-label="Primary navigation">
+            <NavLink href="" Match="NavLinkMatch.All"><span class="nav-glyph">01</span>Connection</NavLink>
+            <NavLink href="remote"><span class="nav-glyph">02</span>Remote</NavLink>
+            <NavLink href="macros"><span class="nav-glyph">03</span>Macros</NavLink>
+            <NavLink href="protocol"><span class="nav-glyph">04</span>Protocol</NavLink>
+        </nav>
+
+        <div class="sidebar-foot">
+            <span class="local-dot"></span>
+            Localhost only
+            <small>127.0.0.1:5050</small>
+        </div>
+    </aside>
+
+    <main class="main-stage">
+        <header class="topbar">
+            <div><span class="eyebrow">S95F CONTROL PLANE</span></div>
+            <div class="connection-pill @StateClass"><span></span>@Snapshot.ConnectionState</div>
+        </header>
+        <article class="page-content">
+            @Body
+        </article>
+    </main>
+</div>
+
+@code {
+    private ControllerSnapshot Snapshot { get; set; } = null!;
+
+    private string StateClass => Snapshot.ConnectionState switch
+    {
+        SamsungConnectionState.Connected => "connected",
+        SamsungConnectionState.Connecting or SamsungConnectionState.Pairing or
+            SamsungConnectionState.Reconnecting or SamsungConnectionState.Disconnecting => "working",
+        SamsungConnectionState.Faulted => "faulted",
+        _ => "disconnected"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        Snapshot = Controller.GetSnapshot();
+        Controller.Changed += HandleControllerChanged;
+        await Controller.InitializeAsync();
+        Snapshot = Controller.GetSnapshot();
+    }
+
+    private void HandleControllerChanged()
+    {
+        Snapshot = Controller.GetSnapshot();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Controller.Changed -= HandleControllerChanged;
+    }
+}
+
+<div id="blazor-error-ui" data-nosnippet>
+    The local interface encountered an error.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">×</span>
+</div>

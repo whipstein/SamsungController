@@ -1,0 +1,177 @@
+@page "/macros"
+@implements IDisposable
+@inject SamsungControllerService Controller
+
+<PageTitle>Macros · SamsungController</PageTitle>
+
+<section class="page-heading compact-heading">
+    <div>
+        <span class="eyebrow">MACRO RUNNER</span>
+        <h1>Repeat the sequence. Keep the result.</h1>
+        <p>Load a validated YAML catalog, choose a macro, and watch each operation as it reaches the TV.</p>
+    </div>
+    <div class="page-state @(Snapshot.MacroRunning ? "working" : "")"><span></span>@(Snapshot.MacroRunning ? "Running" : "Ready")</div>
+</section>
+
+@if (!string.IsNullOrWhiteSpace(ErrorMessage))
+{
+    <div class="notice danger" role="alert"><strong>Macro unavailable</strong><span>@ErrorMessage</span></div>
+}
+
+<section class="macro-layout">
+    <div class="panel macro-catalog-panel">
+        <div class="panel-label"><span>CATALOG</span><span>@CatalogMacros.Count MACROS</span></div>
+        <div class="path-editor">
+            <label>
+                <span>YAML file</span>
+                <input @bind="MacroPath" disabled="@Run.IsRunning" />
+            </label>
+            <button class="secondary-action" @onclick="LoadMacrosAsync" disabled="@Run.IsRunning || IsLoading">@(IsLoading ? "Checking…" : "Load & validate")</button>
+        </div>
+
+        @if (CatalogMacros.Count == 0)
+        {
+            <div class="panel-empty">
+                <strong>No catalog loaded</strong>
+                <span>Choose a YAML macro file to begin.</span>
+            </div>
+        }
+        else
+        {
+            <div class="macro-list">
+                @foreach (var macro in CatalogMacros)
+                {
+                    <button class="macro-card @(SelectedMacro == macro.Name ? "selected" : "")" @onclick="() => SelectMacro(macro.Name)" disabled="@Run.IsRunning">
+                        <span>
+                            <strong>@macro.Name</strong>
+                            <small>@(string.IsNullOrWhiteSpace(macro.Description) ? "No description" : macro.Description)</small>
+                        </span>
+                        <b>@macro.StepCount steps</b>
+                    </button>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="macro-side-stack">
+        <div class="panel run-panel">
+            <div class="panel-label"><span>RUN CONTROL</span><span>@Snapshot.ConnectionState</span></div>
+            <span class="selected-label">SELECTED MACRO</span>
+            <strong class="selected-macro">@(SelectedMacro ?? "—")</strong>
+            @if (Run.IsRunning)
+            {
+                <button class="secondary-action danger-action" @onclick="CancelMacro">Cancel macro <span>×</span></button>
+            }
+            else
+            {
+                <button class="primary-action" @onclick="RunMacroAsync" disabled="@(!CanRun)">Run macro <span>▶</span></button>
+            }
+            <p class="field-note">Run is available only while the TV is connected.</p>
+        </div>
+
+        <div class="panel progress-panel">
+            <div class="panel-label"><span>EXECUTION</span><span>@(Run.Progress.Count == 0 ? "IDLE" : $"{Run.Progress.Count} OPS")</span></div>
+            <strong class="run-status">@(Run.Status ?? "Waiting for a run")</strong>
+            <div class="progress-list">
+                @foreach (var progress in Run.Progress.Reverse().Take(12))
+                {
+                    <div class="progress-entry">
+                        <span>@progress.OperationNumber/@progress.OperationCount</span>
+                        <strong>@progress.Description</strong>
+                        <small>@progress.SourceMacroName · step @progress.SourceStepNumber</small>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</section>
+
+@code {
+    private ControllerSnapshot Snapshot { get; set; } = null!;
+    private MacroRunSnapshot Run { get; set; } = new(false, null, null, []);
+    private IReadOnlyList<MacroSummary> CatalogMacros { get; set; } = [];
+    private string MacroPath { get; set; } = string.Empty;
+    private string? SelectedMacro { get; set; }
+    private string? ErrorMessage { get; set; }
+    private bool IsLoading { get; set; }
+
+    private bool CanRun => Snapshot.ConnectionState == SamsungConnectionState.Connected &&
+        !Run.IsRunning && !string.IsNullOrWhiteSpace(SelectedMacro);
+
+    protected override async Task OnInitializedAsync()
+    {
+        Snapshot = Controller.GetSnapshot();
+        Run = Controller.GetMacroRunSnapshot();
+        Controller.Changed += HandleControllerChanged;
+        await Controller.InitializeAsync();
+        Snapshot = Controller.GetSnapshot();
+        MacroPath = Snapshot.MacroFilePath;
+        await LoadMacrosAsync(savePath: false);
+    }
+
+    private Task LoadMacrosAsync() => LoadMacrosAsync(savePath: true);
+
+    private async Task LoadMacrosAsync(bool savePath)
+    {
+        IsLoading = true;
+        ErrorMessage = null;
+        try
+        {
+            CatalogMacros = savePath
+                ? await Controller.SetMacroFileAsync(MacroPath)
+                : await Controller.LoadMacrosAsync();
+            SelectedMacro = CatalogMacros.Any(macro => macro.Name == SelectedMacro)
+                ? SelectedMacro
+                : CatalogMacros.FirstOrDefault()?.Name;
+            MacroPath = Controller.GetSnapshot().MacroFilePath;
+        }
+        catch (Exception exception)
+        {
+            CatalogMacros = [];
+            SelectedMacro = null;
+            ErrorMessage = exception.Message;
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private void SelectMacro(string name) => SelectedMacro = name;
+
+    private async Task RunMacroAsync()
+    {
+        if (SelectedMacro is null)
+        {
+            return;
+        }
+
+        ErrorMessage = null;
+        try
+        {
+            await Controller.RunMacroAsync(SelectedMacro);
+        }
+        catch (OperationCanceledException)
+        {
+            // The live run status already reports cancellation.
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = exception.Message;
+        }
+    }
+
+    private void CancelMacro() => Controller.CancelMacro();
+
+    private void HandleControllerChanged()
+    {
+        Snapshot = Controller.GetSnapshot();
+        Run = Controller.GetMacroRunSnapshot();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Controller.Changed -= HandleControllerChanged;
+    }
+}

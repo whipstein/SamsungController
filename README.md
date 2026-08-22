@@ -19,12 +19,12 @@ validated; see the [verification checklist](docs/architecture.md#s95f-verificati
 - Unknown/malformed message preservation
 - Connection state and bounded automatic reconnect
 - Hierarchical YAML macros with variables, repeats, delays, cancellation, and execution progress
+- Localhost-only Blazor control surface for connection, remote keys, macros, and protocol inspection
 - CLI commands: `connect`, `key`, `macro`, `console`, `listen`, `status`, and `forget`
 - Cross-platform console line editing with persistent, privacy-filtered history
 - Fake-transport tests that do not require a TV
 
-Automatic discovery, menu-state prediction, and the Blazor UI remain subsequent
-milestones.
+Automatic discovery and menu-state prediction remain subsequent milestones.
 
 ## Requirements
 
@@ -43,6 +43,34 @@ dotnet test --configuration Release
 
 The same commands work in Terminal on macOS/Linux and PowerShell on Windows.
 CI runs them on all three operating systems.
+
+## Run the local web interface
+
+Start the Blazor control surface from the repository:
+
+```bash
+dotnet run --project src/SamsungController.Web
+```
+
+Then open [http://127.0.0.1:5050](http://127.0.0.1:5050). The server binds only
+to the loopback interface by default, so another computer on the network cannot
+open it. Keep that boundary in place: the interface can send arbitrary TV keys
+and, after a separate developer-mode opt-in, raw JSON.
+
+The four views share one live TV session:
+
+- **Connection** pairs or reconnects using the same saved host, token, and
+  settings as the CLI.
+- **Remote** provides direction, navigation, volume, power, and arbitrary
+  Click/Press/Release commands.
+- **Macros** loads and validates a YAML catalog, remembers its path, streams
+  operation progress, and supports cancellation.
+- **Protocol** keeps the latest 500 RX/TX messages searchable in memory, offers
+  copy/export, and writes the complete NDJSON capture to the session directory.
+
+Pairing tokens in the browser console are redacted by default. Revealing them is
+an explicit per-page choice; the complete NDJSON log can still contain tokens
+and must remain private.
 
 ## First pairing
 

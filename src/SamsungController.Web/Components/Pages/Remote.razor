@@ -1,0 +1,132 @@
+@page "/remote"
+@implements IDisposable
+@inject SamsungControllerService Controller
+
+<PageTitle>Remote · SamsungController</PageTitle>
+
+<section class="page-heading compact-heading">
+    <div>
+        <span class="eyebrow">REMOTE</span>
+        <h1>Direct control, without the couch.</h1>
+        <p>Send standard Samsung remote commands or enter any protocol key exposed by your display.</p>
+    </div>
+    <div class="page-state @ConnectionClass"><span></span>@Snapshot.ConnectionState</div>
+</section>
+
+@if (!IsConnected)
+{
+    <div class="notice pairing"><strong>Remote idle</strong><span>Connect to the TV before sending keys.</span><a href="/">Connection →</a></div>
+}
+@if (!string.IsNullOrWhiteSpace(ErrorMessage))
+{
+    <div class="notice danger" role="alert"><strong>Command failed</strong><span>@ErrorMessage</span></div>
+}
+
+<section class="remote-layout">
+    <div class="panel remote-panel">
+        <div class="panel-label"><span>NAVIGATION</span><span>@(IsConnected ? "READY" : "OFFLINE")</span></div>
+        <div class="remote-face">
+            <div class="remote-top-row">
+                <button class="key-button power" title="Power" @onclick='() => SendKeyAsync("KEY_POWER")' disabled="@ControlsDisabled">⏻<small>Power</small></button>
+                <button class="key-button" @onclick='() => SendKeyAsync("KEY_HOME")' disabled="@ControlsDisabled">⌂<small>Home</small></button>
+                <button class="key-button" @onclick='() => SendKeyAsync("KEY_MENU")' disabled="@ControlsDisabled">☰<small>Menu</small></button>
+            </div>
+
+            <div class="d-pad" aria-label="Directional controls">
+                <button class="up" aria-label="Up" @onclick='() => SendKeyAsync("KEY_UP")' disabled="@ControlsDisabled">↑</button>
+                <button class="left" aria-label="Left" @onclick='() => SendKeyAsync("KEY_LEFT")' disabled="@ControlsDisabled">←</button>
+                <button class="enter" aria-label="Enter" @onclick='() => SendKeyAsync("KEY_ENTER")' disabled="@ControlsDisabled">OK</button>
+                <button class="right" aria-label="Right" @onclick='() => SendKeyAsync("KEY_RIGHT")' disabled="@ControlsDisabled">→</button>
+                <button class="down" aria-label="Down" @onclick='() => SendKeyAsync("KEY_DOWN")' disabled="@ControlsDisabled">↓</button>
+            </div>
+
+            <div class="remote-bottom-row">
+                <button class="key-button" @onclick='() => SendKeyAsync("KEY_RETURN")' disabled="@ControlsDisabled">↩<small>Back</small></button>
+                <button class="key-button" @onclick='() => SendKeyAsync("KEY_VOLDOWN")' disabled="@ControlsDisabled">−<small>Volume</small></button>
+                <button class="key-button" @onclick='() => SendKeyAsync("KEY_MUTE")' disabled="@ControlsDisabled">×<small>Mute</small></button>
+                <button class="key-button" @onclick='() => SendKeyAsync("KEY_VOLUP")' disabled="@ControlsDisabled">+<small>Volume</small></button>
+            </div>
+        </div>
+    </div>
+
+    <div class="remote-side-stack">
+        <div class="panel custom-command-panel">
+            <div class="panel-label"><span>CUSTOM COMMAND</span><span>ADVANCED</span></div>
+            <label>
+                <span>Samsung key name</span>
+                <input @bind="CustomKey" placeholder="KEY_SOURCE" disabled="@ControlsDisabled" />
+            </label>
+            <label>
+                <span>Action</span>
+                <select @bind="CustomAction" disabled="@ControlsDisabled">
+                    @foreach (var action in Enum.GetValues<RemoteKeyAction>())
+                    {
+                        <option value="@action">@action</option>
+                    }
+                </select>
+            </label>
+            <button class="primary-action" @onclick="SendCustomKeyAsync" disabled="@ControlsDisabled || string.IsNullOrWhiteSpace(CustomKey)">Send key <span>→</span></button>
+        </div>
+
+        <div class="panel command-status-panel">
+            <div class="panel-label"><span>LAST ACTION</span><span>TX</span></div>
+            <strong>@(LastCommand ?? "No command sent")</strong>
+            <small>@(LastCommandAt?.ToLocalTime().ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture) ?? "Waiting for input")</small>
+        </div>
+    </div>
+</section>
+
+@code {
+    private ControllerSnapshot Snapshot { get; set; } = null!;
+    private string CustomKey { get; set; } = "KEY_SOURCE";
+    private RemoteKeyAction CustomAction { get; set; } = RemoteKeyAction.Click;
+    private bool IsBusy { get; set; }
+    private string? ErrorMessage { get; set; }
+    private string? LastCommand { get; set; }
+    private DateTimeOffset? LastCommandAt { get; set; }
+
+    private bool IsConnected => Snapshot.ConnectionState == SamsungConnectionState.Connected;
+    private bool ControlsDisabled => !IsConnected || IsBusy;
+    private string ConnectionClass => IsConnected ? "connected" : Snapshot.ConnectionState == SamsungConnectionState.Faulted ? "faulted" : "disconnected";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Snapshot = Controller.GetSnapshot();
+        Controller.Changed += HandleControllerChanged;
+        await Controller.InitializeAsync();
+        Snapshot = Controller.GetSnapshot();
+    }
+
+    private Task SendCustomKeyAsync() => SendKeyAsync(CustomKey, CustomAction);
+
+    private async Task SendKeyAsync(string key, RemoteKeyAction action = RemoteKeyAction.Click)
+    {
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            await Controller.SendKeyAsync(key, action);
+            LastCommand = $"{key} · {action}";
+            LastCommandAt = DateTimeOffset.Now;
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = exception.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void HandleControllerChanged()
+    {
+        Snapshot = Controller.GetSnapshot();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Controller.Changed -= HandleControllerChanged;
+    }
+}

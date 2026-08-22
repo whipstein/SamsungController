@@ -1,0 +1,193 @@
+@page "/"
+@implements IDisposable
+@inject SamsungControllerService Controller
+
+<PageTitle>Connection · SamsungController</PageTitle>
+
+<section class="page-heading">
+    <div>
+        <span class="eyebrow">CONNECTION</span>
+        <h1>Your display, one quiet connection away.</h1>
+        <p>Pair once, retain the local token, and keep the control channel open while you work.</p>
+    </div>
+    <div class="state-orb @StateClass" aria-label="@Snapshot.ConnectionState">
+        <span></span>
+        <strong>@StateLabel</strong>
+        <small>@StateDetail</small>
+    </div>
+</section>
+
+@if (!string.IsNullOrWhiteSpace(ErrorMessage))
+{
+    <div class="notice danger" role="alert"><strong>Connection error</strong><span>@ErrorMessage</span></div>
+}
+else if (Snapshot.ConnectionState == SamsungConnectionState.Pairing)
+{
+    <div class="notice pairing" role="status"><strong>Approval needed</strong><span>Accept SamsungController on the TV. Pairing will continue automatically.</span></div>
+}
+
+<section class="dashboard-grid">
+    <div class="panel connection-panel">
+        <div class="panel-label"><span>TV PROFILE</span><span>01</span></div>
+        <div class="field-grid">
+            <label>
+                <span>Display name</span>
+                <input @bind="DisplayName" aria-label="Display name" disabled="@IsBusy" />
+            </label>
+            <label>
+                <span>IP address</span>
+                <input @bind="Host" aria-label="IP address" placeholder="192.168.1.100" disabled="@IsBusy" />
+            </label>
+        </div>
+        <div class="connection-options">
+            <label class="toggle-row"><input type="checkbox" @bind="Secure" disabled="@IsBusy" /> Secure WebSocket <small>Recommended</small></label>
+            <label class="toggle-row"><input type="checkbox" @bind="AllowUntrustedCertificate" disabled="@IsBusy" /> Accept TV certificate <small>Local TV certificate</small></label>
+            <label class="toggle-row compact-option"><span>Port override</span><InputNumber @bind-Value="Port" placeholder="Automatic" disabled="@IsBusy" /></label>
+        </div>
+        @if (CanDisconnect)
+        {
+            <button class="secondary-action danger-action" type="button" @onclick="DisconnectAsync" disabled="@IsBusy">Disconnect <span>×</span></button>
+        }
+        else
+        {
+            <button class="primary-action" type="button" @onclick="ConnectAsync" disabled="@IsBusy || string.IsNullOrWhiteSpace(Host)">
+                @(IsBusy ? "Opening channel…" : "Connect to display") <span>→</span>
+            </button>
+        }
+        <p class="field-note">The TV may ask you to approve SamsungController on first connection.</p>
+    </div>
+
+    <div class="panel signal-panel">
+        <div class="panel-label"><span>SESSION SIGNAL</span><span>LIVE</span></div>
+        <div class="signal-visual" aria-hidden="true">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
+        <dl class="metric-list">
+            <div><dt>Transport</dt><dd>@TransportLabel</dd></div>
+            <div><dt>Authorization</dt><dd>@(Snapshot.HasToken ? "Token retained" : "Pair on connect")</dd></div>
+            <div><dt>Generation</dt><dd>@(Snapshot.ConnectionGeneration == 0 ? "—" : Snapshot.ConnectionGeneration)</dd></div>
+            <div><dt>Protocol capture</dt><dd>@(Snapshot.ConnectionState == SamsungConnectionState.Connected ? "Recording" : "Armed")</dd></div>
+        </dl>
+    </div>
+
+    <div class="panel quick-panel">
+        <div class="panel-label"><span>NEXT ACTIONS</span><span>04</span></div>
+        <div class="quick-links">
+            <a href="remote"><span>Remote</span><small>Directional and volume control</small><b>→</b></a>
+            <a href="macros"><span>Macro runner</span><small>Validated repeatable sequences</small><b>→</b></a>
+            <a href="protocol"><span>Protocol</span><small>Inspect every RX / TX message</small><b>→</b></a>
+        </div>
+    </div>
+</section>
+
+@code {
+    private ControllerSnapshot Snapshot { get; set; } = null!;
+    private string DisplayName { get; set; } = "Samsung TV";
+    private string Host { get; set; } = string.Empty;
+    private bool Secure { get; set; } = true;
+    private bool AllowUntrustedCertificate { get; set; } = true;
+    private int? Port { get; set; }
+    private bool IsBusy { get; set; }
+    private string? LocalError { get; set; }
+
+    private string? ErrorMessage => LocalError ?? Snapshot.LastError;
+    private bool CanDisconnect => Snapshot.ConnectionState != SamsungConnectionState.Disconnected;
+    private string TransportLabel => $"{(Secure ? "WSS" : "WS")} : {Port ?? (Secure ? 8002 : 8001)}";
+    private string StateClass => Snapshot.ConnectionState switch
+    {
+        SamsungConnectionState.Connected => "connected",
+        SamsungConnectionState.Connecting or SamsungConnectionState.Pairing or
+            SamsungConnectionState.Reconnecting or SamsungConnectionState.Disconnecting => "working",
+        SamsungConnectionState.Faulted => "faulted",
+        _ => "disconnected"
+    };
+    private string StateLabel => Snapshot.ConnectionState switch
+    {
+        SamsungConnectionState.Connected => "Online",
+        SamsungConnectionState.Pairing => "Pairing",
+        SamsungConnectionState.Connecting => "Opening",
+        SamsungConnectionState.Reconnecting => "Retrying",
+        SamsungConnectionState.Disconnecting => "Closing",
+        SamsungConnectionState.Faulted => "Faulted",
+        _ => "Offline"
+    };
+    private string StateDetail => Snapshot.ConnectionState switch
+    {
+        SamsungConnectionState.Connected => Snapshot.Host ?? "Active channel",
+        SamsungConnectionState.Pairing => "Check the TV",
+        SamsungConnectionState.Connecting => "Negotiating",
+        SamsungConnectionState.Reconnecting => "Recovering channel",
+        SamsungConnectionState.Disconnecting => "Ending session",
+        SamsungConnectionState.Faulted => "Review error",
+        _ => "No active channel"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        Snapshot = Controller.GetSnapshot();
+        Controller.Changed += HandleControllerChanged;
+        await Controller.InitializeAsync();
+        ApplySnapshotToForm(Controller.GetSnapshot());
+    }
+
+    private async Task ConnectAsync()
+    {
+        IsBusy = true;
+        LocalError = null;
+        try
+        {
+            await Controller.ConnectAsync(new TvConnectionRequest(
+                DisplayName,
+                Host,
+                Secure,
+                Port,
+                AllowUntrustedCertificate));
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task DisconnectAsync()
+    {
+        IsBusy = true;
+        LocalError = null;
+        try
+        {
+            await Controller.DisconnectAsync();
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void HandleControllerChanged()
+    {
+        Snapshot = Controller.GetSnapshot();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void ApplySnapshotToForm(ControllerSnapshot snapshot)
+    {
+        Snapshot = snapshot;
+        DisplayName = snapshot.DisplayName;
+        Host = snapshot.Host ?? string.Empty;
+        Secure = snapshot.Secure;
+        Port = snapshot.Port;
+    }
+
+    public void Dispose()
+    {
+        Controller.Changed -= HandleControllerChanged;
+    }
+}

@@ -1,0 +1,176 @@
+@page "/protocol"
+@implements IDisposable
+@inject SamsungControllerService Controller
+@inject IJSRuntime JavaScript
+
+<PageTitle>Protocol · SamsungController</PageTitle>
+
+<section class="page-heading compact-heading protocol-heading">
+    <div>
+        <span class="eyebrow">PROTOCOL CONSOLE</span>
+        <h1>Every message, in the open.</h1>
+        <p>Inspect the live WebSocket exchange. Pairing tokens are redacted unless you explicitly reveal them.</p>
+    </div>
+    <div class="capture-count"><strong>@Messages.Count</strong><span>messages retained</span></div>
+</section>
+
+@if (!string.IsNullOrWhiteSpace(ErrorMessage))
+{
+    <div class="notice danger" role="alert"><strong>Protocol action failed</strong><span>@ErrorMessage</span></div>
+}
+
+<section class="protocol-layout">
+    <div class="panel protocol-panel">
+        <div class="protocol-toolbar">
+            <input class="search-input" @bind="Search" @bind:event="oninput" placeholder="Search channel, event, or payload" aria-label="Search protocol messages" />
+            <select class="direction-filter" @bind="DirectionFilter" aria-label="Direction filter">
+                <option value="All">RX + TX</option>
+                <option value="Rx">RX only</option>
+                <option value="Tx">TX only</option>
+            </select>
+            <button class="toolbar-button" @onclick="ExportAsync" disabled="@(FilteredMessages.Count == 0)">Export view</button>
+            <button class="toolbar-button" @onclick="Controller.ClearMessages" disabled="@(Messages.Count == 0)">Clear</button>
+        </div>
+
+        <div class="sensitive-row">
+            <label><input type="checkbox" @bind="RevealSensitive" /> Reveal pairing tokens in this browser</label>
+            <span>Full capture: @Snapshot.ProtocolLogPath</span>
+        </div>
+
+        <div class="message-list">
+            @if (FilteredMessages.Count == 0)
+            {
+                <div class="panel-empty">
+                    <strong>@(Messages.Count == 0 ? "Listening for traffic" : "No matching messages")</strong>
+                    <span>@(Messages.Count == 0 ? "Connect or send a key to populate the console." : "Adjust the search or direction filter.")</span>
+                </div>
+            }
+            @foreach (var message in FilteredMessages)
+            {
+                <article class="message-card @message.Direction.ToString().ToLowerInvariant()">
+                    <header>
+                        <span class="direction-tag">@message.Direction</span>
+                        <strong>@(message.Event ?? message.Channel)</strong>
+                        <small>@message.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture)</small>
+                        <button title="Copy formatted payload" @onclick="() => CopyAsync(message)">Copy</button>
+                    </header>
+                    <div class="message-meta">@message.Channel · generation @message.ConnectionGeneration</div>
+                    <pre>@ProtocolMessageFormatter.Format(message, RevealSensitive)</pre>
+                    @if (!string.IsNullOrWhiteSpace(message.ParseError))
+                    {
+                        <div class="parse-error">@message.ParseError</div>
+                    }
+                </article>
+            }
+        </div>
+    </div>
+
+    <aside class="panel raw-panel">
+        <div class="panel-label"><span>RAW SENDER</span><span>DEVELOPER</span></div>
+        <label class="developer-toggle"><input type="checkbox" @bind="DeveloperMode" /> Enable raw JSON sender</label>
+        <p>Raw protocol messages can change device state. The sender remains locked until developer mode is enabled.</p>
+        <textarea @bind="RawPayload" rows="13" spellcheck="false" disabled="@(!DeveloperMode)" aria-label="Raw JSON payload"></textarea>
+        <button class="primary-action" @onclick="SendRawAsync" disabled="@(!CanSendRaw)">Send raw JSON <span>→</span></button>
+    </aside>
+</section>
+
+@code {
+    private ControllerSnapshot Snapshot { get; set; } = null!;
+    private IReadOnlyList<SamsungMessage> Messages { get; set; } = [];
+    private string Search { get; set; } = string.Empty;
+    private string DirectionFilter { get; set; } = "All";
+    private bool RevealSensitive { get; set; }
+    private bool DeveloperMode { get; set; }
+    private bool IsSending { get; set; }
+    private string RawPayload { get; set; } = "{\n  \"method\": \"ms.remote.control\"\n}";
+    private string? ErrorMessage { get; set; }
+
+    private bool CanSendRaw => DeveloperMode && !IsSending &&
+        Snapshot.ConnectionState == SamsungConnectionState.Connected &&
+        !string.IsNullOrWhiteSpace(RawPayload);
+
+    private IReadOnlyList<SamsungMessage> FilteredMessages => Messages
+        .Where(message => DirectionFilter == "All" || message.Direction.ToString() == DirectionFilter)
+        .Where(message => string.IsNullOrWhiteSpace(Search) || MatchesSearch(message, Search))
+        .Reverse()
+        .ToArray();
+
+    protected override async Task OnInitializedAsync()
+    {
+        Snapshot = Controller.GetSnapshot();
+        Messages = Controller.GetMessages();
+        Controller.Changed += HandleControllerChanged;
+        await Controller.InitializeAsync();
+        Refresh();
+    }
+
+    private bool MatchesSearch(SamsungMessage message, string query) =>
+        message.Channel.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+        (message.Event?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
+        ProtocolMessageFormatter.Format(message, RevealSensitive).Contains(query, StringComparison.OrdinalIgnoreCase);
+
+    private async Task CopyAsync(SamsungMessage message)
+    {
+        ErrorMessage = null;
+        try
+        {
+            await JavaScript.InvokeVoidAsync("samsungController.copyText", ProtocolMessageFormatter.Format(message, RevealSensitive));
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = exception.Message;
+        }
+    }
+
+    private async Task ExportAsync()
+    {
+        ErrorMessage = null;
+        try
+        {
+            var lines = FilteredMessages.Select(message =>
+                $"[{message.Timestamp:O}] {message.Direction} {message.Channel} {message.Event}\n{ProtocolMessageFormatter.Format(message, RevealSensitive)}");
+            var capture = string.Join("\n\n", lines);
+            var fileName = $"samsung-protocol-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.txt";
+            await JavaScript.InvokeVoidAsync("samsungController.downloadText", fileName, capture);
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = exception.Message;
+        }
+    }
+
+    private async Task SendRawAsync()
+    {
+        IsSending = true;
+        ErrorMessage = null;
+        try
+        {
+            await Controller.SendRawAsync(RawPayload);
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = exception.Message;
+        }
+        finally
+        {
+            IsSending = false;
+        }
+    }
+
+    private void HandleControllerChanged()
+    {
+        Refresh();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void Refresh()
+    {
+        Snapshot = Controller.GetSnapshot();
+        Messages = Controller.GetMessages();
+    }
+
+    public void Dispose()
+    {
+        Controller.Changed -= HandleControllerChanged;
+    }
+}

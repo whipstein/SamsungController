@@ -13,6 +13,12 @@ samsungctl
     -> SamsungTvClient
     -> ClientWebSocketSamsungTransport
     -> Samsung TV
+
+SamsungController.Web
+    -> singleton SamsungControllerService
+    -> SamsungController.Automation + SamsungTvClient
+    -> ClientWebSocketSamsungTransport
+    -> Samsung TV
 ```
 
 - `SamsungController.Core` targets plain `net10.0` and contains no desktop,
@@ -29,10 +35,24 @@ samsungctl
   `NdjsonProtocolLogger` records sessions without interpreting away unknown data.
 - `samsungctl` owns user configuration, paths, terminal output, and process
   lifetime. The core library does not depend on the CLI.
+- `SamsungController.Web` is an ASP.NET Core/Blazor Server presentation layer.
+  One process-wide controller service owns the active TV connection, macro run,
+  500-message protocol ring buffer, and session logger. Razor components call
+  that service and contain no Samsung protocol construction logic.
 
-Menu navigation and UI projects remain deferred. The macro automation project
-was introduced after pairing, token reuse, and remote keys were verified against
-the Samsung S95F.
+Menu-state modeling remains deferred. The macro automation and web projects were
+introduced after pairing, token reuse, and remote keys were verified against the
+Samsung S95F.
+
+## Local web boundary
+
+The web host defaults to `http://127.0.0.1:5050`; it is not exposed on a LAN
+interface. It reuses the CLI's per-user `settings.json` and `tokens.json`, while
+each web process creates its own complete NDJSON session capture. The protocol
+view holds only the latest 500 messages in memory and recursively redacts JSON
+properties named `token` unless the user explicitly reveals sensitive values.
+The on-disk capture remains complete for research and therefore must be kept
+private. Raw JSON sending is gated behind a developer-mode control in the UI.
 
 ## WebSocket handshake
 
