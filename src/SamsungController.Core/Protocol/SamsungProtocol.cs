@@ -8,6 +8,7 @@ internal static class SamsungProtocol
 {
     public const string RemoteControlChannel = "samsung.remote.control";
     public const string ChannelConnectEvent = "ms.channel.connect";
+    public const string ChannelTimeoutEvent = "ms.channel.timeOut";
     public const string ChannelUnauthorizedEvent = "ms.channel.unauthorized";
 
     public static Uri BuildRemoteControlEndpoint(

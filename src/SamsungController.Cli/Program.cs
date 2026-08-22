@@ -118,6 +118,13 @@ internal static class Program
             if (!quiet)
             {
                 Console.Error.WriteLine($"Connection: {eventArgs.Current}");
+                if (eventArgs.Current == SamsungConnectionState.Pairing)
+                {
+                    Console.Error.WriteLine(
+                        "Pairing: select Allow on the TV prompt. If no prompt appears, check "
+                        + "Settings > All Settings > Connection > External Device Manager > "
+                        + "Device Connect Manager > Access Notification (menu names vary by model).");
+                }
             }
         };
 

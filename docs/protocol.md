@@ -29,6 +29,10 @@ data.clients[*].attributes.token
 `ms.channel.unauthorized` is treated as an authentication error. Every other
 event remains observable and is not discarded.
 
+`ms.channel.timeOut` means the TV ended the authorization window without
+granting access. The client reports this as a pairing timeout and does not start
+an automatic reconnect loop for a connection that was never authorized.
+
 ## Remote key requests
 
 Method: `ms.remote.control`

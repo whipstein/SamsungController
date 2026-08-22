@@ -123,6 +123,26 @@ public sealed class SamsungTvClientTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task TvPairingTimeoutIsReportedWithoutReconnect()
+    {
+        var transport = new FakeSamsungTransport
+        {
+            HandshakeEvent = "ms.channel.timeOut"
+        };
+        await using var client = new SamsungTvClient(transport, new InMemoryTokenStore());
+        var states = new List<SamsungConnectionState>();
+        client.ConnectionStateChanged += (_, eventArgs) => states.Add(eventArgs.Current);
+
+        var exception = await Assert.ThrowsAsync<SamsungPairingTimeoutException>(
+            () => client.ConnectAsync(CreateOptions() with { MaxReconnectAttempts = 3 }));
+
+        Assert.Contains("Access Notification", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(1, transport.ConnectCount);
+        Assert.DoesNotContain(SamsungConnectionState.Reconnecting, states);
+        Assert.Equal(SamsungConnectionState.Faulted, client.State);
+    }
+
     private static SamsungConnectionOptions CreateOptions() => new()
     {
         Host = "192.0.2.10",

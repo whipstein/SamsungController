@@ -21,6 +21,8 @@ internal sealed class FakeSamsungTransport : ISamsungTransport
 
     public string? PairingToken { get; set; } = "12345678";
 
+    public string HandshakeEvent { get; set; } = "ms.channel.connect";
+
     public bool ReturnTokenInClientAttributes { get; set; }
 
     public bool FailNextSend { get; set; }
@@ -38,7 +40,9 @@ internal sealed class FakeSamsungTransport : ISamsungTransport
         IsConnected = true;
         Interlocked.Increment(ref _generation);
 
-        var response = ReturnTokenInClientAttributes
+        var response = HandshakeEvent != "ms.channel.connect"
+            ? JsonSerializer.Serialize(new { @event = HandshakeEvent })
+            : ReturnTokenInClientAttributes
             ? JsonSerializer.Serialize(new
             {
                 @event = "ms.channel.connect",

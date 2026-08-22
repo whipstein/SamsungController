@@ -121,6 +121,22 @@ dotnet run --project src/SamsungController.Cli -- connect 192.168.1.100
 
 You may also need to remove the controller from the TV's allowed-device list.
 
+### TV reports `ms.channel.timeOut`
+
+This means the WebSocket reached the TV, but the TV did not grant access before
+its authorization window closed. On recent Samsung menus:
+
+1. Open **Settings > All Settings > Connection > External Device Manager >
+   Device Connect Manager**. Some firmware places Device Connect Manager
+   directly under Connection.
+2. Make sure **Access Notification** is enabled (Samsung labels the enabled
+   choice `Always on` on some models).
+3. Open **Device List** and remove any denied or stale SamsungController entry.
+4. Run `connect` again and select **Allow** when the TV prompt appears.
+
+Samsung documents Access Notification and Device List in its
+[connection troubleshooting guidance](https://www.samsung.com/us/support/troubleshooting/TSG01109889/).
+
 ## Design and protocol notes
 
 - [Architecture, token lifecycle, and assumptions](docs/architecture.md)

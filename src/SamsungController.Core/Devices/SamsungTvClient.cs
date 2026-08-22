@@ -18,6 +18,7 @@ public sealed class SamsungTvClient : IAsyncDisposable
     private readonly Channel<SamsungMessage> _messageChannel = Channel.CreateUnbounded<SamsungMessage>(
         new UnboundedChannelOptions { SingleWriter = false, SingleReader = false });
     private readonly ConcurrentDictionary<long, byte> _reconnectSchedules = new();
+    private readonly ConcurrentDictionary<long, byte> _authorizedGenerations = new();
 
     private CancellationTokenSource? _sessionSource;
     private Task? _receiveTask;
@@ -112,6 +113,12 @@ public sealed class SamsungTvClient : IAsyncDisposable
                     throw new SamsungPairingTimeoutException(
                         "Timed out waiting for Samsung TV authorization. Approve the TV pairing prompt and try again.",
                         exception);
+                }
+
+                if (!_transport.IsConnected)
+                {
+                    throw new SamsungConnectionException(
+                        "The Samsung TV closed the WebSocket immediately after authorization.");
                 }
 
                 Token = returnedToken ?? token;
@@ -258,6 +265,7 @@ public sealed class SamsungTvClient : IAsyncDisposable
         }
         finally
         {
+            var wasAuthorized = _authorizedGenerations.TryRemove(generation, out _);
             if (_handshakeSource?.Task.IsCompleted != true)
             {
                 _handshakeSource?.TrySetException(new SamsungConnectionException(
@@ -267,6 +275,7 @@ public sealed class SamsungTvClient : IAsyncDisposable
             if (!_disposed
                 && !cancellationToken.IsCancellationRequested
                 && generation == Interlocked.Read(ref _activeGeneration)
+                && wasAuthorized
                 && _options?.AutoReconnect == true)
             {
                 SetState(SamsungConnectionState.Reconnecting, failure);
@@ -284,11 +293,20 @@ public sealed class SamsungTvClient : IAsyncDisposable
             return;
         }
 
+        if (message.Event == SamsungProtocol.ChannelTimeoutEvent)
+        {
+            _handshakeSource?.TrySetException(new SamsungPairingTimeoutException(
+                "The TV timed out waiting for pairing approval. On the TV, enable Access Notification in Device Connect Manager, remove any denied SamsungController entry from Device List, retry, and select Allow on the prompt.",
+                new TimeoutException("Samsung returned ms.channel.timeOut.")));
+            return;
+        }
+
         if (message.Event != SamsungProtocol.ChannelConnectEvent)
         {
             return;
         }
 
+        _authorizedGenerations.TryAdd(message.ConnectionGeneration, 0);
         _handshakeSource?.TrySetResult(SamsungProtocol.TryGetToken(message.ParsedPayload));
     }
 
