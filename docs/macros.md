@@ -7,9 +7,12 @@ depend on the CLI.
 
 ## File location and commands
 
-The default file is `macros.yaml` in the same per-user configuration directory
-used for settings, tokens, and session logs. Use `--macro-file <path>` to load a
-different file.
+The initial default is `macros.yaml` in the same per-user configuration
+directory used for settings, tokens, and session logs. Use `--macro-file <path>`
+to load a different file. After that file is successfully validated, listed, or
+used by a macro/console command, its absolute path is remembered for subsequent
+invocations. This means a later `console` command uses the same catalog without
+requiring the flag again.
 
 From the repository, the included example can be inspected without connecting
 to a TV:

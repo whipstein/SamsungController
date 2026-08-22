@@ -19,6 +19,8 @@ internal sealed record SamsungCliSettings
 
     public int? Port { get; init; }
 
+    public string? MacroFilePath { get; init; }
+
     public static async Task<SamsungCliSettings> LoadAsync(
         string path,
         CancellationToken cancellationToken)

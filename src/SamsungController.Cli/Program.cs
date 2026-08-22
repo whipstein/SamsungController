@@ -34,7 +34,7 @@ internal static class Program
         }
     }
 
-    private static async Task<int> RunAsync(
+    internal static async Task<int> RunAsync(
         CliArguments arguments,
         CancellationToken cancellationToken)
     {
@@ -49,14 +49,15 @@ internal static class Program
             arguments.GetOption("--config-dir")
             ?? ApplicationPaths.GetDefaultConfigurationDirectory());
         var settingsPath = Path.Combine(configurationDirectory, "settings.json");
-        var macroFilePath = Path.GetFullPath(
-            arguments.GetOption("--macro-file")
-            ?? Path.Combine(configurationDirectory, "macros.yaml"));
         var tokenPath = Path.GetFullPath(
             arguments.GetOption("--token-file")
             ?? Path.Combine(configurationDirectory, "tokens.json"));
         var settings = await SamsungCliSettings.LoadAsync(settingsPath, cancellationToken)
             .ConfigureAwait(false);
+        var macroFilePath = Path.GetFullPath(
+            arguments.GetOption("--macro-file")
+            ?? settings.MacroFilePath
+            ?? Path.Combine(configurationDirectory, "macros.yaml"));
         var tokenStore = new JsonFileSamsungTokenStore(tokenPath);
 
         if (arguments.Command.Equals("forget", StringComparison.OrdinalIgnoreCase))
@@ -77,6 +78,7 @@ internal static class Program
             Console.WriteLine($"Host: {configuredHost}");
             Console.WriteLine($"Mode: {(settings.Secure ? "secure (wss)" : "non-secure (ws)")}");
             Console.WriteLine($"Token: {(hasToken ? "saved" : "not saved")}");
+            Console.WriteLine($"Macros: {macroFilePath}");
             Console.WriteLine($"Configuration: {configurationDirectory}");
             return 0;
         }
@@ -91,6 +93,9 @@ internal static class Program
             await macroCommands.ExecuteAsync(
                     string.Join(' ', arguments.Positionals),
                     cancellationToken)
+                .ConfigureAwait(false);
+            await (settings with { MacroFilePath = macroFilePath })
+                .SaveAsync(settingsPath, cancellationToken)
                 .ConfigureAwait(false);
             return 0;
         }
@@ -220,7 +225,11 @@ internal static class Program
             Host = host,
             ApplicationName = applicationName,
             Secure = secure,
-            Port = port
+            Port = port,
+            MacroFilePath = arguments.Command.Equals("macro", StringComparison.OrdinalIgnoreCase)
+                            || interactiveConsole
+                ? macroFilePath
+                : settings.MacroFilePath
         };
         await updatedSettings.SaveAsync(settingsPath, cancellationToken).ConfigureAwait(false);
 
@@ -389,7 +398,7 @@ internal static class Program
               --log <path>               NDJSON protocol log path
               --token-file <path>        Pairing token store path
               --config-dir <path>        Settings/session directory
-              --macro-file <path>        YAML macro file (default: <config>/macros.yaml)
+              --macro-file <path>        YAML macro file (then remembered for later sessions)
               --quiet                    Suppress diagnostic terminal output
               --help                     Show this help
 

@@ -113,10 +113,12 @@ dotnet run --project src/SamsungController.Cli -- \
   macro TestNavigation --macro-file samples/macros/macros.example.yaml
 ```
 
-Without `--macro-file`, the CLI uses `macros.yaml` in the per-user configuration
-directory. Macros are fully parsed and validated before the first key is sent.
-Ctrl+C cancels execution, and every key/delay operation is printed and logged.
-See the [macro format and safety notes](docs/macros.md).
+After a successful `macro list`, `macro validate`, macro run, or console launch
+with `--macro-file`, that absolute path is remembered for later CLI and console
+sessions. Before a path has been selected, the default is `macros.yaml` in the
+per-user configuration directory. Macros are fully parsed and validated before
+the first key is sent. Ctrl+C cancels execution, and every key/delay operation
+is printed and logged. See the [macro format and safety notes](docs/macros.md).
 
 ## Listen and capture traffic
 
