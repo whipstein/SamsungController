@@ -3,32 +3,50 @@ using SamsungController.Core.Protocol;
 
 namespace SamsungController.Cli;
 
-internal sealed class InteractiveConsoleSession(
-    IInteractiveSamsungClient client,
-    TextReader input,
-    TextWriter output,
-    bool allowRaw)
+internal sealed class InteractiveConsoleSession
 {
-    private readonly IInteractiveSamsungClient _client =
-        client ?? throw new ArgumentNullException(nameof(client));
-    private readonly TextReader _input = input ?? throw new ArgumentNullException(nameof(input));
-    private readonly TextWriter _output = output ?? throw new ArgumentNullException(nameof(output));
+    private readonly IInteractiveSamsungClient _client;
+    private readonly IInteractiveConsoleTerminal _terminal;
+    private readonly bool _allowRaw;
+
+    public InteractiveConsoleSession(
+        IInteractiveSamsungClient client,
+        IInteractiveConsoleTerminal terminal,
+        bool allowRaw)
+    {
+        _client = client ?? throw new ArgumentNullException(nameof(client));
+        _terminal = terminal ?? throw new ArgumentNullException(nameof(terminal));
+        _allowRaw = allowRaw;
+    }
+
+    public InteractiveConsoleSession(
+        IInteractiveSamsungClient client,
+        TextReader input,
+        TextWriter output,
+        bool allowRaw)
+        : this(
+            client,
+            new TextInteractiveConsoleTerminal(
+                input,
+                output,
+                new ConsoleCommandHistory(path: null)),
+            allowRaw)
+    {
+    }
 
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
-        _output.WriteLine("Interactive Samsung console. Type 'help' for commands; 'exit' to quit.");
-        if (allowRaw)
+        _terminal.WriteLine("Interactive Samsung console. Type 'help' for commands; 'exit' to quit.");
+        if (_allowRaw)
         {
-            _output.WriteLine(
+            _terminal.WriteLine(
                 "Developer mode: raw JSON sending is enabled. Unknown writes can alter TV behavior.");
         }
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            _output.Write("samsungctl> ");
-            _output.Flush();
-
-            var line = await _input.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+            var line = await _terminal.ReadLineAsync("samsungctl> ", cancellationToken)
+                .ConfigureAwait(false);
             if (line is null)
             {
                 return;
@@ -57,7 +75,7 @@ internal sealed class InteractiveConsoleSession(
             }
             catch (Exception exception)
             {
-                _output.WriteLine($"Command failed: {exception.Message}");
+                _terminal.WriteLine($"Command failed: {exception.Message}");
             }
         }
     }
@@ -79,8 +97,12 @@ internal sealed class InteractiveConsoleSession(
 
             case "state":
             case "status":
-                _output.WriteLine(
+                _terminal.WriteLine(
                     $"State: {_client.State}; connection generation: {_client.ConnectionGeneration}");
+                return false;
+
+            case "history":
+                ShowOrClearHistory(arguments);
                 return false;
 
             case "key":
@@ -96,7 +118,7 @@ internal sealed class InteractiveConsoleSession(
                 return false;
 
             default:
-                _output.WriteLine($"Unknown command '{verb}'. Type 'help' for available commands.");
+                _terminal.WriteLine($"Unknown command '{verb}'. Type 'help' for available commands.");
                 return false;
         }
     }
@@ -108,7 +130,7 @@ internal sealed class InteractiveConsoleSession(
             StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (parts.Length is < 1 or > 2)
         {
-            _output.WriteLine("Usage: key <KEY_NAME> [Click|Press|Release]");
+            _terminal.WriteLine("Usage: key <KEY_NAME> [Click|Press|Release]");
             return;
         }
 
@@ -116,12 +138,12 @@ internal sealed class InteractiveConsoleSession(
         if (parts.Length == 2
             && !Enum.TryParse(parts[1], ignoreCase: true, out action))
         {
-            _output.WriteLine("Action must be Click, Press, or Release.");
+            _terminal.WriteLine("Action must be Click, Press, or Release.");
             return;
         }
 
         await _client.SendKeyAsync(parts[0], action, cancellationToken).ConfigureAwait(false);
-        _output.WriteLine($"Sent {action} {parts[0]}.");
+        _terminal.WriteLine($"Sent {action} {parts[0]}.");
     }
 
     private async Task SendQueryAsync(string arguments, CancellationToken cancellationToken)
@@ -133,57 +155,85 @@ internal sealed class InteractiveConsoleSession(
                     .ConfigureAwait(false);
                 await _client.SendQueryAsync(SamsungQuery.InstalledApplications, cancellationToken)
                     .ConfigureAwait(false);
-                _output.WriteLine(
+                _terminal.WriteLine(
                     "Sent Eden and installed-application queries; responses will appear asynchronously.");
                 return;
 
             case "eden-apps":
                 await _client.SendQueryAsync(SamsungQuery.EdenApplications, cancellationToken)
                     .ConfigureAwait(false);
-                _output.WriteLine("Sent ed.edenApp.get; any response will appear asynchronously.");
+                _terminal.WriteLine("Sent ed.edenApp.get; any response will appear asynchronously.");
                 return;
 
             case "installed-apps":
                 await _client.SendQueryAsync(SamsungQuery.InstalledApplications, cancellationToken)
                     .ConfigureAwait(false);
-                _output.WriteLine("Sent ed.installedApp.get; any response will appear asynchronously.");
+                _terminal.WriteLine("Sent ed.installedApp.get; any response will appear asynchronously.");
                 return;
 
             default:
-                _output.WriteLine("Usage: query apps|eden-apps|installed-apps");
+                _terminal.WriteLine("Usage: query apps|eden-apps|installed-apps");
                 return;
         }
     }
 
     private async Task SendRawAsync(string rawJson, CancellationToken cancellationToken)
     {
-        if (!allowRaw)
+        if (!_allowRaw)
         {
-            _output.WriteLine(
+            _terminal.WriteLine(
                 "Raw sending is disabled. Restart the console with --allow-raw to enable developer mode.");
             return;
         }
 
         if (string.IsNullOrWhiteSpace(rawJson))
         {
-            _output.WriteLine("Usage: raw <JSON object>");
+            _terminal.WriteLine("Usage: raw <JSON object>");
             return;
         }
 
         using var document = JsonDocument.Parse(rawJson);
         if (document.RootElement.ValueKind != JsonValueKind.Object)
         {
-            _output.WriteLine("Raw payload must be a JSON object.");
+            _terminal.WriteLine("Raw payload must be a JSON object.");
             return;
         }
 
         await _client.SendRawAsync(rawJson, cancellationToken).ConfigureAwait(false);
-        _output.WriteLine("Sent raw JSON.");
+        _terminal.WriteLine("Sent raw JSON.");
+    }
+
+    private void ShowOrClearHistory(string arguments)
+    {
+        if (arguments.Trim().Equals("clear", StringComparison.OrdinalIgnoreCase))
+        {
+            _terminal.ClearHistory();
+            _terminal.WriteLine("Command history cleared.");
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(arguments))
+        {
+            _terminal.WriteLine("Usage: history [clear]");
+            return;
+        }
+
+        var history = _terminal.History;
+        if (history.Count == 0)
+        {
+            _terminal.WriteLine("Command history is empty.");
+            return;
+        }
+
+        for (var index = 0; index < history.Count; index++)
+        {
+            _terminal.WriteLine($"{index + 1,4}  {history[index]}");
+        }
     }
 
     private void PrintHelp()
     {
-        _output.WriteLine(
+        _terminal.WriteLine(
             """
             Commands:
               key <KEY_NAME> [Click|Press|Release]
@@ -198,6 +248,10 @@ internal sealed class InteractiveConsoleSession(
                   Send an arbitrary payload (requires --allow-raw).
               state
                   Show connection state and generation.
+              history
+                  Show command history. Raw JSON commands are never retained.
+              history clear
+                  Clear in-memory and persisted command history.
               help
                   Show this command list.
               exit | quit

@@ -93,9 +93,23 @@ internal static class Program
             ?? settings.ApplicationName;
         var pairingTimeoutSeconds = ParseNullableInt(arguments.GetOption("--pairing-timeout")) ?? 90;
         var quiet = arguments.HasFlag("--quiet");
+        var interactiveConsole = arguments.Command.Equals("console", StringComparison.OrdinalIgnoreCase);
         var logPath = Path.GetFullPath(
             arguments.GetOption("--log")
             ?? CreateSessionLogPath(configurationDirectory, arguments.Command));
+
+        IInteractiveConsoleTerminal? consoleTerminal = null;
+        string? historyPath = null;
+        if (interactiveConsole)
+        {
+            historyPath = arguments.HasFlag("--no-history")
+                ? null
+                : Path.Combine(configurationDirectory, "console-history.txt");
+            var history = new ConsoleCommandHistory(historyPath);
+            consoleTerminal = Console.IsInputRedirected || Console.IsOutputRedirected
+                ? new TextInteractiveConsoleTerminal(Console.In, Console.Out, history)
+                : new ConsoleLineEditorTerminal(Console.Out, history);
+        }
 
         var connectionOptions = new SamsungConnectionOptions
         {
@@ -117,10 +131,10 @@ internal static class Program
         {
             if (!quiet)
             {
-                Console.Error.WriteLine($"Connection: {eventArgs.Current}");
+                WriteDiagnostic($"Connection: {eventArgs.Current}");
                 if (eventArgs.Current == SamsungConnectionState.Pairing)
                 {
-                    Console.Error.WriteLine(
+                    WriteDiagnostic(
                         "Pairing: select Allow on the TV prompt. If no prompt appears, check "
                         + "Settings > All Settings > Connection > External Device Manager > "
                         + "Device Connect Manager > Access Notification (menu names vary by model).");
@@ -128,7 +142,6 @@ internal static class Program
             }
         };
 
-        var interactiveConsole = arguments.Command.Equals("console", StringComparison.OrdinalIgnoreCase);
         var showRaw = arguments.Command.Equals("listen", StringComparison.OrdinalIgnoreCase)
             || interactiveConsole;
         client.MessageObserved += (_, eventArgs) =>
@@ -141,9 +154,17 @@ internal static class Program
             var message = eventArgs.Message;
             if (showRaw)
             {
-                Console.WriteLine(
+                var formattedMessage =
                     $"{message.Timestamp:O} {message.Direction.ToString().ToUpperInvariant()} "
-                    + $"gen={message.ConnectionGeneration} {message.RawJson}");
+                    + $"gen={message.ConnectionGeneration} {message.RawJson}";
+                if (consoleTerminal is null)
+                {
+                    Console.WriteLine(formattedMessage);
+                }
+                else
+                {
+                    consoleTerminal.WriteLine(formattedMessage);
+                }
             }
             else
             {
@@ -155,10 +176,10 @@ internal static class Program
 
         if (!quiet)
         {
-            Console.Error.WriteLine($"Protocol log: {logPath}");
+            WriteDiagnostic($"Protocol log: {logPath}");
             if (showRaw)
             {
-                Console.Error.WriteLine("Warning: raw pairing traffic can contain the Samsung token.");
+                WriteDiagnostic("Warning: raw pairing traffic can contain the Samsung token.");
             }
         }
 
@@ -191,11 +212,14 @@ internal static class Program
 
         if (interactiveConsole)
         {
-            Console.WriteLine($"Console connected to {host}.");
+            consoleTerminal!.WriteLine($"Console connected to {host}.");
+            consoleTerminal.WriteLine(
+                historyPath is null
+                    ? "History: session only; persistent history is disabled."
+                    : $"History: {historyPath} (raw commands are excluded).");
             var session = new InteractiveConsoleSession(
                 new InteractiveSamsungClient(client),
-                Console.In,
-                Console.Out,
+                consoleTerminal,
                 arguments.HasFlag("--allow-raw"));
             await session.RunAsync(cancellationToken).ConfigureAwait(false);
             return 0;
@@ -204,6 +228,18 @@ internal static class Program
         Console.WriteLine($"Listening to {host}. Press Ctrl+C to stop.");
         await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
         return 0;
+
+        void WriteDiagnostic(string value)
+        {
+            if (consoleTerminal is null)
+            {
+                Console.Error.WriteLine(value);
+            }
+            else
+            {
+                consoleTerminal.WriteLine(value);
+            }
+        }
     }
 
     private static string ResolveRequiredHost(CliArguments arguments, SamsungCliSettings settings) =>
@@ -267,7 +303,7 @@ internal static class Program
             Usage:
               samsungctl connect <TV-IP> [options]
               samsungctl key <KEY_NAME> [--action Click|Press|Release] [options]
-              samsungctl console [--allow-raw] [options]
+              samsungctl console [--allow-raw] [--no-history] [options]
               samsungctl listen [options]
               samsungctl status [options]
               samsungctl forget [--host <TV-IP>] [options]
@@ -280,6 +316,7 @@ internal static class Program
               --port <number>            Override the default Samsung port
               --strict-tls               Require a trusted TLS certificate
               --allow-raw                Enable arbitrary JSON in the interactive console
+              --no-history               Do not persist interactive-console history
               --pairing-timeout <secs>   Pairing prompt timeout (default: 90)
               --log <path>               NDJSON protocol log path
               --token-file <path>        Pairing token store path

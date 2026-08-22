@@ -19,6 +19,7 @@ validated; see the [verification checklist](docs/architecture.md#s95f-verificati
 - Unknown/malformed message preservation
 - Connection state and bounded automatic reconnect
 - CLI commands: `connect`, `key`, `console`, `listen`, `status`, and `forget`
+- Cross-platform console line editing with persistent, privacy-filtered history
 - Fake-transport tests that do not require a TV
 
 Automatic discovery, macros, menu-state prediction, and the Blazor UI are
@@ -105,6 +106,20 @@ samsungctl> key KEY_RIGHT Release
 samsungctl> query apps
 samsungctl> exit
 ```
+
+The terminal supports Up/Down history recall, Left/Right editing, Home/End,
+Backspace/Delete, Escape to clear the line, and the familiar Ctrl+A, Ctrl+E,
+and Ctrl+U shortcuts. The latest 200 commands persist as
+`console-history.txt` in the configuration directory, so Up-arrow recall works
+across sessions.
+
+```text
+samsungctl> history
+samsungctl> history clear
+```
+
+Raw JSON commands are never retained. Start with `--no-history` to keep normal
+commands in memory for the current session without writing a history file.
 
 `query apps` sends the known `ed.edenApp.get` and `ed.installedApp.get` read
 queries. Results, if supported by the TV, appear asynchronously as raw RX JSON

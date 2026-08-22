@@ -20,6 +20,7 @@ internal sealed class CliArguments
         "--secure",
         "--strict-tls",
         "--allow-raw",
+        "--no-history",
         "--quiet",
         "--help"
     };
