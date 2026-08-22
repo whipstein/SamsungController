@@ -46,6 +46,29 @@ Parameters:
 | `Option` | `"false"` |
 | `TypeOfRemote` | `SendRemoteKey` |
 
+## Application queries
+
+The interactive console provides two known read/query events using the
+`ms.channel.emit` envelope:
+
+```json
+{
+  "method": "ms.channel.emit",
+  "params": {
+    "data": "",
+    "event": "ed.edenApp.get",
+    "to": "host"
+  }
+}
+```
+
+The second event is `ed.installedApp.get`. Support and response shapes are
+firmware-dependent and remain to be verified on the S95F. These envelopes are
+treated as experimental protocol behavior even though their names imply reads.
+
+The envelope was independently implemented after checking the behavior in the
+[samsungctl WebSocket implementation](https://github.com/roberodin/ha-samsungtv-custom/blob/master/custom_components/samsungtv_custom/samsungctl_080b/remote_websocket.py).
+
 ## Session recordings
 
 The CLI writes newline-delimited JSON. Each record has a timestamp, direction,

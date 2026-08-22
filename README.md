@@ -18,7 +18,7 @@ validated; see the [verification checklist](docs/architecture.md#s95f-verificati
 - Complete RX/TX NDJSON session recording
 - Unknown/malformed message preservation
 - Connection state and bounded automatic reconnect
-- CLI commands: `connect`, `key`, `listen`, `status`, and `forget`
+- CLI commands: `connect`, `key`, `console`, `listen`, `status`, and `forget`
 - Fake-transport tests that do not require a TV
 
 Automatic discovery, macros, menu-state prediction, and the Blazor UI are
@@ -89,12 +89,54 @@ On Windows, run `artifacts\samsungctl\samsungctl.exe`.
 
 ## Listen and capture traffic
 
+For active protocol work, start the interactive console:
+
+```bash
+dotnet run --project src/SamsungController.Cli -- console
+```
+
+It keeps one authorized WebSocket open while accepting commands:
+
+```text
+samsungctl> state
+samsungctl> key KEY_UP
+samsungctl> key KEY_RIGHT Press
+samsungctl> key KEY_RIGHT Release
+samsungctl> query apps
+samsungctl> exit
+```
+
+`query apps` sends the known `ed.edenApp.get` and `ed.installedApp.get` read
+queries. Results, if supported by the TV, appear asynchronously as raw RX JSON
+and are captured in the same session log as the TX requests.
+
+Arbitrary payloads require an explicit developer-mode opt-in:
+
+```bash
+dotnet run --project src/SamsungController.Cli -- console --allow-raw
+```
+
+```text
+samsungctl> raw {"method":"ms.channel.emit","params":{"data":"","event":"ed.edenApp.get","to":"host"}}
+```
+
+Unknown Samsung writes may alter TV behavior. Use raw mode for read/query
+experiments first, and inspect each payload before sending it.
+
+For passive capture only:
+
 ```bash
 dotnet run --project src/SamsungController.Cli -- listen
 ```
 
-`listen` prints complete inbound and outbound JSON until Ctrl+C. All commands
-also write full NDJSON sessions under the per-user configuration directory:
+`listen` prints complete inbound JSON until Ctrl+C. The remote-control channel
+usually remains silent after `ms.channel.connect`; it does not normally echo
+physical-remote presses or publish OSD cursor state. Commands issued by another
+process use another WebSocket and therefore appear in that process's session
+log, not in the passive listener.
+
+All connected commands write full NDJSON sessions under the per-user
+configuration directory:
 
 | Platform | Default directory |
 | --- | --- |

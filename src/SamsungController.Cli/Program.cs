@@ -128,7 +128,9 @@ internal static class Program
             }
         };
 
-        var showRaw = arguments.Command.Equals("listen", StringComparison.OrdinalIgnoreCase);
+        var interactiveConsole = arguments.Command.Equals("console", StringComparison.OrdinalIgnoreCase);
+        var showRaw = arguments.Command.Equals("listen", StringComparison.OrdinalIgnoreCase)
+            || interactiveConsole;
         client.MessageObserved += (_, eventArgs) =>
         {
             if (quiet)
@@ -187,6 +189,18 @@ internal static class Program
             return 0;
         }
 
+        if (interactiveConsole)
+        {
+            Console.WriteLine($"Console connected to {host}.");
+            var session = new InteractiveConsoleSession(
+                new InteractiveSamsungClient(client),
+                Console.In,
+                Console.Out,
+                arguments.HasFlag("--allow-raw"));
+            await session.RunAsync(cancellationToken).ConfigureAwait(false);
+            return 0;
+        }
+
         Console.WriteLine($"Listening to {host}. Press Ctrl+C to stop.");
         await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
         return 0;
@@ -211,6 +225,7 @@ internal static class Program
     private static bool IsConnectionCommand(string command) =>
         command.Equals("connect", StringComparison.OrdinalIgnoreCase)
         || command.Equals("key", StringComparison.OrdinalIgnoreCase)
+        || command.Equals("console", StringComparison.OrdinalIgnoreCase)
         || command.Equals("listen", StringComparison.OrdinalIgnoreCase);
 
     private static RemoteKeyAction ParseAction(string? value)
@@ -252,6 +267,7 @@ internal static class Program
             Usage:
               samsungctl connect <TV-IP> [options]
               samsungctl key <KEY_NAME> [--action Click|Press|Release] [options]
+              samsungctl console [--allow-raw] [options]
               samsungctl listen [options]
               samsungctl status [options]
               samsungctl forget [--host <TV-IP>] [options]
@@ -263,6 +279,7 @@ internal static class Program
               --secure                   Force secure mode for a previously configured TV
               --port <number>            Override the default Samsung port
               --strict-tls               Require a trusted TLS certificate
+              --allow-raw                Enable arbitrary JSON in the interactive console
               --pairing-timeout <secs>   Pairing prompt timeout (default: 90)
               --log <path>               NDJSON protocol log path
               --token-file <path>        Pairing token store path
@@ -275,6 +292,7 @@ internal static class Program
               samsungctl key KEY_UP
               samsungctl key KEY_RIGHT --action Press
               samsungctl key KEY_RIGHT --action Release
+              samsungctl console
               samsungctl listen
             """);
     }

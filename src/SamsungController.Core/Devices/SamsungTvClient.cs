@@ -159,6 +159,16 @@ public sealed class SamsungTvClient : IAsyncDisposable
         await SendRawAsync(payload, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task SendQueryAsync(
+        SamsungQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var payload = SamsungProtocol.CreateQueryPayload(query);
+        await SendRawAsync(payload, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task SendRawAsync(
         string rawJson,
         CancellationToken cancellationToken = default)

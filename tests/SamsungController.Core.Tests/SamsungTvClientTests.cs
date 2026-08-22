@@ -143,6 +143,28 @@ public sealed class SamsungTvClientTests
         Assert.Equal(SamsungConnectionState.Faulted, client.State);
     }
 
+    [Theory]
+    [InlineData(SamsungQuery.EdenApplications, "ed.edenApp.get")]
+    [InlineData(SamsungQuery.InstalledApplications, "ed.installedApp.get")]
+    public async Task SendQueryCreatesReadOnlyChannelEmitPayload(
+        SamsungQuery query,
+        string expectedEvent)
+    {
+        var transport = new FakeSamsungTransport();
+        await using var client = new SamsungTvClient(transport, new InMemoryTokenStore());
+        await client.ConnectAsync(CreateOptions());
+
+        await client.SendQueryAsync(query);
+
+        var rawJson = Assert.Single(transport.SentMessages);
+        using var json = JsonDocument.Parse(rawJson);
+        Assert.Equal("ms.channel.emit", json.RootElement.GetProperty("method").GetString());
+        var parameters = json.RootElement.GetProperty("params");
+        Assert.Equal(string.Empty, parameters.GetProperty("data").GetString());
+        Assert.Equal(expectedEvent, parameters.GetProperty("event").GetString());
+        Assert.Equal("host", parameters.GetProperty("to").GetString());
+    }
+
     private static SamsungConnectionOptions CreateOptions() => new()
     {
         Host = "192.0.2.10",

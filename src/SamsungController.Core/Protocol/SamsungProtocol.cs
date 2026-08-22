@@ -52,6 +52,29 @@ internal static class SamsungProtocol
         return JsonSerializer.Serialize(request);
     }
 
+    public static string CreateQueryPayload(SamsungQuery query)
+    {
+        var eventName = query switch
+        {
+            SamsungQuery.EdenApplications => "ed.edenApp.get",
+            SamsungQuery.InstalledApplications => "ed.installedApp.get",
+            _ => throw new ArgumentOutOfRangeException(nameof(query), query, "Unknown Samsung query.")
+        };
+
+        var request = new
+        {
+            method = "ms.channel.emit",
+            @params = new
+            {
+                data = string.Empty,
+                @event = eventName,
+                to = "host"
+            }
+        };
+
+        return JsonSerializer.Serialize(request);
+    }
+
     public static SamsungMessage ParseMessage(
         string rawJson,
         SamsungMessageDirection direction,
