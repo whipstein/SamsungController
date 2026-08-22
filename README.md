@@ -32,7 +32,7 @@ No platform-specific desktop runtime is required.
 ## Build and test
 
 ```bash
-git clone <repository-url> SamsungController
+git clone https://github.com/whipstein/SamsungController.git
 cd SamsungController
 dotnet restore
 dotnet build --configuration Release
