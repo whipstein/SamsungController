@@ -221,11 +221,13 @@ public sealed class MenuNavigatorTests
         var definition = CreateAbsoluteSiblingDefinition();
         var tracker = new MenuStateTracker(definition);
         var target = new RecordingTarget();
-        var navigator = new MenuNavigator(definition, tracker, target);
+        var delay = new RecordingDelay();
+        var navigator = new MenuNavigator(definition, tracker, target, delay);
 
         await navigator.ExecuteAnchorAsync("normal");
         await navigator.ExecutePlanAsync(navigator.Plan("brightness", includeDraftTransitions: false));
         target.Keys.Clear();
+        delay.Delays.Clear();
 
         var plan = navigator.Plan("settings", includeDraftTransitions: false);
 
@@ -234,10 +236,14 @@ public sealed class MenuNavigatorTests
         var operation = Assert.Single(plan.CalculatedLeg!.Operations);
         Assert.Equal("KEY_RETURN", operation.Key);
         Assert.Equal(2, operation.Repeat);
+        Assert.Equal(TimeSpan.FromMilliseconds(500), operation.DelayAfter);
 
         await navigator.ExecutePlanAsync(plan);
 
         Assert.Equal(["KEY_RETURN", "KEY_RETURN"], target.Keys);
+        Assert.Equal(
+            [TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(500)],
+            delay.Delays);
         Assert.Equal("settings", tracker.Current.NodeId);
     }
 

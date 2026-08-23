@@ -103,7 +103,7 @@
                             <small>@calculatedLeg.Basis</small>
                             @foreach (var operation in calculatedLeg.Operations)
                             {
-                                <code>@operation.Key × @operation.Repeat @operation.Action</code>
+                                <code>@operation.Key × @operation.Repeat @operation.Action@(operation.DelayAfter is { } delay ? $" · {delay.TotalMilliseconds:0}ms wait" : "")</code>
                             }
                         </div>
                     }

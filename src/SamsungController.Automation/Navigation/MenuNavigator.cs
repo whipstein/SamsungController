@@ -418,14 +418,20 @@ public sealed class MenuNavigator
             commonPressCount++;
         }
 
+        var usedAncestorReturnRoute = false;
+        var ancestorReturnDelay = TimeSpan.FromMilliseconds(Math.Max(
+            _definition.Timing.ReturnDelayMilliseconds,
+            _definition.Timing.ScreenChangeDelayMilliseconds));
         List<MenuOperation> relativePresses;
         if (_definition.IsDescendantOf(state.NodeId!, targetNodeId)
             && commonPressCount == targetPresses.Count
             && TryCreateAncestorReturnPresses(
                 sourcePresses,
                 commonPressCount,
+                ancestorReturnDelay,
                 out var ancestorReturnPresses))
         {
+            usedAncestorReturnRoute = true;
             relativePresses = ancestorReturnPresses;
         }
         else
@@ -470,7 +476,9 @@ public sealed class MenuNavigator
                 targetNodeId,
                 targetPath,
                 operations,
-                $"Calculated by subtracting two verified routes from {anchor.Label}; {commonPressCount} shared commands.",
+                usedAncestorReturnRoute
+                    ? $"Calculated from verified menu levels via {anchor.Label}; {relativePresses.Count} level returns with {ancestorReturnDelay.TotalMilliseconds:0}ms waits."
+                    : $"Calculated by subtracting two verified routes from {anchor.Label}; {commonPressCount} shared commands.",
                 BasedOnVerifiedRoutes: true));
         return true;
     }
@@ -508,6 +516,7 @@ public sealed class MenuNavigator
     private static bool TryCreateAncestorReturnPresses(
         IReadOnlyList<MenuOperation> sourcePresses,
         int commonPressCount,
+        TimeSpan returnDelay,
         out List<MenuOperation> returnPresses)
     {
         returnPresses = [];
@@ -522,7 +531,9 @@ public sealed class MenuNavigator
             switch (operation.Key.Trim().ToUpperInvariant())
             {
                 case "KEY_ENTER":
-                    returnPresses.Add(new MenuOperation("KEY_RETURN"));
+                    returnPresses.Add(new MenuOperation(
+                        "KEY_RETURN",
+                        DelayAfter: returnDelay));
                     break;
                 case "KEY_UP":
                 case "KEY_DOWN":
