@@ -166,6 +166,20 @@ public sealed class MenuNavigatorTests
         Assert.Equal(MenuStateConfidence.Unknown, tracker.Current.Confidence);
     }
 
+    [Fact]
+    public void VisualConfirmationSynchronizesTheConfirmedNode()
+    {
+        var definition = CreateDefinition();
+        var tracker = new MenuStateTracker(definition);
+
+        tracker.ConfirmNode("settings", "The user confirmed the visible menu.");
+
+        Assert.Equal("settings", tracker.Current.NodeId);
+        Assert.Equal("Settings", tracker.Current.Path);
+        Assert.Equal(MenuStateConfidence.Synchronized, tracker.Current.Confidence);
+        Assert.Equal("The user confirmed the visible menu.", tracker.Current.Reason);
+    }
+
     private static MenuDefinition CreateDefinition() => new(
         "test",
         "Test",

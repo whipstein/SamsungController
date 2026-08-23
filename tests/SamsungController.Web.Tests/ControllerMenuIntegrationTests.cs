@@ -309,6 +309,38 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task PassedSystemTimingTestSynchronizesTargetForStateAwareReturn()
+    {
+        var menuYaml = ExplicitValidationMenuYaml.Replace(
+            "- key: KEY_RETURN",
+            "- key: KEY_MENU",
+            StringComparison.Ordinal);
+        var (controller, transport) = await CreateConnectedControllerAsync(menuYaml);
+        await using (controller)
+        {
+            for (var pass = 1; pass <= 3; pass++)
+            {
+                await controller.RunMenuTimingProfileTestAsync(
+                    "open-settings",
+                    new MenuTimingProfile(50, 50, 50));
+                Assert.Equal(MenuStateConfidence.Unknown, controller.GetSnapshot().MenuConfidence);
+
+                await controller.ConfirmMenuTimingProfileTestAsync(passed: true);
+
+                var confirmed = controller.GetSnapshot();
+                Assert.Equal("Settings", confirmed.MenuLabel);
+                Assert.Equal(MenuStateConfidence.Synchronized, confirmed.MenuConfidence);
+                Assert.Equal(pass, controller.GetMenuAuthoringSnapshot().TimingValidationPasses);
+            }
+
+            transport.SentMessages.Clear();
+            await controller.RunMenuAnchorAsync("normal");
+
+            Assert.Equal(["KEY_MENU"], GetSentKeys(transport));
+        }
+    }
+
+    [Fact]
     public async Task ReturnTestSendsOnlyTheDisplayedScript()
     {
         var (controller, transport) = await CreateConnectedControllerAsync();

@@ -963,6 +963,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 "The system timing values changed after this replay. Run the test again before confirming it.");
         }
 
+        var transition = definition.Transitions.TryGetValue(session.TransitionId, out var candidate)
+            ? candidate
+            : throw new KeyNotFoundException(
+                $"Menu transition '{session.TransitionId}' was not found.");
+
         if (!passed)
         {
             lock (_sync)
@@ -997,6 +1002,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 _menuAuthoringError = null;
             }
 
+            ConfirmSystemTimingTarget(transition);
             NotifyChanged();
             return;
         }
@@ -1018,6 +1024,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _menuAuthoringError = null;
         }
 
+        ConfirmSystemTimingTarget(transition);
         NotifyChanged();
     }
 
@@ -2627,6 +2634,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
             NotifyChanged();
         }
     }
+
+    private void ConfirmSystemTimingTarget(MenuTransition transition) =>
+        _menuStateTracker?.ConfirmNode(
+            transition.ToNodeId,
+            $"The user confirmed that system timing test '{transition.Id}' reached its target.");
 
     private async Task ExecuteMenuReturnStrategyTestAsync(
         MenuDefinition definition,
