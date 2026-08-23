@@ -80,6 +80,53 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task MenuTreeCanBeDefinedAndRenamedBeforeRecordingRoutes()
+    {
+        Directory.CreateDirectory(_directory);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+
+        await controller.CreateMenuDefinitionAsync(new MenuDefinitionCreationRequest(
+            "tree-first",
+            "Tree First Menu",
+            "Samsung Test TV",
+            "1000",
+            "SDR",
+            "Movie",
+            "HDMI 1"));
+
+        await controller.CreateMenuNodeAsync(new MenuNodeEditRequest(
+            "settings",
+            "Settings",
+            "tv-interface",
+            "Top-level settings overlay"));
+        await controller.CreateMenuNodeAsync(new MenuNodeEditRequest(
+            "picture",
+            "Picture",
+            "settings",
+            null));
+        await controller.UpdateMenuNodeAsync(
+            "picture",
+            new MenuNodeEditRequest(
+                "picture",
+                "Picture controls",
+                "settings",
+                "The Picture menu is visible"));
+
+        var snapshot = controller.GetMenuNavigationSnapshot();
+        var picture = Assert.Single(snapshot.Nodes, node => node.Id == "picture");
+        Assert.Equal("Picture controls", picture.Label);
+        Assert.Equal("settings", picture.ParentId);
+        Assert.Equal("TV interface / Settings / Picture controls", picture.Path);
+
+        await controller.DeleteMenuNodeAsync("picture");
+
+        var reparsed = await new MenuDefinitionParser().ParseFileAsync(snapshot.DefinitionPath);
+        Assert.DoesNotContain("picture", reparsed.Nodes.Keys);
+        Assert.Contains("settings", reparsed.Nodes.Keys);
+    }
+
+    [Fact]
     public async Task VerifiedSettingRemovalDeletesItsSubtreeAndRelatedRoutes()
     {
         Directory.CreateDirectory(_directory);
@@ -351,6 +398,39 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 "picture");
 
             Assert.Equal(["KEY_MENU", "KEY_RETURN"], GetSentKeys(transport));
+        }
+    }
+
+    [Fact]
+    public async Task StateSpecificReturnOverrideIsSavedTestedAndVerified()
+    {
+        var (controller, transport) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            await controller.UpdateMenuReturnOverrideAsync("picture", ["KEY_EXIT"]);
+
+            var draft = Assert.Single(
+                controller.GetMenuAuthoringSnapshot().ReturnStrategy!.NodeOverrides);
+            Assert.Equal("picture", draft.NodeId);
+            Assert.False(draft.Verified);
+
+            for (var pass = 1; pass <= 3; pass++)
+            {
+                transport.SentMessages.Clear();
+                await controller.RunMenuReturnStrategyTestAsync(
+                    MenuReturnScriptKind.NodeOverride,
+                    "picture");
+                Assert.Equal(["KEY_EXIT"], GetSentKeys(transport));
+                await controller.ConfirmMenuReturnStrategyTestAsync(passed: true);
+            }
+
+            var verified = Assert.Single(
+                controller.GetMenuAuthoringSnapshot().ReturnStrategy!.NodeOverrides);
+            Assert.True(verified.Verified);
+            var definition = await new MenuDefinitionParser().ParseFileAsync(
+                controller.GetMenuNavigationSnapshot().DefinitionPath);
+            Assert.True(Assert.Single(
+                definition.Anchors["normal"].ReturnStrategy!.NodeOverrides!).Script.Verified);
         }
     }
 

@@ -94,6 +94,11 @@ anchors:
         steps:
           - key: KEY_MENU
           - key: KEY_RETURN
+      overrides:
+        - node: expert-settings
+          verified: false
+          steps:
+            - key: KEY_EXIT
     steps:
       - key: KEY_MENU
         repeat: 2
@@ -128,12 +133,14 @@ Home, Exit, and Source, and `returnDelay` applies to Return. A step-level
 current three global values passed the system profile's independent three-run
 visual test. Changing any global value clears it.
 
-A normal-video anchor can optionally define `returnStrategy`. When the predicted
-position is the configured `menuRoot`, the navigator uses `atMenuRoot`; when it
-is a descendant, it uses `belowMenuRoot`. Each script must pass its own three-run
-visual test before normal navigation can use it. If position confidence is too
-low, the applicable script is unverified, or an older definition has no return
-strategy, the anchor's ordinary `steps` remain the deterministic fallback.
+A normal-video anchor can optionally define `returnStrategy`. A verified entry
+in `overrides` takes priority when the predicted position exactly matches its
+`node`. Otherwise, the navigator uses `atMenuRoot` at the configured root and
+`belowMenuRoot` at a descendant. Each script must pass its own three-run visual
+test before normal navigation can use it. If position confidence is too low, an
+exact override is absent or unverified, or an older definition has no return
+strategy, resolution falls through the root/deeper scripts and ultimately the
+anchor's ordinary `steps` fallback.
 
 Unknown YAML fields, missing node references, parent cycles, invalid actions,
 unsafe repeat counts, and excessive delays fail validation before any command
@@ -146,31 +153,35 @@ can be planned or sent.
 3. Create a new TV interface there if no
    definition exists; the generated YAML is stored in the per-user configuration
    directory and loaded automatically.
-4. Choose **Anchor** or **Transition**, select existing nodes or describe a new
-   target node, and start live recording. For a transition, **Prepare source**
+4. In **Define the overall menu tree**, add and name the expected menu positions,
+   assign their parents, and save the hierarchy to YAML. Display names and parents
+   remain editable; stable node IDs do not change after creation.
+5. Choose **Anchor** or **Transition**, select two predefined nodes, and start
+   live recording. For a transition, **Prepare source**
    uses a verified anchor and verified routes to position the TV first. The UI
    derives the transition's internal YAML identifier from its target control;
    selecting the same source and target again automatically replaces that draft.
-5. Use the embedded remote. Every successfully sent button controls the TV and
+6. Use the embedded remote. Every successfully sent button controls the TV and
    is captured; failed sends are not recorded. The system timing profile supplies
    waits unless a button has a custom override in the timing lab.
-6. Stop the recording. The UI atomically adds it to the active YAML as a draft.
-7. Edit the **System-wide timing** profile, select a traversal, and
+7. Stop the recording. The UI atomically adds it to the active YAML as a draft.
+8. Edit the **System-wide timing** profile, select a traversal, and
    place the TV at that traversal's source before choosing **Test system
    profile**. The test sends only the displayed traversal and ignores its
    per-button overrides. Confirm three successful visual runs to persist
    `timing.verified: true`.
-8. In **Return to normal video scripts**, edit the Settings-root and deeper-menu
+9. In **Return to normal video scripts**, edit the Settings-root and deeper-menu
    key sequences independently. Place the TV at the named starting position,
    then choose **Save + test**. It sends only the proposed script and asks for
-   visual confirmation. Three successful runs mark that script verified in the
-   YAML.
-9. Open the draft's **Timing lab**, enable custom waits only for exceptional
+   visual confirmation. Add an exact-state override when one menu position needs
+   different keys; **Prepare start** is an explicit, separate positioning action.
+   Three successful runs mark each script verified in the YAML.
+10. Open the draft's **Timing lab**, enable custom waits only for exceptional
    button presses, then choose **Save + replay**.
    First place the TV at the source displayed on the draft card. Validation
    sends only the recorded buttons; no anchor or route-to-source commands are
    added implicitly.
-10. Visually confirm the target after every run. Three confirmed passes update
+11. Visually confirm the target after every run. Three confirmed passes update
    the same YAML entry to `verified: true`; a failed confirmation resets the
    count to zero.
 

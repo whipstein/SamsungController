@@ -98,6 +98,11 @@ connection, automation, and menu-recording guards remain centralized. A missing
 quick-access setting gets a default `normal-video` anchor action. An explicitly
 saved empty list remains empty, allowing the default to be removed intentionally.
 
+Build & Verify persists menu-tree nodes before route recording, allowing display
+names and parents to be edited while keeping stable node IDs for route references.
+Unreferenced draft branches can be deleted; referenced branches must first have
+their traversal, anchor, or return definition removed.
+
 Build & Verify may delete an incorrect verified setting after a two-step UI
 confirmation. Deletion removes the setting's full descendant subtree and every
 transition that references it, and clears a return strategy whose menu root was
@@ -105,7 +110,9 @@ removed. Verified anchor targets are protected so connection-time
 synchronization always retains a known-state foundation.
 
 Build & Verify tracks the attention state of its collapsible return-script,
-system-timing, and draft-validation sections. A user may keep a section minimized
+system-timing, and draft-validation sections. Return-script resolution gives a
+verified exact-node override priority, then falls through to the verified
+menu-root/deeper scripts and the anchor's default operations. A user may keep a section minimized
 while its state is unchanged; a transition from verified to needing validation,
 or from no drafts to pending drafts, automatically expands the affected section.
 

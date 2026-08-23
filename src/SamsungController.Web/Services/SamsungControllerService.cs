@@ -262,6 +262,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         definition.GetPath(node.Id),
                         definition.GetDepth(node.Id),
                         node.Description,
+                        node.ParentId,
                         definition.Transitions.Values.Any(transition =>
                             transition.Verified
                             && transition.ToNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase))
@@ -704,6 +705,140 @@ public sealed class SamsungControllerService : IAsyncDisposable
         NotifyChanged();
     }
 
+    public async Task CreateMenuNodeAsync(
+        MenuNodeEditRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("add a menu-tree node");
+        EnsureNoMenuRecording("add a menu-tree node");
+
+        MenuDefinition definition;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+        }
+
+        var node = NormalizeMenuNodeRequest(request);
+        if (definition.Nodes.ContainsKey(node.Id))
+        {
+            throw new InvalidOperationException(
+                $"A menu-tree node with ID '{node.Id}' already exists. Choose a different stable ID.");
+        }
+
+        var nodes = definition.Nodes.Values.Append(node).ToArray();
+        var updated = CopyMenuDefinition(definition, nodes: nodes);
+        new MenuDefinitionValidator().ValidateAndThrow(updated);
+        await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
+        lock (_sync)
+        {
+            _menuAuthoringStatus = $"Menu-tree node added · {updated.GetPath(node.Id)}";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
+    }
+
+    public async Task UpdateMenuNodeAsync(
+        string nodeId,
+        MenuNodeEditRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(nodeId);
+        ArgumentNullException.ThrowIfNull(request);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("edit a menu-tree node");
+        EnsureNoMenuRecording("edit a menu-tree node");
+
+        MenuDefinition definition;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+        }
+
+        var existing = definition.GetRequiredNode(nodeId.Trim());
+        var node = NormalizeMenuNodeRequest(request);
+        if (!node.Id.Equals(existing.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "A node's stable ID cannot be changed after creation. Its display name can be renamed.");
+        }
+
+        node = node with { Id = existing.Id };
+        var nodes = definition.Nodes.Values
+            .Select(candidate => candidate.Id.Equals(existing.Id, StringComparison.OrdinalIgnoreCase)
+                ? node
+                : candidate)
+            .ToArray();
+        var updated = CopyMenuDefinition(definition, nodes: nodes);
+        new MenuDefinitionValidator().ValidateAndThrow(updated);
+        await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
+        lock (_sync)
+        {
+            _menuAuthoringStatus = $"Menu-tree node updated · {updated.GetPath(existing.Id)}";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
+    }
+
+    public async Task DeleteMenuNodeAsync(
+        string nodeId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(nodeId);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("delete a menu-tree branch");
+        EnsureNoMenuRecording("delete a menu-tree branch");
+
+        MenuDefinition definition;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+        }
+
+        var normalizedNodeId = nodeId.Trim();
+        var node = definition.GetRequiredNode(normalizedNodeId);
+        if (string.IsNullOrWhiteSpace(node.ParentId))
+        {
+            throw new InvalidOperationException("The top-level menu-tree root cannot be deleted.");
+        }
+
+        var removedNodeIds = GetMenuSubtreeNodeIds(definition, normalizedNodeId);
+        var referencedTransition = definition.Transitions.Values.FirstOrDefault(transition =>
+            removedNodeIds.Contains(transition.FromNodeId)
+            || removedNodeIds.Contains(transition.ToNodeId));
+        var referencedAnchor = definition.Anchors.Values.FirstOrDefault(anchor =>
+            removedNodeIds.Contains(anchor.TargetNodeId));
+        var referencedReturnStrategy = definition.Anchors.Values.FirstOrDefault(anchor =>
+            anchor.ReturnStrategy is { } strategy
+            && (removedNodeIds.Contains(strategy.MenuRootNodeId)
+                || (strategy.NodeOverrides ?? []).Any(item => removedNodeIds.Contains(item.NodeId))));
+        if (referencedTransition is not null || referencedAnchor is not null || referencedReturnStrategy is not null)
+        {
+            throw new InvalidOperationException(
+                $"'{definition.GetPath(normalizedNodeId)}' is already used by a recorded traversal, anchor, or return script. Remove that definition first, then delete this branch.");
+        }
+
+        var removedPath = definition.GetPath(normalizedNodeId);
+        var updated = CopyMenuDefinition(
+            definition,
+            nodes: definition.Nodes.Values.Where(candidate => !removedNodeIds.Contains(candidate.Id)));
+        new MenuDefinitionValidator().ValidateAndThrow(updated);
+        await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
+        lock (_sync)
+        {
+            _menuAuthoringStatus = $"Menu-tree branch deleted · {removedPath} · {removedNodeIds.Count} node(s)";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
+    }
+
     public void StartMenuRecording(MenuRecordingRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -1062,7 +1197,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
         var strategy = new MenuReturnStrategy(
             context.Strategy.MenuRootNodeId,
             atMenuRoot,
-            belowMenuRoot);
+            belowMenuRoot,
+            context.Strategy.NodeOverrides);
         var anchors = definition.Anchors.Values
             .Select(anchor => anchor.Id.Equals(context.Anchor.Id, StringComparison.OrdinalIgnoreCase)
                 ? anchor with { ReturnStrategy = strategy }
@@ -1086,6 +1222,125 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _menuAuthoringStatus = atMenuRootChanged || belowMenuRootChanged
                 ? "Return-to-video scripts saved to YAML · changed scripts require 3/3 validation"
                 : "Return-to-video scripts saved to YAML";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
+    }
+
+    public async Task UpdateMenuReturnOverrideAsync(
+        string nodeId,
+        IReadOnlyList<string> keys,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(nodeId);
+        ArgumentNullException.ThrowIfNull(keys);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("change a state-specific return-to-video script");
+        EnsureNoMenuRecording("change a state-specific return-to-video script");
+
+        MenuDefinition definition;
+        MenuValidationSession? previousDraftValidation;
+        MenuTimingValidationSession? previousTimingValidation;
+        MenuReturnValidationSession? previousReturnValidation;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+            previousDraftValidation = _menuValidation;
+            previousTimingValidation = _menuTimingValidation;
+            previousReturnValidation = _menuReturnValidation;
+        }
+
+        var context = GetRequiredReturnStrategyContext(definition);
+        var normalizedNodeId = nodeId.Trim();
+        definition.GetRequiredNode(normalizedNodeId);
+        if (normalizedNodeId.Equals(context.Anchor.TargetNodeId, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "A return override cannot start at the normal-video target. Choose a visible menu state.");
+        }
+
+        var overrides = (context.Strategy.NodeOverrides ?? []).ToList();
+        var existing = overrides.FirstOrDefault(item =>
+            item.NodeId.Equals(normalizedNodeId, StringComparison.OrdinalIgnoreCase));
+        var script = UpdateReturnScript(
+            existing?.Script ?? new MenuReturnScript(context.Anchor.Operations, Verified: false),
+            keys);
+        var changed = existing is null || script != existing.Script;
+        overrides.RemoveAll(item =>
+            item.NodeId.Equals(normalizedNodeId, StringComparison.OrdinalIgnoreCase));
+        overrides.Add(new MenuReturnOverride(normalizedNodeId, script));
+
+        var strategy = context.Strategy with { NodeOverrides = overrides };
+        var anchors = definition.Anchors.Values
+            .Select(anchor => anchor.Id.Equals(context.Anchor.Id, StringComparison.OrdinalIgnoreCase)
+                ? anchor with { ReturnStrategy = strategy }
+                : anchor)
+            .ToArray();
+        var updated = CopyMenuDefinition(definition, anchors: anchors);
+        new MenuDefinitionValidator().ValidateAndThrow(updated);
+        await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
+
+        var activeOverrideChanged = changed
+            && previousReturnValidation?.Kind == MenuReturnScriptKind.NodeOverride
+            && previousReturnValidation.StartNodeId.Equals(
+                normalizedNodeId,
+                StringComparison.OrdinalIgnoreCase);
+        lock (_sync)
+        {
+            _menuValidation = previousDraftValidation;
+            _menuTimingValidation = previousTimingValidation;
+            _menuReturnValidation = activeOverrideChanged ? null : previousReturnValidation;
+            _menuAuthoringStatus = changed
+                ? $"State-specific return script saved · {definition.GetPath(normalizedNodeId)} · requires 3/3 validation"
+                : $"State-specific return script unchanged · {definition.GetPath(normalizedNodeId)}";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
+    }
+
+    public async Task DeleteMenuReturnOverrideAsync(
+        string nodeId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(nodeId);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("remove a state-specific return-to-video script");
+        EnsureNoMenuRecording("remove a state-specific return-to-video script");
+
+        MenuDefinition definition;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+        }
+
+        var context = GetRequiredReturnStrategyContext(definition);
+        var normalizedNodeId = nodeId.Trim();
+        var overrides = (context.Strategy.NodeOverrides ?? [])
+            .Where(item => !item.NodeId.Equals(normalizedNodeId, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (overrides.Length == (context.Strategy.NodeOverrides?.Count ?? 0))
+        {
+            throw new KeyNotFoundException(
+                $"No state-specific return script exists for '{normalizedNodeId}'.");
+        }
+
+        var strategy = context.Strategy with { NodeOverrides = overrides };
+        var anchors = definition.Anchors.Values
+            .Select(anchor => anchor.Id.Equals(context.Anchor.Id, StringComparison.OrdinalIgnoreCase)
+                ? anchor with { ReturnStrategy = strategy }
+                : anchor)
+            .ToArray();
+        await PersistActiveMenuDefinitionAsync(
+                CopyMenuDefinition(definition, anchors: anchors),
+                cancellationToken)
+            .ConfigureAwait(false);
+        lock (_sync)
+        {
+            _menuAuthoringStatus = $"State-specific return script removed · {definition.GetPath(normalizedNodeId)} · default behavior restored";
             _menuAuthoringError = null;
         }
 
@@ -1123,12 +1378,18 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
 
         var context = GetRequiredReturnStrategyContext(definition);
-        var script = kind == MenuReturnScriptKind.AtMenuRoot
-            ? context.Strategy.AtMenuRoot
-            : context.Strategy.BelowMenuRoot;
-        var startNodeId = kind == MenuReturnScriptKind.AtMenuRoot
-            ? context.Strategy.MenuRootNodeId
-            : NormalizeDeepReturnTestNode(definition, context, deepStartNodeId);
+        var startNodeId = kind switch
+        {
+            MenuReturnScriptKind.AtMenuRoot => context.Strategy.MenuRootNodeId,
+            MenuReturnScriptKind.BelowMenuRoot =>
+                NormalizeDeepReturnTestNode(definition, context, deepStartNodeId),
+            MenuReturnScriptKind.NodeOverride => NormalizeReturnOverrideNode(
+                definition,
+                context,
+                deepStartNodeId),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
+        };
+        var script = GetReturnScript(context.Strategy, kind, startNodeId);
         var signature = GetOperationSignature(script.Operations);
         var canContinue = previousSession is { AwaitingConfirmation: false }
                           && previousSession.Kind == kind
@@ -1189,9 +1450,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
 
         var context = GetRequiredReturnStrategyContext(definition);
-        var currentScript = session.Kind == MenuReturnScriptKind.AtMenuRoot
-            ? context.Strategy.AtMenuRoot
-            : context.Strategy.BelowMenuRoot;
+        var currentScript = GetReturnScript(
+            context.Strategy,
+            session.Kind,
+            session.StartNodeId);
         if (GetOperationSignature(currentScript.Operations) != session.ScriptSignature)
         {
             throw new InvalidOperationException(
@@ -1200,7 +1462,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
         if (!passed)
         {
-            var unverified = SetReturnScriptVerified(definition, context, session.Kind, verified: false);
+            var unverified = SetReturnScriptVerified(
+                definition,
+                context,
+                session.Kind,
+                session.StartNodeId,
+                verified: false);
             await PersistActiveMenuDefinitionAsync(unverified, cancellationToken).ConfigureAwait(false);
             lock (_sync)
             {
@@ -1240,7 +1507,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
             return;
         }
 
-        var verified = SetReturnScriptVerified(definition, context, session.Kind, verified: true);
+        var verified = SetReturnScriptVerified(
+            definition,
+            context,
+            session.Kind,
+            session.StartNodeId,
+            verified: true);
         await PersistActiveMenuDefinitionAsync(verified, cancellationToken).ConfigureAwait(false);
         lock (_sync)
         {
@@ -1563,10 +1835,19 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 && !removedNodeIds.Contains(transition.ToNodeId)),
             definition.Anchors.Values
                 .Where(anchor => !removedNodeIds.Contains(anchor.TargetNodeId))
-                .Select(anchor => anchor.ReturnStrategy is { } strategy
-                                  && removedNodeIds.Contains(strategy.MenuRootNodeId)
-                    ? anchor with { ReturnStrategy = null }
-                    : anchor),
+                .Select(anchor => anchor.ReturnStrategy is not { } strategy
+                    ? anchor
+                    : removedNodeIds.Contains(strategy.MenuRootNodeId)
+                        ? anchor with { ReturnStrategy = null }
+                        : anchor with
+                        {
+                            ReturnStrategy = strategy with
+                            {
+                                NodeOverrides = (strategy.NodeOverrides ?? [])
+                                    .Where(item => !removedNodeIds.Contains(item.NodeId))
+                                    .ToArray()
+                            }
+                        }),
             definition.Timing);
         new MenuDefinitionValidator().ValidateAndThrow(updated);
         await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
@@ -2371,16 +2652,24 @@ public sealed class SamsungControllerService : IAsyncDisposable
         MenuDefinition definition,
         IEnumerable<MenuTransition>? transitions = null,
         IEnumerable<MenuAnchor>? anchors = null,
-        MenuTimingProfile? timing = null) =>
+        MenuTimingProfile? timing = null,
+        IEnumerable<MenuNode>? nodes = null) =>
         new(
             definition.Id,
             definition.Name,
             definition.Model,
             definition.Context,
-            definition.Nodes.Values,
+            nodes ?? definition.Nodes.Values,
             transitions ?? definition.Transitions.Values,
             anchors ?? definition.Anchors.Values,
             timing ?? definition.Timing);
+
+    private static MenuNode NormalizeMenuNodeRequest(MenuNodeEditRequest request) =>
+        new(
+            request.Id.Trim(),
+            request.Label.Trim(),
+            string.IsNullOrWhiteSpace(request.ParentId) ? null : request.ParentId.Trim(),
+            string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim());
 
     private static MenuRecordingRequest NormalizeRecordingRequest(MenuRecordingRequest request) =>
         request with
@@ -2925,6 +3214,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
         return new MenuReturnStrategySummary(
             context.Anchor.Id,
             context.Anchor.Label,
+            context.Anchor.TargetNodeId,
+            definition.GetPath(context.Anchor.TargetNodeId),
             context.Strategy.MenuRootNodeId,
             definition.GetPath(context.Strategy.MenuRootNodeId),
             FormatKeyScript(context.Anchor.Operations),
@@ -2938,8 +3229,19 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 "Deeper menu",
                 FormatKeyScript(context.Strategy.BelowMenuRoot.Operations),
                 context.Strategy.BelowMenuRoot.Verified),
+            (context.Strategy.NodeOverrides ?? [])
+                .OrderBy(item => definition.GetPath(item.NodeId), StringComparer.OrdinalIgnoreCase)
+                .Select(item => new MenuReturnOverrideSummary(
+                    item.NodeId,
+                    definition.GetPath(item.NodeId),
+                    FormatKeyScript(item.Script.Operations),
+                    item.Script.Verified))
+                .ToArray(),
             GetDeepReturnTestNodes(definition, context),
             validation?.Kind,
+            validation?.Kind == MenuReturnScriptKind.NodeOverride
+                ? validation.StartNodeId
+                : null,
             validation?.Passes ?? 0,
             MenuReturnValidationSession.RequiredPasses,
             validation?.AwaitingConfirmation ?? false,
@@ -3067,16 +3369,74 @@ public sealed class SamsungControllerService : IAsyncDisposable
         return normalized;
     }
 
+    private static string NormalizeReturnOverrideNode(
+        MenuDefinition definition,
+        ReturnStrategyContext context,
+        string? nodeId)
+    {
+        if (string.IsNullOrWhiteSpace(nodeId))
+        {
+            throw new InvalidOperationException(
+                "Choose a menu state for this state-specific return-script test.");
+        }
+
+        var normalized = nodeId.Trim();
+        definition.GetRequiredNode(normalized);
+        if (!(context.Strategy.NodeOverrides ?? []).Any(item =>
+                item.NodeId.Equals(normalized, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException(
+                $"No state-specific return script is defined for '{definition.GetPath(normalized)}'.");
+        }
+
+        return normalized;
+    }
+
+    private static MenuReturnScript GetReturnScript(
+        MenuReturnStrategy strategy,
+        MenuReturnScriptKind kind,
+        string startNodeId) =>
+        kind switch
+        {
+            MenuReturnScriptKind.AtMenuRoot => strategy.AtMenuRoot,
+            MenuReturnScriptKind.BelowMenuRoot => strategy.BelowMenuRoot,
+            MenuReturnScriptKind.NodeOverride => (strategy.NodeOverrides ?? [])
+                .FirstOrDefault(item => item.NodeId.Equals(
+                    startNodeId,
+                    StringComparison.OrdinalIgnoreCase))?.Script
+                ?? throw new InvalidOperationException(
+                    $"No state-specific return script is defined for '{startNodeId}'."),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
+        };
+
     private static MenuDefinition SetReturnScriptVerified(
         MenuDefinition definition,
         ReturnStrategyContext context,
         MenuReturnScriptKind kind,
+        string startNodeId,
         bool verified)
     {
         var strategy = context.Strategy;
-        strategy = kind == MenuReturnScriptKind.AtMenuRoot
-            ? strategy with { AtMenuRoot = strategy.AtMenuRoot with { Verified = verified } }
-            : strategy with { BelowMenuRoot = strategy.BelowMenuRoot with { Verified = verified } };
+        strategy = kind switch
+        {
+            MenuReturnScriptKind.AtMenuRoot => strategy with
+            {
+                AtMenuRoot = strategy.AtMenuRoot with { Verified = verified }
+            },
+            MenuReturnScriptKind.BelowMenuRoot => strategy with
+            {
+                BelowMenuRoot = strategy.BelowMenuRoot with { Verified = verified }
+            },
+            MenuReturnScriptKind.NodeOverride => strategy with
+            {
+                NodeOverrides = (strategy.NodeOverrides ?? [])
+                    .Select(item => item.NodeId.Equals(startNodeId, StringComparison.OrdinalIgnoreCase)
+                        ? item with { Script = item.Script with { Verified = verified } }
+                        : item)
+                    .ToArray()
+            },
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
+        };
         var anchors = definition.Anchors.Values
             .Select(anchor => anchor.Id.Equals(context.Anchor.Id, StringComparison.OrdinalIgnoreCase)
                 ? anchor with { ReturnStrategy = strategy }

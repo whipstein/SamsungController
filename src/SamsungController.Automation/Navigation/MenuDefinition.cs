@@ -61,10 +61,15 @@ public sealed record MenuReturnScript(
     IReadOnlyList<MenuOperation> Operations,
     bool Verified = false);
 
+public sealed record MenuReturnOverride(
+    string NodeId,
+    MenuReturnScript Script);
+
 public sealed record MenuReturnStrategy(
     string MenuRootNodeId,
     MenuReturnScript AtMenuRoot,
-    MenuReturnScript BelowMenuRoot);
+    MenuReturnScript BelowMenuRoot,
+    IReadOnlyList<MenuReturnOverride>? NodeOverrides = null);
 
 public sealed record MenuAnchor(
     string Id,

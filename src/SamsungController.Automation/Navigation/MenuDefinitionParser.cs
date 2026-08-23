@@ -18,7 +18,9 @@ public sealed class MenuDefinitionParser
     private static readonly HashSet<string> AnchorFields =
         new(["id", "label", "target", "verified", "description", "returnStrategy", "steps"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ReturnStrategyFields =
-        new(["menuRoot", "atMenuRoot", "belowMenuRoot"], StringComparer.OrdinalIgnoreCase);
+        new(["menuRoot", "atMenuRoot", "belowMenuRoot", "overrides"], StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> ReturnOverrideFields =
+        new(["node", "verified", "steps"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ReturnScriptFields =
         new(["verified", "steps"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> TransitionFields =
@@ -190,7 +192,30 @@ public sealed class MenuDefinitionParser
         return new MenuReturnStrategy(
             RequiredScalar(fields, "menuRoot", context),
             ParseReturnScript(RequiredMapping(fields, "atMenuRoot", context), $"{context} atMenuRoot"),
-            ParseReturnScript(RequiredMapping(fields, "belowMenuRoot", context), $"{context} belowMenuRoot"));
+            ParseReturnScript(RequiredMapping(fields, "belowMenuRoot", context), $"{context} belowMenuRoot"),
+            fields.TryGetValue("overrides", out var overridesNode)
+                ? ParseReturnOverrides(RequireSequence(overridesNode, $"{context} overrides"), context)
+                : []);
+    }
+
+    private static IReadOnlyList<MenuReturnOverride> ParseReturnOverrides(
+        YamlSequenceNode sequence,
+        string strategyContext)
+    {
+        var overrides = new List<MenuReturnOverride>(sequence.Children.Count);
+        for (var index = 0; index < sequence.Children.Count; index++)
+        {
+            var context = $"{strategyContext} override {index + 1}";
+            var fields = ReadFields(RequireMapping(sequence.Children[index], context), context);
+            EnsureAllowedFields(fields, ReturnOverrideFields, context);
+            overrides.Add(new MenuReturnOverride(
+                RequiredScalar(fields, "node", context),
+                new MenuReturnScript(
+                    ParseOperations(RequiredSequence(fields, "steps", context), context),
+                    OptionalBoolean(fields, "verified", context))));
+        }
+
+        return overrides;
     }
 
     private static MenuReturnScript ParseReturnScript(

@@ -135,6 +135,16 @@ public sealed class MenuDefinitionWriter
         AppendScalar(yaml, 6, "menuRoot", strategy.MenuRootNodeId);
         AppendReturnScript(yaml, 6, "atMenuRoot", strategy.AtMenuRoot);
         AppendReturnScript(yaml, 6, "belowMenuRoot", strategy.BelowMenuRoot);
+        if (strategy.NodeOverrides is { Count: > 0 })
+        {
+            yaml.AppendLine("      overrides:");
+            foreach (var item in strategy.NodeOverrides)
+            {
+                AppendListScalar(yaml, 8, "node", item.NodeId);
+                AppendBoolean(yaml, 10, "verified", item.Script.Verified);
+                AppendOperations(yaml, item.Script.Operations, 10);
+            }
+        }
     }
 
     private static void AppendReturnScript(

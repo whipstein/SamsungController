@@ -119,6 +119,41 @@ public sealed class MenuNavigatorTests
     }
 
     [Fact]
+    public async Task ReturnAnchorPrefersVerifiedExactNodeOverride()
+    {
+        var definition = CreateStateAwareReturnDefinition(nodeOverrideVerified: true);
+        var tracker = new MenuStateTracker(definition);
+        var target = new RecordingTarget();
+        var navigator = new MenuNavigator(definition, tracker, target);
+
+        await navigator.ExecuteAnchorAsync("normal");
+        await navigator.ExecutePlanAsync(navigator.Plan("picture"));
+        target.Keys.Clear();
+
+        await navigator.ExecuteAnchorAsync("normal");
+
+        Assert.Equal(["KEY_EXIT"], target.Keys);
+        Assert.Equal("normal", tracker.Current.NodeId);
+    }
+
+    [Fact]
+    public async Task UnverifiedExactNodeOverrideFallsBackToVerifiedDepthScript()
+    {
+        var definition = CreateStateAwareReturnDefinition(nodeOverrideVerified: false);
+        var tracker = new MenuStateTracker(definition);
+        var target = new RecordingTarget();
+        var navigator = new MenuNavigator(definition, tracker, target);
+
+        await navigator.ExecuteAnchorAsync("normal");
+        await navigator.ExecutePlanAsync(navigator.Plan("picture"));
+        target.Keys.Clear();
+
+        await navigator.ExecuteAnchorAsync("normal");
+
+        Assert.Equal(["KEY_MENU", "KEY_RETURN"], target.Keys);
+    }
+
+    [Fact]
     public async Task PlanCalculatesRelativeRouteWhenNoDirectTransitionExists()
     {
         var definition = CreateStateAwareReturnDefinition();
@@ -365,7 +400,8 @@ public sealed class MenuNavigatorTests
 
     private static MenuDefinition CreateStateAwareReturnDefinition(
         bool deeperScriptVerified = true,
-        int? directReturnRepeat = null) => new(
+        int? directReturnRepeat = null,
+        bool? nodeOverrideVerified = null) => new(
         "state-aware-return",
         "State-aware return",
         "TV",
@@ -388,7 +424,16 @@ public sealed class MenuNavigatorTests
                     new MenuReturnScript([new MenuOperation("KEY_RETURN")], true),
                     new MenuReturnScript(
                         [new MenuOperation("KEY_MENU"), new MenuOperation("KEY_RETURN")],
-                        deeperScriptVerified)))
+                        deeperScriptVerified),
+                    nodeOverrideVerified is null
+                        ? []
+                        : [
+                            new MenuReturnOverride(
+                                "picture",
+                                new MenuReturnScript(
+                                    [new MenuOperation("KEY_EXIT")],
+                                    nodeOverrideVerified.Value))
+                        ]))
         ]);
 
     private static IReadOnlyList<MenuTransition> CreateStateAwareTransitions(

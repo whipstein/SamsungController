@@ -371,6 +371,26 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .verified-setting-row > .secondary-action, .verified-setting-confirm .secondary-action { padding: 8px 10px; font-size: 8px; white-space: nowrap; }
 .verified-setting-confirm { display: flex; gap: 6px; }
 .definition-setup-card { margin-top: 18px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: #08131b; }
+.menu-tree-builder { margin-top: 18px; padding: 18px; border: 1px solid rgba(145,178,255,.2); border-radius: 8px; background: rgba(145,178,255,.035); }
+.tree-node-count { margin-left: auto; color: var(--muted); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; }
+.authoring-section-toggle > .tree-node-count + i { margin-left: 0; }
+.menu-tree-intro { margin: -4px 0 14px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.menu-tree-layout { display: grid; grid-template-columns: minmax(220px, .65fr) minmax(360px, 1.35fr); gap: 12px; }
+.menu-tree-list { max-height: 390px; overflow: auto; padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: #08131b; }
+.menu-tree-new { width: 100%; margin-bottom: 8px; }
+.menu-tree-node { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+.menu-tree-node:hover, .menu-tree-node.active { background: var(--cyan-soft); }
+.menu-tree-node.active { color: var(--cyan); }
+.menu-tree-node span { min-width: 0; padding-left: calc(var(--tree-depth) * 13px); overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.menu-tree-node small { color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.menu-node-editor { padding: 15px; border: 1px solid var(--line); border-radius: 7px; background: #08131b; }
+.menu-node-editor header { margin-bottom: 13px; }
+.menu-node-editor header span, .menu-node-editor header strong { display: block; }
+.menu-node-editor header span { color: var(--cyan); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .09em; }
+.menu-node-editor header strong { margin-top: 4px; font-size: 11px; }
+.menu-node-editor .field-note code { color: var(--cyan); }
+.menu-node-editor-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.menu-node-editor-actions .primary-action { width: auto; margin-left: auto; }
 .authoring-section-title { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .authoring-section-title span { display: grid; width: 23px; height: 23px; place-items: center; border: 1px solid var(--line-strong); border-radius: 50%; color: var(--cyan); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .authoring-section-title strong { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
@@ -432,6 +452,19 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .return-script-actions { display: flex; min-height: 34px; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 12px; }
 .return-script-actions > b { margin-right: auto; color: var(--amber); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .return-script-actions .primary-action { width: auto; gap: 12px; }
+.return-override-lab { margin-top: 12px; padding: 14px; border: 1px solid rgba(145,178,255,.2); border-radius: 7px; background: #08131b; }
+.return-override-lab > header { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.return-override-lab > header span, .return-override-lab > header strong { display: block; }
+.return-override-lab > header span, .return-override-editor label > span { color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .09em; }
+.return-override-lab > header strong { margin-top: 4px; font-size: 10px; }
+.return-override-lab > header > b { color: var(--cyan); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.return-override-editor { display: grid; grid-template-columns: minmax(230px, 1.25fr) minmax(220px, 1fr) auto; gap: 10px; align-items: end; }
+.return-override-editor select, .return-override-editor input { width: 100%; margin-top: 6px; }
+.return-override-status { min-width: 118px; min-height: 38px; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 5px; }
+.return-override-status small { color: var(--amber); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.return-override-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.return-override-actions .primary-action { width: auto; }
+.return-override-note { display: block; margin-top: 9px; color: var(--muted); font-size: 8px; }
 .return-fallback-row { display: grid; grid-template-columns: minmax(150px, .45fr) auto minmax(220px, 1fr) auto; gap: 14px; align-items: center; margin-top: 12px; padding: 12px 14px; border: 1px dashed var(--line-strong); border-radius: 7px; }
 .return-fallback-row strong { display: block; margin-top: 4px; font-size: 9px; }
 .return-fallback-row small { color: var(--muted); font-size: 8px; line-height: 1.4; }
@@ -509,8 +542,11 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .page-content { padding-top: 36px; }
     .remote-layout, .macro-layout, .protocol-layout { grid-template-columns: 1fr; }
     .navigator-layout { grid-template-columns: 1fr; }
+    .menu-tree-layout { grid-template-columns: 1fr; }
     .authoring-workflow-grid { grid-template-columns: 1fr; }
     .return-script-grid { grid-template-columns: 1fr; }
+    .return-override-editor { grid-template-columns: 1fr; }
+    .return-override-status { align-items: flex-start; }
     .return-fallback-row { grid-template-columns: 1fr; }
     .timing-profile-layout { grid-template-columns: 1fr; align-items: stretch; }
     .timing-profile-test { grid-template-columns: 1fr; align-items: stretch; }

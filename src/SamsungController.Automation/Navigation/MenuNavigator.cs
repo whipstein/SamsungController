@@ -194,6 +194,15 @@ public sealed class MenuNavigator
             return new ResolvedAnchorScript("fallback", anchor.Operations);
         }
 
+        var nodeOverride = strategy.NodeOverrides?.FirstOrDefault(item =>
+            item.NodeId.Equals(state.NodeId, StringComparison.OrdinalIgnoreCase));
+        if (nodeOverride?.Script.Verified == true)
+        {
+            return new ResolvedAnchorScript(
+                $"{_definition.GetPath(nodeOverride.NodeId)} override",
+                nodeOverride.Script.Operations);
+        }
+
         if (state.NodeId.Equals(strategy.MenuRootNodeId, StringComparison.OrdinalIgnoreCase)
             && strategy.AtMenuRoot.Verified)
         {

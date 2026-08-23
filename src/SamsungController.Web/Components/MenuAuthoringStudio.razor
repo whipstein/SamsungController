@@ -48,6 +48,84 @@
         </div>
     }
 
+    @if (Navigation.DefinitionName is not null)
+    {
+        <div class="menu-tree-builder collapsible-authoring-section @(MenuTreeExpanded ? "" : "collapsed")">
+            <button type="button" class="authoring-section-title authoring-section-toggle" @onclick="ToggleMenuTree" aria-expanded="@(MenuTreeExpanded ? "true" : "false")">
+                <span>00</span><strong>Define the overall menu tree</strong>
+                <b class="tree-node-count">@Navigation.Nodes.Count nodes</b>
+                <i aria-hidden="true">@(MenuTreeExpanded ? "−" : "+")</i>
+            </button>
+            @if (MenuTreeExpanded)
+            {
+                <div class="authoring-section-body">
+                    <p class="menu-tree-intro">Name and arrange the complete on-screen hierarchy first. Node IDs stay stable after creation; display names and parents can be changed before or after recording traversals.</p>
+                    <div class="menu-tree-layout">
+                        <div class="menu-tree-list">
+                            <button class="secondary-action menu-tree-new" @onclick="BeginNewMenuNode" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">+ New node</button>
+                            @foreach (var node in Navigation.Nodes.OrderBy(node => node.Path, StringComparer.OrdinalIgnoreCase))
+                            {
+                                <button type="button" class="menu-tree-node @(EditingNodeId?.Equals(node.Id, StringComparison.OrdinalIgnoreCase) == true ? "active" : "")" @onclick="() => EditMenuNode(node)">
+                                    <span style="--tree-depth: @node.Depth">@node.Label</span>
+                                    <small>@node.Id</small>
+                                </button>
+                            }
+                        </div>
+                        <div class="menu-node-editor">
+                            <header>
+                                <span>@(EditingNodeId is null ? "NEW TREE NODE" : "EDIT TREE NODE")</span>
+                                <strong>@(EditingNodeId is null ? "Add a named menu position" : NodeEditorLabel)</strong>
+                            </header>
+                            <div class="authoring-form-grid compact">
+                                <label>
+                                    <span>Display name</span>
+                                    <input @bind="NodeEditorLabel" placeholder="Brightness" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
+                                </label>
+                                <label>
+                                    <span>Stable node ID</span>
+                                    <input @bind="NodeEditorId" placeholder="Generated from name" disabled="@(EditingNodeId is not null || IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
+                                </label>
+                                <label class="wide-field">
+                                    <span>Parent menu position</span>
+                                    <select @bind="NodeEditorParentId" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">
+                                        <option value="">No parent (top-level)</option>
+                                        @foreach (var node in AvailableParentNodes)
+                                        {
+                                            <option value="@node.Id">@node.Path</option>
+                                        }
+                                    </select>
+                                </label>
+                                <label class="wide-field">
+                                    <span>Description (optional)</span>
+                                    <input @bind="NodeEditorDescription" placeholder="What is visible or selected in this state" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
+                                </label>
+                            </div>
+                            @if (EditingNodeId is null && string.IsNullOrWhiteSpace(NodeEditorId) && !string.IsNullOrWhiteSpace(NodeEditorLabel))
+                            {
+                                <p class="field-note">Will be saved as <code>@CreateMenuNodeId(NodeEditorLabel)</code>.</p>
+                            }
+                            <div class="menu-node-editor-actions">
+                                @if (EditingNodeId is not null)
+                                {
+                                    @if (ConfirmMenuNodeDelete)
+                                    {
+                                        <button class="secondary-action" @onclick="CancelMenuNodeDelete" disabled="@IsBusy">Cancel</button>
+                                        <button class="secondary-action danger-action" @onclick="DeleteMenuNodeAsync" disabled="@IsBusy">Delete unrecorded branch</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="secondary-action danger-action" @onclick="RequestMenuNodeDelete" disabled="@(!CanDeleteMenuNode)">Delete</button>
+                                    }
+                                }
+                                <button class="primary-action" @onclick="SaveMenuNodeAsync" disabled="@(!CanSaveMenuNode)">@(EditingNodeId is null ? "Add to tree" : "Save node") <span>→</span></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
     @if (VerifiedSettings.Count > 0)
     {
         <div class="verified-setting-manager collapsible-authoring-section @(ManageVerifiedSettingsExpanded ? "" : "collapsed")">
@@ -129,39 +207,15 @@
                             <small>An existing draft for the same route is replaced automatically.</small>
                         </div>
                     }
-                    <label>
-                        <span>Target</span>
-                        <select @bind="CreateNewTarget" disabled="@Authoring.IsRecording">
-                            <option value="false">Existing node</option>
-                            <option value="true">Create new node</option>
+                    <label class="wide-field">
+                        <span>Target node</span>
+                        <select @bind="ExistingTargetId" disabled="@Authoring.IsRecording">
+                            @foreach (var node in Navigation.Nodes)
+                            {
+                                <option value="@node.Id">@node.Path</option>
+                            }
                         </select>
                     </label>
-                    @if (CreateNewTarget)
-                    {
-                        <label><span>New target ID</span><input @bind="NewTargetId" disabled="@Authoring.IsRecording" /></label>
-                        <label><span>New target label</span><input @bind="NewTargetLabel" disabled="@Authoring.IsRecording" /></label>
-                        <label>
-                            <span>Tree parent</span>
-                            <select @bind="NewTargetParentId" disabled="@Authoring.IsRecording">
-                                @foreach (var node in Navigation.Nodes)
-                                {
-                                    <option value="@node.Id">@node.Path</option>
-                                }
-                            </select>
-                        </label>
-                    }
-                    else
-                    {
-                        <label class="wide-field">
-                            <span>Target node</span>
-                            <select @bind="ExistingTargetId" disabled="@Authoring.IsRecording">
-                                @foreach (var node in Navigation.Nodes)
-                                {
-                                    <option value="@node.Id">@node.Path</option>
-                                }
-                            </select>
-                        </label>
-                    }
                 </div>
 
                 @if (!Authoring.IsRecording)
@@ -175,7 +229,7 @@
                             Start live recording <span>●</span>
                         </button>
                     </div>
-                    <p class="field-note">New recordings inherit the system-wide timing profile below. Traversals are matched to their source and target controls automatically; verified routes remain protected.</p>
+                    <p class="field-note">Add and name menu positions in the tree above, then choose them here. New recordings inherit the system-wide timing profile; traversals are matched to source and target automatically.</p>
                 }
                 else
                 {
@@ -248,7 +302,7 @@
                 @if (ReturnScriptsExpanded)
                 {
                     <div class="authoring-section-body">
-                        <p class="return-strategy-intro">The verified script matching the predicted menu depth is used automatically. Tests send only the script shown—place the TV at the named starting position first.</p>
+                        <p class="return-strategy-intro">An exact verified state override is tried first. Otherwise the verified menu-root or deeper-menu default is used, followed by the existing unknown-position anchor. Tests send only the script shown—prepare or place the TV at the named start first.</p>
                         <div class="return-script-grid">
                     <article class="return-script-card">
                         <header>
@@ -290,6 +344,56 @@
                             <button class="primary-action" @onclick="TestBelowMenuRootReturnAsync" disabled="@(!CanTestBelowMenuRootReturn)">Save + test <span>▶</span></button>
                         </div>
                     </article>
+                </div>
+                <div class="return-override-lab">
+                    <header>
+                        <div>
+                            <span>STATE-SPECIFIC OVERRIDES</span>
+                            <strong>Use a different return script from one exact menu position</strong>
+                        </div>
+                        <b>@returnStrategy.NodeOverrides.Count defined</b>
+                    </header>
+                    <div class="return-override-editor">
+                        <label>
+                            <span>MENU STATE</span>
+                            <select @bind="OverrideReturnNodeId" @bind:after="LoadSelectedReturnOverride" disabled="@(IsBusy || Navigation.IsRunning)">
+                                @foreach (var node in ReturnOverrideNodes)
+                                {
+                                    var existingOverride = returnStrategy.NodeOverrides.FirstOrDefault(item => item.NodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase));
+                                    <option value="@node.Id">@node.Path@(existingOverride is null ? "" : existingOverride.Verified ? " · verified override" : " · override needs validation")</option>
+                                }
+                            </select>
+                        </label>
+                        <label>
+                            <span>KEY SCRIPT</span>
+                            <input @bind="OverrideReturnScript" placeholder="KEY_MENU, KEY_RETURN" disabled="@(IsBusy || Navigation.IsRunning)" />
+                        </label>
+                        <div class="return-override-status">
+                            @if (SelectedReturnOverride is { } selectedOverride)
+                            {
+                                <b class="timing-profile-state @(selectedOverride.Verified ? "verified" : "unverified")">@(selectedOverride.Verified ? "VERIFIED" : "NEEDS VALIDATION")</b>
+                            }
+                            else
+                            {
+                                <b class="timing-profile-state unverified">USES DEFAULT</b>
+                            }
+                            @if (returnStrategy.ActiveValidationKind == MenuReturnScriptKind.NodeOverride
+                                && returnStrategy.ActiveValidationNodeId?.Equals(OverrideReturnNodeId, StringComparison.OrdinalIgnoreCase) == true)
+                            {
+                                <small>@returnStrategy.ValidationPasses/@returnStrategy.RequiredValidationPasses passed</small>
+                            }
+                        </div>
+                    </div>
+                    <div class="return-override-actions">
+                        <button class="secondary-action" @onclick="PrepareReturnOverrideStartAsync" disabled="@(!CanPrepareReturnOverride)">Prepare start</button>
+                        @if (SelectedReturnOverride is not null)
+                        {
+                            <button class="secondary-action danger-action" @onclick="DeleteReturnOverrideAsync" disabled="@(IsBusy || Navigation.IsRunning)">Remove override</button>
+                        }
+                        <button class="secondary-action" @onclick="SaveReturnOverrideAsync" disabled="@(!CanSaveReturnOverride)">Save override</button>
+                        <button class="primary-action" @onclick="TestReturnOverrideAsync" disabled="@(!CanTestReturnOverride)">Save + test <span>▶</span></button>
+                    </div>
+                    <small class="return-override-note">Removing an override immediately restores the normal root/deeper/default fallback for that state.</small>
                 </div>
                 <div class="return-fallback-row">
                     <div><span>UNKNOWN POSITION FALLBACK</span><strong>@returnStrategy.AnchorLabel</strong></div>
@@ -481,8 +585,6 @@
 </section>
 
 @code {
-    private const string NewNodeDefaultId = "new-menu-node";
-
     private ControllerSnapshot Snapshot { get; set; } = null!;
     private MenuNavigationSnapshot Navigation { get; set; } = null!;
     private MenuAuthoringSnapshot Authoring { get; set; } = null!;
@@ -491,10 +593,12 @@
     private string RecordingLabel { get; set; } = "Return to known state";
     private string SourceNodeId { get; set; } = string.Empty;
     private string ExistingTargetId { get; set; } = string.Empty;
-    private bool CreateNewTarget { get; set; }
-    private string NewTargetId { get; set; } = NewNodeDefaultId;
-    private string NewTargetLabel { get; set; } = "New menu node";
-    private string NewTargetParentId { get; set; } = string.Empty;
+    private string? EditingNodeId { get; set; }
+    private string NodeEditorId { get; set; } = string.Empty;
+    private string NodeEditorLabel { get; set; } = string.Empty;
+    private string NodeEditorParentId { get; set; } = string.Empty;
+    private string NodeEditorDescription { get; set; } = string.Empty;
+    private bool ConfirmMenuNodeDelete { get; set; }
     private string CustomKey { get; set; } = "KEY_SOURCE";
     private RemoteKeyAction CustomAction { get; set; } = RemoteKeyAction.Click;
     private int DefaultDelayMilliseconds { get; set; } = 150;
@@ -504,6 +608,8 @@
     private string AtMenuRootScript { get; set; } = "KEY_RETURN";
     private string BelowMenuRootScript { get; set; } = "KEY_MENU, KEY_RETURN";
     private string DeepReturnTestNodeId { get; set; } = string.Empty;
+    private string OverrideReturnNodeId { get; set; } = string.Empty;
+    private string OverrideReturnScript { get; set; } = string.Empty;
     private bool ReturnScriptsInitialized { get; set; }
     private bool ReturnScriptsDirty { get; set; }
     private bool TimingProfileInitialized { get; set; }
@@ -518,6 +624,7 @@
     private string? LocalError { get; set; }
     private string? PendingVerifiedSettingRemovalId { get; set; }
     private bool ManageVerifiedSettingsExpanded { get; set; }
+    private bool MenuTreeExpanded { get; set; } = true;
     private bool ReturnScriptsExpanded { get; set; }
     private bool SystemTimingExpanded { get; set; }
     private bool DraftValidationExpanded { get; set; }
@@ -540,12 +647,34 @@
         .ToArray();
     private bool IsConnected => Snapshot.ConnectionState == SamsungConnectionState.Connected;
     private bool CanStartRecording => IsConnected && !IsBusy && !Snapshot.MacroRunning && !Navigation.IsRunning &&
-        (CreateNewTarget
-            ? !string.IsNullOrWhiteSpace(NewTargetId) && !string.IsNullOrWhiteSpace(NewTargetLabel)
-            : !string.IsNullOrWhiteSpace(ExistingTargetId)) &&
+        !string.IsNullOrWhiteSpace(ExistingTargetId) &&
         (RecordingKind == MenuAuthoringItemKind.Transition
             ? !string.IsNullOrWhiteSpace(SourceNodeId)
             : !string.IsNullOrWhiteSpace(RecordingId) && !string.IsNullOrWhiteSpace(RecordingLabel));
+    private IReadOnlyList<MenuNodeSummary> AvailableParentNodes
+    {
+        get
+        {
+            var edited = EditingNodeId is null
+                ? null
+                : Navigation.Nodes.FirstOrDefault(node =>
+                    node.Id.Equals(EditingNodeId, StringComparison.OrdinalIgnoreCase));
+            return Navigation.Nodes
+                .Where(node => edited is null
+                    || (!node.Id.Equals(edited.Id, StringComparison.OrdinalIgnoreCase)
+                        && !node.Path.StartsWith(edited.Path + " / ", StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(node => node.Path, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+    }
+    private bool CanSaveMenuNode => !IsBusy && !Authoring.IsRecording && !Navigation.IsRunning
+        && !Snapshot.MacroRunning && !string.IsNullOrWhiteSpace(NodeEditorLabel)
+        && (EditingNodeId is not null
+            || !string.IsNullOrWhiteSpace(NodeEditorId)
+            || !string.IsNullOrWhiteSpace(CreateMenuNodeId(NodeEditorLabel)));
+    private bool CanDeleteMenuNode => EditingNodeId is not null && !IsBusy && !Authoring.IsRecording
+        && !Navigation.IsRunning && !Snapshot.MacroRunning
+        && Navigation.Nodes.FirstOrDefault(node => node.Id.Equals(EditingNodeId, StringComparison.OrdinalIgnoreCase))?.ParentId is not null;
     private bool RecordButtonsDisabled => !Authoring.IsRecording || !IsConnected || IsSendingKey || Navigation.IsRunning;
     private bool CanPrepareSource => RecordingKind == MenuAuthoringItemKind.Transition && IsConnected && !IsBusy &&
         !Authoring.IsRecording && !Navigation.IsRunning && !Snapshot.MacroRunning && !string.IsNullOrWhiteSpace(SourceNodeId);
@@ -571,7 +700,8 @@
     private bool ReturnScriptsNeedValidation => Authoring.ReturnStrategy is { } returnStrategy
         && (ReturnScriptsDirty
             || !returnStrategy.AtMenuRoot.Verified
-            || !returnStrategy.BelowMenuRoot.Verified);
+            || !returnStrategy.BelowMenuRoot.Verified
+            || returnStrategy.NodeOverrides.Any(item => !item.Verified));
     private bool DraftValidationNeedsAttention => Authoring.DraftCandidates.Count > 0;
     private bool CanSaveCandidateTiming => CanSaveSystemTiming && TimingEditorKind is not null
         && TimingEditorId is not null && TimingSteps.Count > 0 && TimingOverridesValid;
@@ -586,6 +716,23 @@
     private bool CanTestBelowMenuRootReturn => CanSaveReturnScripts && IsConnected
         && Authoring.ReturnStrategy!.DeepTestNodes.Any(node =>
             node.Id.Equals(DeepReturnTestNodeId, StringComparison.OrdinalIgnoreCase));
+    private IReadOnlyList<MenuNodeSummary> ReturnOverrideNodes => Authoring.ReturnStrategy is not { } strategy
+        ? []
+        : Navigation.Nodes
+            .Where(node => !node.Id.Equals(strategy.TargetNodeId, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(node => node.Path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    private MenuReturnOverrideSummary? SelectedReturnOverride => Authoring.ReturnStrategy?.NodeOverrides
+        .FirstOrDefault(item => item.NodeId.Equals(OverrideReturnNodeId, StringComparison.OrdinalIgnoreCase));
+    private bool ReturnOverrideScriptValid => TryParseKeyScript(OverrideReturnScript, out _);
+    private bool CanSaveReturnOverride => Authoring.ReturnStrategy is not null
+        && !string.IsNullOrWhiteSpace(OverrideReturnNodeId) && ReturnOverrideScriptValid
+        && !IsBusy && !Authoring.IsRecording && !Navigation.IsRunning && !Snapshot.MacroRunning
+        && !Authoring.AwaitingValidationConfirmation && !Authoring.AwaitingTimingValidationConfirmation
+        && Authoring.ReturnStrategy.AwaitingValidationConfirmation == false;
+    private bool CanTestReturnOverride => CanSaveReturnOverride && IsConnected;
+    private bool CanPrepareReturnOverride => IsConnected && !IsBusy && !Authoring.IsRecording
+        && !Navigation.IsRunning && !Snapshot.MacroRunning && !string.IsNullOrWhiteSpace(OverrideReturnNodeId);
     private long TimingDurationMilliseconds => TimingSteps.Sum(step =>
         (long)(step.UseCustomDelay
             ? step.DelayAfterMilliseconds
@@ -608,6 +755,8 @@
 
     private void ToggleManageVerifiedSettings() =>
         ManageVerifiedSettingsExpanded = !ManageVerifiedSettingsExpanded;
+
+    private void ToggleMenuTree() => MenuTreeExpanded = !MenuTreeExpanded;
 
     private void ToggleReturnScripts() => ReturnScriptsExpanded = !ReturnScriptsExpanded;
 
@@ -633,20 +782,93 @@
         });
     }
 
+    private void BeginNewMenuNode()
+    {
+        EditingNodeId = null;
+        NodeEditorId = string.Empty;
+        NodeEditorLabel = string.Empty;
+        NodeEditorDescription = string.Empty;
+        NodeEditorParentId = Navigation.Nodes.FirstOrDefault(node =>
+                node.Id.Equals("tv-interface", StringComparison.OrdinalIgnoreCase))?.Id
+            ?? Navigation.Nodes.FirstOrDefault()?.Id
+            ?? string.Empty;
+        ConfirmMenuNodeDelete = false;
+        LocalError = null;
+    }
+
+    private void EditMenuNode(MenuNodeSummary node)
+    {
+        EditingNodeId = node.Id;
+        NodeEditorId = node.Id;
+        NodeEditorLabel = node.Label;
+        NodeEditorParentId = node.ParentId ?? string.Empty;
+        NodeEditorDescription = node.Description ?? string.Empty;
+        ConfirmMenuNodeDelete = false;
+        LocalError = null;
+    }
+
+    private Task SaveMenuNodeAsync() => RunBusyAsync(async () =>
+    {
+        var nodeId = EditingNodeId
+            ?? (string.IsNullOrWhiteSpace(NodeEditorId)
+                ? CreateMenuNodeId(NodeEditorLabel)
+                : NodeEditorId.Trim());
+        var request = new MenuNodeEditRequest(
+            nodeId,
+            NodeEditorLabel,
+            NodeEditorParentId,
+            NodeEditorDescription);
+        if (EditingNodeId is null)
+        {
+            await Controller.CreateMenuNodeAsync(request);
+        }
+        else
+        {
+            await Controller.UpdateMenuNodeAsync(EditingNodeId, request);
+        }
+
+        Refresh();
+        var saved = Navigation.Nodes.First(node =>
+            node.Id.Equals(nodeId, StringComparison.OrdinalIgnoreCase));
+        EditMenuNode(saved);
+        InitializeNodeDefaults(force: true);
+    });
+
+    private void RequestMenuNodeDelete()
+    {
+        ConfirmMenuNodeDelete = true;
+        LocalError = null;
+    }
+
+    private void CancelMenuNodeDelete()
+    {
+        ConfirmMenuNodeDelete = false;
+        LocalError = null;
+    }
+
+    private Task DeleteMenuNodeAsync() => RunBusyAsync(async () =>
+    {
+        var nodeId = EditingNodeId
+            ?? throw new InvalidOperationException("Choose a menu-tree node to delete.");
+        await Controller.DeleteMenuNodeAsync(nodeId);
+        Refresh();
+        BeginNewMenuNode();
+        InitializeNodeDefaults(force: true);
+    });
+
     private void StartRecording()
     {
         LocalError = null;
         try
         {
-            var targetId = CreateNewTarget ? NewTargetId : ExistingTargetId;
             Controller.StartMenuRecording(new MenuRecordingRequest(
                 RecordingKind,
                 RecordingKind == MenuAuthoringItemKind.Anchor ? RecordingId : string.Empty,
-                RecordingKind == MenuAuthoringItemKind.Anchor ? RecordingLabel : GetTargetLabel(targetId),
+                RecordingKind == MenuAuthoringItemKind.Anchor ? RecordingLabel : GetTargetLabel(ExistingTargetId),
                 RecordingKind == MenuAuthoringItemKind.Transition ? SourceNodeId : null,
-                targetId,
-                CreateNewTarget ? NewTargetLabel : null,
-                CreateNewTarget ? NewTargetParentId : null));
+                ExistingTargetId,
+                null,
+                null));
         }
         catch (Exception exception)
         {
@@ -785,7 +1007,6 @@
 
         SourceNodeId = candidate.SourceNodeId ?? SourceNodeId;
         ExistingTargetId = candidate.TargetNodeId;
-        CreateNewTarget = false;
     }
 
     private Task DeleteDraftAsync(MenuAuthoringCandidateSummary candidate) =>
@@ -848,6 +1069,74 @@
 
     private Task TestBelowMenuRootReturnAsync() =>
         SaveAndTestReturnScriptAsync(MenuReturnScriptKind.BelowMenuRoot);
+
+    private Task PrepareReturnOverrideStartAsync() =>
+        RunBusyAsync(() => Controller.PrepareMenuRecordingSourceAsync(OverrideReturnNodeId));
+
+    private Task SaveReturnOverrideAsync() => RunBusyAsync(async () =>
+    {
+        await SaveReturnOverrideCoreAsync();
+        Refresh();
+        LoadSelectedReturnOverride();
+    });
+
+    private Task TestReturnOverrideAsync() => RunBusyAsync(async () =>
+    {
+        await SaveReturnOverrideCoreAsync();
+        await Controller.RunMenuReturnStrategyTestAsync(
+            MenuReturnScriptKind.NodeOverride,
+            OverrideReturnNodeId);
+        Refresh();
+    });
+
+    private Task DeleteReturnOverrideAsync() => RunBusyAsync(async () =>
+    {
+        await Controller.DeleteMenuReturnOverrideAsync(OverrideReturnNodeId);
+        Refresh();
+        LoadSelectedReturnOverride();
+    });
+
+    private async Task SaveReturnOverrideCoreAsync()
+    {
+        if (!TryParseKeyScript(OverrideReturnScript, out var keys))
+        {
+            throw new InvalidOperationException(
+                "The state-specific return script must contain one or more comma-separated KEY_ commands.");
+        }
+
+        await Controller.UpdateMenuReturnOverrideAsync(OverrideReturnNodeId, keys);
+    }
+
+    private void LoadSelectedReturnOverride()
+    {
+        if (Authoring.ReturnStrategy is not { } strategy
+            || string.IsNullOrWhiteSpace(OverrideReturnNodeId))
+        {
+            OverrideReturnScript = string.Empty;
+            return;
+        }
+
+        var existing = strategy.NodeOverrides.FirstOrDefault(item =>
+            item.NodeId.Equals(OverrideReturnNodeId, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            OverrideReturnScript = existing.Script;
+            return;
+        }
+
+        var selectedNode = Navigation.Nodes.FirstOrDefault(node =>
+            node.Id.Equals(OverrideReturnNodeId, StringComparison.OrdinalIgnoreCase));
+        var rootNode = Navigation.Nodes.FirstOrDefault(node =>
+            node.Id.Equals(strategy.MenuRootNodeId, StringComparison.OrdinalIgnoreCase));
+        OverrideReturnScript = selectedNode?.Id.Equals(
+                                   strategy.MenuRootNodeId,
+                                   StringComparison.OrdinalIgnoreCase) == true
+            ? strategy.AtMenuRoot.Script
+            : selectedNode is not null && rootNode is not null
+              && selectedNode.Path.StartsWith(rootNode.Path + " / ", StringComparison.OrdinalIgnoreCase)
+                ? strategy.BelowMenuRoot.Script
+                : strategy.FallbackScript;
+    }
 
     private Task SaveAndTestReturnScriptAsync(MenuReturnScriptKind kind) => RunBusyAsync(async () =>
     {
@@ -933,6 +1222,15 @@
             {
                 DeepReturnTestNodeId = returnStrategy.DeepTestNodes.FirstOrDefault()?.Id
                     ?? string.Empty;
+            }
+
+            if (string.IsNullOrWhiteSpace(OverrideReturnNodeId)
+                || ReturnOverrideNodes.All(node =>
+                    !node.Id.Equals(OverrideReturnNodeId, StringComparison.OrdinalIgnoreCase)))
+            {
+                OverrideReturnNodeId = ReturnOverrideNodes.FirstOrDefault()?.Id
+                    ?? string.Empty;
+                LoadSelectedReturnOverride();
             }
         }
         if (string.IsNullOrWhiteSpace(SelectedTimingTestRouteId)
@@ -1055,17 +1353,40 @@
                 ?? Navigation.Nodes[0].Id;
         }
 
-        if (force || string.IsNullOrWhiteSpace(NewTargetParentId) || Navigation.Nodes.All(node => node.Id != NewTargetParentId))
+        if (force && EditingNodeId is null && string.IsNullOrWhiteSpace(NodeEditorParentId))
         {
-            NewTargetParentId = SourceNodeId;
+            NodeEditorParentId = Navigation.Nodes.FirstOrDefault(node =>
+                    node.Id.Equals("tv-interface", StringComparison.OrdinalIgnoreCase))?.Id
+                ?? Navigation.Nodes[0].Id;
         }
     }
 
-    private string GetTargetLabel(string targetId) => CreateNewTarget
-        ? NewTargetLabel
-        : Navigation.Nodes.FirstOrDefault(node =>
+    private string GetTargetLabel(string targetId) => Navigation.Nodes.FirstOrDefault(node =>
             node.Id.Equals(targetId, StringComparison.OrdinalIgnoreCase))?.Label
-          ?? targetId;
+        ?? targetId;
+
+    private static string CreateMenuNodeId(string label)
+    {
+        var normalized = new string(label.Trim().ToLowerInvariant()
+            .Select(character => char.IsLetterOrDigit(character) || character == '_'
+                ? character
+                : '-')
+            .ToArray());
+        while (normalized.Contains("--", StringComparison.Ordinal))
+        {
+            normalized = normalized.Replace("--", "-", StringComparison.Ordinal);
+        }
+
+        normalized = normalized.Trim('-');
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return "menu-node";
+        }
+
+        return char.IsLetter(normalized[0]) || normalized[0] == '_'
+            ? normalized
+            : $"node-{normalized}";
+    }
 
     public void Dispose()
     {

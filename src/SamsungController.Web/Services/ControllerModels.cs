@@ -78,6 +78,7 @@ public sealed record MenuNodeSummary(
     string Path,
     int Depth,
     string? Description,
+    string? ParentId,
     bool HasVerifiedRoute,
     bool HasDraftRoute);
 
@@ -124,6 +125,12 @@ public sealed record MenuDefinitionCreationRequest(
     string Signal,
     string PictureMode,
     string Input);
+
+public sealed record MenuNodeEditRequest(
+    string Id,
+    string Label,
+    string? ParentId,
+    string? Description);
 
 public sealed record MenuRecordingRequest(
     MenuAuthoringItemKind Kind,
@@ -258,7 +265,8 @@ public sealed record MenuTimingTestRouteSummary(
 public enum MenuReturnScriptKind
 {
     AtMenuRoot,
-    BelowMenuRoot
+    BelowMenuRoot,
+    NodeOverride
 }
 
 public sealed record MenuReturnScriptSummary(
@@ -271,16 +279,26 @@ public sealed record MenuReturnTestNodeSummary(
     string Id,
     string Path);
 
+public sealed record MenuReturnOverrideSummary(
+    string NodeId,
+    string Path,
+    string Script,
+    bool Verified);
+
 public sealed record MenuReturnStrategySummary(
     string AnchorId,
     string AnchorLabel,
+    string TargetNodeId,
+    string TargetPath,
     string MenuRootNodeId,
     string MenuRootPath,
     string FallbackScript,
     MenuReturnScriptSummary AtMenuRoot,
     MenuReturnScriptSummary BelowMenuRoot,
+    IReadOnlyList<MenuReturnOverrideSummary> NodeOverrides,
     IReadOnlyList<MenuReturnTestNodeSummary> DeepTestNodes,
     MenuReturnScriptKind? ActiveValidationKind,
+    string? ActiveValidationNodeId,
     int ValidationPasses,
     int RequiredValidationPasses,
     bool AwaitingValidationConfirmation,

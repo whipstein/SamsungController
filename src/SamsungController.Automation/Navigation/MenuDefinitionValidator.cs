@@ -171,6 +171,27 @@ public sealed class MenuDefinitionValidator
             $"{location} belowMenuRoot",
             strategy.BelowMenuRoot.Operations,
             errors);
+
+        var overrideNodeIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in strategy.NodeOverrides ?? [])
+        {
+            var overrideLocation = $"{location} override '{item.NodeId}'";
+            if (!overrideNodeIds.Add(item.NodeId))
+            {
+                errors.Add(new MenuDefinitionValidationError(
+                    overrideLocation,
+                    $"Only one return override can be defined for node '{item.NodeId}'."));
+            }
+
+            if (!definition.Nodes.ContainsKey(item.NodeId))
+            {
+                errors.Add(new MenuDefinitionValidationError(
+                    overrideLocation,
+                    $"Menu node '{item.NodeId}' does not exist."));
+            }
+
+            ValidateOperations(overrideLocation, item.Script.Operations, errors);
+        }
     }
 
     public void ValidateAndThrow(MenuDefinition definition)

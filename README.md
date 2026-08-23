@@ -79,8 +79,9 @@ Samsung's remote-control channel does not report the actual on-screen cursor.
 - **Menu** presents only destinations, anchors, and routes that already passed
   verification. Clicking a verified destination immediately plans and executes
   its proven route; the route-preview controls remain available for inspection.
-- **Build & Verify** owns new-interface setup, live traversal recording, separate
-  Settings-root and deeper-menu return scripts, system-wide and per-button wait
+- **Build & Verify** owns new-interface setup, an editable menu tree that can be
+  named and arranged before recording, live traversal capture, default and
+  state-specific return-to-video scripts, system-wide and per-button wait
   calibration, draft management, guarded removal of incorrect verified settings,
   and the required three-pass visual tests. Independent sections can be minimized;
   a collapsed section reopens when its verified state newly needs validation.
