@@ -216,6 +216,32 @@ public sealed class MenuNavigatorTests
     }
 
     [Fact]
+    public async Task PlanReturnsDirectlyFromSettingToAncestorMenu()
+    {
+        var definition = CreateAbsoluteSiblingDefinition();
+        var tracker = new MenuStateTracker(definition);
+        var target = new RecordingTarget();
+        var navigator = new MenuNavigator(definition, tracker, target);
+
+        await navigator.ExecuteAnchorAsync("normal");
+        await navigator.ExecutePlanAsync(navigator.Plan("brightness", includeDraftTransitions: false));
+        target.Keys.Clear();
+
+        var plan = navigator.Plan("settings", includeDraftTransitions: false);
+
+        Assert.True(plan.UsesCalculatedRoute);
+        Assert.False(plan.UsesAnchor);
+        var operation = Assert.Single(plan.CalculatedLeg!.Operations);
+        Assert.Equal("KEY_RETURN", operation.Key);
+        Assert.Equal(2, operation.Repeat);
+
+        await navigator.ExecutePlanAsync(plan);
+
+        Assert.Equal(["KEY_RETURN", "KEY_RETURN"], target.Keys);
+        Assert.Equal("settings", tracker.Current.NodeId);
+    }
+
+    [Fact]
     public async Task PlanUsesVerifiedAnchorWhenSourcePathCannotBeSafelyInverted()
     {
         var definition = CreateNonInvertibleRouteDefinition();
@@ -397,11 +423,19 @@ public sealed class MenuNavigatorTests
         new MenuDefinitionContext(),
         [
             new MenuNode("normal", "Normal video"),
-            new MenuNode("expert", "Expert Settings"),
+            new MenuNode("settings", "Settings"),
+            new MenuNode("picture", "Picture", "settings"),
+            new MenuNode("expert", "Expert Settings", "picture"),
             new MenuNode("brightness", "Brightness", "expert"),
             new MenuNode("contrast", "Contrast", "expert")
         ],
         [
+            new MenuTransition(
+                "to-settings",
+                "normal",
+                "settings",
+                [new MenuOperation("KEY_MENU")],
+                true),
             new MenuTransition(
                 "to-brightness",
                 "normal",

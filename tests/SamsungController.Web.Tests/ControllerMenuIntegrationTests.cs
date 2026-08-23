@@ -412,12 +412,12 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             Assert.True(plan.UsesCalculatedRoute);
             Assert.False(plan.UsesAnchor);
             Assert.Equal(
-                ["KEY_RETURN", "KEY_UP"],
+                ["KEY_RETURN"],
                 plan.CalculatedLeg?.Operations.Select(operation => operation.Key));
 
             await controller.ExecuteNavigationPlanAsync();
 
-            Assert.Equal(["KEY_RETURN", "KEY_UP"], GetSentKeys(transport));
+            Assert.Equal(["KEY_RETURN"], GetSentKeys(transport));
             var snapshot = controller.GetSnapshot();
             Assert.Equal("Settings", snapshot.MenuLabel);
             Assert.Equal(MenuStateConfidence.Probable, snapshot.MenuConfidence);

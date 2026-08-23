@@ -418,20 +418,33 @@ public sealed class MenuNavigator
             commonPressCount++;
         }
 
-        var relativePresses = new List<MenuOperation>();
-        for (var index = sourcePresses.Count - 1; index >= commonPressCount; index--)
+        List<MenuOperation> relativePresses;
+        if (_definition.IsDescendantOf(state.NodeId!, targetNodeId)
+            && commonPressCount == targetPresses.Count
+            && TryCreateAncestorReturnPresses(
+                sourcePresses,
+                commonPressCount,
+                out var ancestorReturnPresses))
         {
-            if (!TryInvert(sourcePresses[index], out var inverse))
+            relativePresses = ancestorReturnPresses;
+        }
+        else
+        {
+            relativePresses = [];
+            for (var index = sourcePresses.Count - 1; index >= commonPressCount; index--)
             {
-                return false;
+                if (!TryInvert(sourcePresses[index], out var inverse))
+                {
+                    return false;
+                }
+
+                AddAndCancelDirectionalOpposites(relativePresses, inverse);
             }
 
-            AddAndCancelDirectionalOpposites(relativePresses, inverse);
-        }
-
-        for (var index = commonPressCount; index < targetPresses.Count; index++)
-        {
-            AddAndCancelDirectionalOpposites(relativePresses, targetPresses[index]);
+            for (var index = commonPressCount; index < targetPresses.Count; index++)
+            {
+                AddAndCancelDirectionalOpposites(relativePresses, targetPresses[index]);
+            }
         }
 
         var operations = CollapseRepeats(relativePresses);
@@ -490,6 +503,38 @@ public sealed class MenuNavigator
             inverseKey ?? operation.Key,
             RemoteKeyAction.Click);
         return inverseKey is not null;
+    }
+
+    private static bool TryCreateAncestorReturnPresses(
+        IReadOnlyList<MenuOperation> sourcePresses,
+        int commonPressCount,
+        out List<MenuOperation> returnPresses)
+    {
+        returnPresses = [];
+        for (var index = sourcePresses.Count - 1; index >= commonPressCount; index--)
+        {
+            var operation = sourcePresses[index];
+            if (operation.Action != RemoteKeyAction.Click)
+            {
+                return false;
+            }
+
+            switch (operation.Key.Trim().ToUpperInvariant())
+            {
+                case "KEY_ENTER":
+                    returnPresses.Add(new MenuOperation("KEY_RETURN"));
+                    break;
+                case "KEY_UP":
+                case "KEY_DOWN":
+                case "KEY_LEFT":
+                case "KEY_RIGHT":
+                    break;
+                default:
+                    return false;
+            }
+        }
+
+        return returnPresses.Count > 0;
     }
 
     private static void AddAndCancelDirectionalOpposites(
