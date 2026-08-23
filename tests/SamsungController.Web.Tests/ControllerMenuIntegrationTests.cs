@@ -451,6 +451,14 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                     "open-picture-draft");
                 Assert.Equal(["KEY_DOWN", "KEY_ENTER"], GetSentKeys(transport));
                 await controller.ConfirmMenuAuthoringValidationAsync(passed: true);
+
+                var confirmed = controller.GetSnapshot();
+                Assert.Equal("Picture", confirmed.MenuLabel);
+                Assert.Equal(MenuStateConfidence.Synchronized, confirmed.MenuConfidence);
+
+                transport.SentMessages.Clear();
+                await controller.RunMenuAnchorAsync("normal");
+                Assert.Equal(["KEY_HOME"], GetSentKeys(transport));
             }
 
             var verified = await new MenuDefinitionParser().ParseFileAsync(
@@ -461,7 +469,6 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 "KEY_HOME",
                 Assert.Single(transition.ReturnToVideoOperations!).Key);
 
-            await controller.RunMenuAnchorAsync("normal");
             controller.CreateNavigationPlan("picture");
             await controller.ExecuteNavigationPlanAsync();
             transport.SentMessages.Clear();

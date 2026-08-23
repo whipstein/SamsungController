@@ -119,9 +119,12 @@ target transition's verified integrated `returnSteps`, the verified
 menu-root/deeper scripts, and the anchor's default operations. Integrated return
 keys remain on the same transition as its forward keys: Prepare source exercises
 the return keys, Replay test exercises the forward keys, and one validation
-session verifies the pair. Legacy separate `return-to-video-replacement` anchors
-are folded into their target transition when the definition is loaded. A user
-may keep a section minimized while its state is unchanged; a transition from
+session verifies the pair. Accepting any replay pass explicitly synchronizes
+the state tracker to its target. That exact synchronized state may use its draft
+integrated return before 3/3, while a merely predicted draft state may not.
+Legacy separate `return-to-video-replacement` anchors are folded into their
+target transition when the definition is loaded. A user may keep a section
+minimized while its state is unchanged; a transition from
 verified to needing validation, or from no drafts to pending drafts,
 automatically expands the affected section.
 

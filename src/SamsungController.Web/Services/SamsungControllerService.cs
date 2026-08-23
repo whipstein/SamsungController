@@ -2136,6 +2136,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             return;
         }
 
+        var targetNodeId = GetAuthoringTargetNodeId(definition, session.Kind, session.ItemId);
         var passes = session.Passes + 1;
         if (passes < MenuValidationSession.RequiredPasses)
         {
@@ -2146,6 +2147,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 _menuAuthoringError = null;
             }
 
+            ConfirmMenuAuthoringTarget(targetNodeId, session.ItemId);
             NotifyChanged();
             return;
         }
@@ -2168,6 +2170,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _menuAuthoringError = null;
         }
 
+        ConfirmMenuAuthoringTarget(targetNodeId, session.ItemId);
         NotifyChanged();
     }
 
@@ -3174,11 +3177,22 @@ public sealed class SamsungControllerService : IAsyncDisposable
         MenuDefinition definition,
         MenuAuthoringItemKind kind,
         string itemId) =>
+        definition.GetPath(GetAuthoringTargetNodeId(definition, kind, itemId));
+
+    private static string GetAuthoringTargetNodeId(
+        MenuDefinition definition,
+        MenuAuthoringItemKind kind,
+        string itemId) =>
         kind == MenuAuthoringItemKind.Anchor
-            ? definition.GetPath(definition.GetRequiredAnchor(itemId).TargetNodeId)
-            : definition.GetPath(definition.Transitions.TryGetValue(itemId, out var transition)
+            ? definition.GetRequiredAnchor(itemId).TargetNodeId
+            : definition.Transitions.TryGetValue(itemId, out var transition)
                 ? transition.ToNodeId
-                : throw new KeyNotFoundException($"Menu transition '{itemId}' was not found."));
+                : throw new KeyNotFoundException($"Menu transition '{itemId}' was not found.");
+
+    private void ConfirmMenuAuthoringTarget(string targetNodeId, string itemId) =>
+        _menuStateTracker?.ConfirmNode(
+            targetNodeId,
+            $"The user confirmed that menu validation '{itemId}' reached its target.");
 
     private static MenuDefinition SetAuthoringItemVerified(
         MenuDefinition definition,

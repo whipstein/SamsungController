@@ -199,10 +199,11 @@ public sealed class MenuNavigator
         }
 
         var integratedReturn = _definition.Transitions.Values
-            .Where(transition => transition.Verified
-                && transition.ToNodeId.Equals(
+            .Where(transition => transition.ToNodeId.Equals(
                     state.NodeId,
                     StringComparison.OrdinalIgnoreCase)
+                && (transition.Verified
+                    || state.Confidence == MenuStateConfidence.Synchronized)
                 && transition.ReturnToVideoOperations is { Count: > 0 })
             .OrderBy(transition => transition.ReturnToVideoOperations!.Sum(
                 operation => operation.Repeat))
@@ -210,8 +211,11 @@ public sealed class MenuNavigator
             .FirstOrDefault();
         if (integratedReturn is not null)
         {
+            var scriptKind = integratedReturn.Verified
+                ? "recorded return"
+                : "visually confirmed draft return";
             return new ResolvedAnchorScript(
-                $"{_definition.GetPath(integratedReturn.ToNodeId)} recorded return",
+                $"{_definition.GetPath(integratedReturn.ToNodeId)} {scriptKind}",
                 integratedReturn.ReturnToVideoOperations!);
         }
 

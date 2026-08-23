@@ -202,8 +202,11 @@ can be planned or sent.
    and retain one validation count.
 11. Visually confirm the target after every run. Three confirmed passes update
    the same YAML entry to `verified: true`; a failed confirmation resets the
-   count to zero. Once verified, the normal-video anchor uses the transition's
-   recorded return whenever that exact target is the predicted current state.
+   count to zero. Every successful confirmation immediately synchronizes the
+   current-menu indicator to the confirmed target, including after the third
+   pass reloads the YAML. While that exact target remains synchronized, the
+   normal-video anchor may use its recorded return even before the traversal
+   reaches 3/3; otherwise draft return keys remain unavailable.
 
 Draft cards can be replayed, re-recorded under the same identifier, or deleted
 entirely in the UI. Verified items are protected from this draft workflow.
