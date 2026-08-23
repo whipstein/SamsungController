@@ -203,9 +203,12 @@ can be planned or sent.
    and retain one validation count.
 11. Visually confirm the target after every run. Three confirmed passes update
    the same YAML entry to `verified: true`; a failed confirmation resets the
-   count to zero. Every successful confirmation immediately synchronizes the
+   count for that item to zero. Partial pass counts are retained independently
+   when validation switches between draft commands. Every successful
+   confirmation immediately synchronizes the
    current-menu indicator to the confirmed target, including after the third
-   pass reloads the YAML. While that exact target remains synchronized, the
+   pass reloads the YAML; that third accepted pass then runs Return to video
+   automatically. While that exact target remains synchronized, the
    normal-video anchor may use its recorded return even before the traversal
    reaches 3/3; otherwise draft return keys remain unavailable.
 

@@ -551,7 +551,7 @@
             @if (DraftValidationExpanded)
             {
                 <div class="authoring-section-body">
-                    <p class="field-note">For a traversal with recorded return keys, Prepare source sends that return sequence and then follows verified routes toward the forward source. Replay test sends the forward traversal. Both stay on the same validation card and share one 3-pass count.</p>
+                    <p class="field-note">For a traversal with recorded return keys, Prepare source sends that return sequence and then follows verified routes toward the forward source. Replay test sends the forward traversal. Each card remembers its own 3-pass count when you switch between commands. The third accepted pass verifies the command and returns to normal video automatically.</p>
             @if (Authoring.DraftCandidates.Count == 0)
             {
                 <div class="capture-empty compact">No draft anchors or transitions are waiting for validation.</div>
@@ -569,10 +569,7 @@
                                 <small>@(candidate.SourcePath is null ? candidate.TargetPath : $"{candidate.SourcePath} → {candidate.TargetPath}") · @candidate.CommandCount forward@(candidate.ReturnCommandCount > 0 ? $" + {candidate.ReturnCommandCount} return" : string.Empty) commands</small>
                             </div>
                             <div class="validation-card-actions">
-                                @if (isActive)
-                                {
-                                    <b>@Authoring.ValidationPasses/@Authoring.RequiredValidationPasses passed</b>
-                                }
+                                <b>@candidate.ValidationPasses/@Authoring.RequiredValidationPasses passed</b>
                                 @if (candidate.SourceNodeId is not null)
                                 {
                                     <button class="secondary-action" @onclick="() => PrepareValidationSourceAsync(candidate)" disabled="@(!CanPrepareValidationSource(candidate))">@(candidate.ReturnCommandCount > 0 ? "Prepare with recorded return" : "Prepare source")</button>
@@ -625,7 +622,11 @@
                 <div class="validation-confirmation">
                     <div><span>VISUAL CONFIRMATION REQUIRED</span><strong>Did the TV reach @Authoring.ExpectedTargetPath?</strong></div>
                     <button class="secondary-action danger-action" @onclick="() => ConfirmValidationAsync(false)" disabled="@IsBusy">No — adjust timing</button>
-                    <button class="primary-action" @onclick="() => ConfirmValidationAsync(true)" disabled="@IsBusy">Yes — count pass <span>✓</span></button>
+                    <button class="primary-action" @onclick="() => ConfirmValidationAsync(true)" disabled="@IsBusy">
+                        @(Authoring.ValidationPasses + 1 >= Authoring.RequiredValidationPasses
+                            ? "Yes — verify + return to video"
+                            : "Yes — count pass") <span>✓</span>
+                    </button>
                 </div>
             }
                 </div>

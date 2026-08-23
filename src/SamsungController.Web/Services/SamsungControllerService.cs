@@ -42,6 +42,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private readonly List<MacroExecutionProgress> _macroProgress = [];
     private readonly List<DeviceInfoObservation> _deviceInfoObservations = [];
     private readonly MenuTraversalRecorder _menuRecorder = new();
+    private readonly Dictionary<string, int> _menuValidationPasses = new(
+        StringComparer.OrdinalIgnoreCase);
 
     private SamsungWebSettings _settings = new();
     private CancellationTokenSource? _macroSource;
@@ -326,6 +328,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                             ? null
                             : definition.GetPath(anchor.ValidationSourceNodeId),
                         definition.GetPath(anchor.TargetNodeId),
+                        GetMenuValidationPasses(MenuAuthoringItemKind.Anchor, anchor.Id),
                         anchor.Operations.Sum(operation => operation.Repeat),
                         GetReplaySteps(anchor.Operations, definition.Timing),
                         0,
@@ -340,6 +343,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
                             transition.ToNodeId,
                             definition.GetPath(transition.FromNodeId),
                             definition.GetPath(transition.ToNodeId),
+                            GetMenuValidationPasses(
+                                MenuAuthoringItemKind.Transition,
+                                transition.Id),
                             transition.Operations.Sum(operation => operation.Repeat),
                             GetReplaySteps(transition.Operations, definition.Timing),
                             transition.ReturnToVideoOperations?.Sum(operation => operation.Repeat) ?? 0,
@@ -1055,6 +1061,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
             lock (_sync)
             {
+                SetMenuValidationPasses(request.Kind, request.ItemId, 0);
                 _menuValidation = new MenuValidationSession(
                     request.Kind,
                     request.ItemId,
@@ -1111,6 +1118,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
         await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
         lock (_sync)
         {
+            if (delaysChanged)
+            {
+                _menuValidationPasses.Clear();
+            }
+
             _menuValidation = delaysChanged ? null : previousDraftValidation;
             _menuTimingValidation = delaysChanged ? null : previousTimingValidation;
             _menuAuthoringStatus = delaysChanged
@@ -1190,6 +1202,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
         {
             definition = _menuDefinition
                 ?? throw new InvalidOperationException("No menu definition is loaded.");
+            if (delaysChanged)
+            {
+                _menuValidationPasses.Clear();
+            }
+
             _menuTimingValidation = session;
             _menuValidation = delaysChanged ? null : previousDraftValidation;
 
@@ -1746,6 +1763,15 @@ public sealed class SamsungControllerService : IAsyncDisposable
         lock (_sync)
         {
             _menuTimingValidation = delaysChanged ? null : previousTimingValidation;
+            if (delaysChanged)
+            {
+                _menuValidationPasses.Clear();
+            }
+            else
+            {
+                SetMenuValidationPasses(kind, itemId, 0);
+            }
+
             _menuValidation = new MenuValidationSession(
                 kind,
                 itemId.Trim(),
@@ -1778,11 +1804,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
             session = _menuValidation is { } existing
                       && existing.Kind == kind
                       && existing.ItemId.Equals(itemId, StringComparison.OrdinalIgnoreCase)
-                ? existing
+                ? existing with { Passes = GetMenuValidationPasses(kind, itemId) }
                 : new MenuValidationSession(
                     kind,
                     itemId.Trim(),
-                    0,
+                    GetMenuValidationPasses(kind, itemId),
                     false,
                     GetAuthoringTargetPath(definition, kind, itemId));
             if (session.AwaitingConfirmation)
@@ -2126,6 +2152,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         {
             lock (_sync)
             {
+                SetMenuValidationPasses(session.Kind, session.ItemId, 0);
                 _menuValidation = session with { Passes = 0, AwaitingConfirmation = false };
                 _menuAuthoringStatus = "Validation failed · pass count reset; adjust or replace the draft recording";
                 _menuAuthoringError = null;
@@ -2142,6 +2169,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         {
             lock (_sync)
             {
+                SetMenuValidationPasses(session.Kind, session.ItemId, passes);
                 _menuValidation = session with { Passes = passes, AwaitingConfirmation = false };
                 _menuAuthoringStatus = $"Validation passed · {passes}/{MenuValidationSession.RequiredPasses}";
                 _menuAuthoringError = null;
@@ -2156,6 +2184,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             && definition.Transitions.TryGetValue(session.ItemId, out var integratedTransition)
             && integratedTransition.ReturnToVideoOperations is { Count: > 0 };
         var verified = SetAuthoringItemVerified(definition, session.Kind, session.ItemId);
+        var returnAnchor = FindReturnToVideoAnchor(verified);
         await PersistActiveMenuDefinitionAsync(verified, cancellationToken).ConfigureAwait(false);
         lock (_sync)
         {
@@ -2172,6 +2201,13 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
         ConfirmMenuAuthoringTarget(targetNodeId, session.ItemId);
         NotifyChanged();
+        if (returnAnchor is not null
+            && !targetNodeId.Equals(
+                returnAnchor.TargetNodeId,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            await RunMenuAnchorAsync(returnAnchor.Id, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public NavigationPlan CreateNavigationPlan(string targetNodeId)
@@ -2364,6 +2400,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
         await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
         lock (_sync)
         {
+            SetMenuValidationPasses(
+                MenuAuthoringItemKind.Transition,
+                draftId,
+                0);
             _menuValidation = new MenuValidationSession(
                 MenuAuthoringItemKind.Transition,
                 draftId,
@@ -3154,7 +3194,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     .ConfigureAwait(false);
             }
 
-            InstallMenuDefinition(definition);
+            InstallMenuDefinition(definition, preserveValidationProgress: true);
         }
         finally
         {
@@ -3188,6 +3228,54 @@ public sealed class SamsungControllerService : IAsyncDisposable
             : definition.Transitions.TryGetValue(itemId, out var transition)
                 ? transition.ToNodeId
                 : throw new KeyNotFoundException($"Menu transition '{itemId}' was not found.");
+
+    private int GetMenuValidationPasses(
+        MenuAuthoringItemKind kind,
+        string itemId) =>
+        _menuValidationPasses.TryGetValue(
+            GetMenuValidationKey(kind, itemId),
+            out var passes)
+            ? passes
+            : 0;
+
+    private void SetMenuValidationPasses(
+        MenuAuthoringItemKind kind,
+        string itemId,
+        int passes)
+    {
+        var key = GetMenuValidationKey(kind, itemId);
+        if (passes <= 0)
+        {
+            _menuValidationPasses.Remove(key);
+            return;
+        }
+
+        _menuValidationPasses[key] = passes;
+    }
+
+    private void PruneMenuValidationProgress(MenuDefinition definition)
+    {
+        var draftKeys = definition.Anchors.Values
+            .Where(anchor => !anchor.Verified)
+            .Select(anchor => GetMenuValidationKey(MenuAuthoringItemKind.Anchor, anchor.Id))
+            .Concat(definition.Transitions.Values
+                .Where(transition => !transition.Verified)
+                .Select(transition => GetMenuValidationKey(
+                    MenuAuthoringItemKind.Transition,
+                    transition.Id)))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in _menuValidationPasses.Keys
+                     .Where(key => !draftKeys.Contains(key))
+                     .ToArray())
+        {
+            _menuValidationPasses.Remove(key);
+        }
+    }
+
+    private static string GetMenuValidationKey(
+        MenuAuthoringItemKind kind,
+        string itemId) =>
+        $"{kind}:{itemId.Trim()}";
 
     private void ConfirmMenuAuthoringTarget(string targetNodeId, string itemId) =>
         _menuStateTracker?.ConfirmNode(
@@ -3963,7 +4051,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
     }
 
-    private void InstallMenuDefinition(MenuDefinition definition)
+    private void InstallMenuDefinition(
+        MenuDefinition definition,
+        bool preserveValidationProgress = false)
     {
         var tracker = new MenuStateTracker(definition);
         var navigator = new MenuNavigator(
@@ -3990,6 +4080,14 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _menuTimingValidation = null;
             _menuReturnValidation = null;
             _menuAuthoringError = null;
+            if (preserveValidationProgress)
+            {
+                PruneMenuValidationProgress(definition);
+            }
+            else
+            {
+                _menuValidationPasses.Clear();
+            }
         }
 
         if (previousTracker is not null)

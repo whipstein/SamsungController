@@ -254,6 +254,7 @@ public sealed record MenuAuthoringCandidateSummary(
     string TargetNodeId,
     string? SourcePath,
     string TargetPath,
+    int ValidationPasses,
     int CommandCount,
     IReadOnlyList<MenuAuthoringReplayStepSummary> ReplaySteps,
     int ReturnCommandCount,

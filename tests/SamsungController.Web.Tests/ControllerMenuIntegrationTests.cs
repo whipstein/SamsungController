@@ -399,6 +399,107 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task DraftValidationPassesAreRetainedWhenAlternatingCommands()
+    {
+        var menuYaml = ExplicitValidationMenuYaml
+            .Replace(
+                """
+                  - id: picture
+                    label: Picture
+                    parent: settings
+                """,
+                """
+                  - id: picture
+                    label: Picture
+                    parent: settings
+                  - id: sound
+                    label: Sound
+                    parent: settings
+                """,
+                StringComparison.Ordinal)
+            .Replace(
+                """
+                  - id: open-picture-draft
+                    from: settings
+                    to: picture
+                    verified: false
+                    steps:
+                      - key: KEY_DOWN
+                      - key: KEY_ENTER
+                """,
+                """
+                  - id: open-picture-draft
+                    from: settings
+                    to: picture
+                    verified: false
+                    steps:
+                      - key: KEY_DOWN
+                      - key: KEY_ENTER
+                  - id: open-sound-draft
+                    from: settings
+                    to: sound
+                    verified: false
+                    steps:
+                      - key: KEY_DOWN
+                        repeat: 2
+                      - key: KEY_ENTER
+                """,
+                StringComparison.Ordinal);
+        var (controller, _) = await CreateConnectedControllerAsync(menuYaml);
+        await using (controller)
+        {
+            await controller.RunMenuAuthoringValidationAsync(
+                MenuAuthoringItemKind.Transition,
+                "open-picture-draft");
+            await controller.ConfirmMenuAuthoringValidationAsync(passed: true);
+
+            await controller.RunMenuAuthoringValidationAsync(
+                MenuAuthoringItemKind.Transition,
+                "open-sound-draft");
+            await controller.ConfirmMenuAuthoringValidationAsync(passed: true);
+
+            await controller.RunMenuAuthoringValidationAsync(
+                MenuAuthoringItemKind.Transition,
+                "open-picture-draft");
+            Assert.Equal(1, controller.GetMenuAuthoringSnapshot().ValidationPasses);
+            await controller.ConfirmMenuAuthoringValidationAsync(passed: true);
+
+            var candidates = controller.GetMenuAuthoringSnapshot().DraftCandidates
+                .ToDictionary(candidate => candidate.Id, StringComparer.OrdinalIgnoreCase);
+            Assert.Equal(2, candidates["open-picture-draft"].ValidationPasses);
+            Assert.Equal(1, candidates["open-sound-draft"].ValidationPasses);
+        }
+    }
+
+    [Fact]
+    public async Task ThirdDraftApprovalAutomaticallyRunsReturnToVideo()
+    {
+        var (controller, transport) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            for (var pass = 1; pass <= 3; pass++)
+            {
+                await controller.RunMenuAuthoringValidationAsync(
+                    MenuAuthoringItemKind.Transition,
+                    "open-picture-draft");
+                transport.SentMessages.Clear();
+
+                await controller.ConfirmMenuAuthoringValidationAsync(passed: true);
+
+                if (pass < 3)
+                {
+                    Assert.Empty(GetSentKeys(transport));
+                }
+            }
+
+            Assert.Equal(["KEY_EXIT", "KEY_EXIT"], GetSentKeys(transport));
+            var snapshot = controller.GetSnapshot();
+            Assert.Equal("Normal video", snapshot.MenuLabel);
+            Assert.Equal(MenuStateConfidence.Synchronized, snapshot.MenuConfidence);
+        }
+    }
+
+    [Fact]
     public async Task TraversalAndRecordedReturnSharePreparationAndThreePassValidation()
     {
         var (controller, transport) = await CreateConnectedControllerAsync();
@@ -453,12 +554,27 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 await controller.ConfirmMenuAuthoringValidationAsync(passed: true);
 
                 var confirmed = controller.GetSnapshot();
-                Assert.Equal("Picture", confirmed.MenuLabel);
                 Assert.Equal(MenuStateConfidence.Synchronized, confirmed.MenuConfidence);
+                if (pass < 3)
+                {
+                    Assert.Equal("Picture", confirmed.MenuLabel);
+                    Assert.Equal(
+                        pass,
+                        controller.GetMenuAuthoringSnapshot().DraftCandidates
+                            .Single(candidate => candidate.Id == "open-picture-draft")
+                            .ValidationPasses);
 
-                transport.SentMessages.Clear();
-                await controller.RunMenuAnchorAsync("normal");
-                Assert.Equal(["KEY_HOME"], GetSentKeys(transport));
+                    transport.SentMessages.Clear();
+                    await controller.RunMenuAnchorAsync("normal");
+                    Assert.Equal(["KEY_HOME"], GetSentKeys(transport));
+                }
+                else
+                {
+                    Assert.Equal("Normal video", confirmed.MenuLabel);
+                    Assert.Equal(
+                        ["KEY_DOWN", "KEY_ENTER", "KEY_HOME"],
+                        GetSentKeys(transport));
+                }
             }
 
             var verified = await new MenuDefinitionParser().ParseFileAsync(
