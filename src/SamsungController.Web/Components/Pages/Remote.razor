@@ -65,7 +65,7 @@
                     }
                 </select>
             </label>
-            <button class="primary-action" @onclick="SendCustomKeyAsync" disabled="@ControlsDisabled || string.IsNullOrWhiteSpace(CustomKey)">Send key <span>→</span></button>
+            <button class="primary-action" @onclick="SendCustomKeyAsync" disabled="@(ControlsDisabled || string.IsNullOrWhiteSpace(CustomKey))">Send key <span>→</span></button>
         </div>
 
         <div class="panel command-status-panel">

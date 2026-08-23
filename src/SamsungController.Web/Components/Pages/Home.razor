@@ -50,7 +50,7 @@ else if (Snapshot.ConnectionState == SamsungConnectionState.Pairing)
         }
         else
         {
-            <button class="primary-action" type="button" @onclick="ConnectAsync" disabled="@IsBusy || string.IsNullOrWhiteSpace(Host)">
+            <button class="primary-action" type="button" @onclick="ConnectAsync" disabled="@(IsBusy || string.IsNullOrWhiteSpace(Host))">
                 @(IsBusy ? "Opening channel…" : "Connect to display") <span>→</span>
             </button>
         }
