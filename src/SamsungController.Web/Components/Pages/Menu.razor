@@ -2,17 +2,20 @@
 @implements IDisposable
 @inject SamsungControllerService Controller
 
-<PageTitle>Menu Navigator · SamsungController</PageTitle>
+<PageTitle>Verified Menus · SamsungController</PageTitle>
 
 <section class="page-heading compact-heading menu-heading">
     <div>
-        <span class="eyebrow">MENU NAVIGATOR</span>
-        <h1>Know the route. Admit the uncertainty.</h1>
-        <p>Synchronize from a verified anchor, preview a data-driven path, and execute only transitions already observed on this TV.</p>
+        <span class="eyebrow">VERIFIED MENUS</span>
+        <h1>Your proven menu map.</h1>
+        <p>Select a verified destination, calculate its route, and send only commands that have passed visual verification on this TV.</p>
     </div>
-    <div class="confidence-orb @ConfidenceClass">
-        <strong>@Navigation.State.Confidence</strong>
-        <span>prediction confidence</span>
+    <div class="menu-heading-aside">
+        <div class="confidence-orb @ConfidenceClass">
+            <strong>@Navigation.State.Confidence</strong>
+            <span>prediction confidence</span>
+        </div>
+        <a class="secondary-action menu-authoring-link" href="menu/build">Build &amp; verify <span>→</span></a>
     </div>
 </section>
 
@@ -21,105 +24,81 @@
     <div class="notice danger" role="alert"><strong>Navigator needs attention</strong><span>@ErrorMessage</span></div>
 }
 
-<section class="menu-status-strip">
-    <div>
-        <span>PREDICTED LOCATION</span>
-        <strong>@(Navigation.State.Path ?? "Unknown — run an anchor")</strong>
-    </div>
-    <div>
-        <span>WHY</span>
-        <strong>@Navigation.State.Reason</strong>
-    </div>
-    <div>
-        <span>UPDATED</span>
-        <strong>@Navigation.State.UpdatedAt.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture)</strong>
-    </div>
+<section class="menu-current-state @ConfidenceClass" title="@CurrentStateTitle">
+    <span>CURRENT MENU</span>
+    <strong>@CurrentMenuLabel</strong>
 </section>
-
-<MenuAuthoringStudio />
 
 <section class="navigator-layout">
     <div class="panel menu-tree-panel">
-        <div class="panel-label"><span>S95F MENU MAP</span><span>@Navigation.Nodes.Count NODES</span></div>
-        <div class="definition-profile">
-            <div><span>Definition</span><strong>@(Navigation.DefinitionName ?? "Not loaded")</strong></div>
-            <div><span>Model</span><strong>@(Navigation.Model ?? "—")</strong></div>
-            <div><span>Firmware</span><strong>@(Navigation.Context?.Firmware ?? "—")</strong></div>
-            <div><span>Context</span><strong>@ContextLabel</strong></div>
-        </div>
+        <div class="panel-label"><span>VERIFIED MENU MAP</span><span>@VerifiedNodes.Count DESTINATIONS</span></div>
 
-        <div class="menu-tree" role="tree" aria-label="Modeled Samsung menu">
-            @foreach (var node in Navigation.Nodes)
-            {
-                <button class="menu-node @(SelectedTarget == node.Id ? "selected" : "") @(Navigation.State.NodeId == node.Id ? "current" : "")"
-                        style="@($"padding-left: {14 + node.Depth * 18}px")"
-                        role="treeitem"
-                        @onclick="() => SelectTarget(node.Id)"
-                        disabled="@Navigation.IsRunning">
-                    <span class="tree-branch" aria-hidden="true"></span>
-                    <span>
-                        <strong>@node.Label</strong>
-                        <small>@(node.Description ?? node.Path)</small>
-                    </span>
-                    @if (Navigation.State.NodeId == node.Id)
-                    {
-                        <b class="node-badge current">Current</b>
-                    }
-                    else if (node.HasVerifiedRoute)
-                    {
-                        <b class="node-badge verified">Observed</b>
-                    }
-                    else if (node.HasDraftRoute)
-                    {
-                        <b class="node-badge draft">Draft</b>
-                    }
-                    else
-                    {
-                        <b class="node-badge unmapped">Unmapped</b>
-                    }
-                </button>
-            }
-        </div>
-
-        <div class="definition-editor">
-            <label>
-                <span>Menu definition YAML</span>
-                <input @bind="DefinitionPath" disabled="@Navigation.IsRunning" />
-            </label>
-            <button class="secondary-action" @onclick="LoadDefinitionAsync" disabled="@(Navigation.IsRunning || IsLoading)">@(IsLoading ? "Validating…" : "Load & validate")</button>
-        </div>
+        @if (VerifiedNodes.Count == 0)
+        {
+            <div class="panel-empty verified-menu-empty">
+                <strong>No verified destinations yet</strong>
+                <span>Use Build &amp; Verify to record and complete three visual passes for a route.</span>
+                <a href="menu/build">Open Build &amp; Verify →</a>
+            </div>
+        }
+        else
+        {
+            <div class="menu-tree" role="tree" aria-label="Verified Samsung menu destinations">
+                @foreach (var node in VerifiedNodes)
+                {
+                    <button class="menu-node @(SelectedTarget == node.Id ? "selected" : "") @(Navigation.State.NodeId == node.Id ? "current" : "")"
+                            style="@($"padding-left: {14 + node.Depth * 18}px")"
+                            role="treeitem"
+                            @onclick="() => SelectTarget(node.Id)"
+                            disabled="@Navigation.IsRunning">
+                        <span class="tree-branch" aria-hidden="true"></span>
+                        <span>
+                            <strong>@node.Label</strong>
+                            <small>@(node.Description ?? node.Path)</small>
+                        </span>
+                        <b class="node-badge @(Navigation.State.NodeId == node.Id ? "current" : "verified")">
+                            @(Navigation.State.NodeId == node.Id ? "Current" : "Verified")
+                        </b>
+                    </button>
+                }
+            </div>
+        }
     </div>
 
     <aside class="navigator-side-stack">
         <div class="panel anchor-panel">
-            <div class="panel-label"><span>RESYNCHRONIZE</span><span>ANCHORS</span></div>
-            <p>Anchors deliberately return the TV to a known state before planning.</p>
-            @foreach (var anchor in Navigation.Anchors)
+            <div class="panel-label"><span>RESYNCHRONIZE</span><span>VERIFIED ANCHORS</span></div>
+            <p>Return to a known state before navigating when the current menu is uncertain.</p>
+            @if (VerifiedAnchors.Count == 0)
             {
-                <button class="anchor-card" @onclick="() => RunAnchorAsync(anchor.Id)" disabled="@(!CanAutomate || !anchor.Verified)">
+                <div class="plan-empty">No verified anchors are available.</div>
+            }
+            @foreach (var anchor in VerifiedAnchors)
+            {
+                <button class="anchor-card" @onclick="() => RunAnchorAsync(anchor.Id)" disabled="@(!CanAutomate)">
                     <span><strong>@anchor.Label</strong><small>@anchor.CommandCount commands · @anchor.TargetPath</small></span>
-                    <b>@(anchor.Verified ? "Run" : "Draft")</b>
+                    <b>Run</b>
                 </button>
             }
         </div>
 
         <div class="panel plan-panel">
-            <div class="panel-label"><span>PLAN PREVIEW</span><span>@(Navigation.Plan is null ? "EMPTY" : "READY")</span></div>
+            <div class="panel-label"><span>VERIFIED ROUTE</span><span>@(SelectedPlan is null ? "EMPTY" : "READY")</span></div>
             <span class="selected-label">TARGET</span>
             <strong class="selected-macro">@SelectedTargetPath</strong>
             <button class="secondary-action plan-action" @onclick="CreatePlan" disabled="@(Navigation.IsRunning || Navigation.State.NodeId is null || SelectedTarget is null)">Calculate route</button>
 
-            @if (Navigation.Plan is { } plan)
+            @if (SelectedPlan is { } plan)
             {
-                <div class="plan-summary @(plan.UsesDraftTransitions ? "draft" : "verified")">
-                    <strong>@(plan.UsesDraftTransitions ? "Draft route" : "Verified route")</strong>
+                <div class="plan-summary verified">
+                    <strong>Verified route</strong>
                     <span>@plan.CommandCount commands · @plan.EstimatedDelay.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture)s delay</span>
                 </div>
                 <div class="transition-list">
                     @foreach (var transition in plan.Transitions)
                     {
                         <div class="transition-card">
-                            <header><span>@transition.FromNodeId → @transition.ToNodeId</span><b>@(transition.Verified ? "Observed" : "Draft")</b></header>
+                            <header><span>@transition.FromNodeId → @transition.ToNodeId</span><b>Verified</b></header>
                             @foreach (var operation in transition.Operations)
                             {
                                 <code>@operation.Key × @operation.Repeat @operation.Action</code>
@@ -135,14 +114,10 @@
                 {
                     <button class="primary-action" @onclick="ExecutePlanAsync" disabled="@(!CanExecutePlan)">Execute verified route <span>▶</span></button>
                 }
-                @if (plan.UsesDraftTransitions)
-                {
-                    <p class="field-note warning-note">Execution is blocked until every transition is marked verified in the YAML definition.</p>
-                }
             }
             else
             {
-                <div class="plan-empty">Select a destination and calculate a route. Nothing is sent during planning.</div>
+                <div class="plan-empty">Select a verified destination and calculate its route. Nothing is sent during planning.</div>
             }
         </div>
 
@@ -164,21 +139,31 @@
 @code {
     private ControllerSnapshot Snapshot { get; set; } = null!;
     private MenuNavigationSnapshot Navigation { get; set; } = null!;
-    private string DefinitionPath { get; set; } = string.Empty;
     private string? SelectedTarget { get; set; }
-    private string? LastObservedDefinitionPath { get; set; }
     private string? LocalError { get; set; }
-    private bool IsLoading { get; set; }
 
     private string? ErrorMessage => LocalError ?? Navigation.Error;
+    private IReadOnlyList<MenuNodeSummary> VerifiedNodes => Navigation.Nodes
+        .Where(node => node.HasVerifiedRoute)
+        .ToArray();
+    private IReadOnlyList<MenuAnchorSummary> VerifiedAnchors => Navigation.Anchors
+        .Where(anchor => anchor.Verified)
+        .ToArray();
+    private NavigationPlan? SelectedPlan => Navigation.Plan?.TargetNodeId.Equals(
+        SelectedTarget,
+        StringComparison.OrdinalIgnoreCase) == true
+            ? Navigation.Plan
+            : null;
     private bool CanAutomate => Snapshot.ConnectionState == SamsungConnectionState.Connected &&
         !Snapshot.MacroRunning && !Navigation.IsRunning;
-    private bool CanExecutePlan => CanAutomate && Navigation.Plan?.IsExecutable == true;
+    private bool CanExecutePlan => CanAutomate && SelectedPlan?.IsExecutable == true;
     private string SelectedTargetPath => Navigation.Nodes.FirstOrDefault(node => node.Id == SelectedTarget)?.Path ?? "—";
+    private string CurrentMenuLabel => Navigation.Nodes.FirstOrDefault(node =>
+        node.Id.Equals(Navigation.State.NodeId, StringComparison.OrdinalIgnoreCase))?.Label ?? "Unknown";
+    private string CurrentStateTitle => Navigation.State.Path is null
+        ? "Expected menu state is unknown. Run a verified anchor to synchronize it."
+        : $"Expected menu path: {Navigation.State.Path}. {Navigation.State.Reason}";
     private string ConfidenceClass => Navigation.State.Confidence.ToString().ToLowerInvariant();
-    private string ContextLabel => Navigation.Context is null
-        ? "—"
-        : $"{Navigation.Context.Signal} · {Navigation.Context.PictureMode} · {Navigation.Context.Input}";
 
     protected override async Task OnInitializedAsync()
     {
@@ -187,15 +172,25 @@
         Controller.Changed += HandleControllerChanged;
         await Controller.InitializeAsync();
         Refresh();
-        DefinitionPath = Navigation.DefinitionPath;
-        SelectedTarget = Navigation.Nodes.FirstOrDefault(node => node.Id == "settings-overlay")?.Id
-            ?? Navigation.Nodes.FirstOrDefault()?.Id;
+        SelectDefaultTarget();
     }
 
     private void SelectTarget(string nodeId)
     {
         SelectedTarget = nodeId;
         LocalError = null;
+    }
+
+    private void SelectDefaultTarget()
+    {
+        if (SelectedTarget is not null
+            && VerifiedNodes.Any(node => node.Id.Equals(SelectedTarget, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        SelectedTarget = VerifiedNodes.FirstOrDefault(node => node.Id == "settings-overlay")?.Id
+            ?? VerifiedNodes.FirstOrDefault()?.Id;
     }
 
     private void CreatePlan()
@@ -250,45 +245,17 @@
         }
     }
 
-    private async Task LoadDefinitionAsync()
-    {
-        IsLoading = true;
-        LocalError = null;
-        try
-        {
-            await Controller.SetMenuDefinitionAsync(DefinitionPath);
-            Refresh();
-            DefinitionPath = Navigation.DefinitionPath;
-            SelectedTarget = Navigation.Nodes.FirstOrDefault()?.Id;
-        }
-        catch (Exception exception)
-        {
-            LocalError = exception.Message;
-        }
-        finally
-        {
-            IsLoading = false;
-        }
-    }
-
     private void HandleControllerChanged()
     {
         Refresh();
+        SelectDefaultTarget();
         _ = InvokeAsync(StateHasChanged);
     }
 
     private void Refresh()
     {
         Snapshot = Controller.GetSnapshot();
-        var navigation = Controller.GetMenuNavigationSnapshot();
-        if (string.IsNullOrWhiteSpace(DefinitionPath)
-            || DefinitionPath.Equals(LastObservedDefinitionPath, StringComparison.Ordinal))
-        {
-            DefinitionPath = navigation.DefinitionPath;
-        }
-
-        LastObservedDefinitionPath = navigation.DefinitionPath;
-        Navigation = navigation;
+        Navigation = Controller.GetMenuNavigationSnapshot();
     }
 
     public void Dispose()

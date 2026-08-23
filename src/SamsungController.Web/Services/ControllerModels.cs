@@ -30,6 +30,7 @@ public sealed record ControllerSnapshot(
     string? LastMacroStatus,
     bool NavigationRunning,
     string? MenuPath,
+    string? MenuLabel,
     MenuStateConfidence MenuConfidence);
 
 public enum QuickAccessActionKind

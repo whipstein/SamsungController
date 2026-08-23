@@ -16,8 +16,9 @@
             <NavLink href="" Match="NavLinkMatch.All"><span class="nav-glyph">01</span>Connection</NavLink>
             <NavLink href="remote"><span class="nav-glyph">02</span>Remote</NavLink>
             <NavLink href="macros"><span class="nav-glyph">03</span>Macros</NavLink>
-            <NavLink href="menu"><span class="nav-glyph">04</span>Menu</NavLink>
-            <NavLink href="protocol"><span class="nav-glyph">05</span>Protocol</NavLink>
+            <NavLink href="menu" Match="NavLinkMatch.All"><span class="nav-glyph">04</span>Menu</NavLink>
+            <NavLink href="menu/build"><span class="nav-glyph">05</span>Build &amp; Verify</NavLink>
+            <NavLink href="protocol"><span class="nav-glyph">06</span>Protocol</NavLink>
         </nav>
 
         <div class="sidebar-foot">
@@ -57,10 +58,11 @@
                     </div>
                 </div>
 
-                <div class="persistent-menu-state @MenuConfidenceClass" title="This is the application's predicted TV menu position, not a value reported by the TV.">
-                    <span>EXPECTED TV MENU</span>
-                    <strong>@(Snapshot.MenuPath ?? "Unknown — run an anchor")</strong>
-                    <small>@Snapshot.MenuConfidence confidence</small>
+                <div class="persistent-menu-state @MenuConfidenceClass"
+                     title="@MenuStateTitle"
+                     aria-label="@MenuStateTitle">
+                    <span>CURRENT MENU</span>
+                    <strong>@(Snapshot.MenuLabel ?? "Unknown")</strong>
                 </div>
             </div>
 
@@ -175,6 +177,9 @@
             ? !string.IsNullOrWhiteSpace(QuickKey)
             : !string.IsNullOrWhiteSpace(QuickMacro));
     private string MenuConfidenceClass => Snapshot.MenuConfidence.ToString().ToLowerInvariant();
+    private string MenuStateTitle => Snapshot.MenuPath is null
+        ? "Expected menu state is unknown. Run a verified anchor to synchronize it."
+        : $"Expected menu path: {Snapshot.MenuPath}. Confidence: {Snapshot.MenuConfidence}. This is predicted, not reported by the TV.";
 
     private string StateClass => Snapshot.ConnectionState switch
     {

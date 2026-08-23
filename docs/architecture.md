@@ -55,8 +55,9 @@ against the Samsung S95F.
 `MenuDefinition` is a validated directed graph loaded from YAML. Nodes organize
 modeled menu locations; explicit transitions contain the only key sequences the
 planner may use. Anchors establish deterministic starting nodes. Draft
-transitions participate in preview plans with a strong cost penalty but are
-rejected by the executor. Only `verified: true` routes can reach the TV.
+transitions are confined to the Build & Verify workflow. The everyday Menu page
+lists and plans only `verified: true` destinations, anchors, and transitions.
+Only verified routes can reach the TV from that page.
 
 `MenuStateTracker` records a predicted node, reason, timestamp, and confidence
 of Unknown, Low, Probable, or Synchronized. It updates after verified navigation
@@ -81,12 +82,13 @@ The on-disk capture remains complete for research and therefore must be kept
 private. Raw JSON sending is gated behind a developer-mode control in the UI.
 
 The shared layout displays connection status, saved quick-access actions, and
-the predicted menu path on every page. Quick-access metadata is normalized and
-persisted in `settings.json`; execution still flows through the same controller
-methods as the Remote, Macros, and Menu views, so connection, automation, and
-menu-recording guards remain centralized. A missing quick-access setting gets a
-default `normal-video` anchor action. An explicitly saved empty list remains
-empty, allowing the default to be removed intentionally.
+the predicted menu's leaf label in large type on every page; the full path and
+confidence remain available as hover/accessibility context. Quick-access
+metadata is normalized and persisted in `settings.json`; execution still flows
+through the same controller methods as the Remote, Macros, and Menu views, so
+connection, automation, and menu-recording guards remain centralized. A missing
+quick-access setting gets a default `normal-video` anchor action. An explicitly
+saved empty list remains empty, allowing the default to be removed intentionally.
 
 ## WebSocket handshake
 

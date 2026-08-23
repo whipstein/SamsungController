@@ -14,9 +14,10 @@ A menu definition contains three separate concepts:
   node from an uncertain state.
 
 Every transition and anchor is either `verified: true` or draft. Draft routes
-can be displayed and planned for research, but the executor refuses to send
-them. Mark an item verified only after recording the exact TV context and
-repeatable observed result in [research-notes.md](research-notes.md).
+exist only in **Build & Verify**, where they can be replayed for visual testing;
+the everyday **Menu** page displays and plans verified items only. Mark an item
+verified only after recording the exact TV context and repeatable observed
+result in [research-notes.md](research-notes.md).
 
 ## Confidence
 
@@ -34,9 +35,10 @@ marks state unknown. Volume and other keys that do not normally affect menu
 position preserve the prediction. Manual keys and macro steps pass through the
 same tracker as the Menu Navigator.
 
-The web header exposes this predicted path and confidence on every page. It is
-a statement of where SamsungController expects the TV menu to be, not visual or
-protocol feedback from the TV. The default **Return to video** quick-access
+The web header exposes the predicted node's short label in large type on every
+page. The full path and confidence remain available as hover/accessibility
+context. This is where SamsungController expects the TV menu to be, not visual
+or protocol feedback from the TV. The default **Return to video** quick-access
 button runs the verified `normal-video` anchor and, on success, restores a
 Synchronized prediction.
 
@@ -135,8 +137,8 @@ can be planned or sent.
 ## Observation workflow
 
 1. Record the TV firmware, input, SDR/HDR state, and picture mode.
-2. Connect in the web interface and open **Menu**.
-3. Open **Menu Authoring Studio**. Create a new TV interface there if no
+2. Connect in the web interface and open **Build & Verify**.
+3. Create a new TV interface there if no
    definition exists; the generated YAML is stored in the per-user configuration
    directory and loaded automatically.
 4. Choose **Anchor** or **Transition**, select existing nodes or describe a new

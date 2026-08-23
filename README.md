@@ -60,13 +60,13 @@ to the loopback interface by default, so another computer on the network cannot
 open it. Keep that boundary in place: the interface can send arbitrary TV keys
 and, after a separate developer-mode opt-in, raw JSON.
 
-The five views share one live TV session:
+The six views share one live TV session:
 
 The header remains visible on every view. It provides saved quick-access buttons
-and the application's expected position in the TV menu tree. **Return to video**
-is pinned by default. Use **+ Add** in the header to pin any Samsung key or
-validated macro, or use the corresponding quick-access control on the Remote
-and Macros pages. Additions, labels, and removals persist in `settings.json`.
+and a large, leaf-only label for the application's expected current menu.
+**Return to video** is pinned by default. Use **+ Add** in the header to pin any
+Samsung key or validated macro, or use the corresponding quick-access control
+on the Remote and Macros pages. Additions, labels, and removals persist in `settings.json`.
 The displayed menu position is a prediction with an explicit confidence level;
 Samsung's remote-control channel does not report the actual on-screen cursor.
 
@@ -76,10 +76,11 @@ Samsung's remote-control channel does not report the actual on-screen cursor.
   Click/Press/Release commands.
 - **Macros** loads and validates a YAML catalog, remembers its path, streams
   operation progress, and supports cancellation.
-- **Menu** loads the draft S95F definition, exposes separate Settings-root and
-  deeper-menu return scripts, calibrates system-wide and per-button replay waits
-  through separate three-pass visual tests, runs verified resynchronization
-  anchors, previews routes, tracks confidence, and refuses to execute draft transitions.
+- **Menu** presents only destinations, anchors, and routes that already passed
+  verification. The verified map is the first working surface on the page.
+- **Build & Verify** owns new-interface setup, live traversal recording, separate
+  Settings-root and deeper-menu return scripts, system-wide and per-button wait
+  calibration, draft management, and the required three-pass visual tests.
 - **Protocol** keeps the latest 500 RX/TX messages searchable in memory, offers
   copy/export and one-click read-only application research queries, captures
   labeled `/api/v2/` snapshots for app/power-state comparison, and writes the

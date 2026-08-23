@@ -182,6 +182,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 _settings.MacroFilePath
                 ?? Path.Combine(_configurationDirectory, "macros.yaml"));
             var menuState = _menuStateTracker?.Current;
+            var menuLabel = menuState?.NodeId is { } menuNodeId
+                && _menuDefinition?.Nodes.TryGetValue(menuNodeId, out var menuNode) == true
+                    ? menuNode.Label
+                    : null;
             return new ControllerSnapshot(
                 _settings.Name,
                 _settings.Host,
@@ -200,6 +204,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 _lastMacroStatus,
                 Volatile.Read(ref _navigationRunning) == 1,
                 menuState?.Path,
+                menuLabel,
                 menuState?.Confidence ?? MenuStateConfidence.Unknown);
         }
     }
@@ -1569,14 +1574,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
         try
         {
-            var plan = navigator.Plan(targetNodeId, includeDraftTransitions: true);
+            var plan = navigator.Plan(targetNodeId, includeDraftTransitions: false);
             lock (_sync)
             {
                 _navigationPlan = plan;
                 _navigationError = null;
-                _navigationStatus = plan.UsesDraftTransitions
-                    ? "Draft route previewed · execution blocked"
-                    : $"Plan ready · {plan.CommandCount} commands";
+                _navigationStatus = $"Verified plan ready · {plan.CommandCount} commands";
                 _navigationProgress = null;
             }
 

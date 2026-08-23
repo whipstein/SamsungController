@@ -287,6 +287,46 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task ControllerSnapshotExposesTheCurrentMenuLabelWithoutItsFullPath()
+    {
+        var allVerifiedYaml = ExplicitValidationMenuYaml.Replace(
+            "verified: false",
+            "verified: true",
+            StringComparison.Ordinal);
+        var (controller, _) = await CreateConnectedControllerAsync(allVerifiedYaml);
+        await using (controller)
+        {
+            await controller.RunMenuAnchorAsync("normal");
+            controller.CreateNavigationPlan("picture");
+            await controller.ExecuteNavigationPlanAsync();
+
+            var snapshot = controller.GetSnapshot();
+            Assert.Equal("Picture", snapshot.MenuLabel);
+            Assert.Equal("Settings / Picture", snapshot.MenuPath);
+            Assert.Equal(MenuStateConfidence.Probable, snapshot.MenuConfidence);
+        }
+    }
+
+    [Fact]
+    public async Task MenuNavigationPlansUseVerifiedTransitionsOnly()
+    {
+        var (controller, _) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            await controller.RunMenuAnchorAsync("normal");
+
+            var verifiedPlan = controller.CreateNavigationPlan("settings");
+            Assert.True(verifiedPlan.IsExecutable);
+            Assert.False(verifiedPlan.UsesDraftTransitions);
+            Assert.Single(verifiedPlan.Transitions);
+
+            var exception = Assert.Throws<NavigationPlanningException>(() =>
+                controller.CreateNavigationPlan("picture"));
+            Assert.Contains("verified navigation route", exception.Message, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public async Task LostTvConnectionAutomaticallyDisconnectsTheWebSession()
     {
         var (controller, transport) = await CreateConnectedControllerAsync();
@@ -428,11 +468,13 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     private async Task<(SamsungControllerService Controller, RecordingSamsungTransport Transport)>
-        CreateConnectedControllerAsync()
+        CreateConnectedControllerAsync(string? definitionYaml = null)
     {
         Directory.CreateDirectory(_directory);
         var definitionPath = Path.Combine(_directory, "explicit-validation-menu.yaml");
-        await File.WriteAllTextAsync(definitionPath, ExplicitValidationMenuYaml);
+        await File.WriteAllTextAsync(
+            definitionPath,
+            definitionYaml ?? ExplicitValidationMenuYaml);
         await WriteSettingsAsync(definitionPath);
         var transport = new RecordingSamsungTransport();
         var controller = CreateController(transport);

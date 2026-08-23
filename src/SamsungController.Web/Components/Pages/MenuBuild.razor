@@ -1,0 +1,102 @@
+@page "/menu/build"
+@implements IDisposable
+@inject SamsungControllerService Controller
+
+<PageTitle>Build &amp; Verify Menus · SamsungController</PageTitle>
+
+<section class="page-heading compact-heading menu-build-heading">
+    <div>
+        <span class="eyebrow">BUILD &amp; VERIFY</span>
+        <h1>Build the map. Prove every route.</h1>
+        <p>Create controls, record live traversals, tune timing, and complete three visual passes before a destination appears in the verified Menu page.</p>
+    </div>
+    <a class="secondary-action menu-authoring-link" href="menu">View verified menus <span>→</span></a>
+</section>
+
+@if (!string.IsNullOrWhiteSpace(ErrorMessage))
+{
+    <div class="notice danger" role="alert"><strong>Menu definition needs attention</strong><span>@ErrorMessage</span></div>
+}
+
+<section class="panel definition-workspace">
+    <div class="panel-label"><span>MENU DEFINITION</span><span>AUTHORING SOURCE</span></div>
+    <div class="definition-profile">
+        <div><span>Definition</span><strong>@(Navigation.DefinitionName ?? "Not loaded")</strong></div>
+        <div><span>Model</span><strong>@(Navigation.Model ?? "—")</strong></div>
+        <div><span>Firmware</span><strong>@(Navigation.Context?.Firmware ?? "—")</strong></div>
+        <div><span>Context</span><strong>@ContextLabel</strong></div>
+    </div>
+    <div class="definition-editor">
+        <label>
+            <span>Menu definition YAML</span>
+            <input @bind="DefinitionPath" disabled="@Navigation.IsRunning" />
+        </label>
+        <button class="secondary-action" @onclick="LoadDefinitionAsync" disabled="@(Navigation.IsRunning || IsLoading)">@(IsLoading ? "Validating…" : "Load & validate")</button>
+    </div>
+</section>
+
+<MenuAuthoringStudio />
+
+@code {
+    private MenuNavigationSnapshot Navigation { get; set; } = null!;
+    private string DefinitionPath { get; set; } = string.Empty;
+    private string? LastObservedDefinitionPath { get; set; }
+    private string? LocalError { get; set; }
+    private bool IsLoading { get; set; }
+
+    private string? ErrorMessage => LocalError ?? Navigation.Error;
+    private string ContextLabel => Navigation.Context is null
+        ? "—"
+        : $"{Navigation.Context.Signal} · {Navigation.Context.PictureMode} · {Navigation.Context.Input}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Navigation = Controller.GetMenuNavigationSnapshot();
+        Controller.Changed += HandleControllerChanged;
+        await Controller.InitializeAsync();
+        Refresh();
+    }
+
+    private async Task LoadDefinitionAsync()
+    {
+        IsLoading = true;
+        LocalError = null;
+        try
+        {
+            await Controller.SetMenuDefinitionAsync(DefinitionPath);
+            Refresh();
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private void HandleControllerChanged()
+    {
+        Refresh();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void Refresh()
+    {
+        var navigation = Controller.GetMenuNavigationSnapshot();
+        if (string.IsNullOrWhiteSpace(DefinitionPath)
+            || DefinitionPath.Equals(LastObservedDefinitionPath, StringComparison.Ordinal))
+        {
+            DefinitionPath = navigation.DefinitionPath;
+        }
+
+        LastObservedDefinitionPath = navigation.DefinitionPath;
+        Navigation = navigation;
+    }
+
+    public void Dispose()
+    {
+        Controller.Changed -= HandleControllerChanged;
+    }
+}
