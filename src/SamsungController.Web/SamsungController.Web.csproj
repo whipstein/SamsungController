@@ -7,4 +7,10 @@
     <ProjectReference Include="../SamsungController.Automation/SamsungController.Automation.csproj" />
     <ProjectReference Include="../SamsungController.Core/SamsungController.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="../../samples/menus/s95f-draft.yaml"
+             Link="menu-definitions/s95f-draft.yaml"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

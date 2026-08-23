@@ -19,12 +19,13 @@ validated; see the [verification checklist](docs/architecture.md#s95f-verificati
 - Unknown/malformed message preservation
 - Connection state and bounded automatic reconnect
 - Hierarchical YAML macros with variables, repeats, delays, cancellation, and execution progress
-- Localhost-only Blazor control surface for connection, remote keys, macros, and protocol inspection
+- Localhost-only Blazor control surface for connection, remote keys, macros, menu navigation, and protocol inspection
+- Data-driven menu definitions, verified-route planning, deterministic anchors, and explicit prediction confidence
 - CLI commands: `connect`, `key`, `macro`, `console`, `listen`, `status`, and `forget`
 - Cross-platform console line editing with persistent, privacy-filtered history
 - Fake-transport tests that do not require a TV
 
-Automatic discovery and menu-state prediction remain subsequent milestones.
+Automatic discovery and direct picture-setting APIs remain subsequent milestones.
 
 ## Requirements
 
@@ -57,7 +58,7 @@ to the loopback interface by default, so another computer on the network cannot
 open it. Keep that boundary in place: the interface can send arbitrary TV keys
 and, after a separate developer-mode opt-in, raw JSON.
 
-The four views share one live TV session:
+The five views share one live TV session:
 
 - **Connection** pairs or reconnects using the same saved host, token, and
   settings as the CLI.
@@ -65,6 +66,9 @@ The four views share one live TV session:
   Click/Press/Release commands.
 - **Macros** loads and validates a YAML catalog, remembers its path, streams
   operation progress, and supports cancellation.
+- **Menu** loads the draft S95F definition, runs verified resynchronization
+  anchors, previews routes, tracks confidence, and refuses to execute draft
+  transitions.
 - **Protocol** keeps the latest 500 RX/TX messages searchable in memory, offers
   copy/export, and writes the complete NDJSON capture to the session directory.
 
@@ -261,6 +265,7 @@ Samsung documents Access Notification and Device List in its
 - [Architecture, token lifecycle, and assumptions](docs/architecture.md)
 - [Protocol notes](docs/protocol.md)
 - [Macro format, execution, and safety](docs/macros.md)
+- [Menu definitions, confidence, and observation workflow](docs/menu-model.md)
 - [Initial key list](docs/samsung-keys.md)
 - [Research log template](docs/research-notes.md)
 

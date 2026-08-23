@@ -87,6 +87,7 @@
 
     private bool CanSendRaw => DeveloperMode && !IsSending &&
         Snapshot.ConnectionState == SamsungConnectionState.Connected &&
+        !Snapshot.MacroRunning && !Snapshot.NavigationRunning &&
         !string.IsNullOrWhiteSpace(RawPayload);
 
     private IReadOnlyList<SamsungMessage> FilteredMessages => Messages

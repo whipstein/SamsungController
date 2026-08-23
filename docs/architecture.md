@@ -28,8 +28,10 @@ SamsungController.Web
 - `SamsungTvClient` owns handshake interpretation, token lifecycle, remote-key
   messages, state, retry/reconnect behavior, and message publication.
 - `SamsungController.Automation` owns macro models, YAML parsing, validation,
-  plan expansion, cancellation, and progress events. It targets plain `net10.0`
-  and reaches the TV only through `IMacroCommandTarget`.
+  plan expansion, cancellation, and progress events, plus menu-definition
+  parsing, graph planning, predicted state, confidence, anchors, and navigation
+  execution. It targets plain `net10.0` and reaches the TV only through narrow
+  command-target interfaces.
 - `ISamsungTokenStore` keeps persistence outside protocol logic.
 - `ISamsungMessageSink` receives every complete TX/RX message. The initial
   `NdjsonProtocolLogger` records sessions without interpreting away unknown data.
@@ -40,9 +42,29 @@ SamsungController.Web
   500-message protocol ring buffer, and session logger. Razor components call
   that service and contain no Samsung protocol construction logic.
 
-Menu-state modeling remains deferred. The macro automation and web projects were
-introduced after pairing, token reuse, and remote keys were verified against the
-Samsung S95F.
+The macro automation, web interface, and first data-driven menu-navigation slice
+were introduced after pairing, token reuse, and remote keys were verified
+against the Samsung S95F.
+
+## Predicted menu navigation
+
+`MenuDefinition` is a validated directed graph loaded from YAML. Nodes organize
+modeled menu locations; explicit transitions contain the only key sequences the
+planner may use. Anchors establish deterministic starting nodes. Draft
+transitions participate in preview plans with a strong cost penalty but are
+rejected by the executor. Only `verified: true` routes can reach the TV.
+
+`MenuStateTracker` records a predicted node, reason, timestamp, and confidence
+of Unknown, Low, Probable, or Synchronized. It updates after verified navigation
+and observes manual/macro keys. Unmodeled navigation keys, raw requests,
+cancelled execution, and partial failures invalidate prediction rather than
+guessing. Successful transport sends are not treated as Samsung OSD
+acknowledgements, so a planned transition yields Probable rather than
+Synchronized confidence.
+
+`MenuNavigator` owns plan and anchor execution through `IMenuCommandTarget`.
+The Blazor page only requests plans and displays immutable snapshots; it does
+not construct Samsung protocol messages or calculate graph paths.
 
 ## Local web boundary
 

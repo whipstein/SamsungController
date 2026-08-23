@@ -28,6 +28,9 @@ Notes:
 - Verify token persistence and reconnect in a new process.
 - Capture the response to each `Click`, `Press`, and `Release` action.
 - Capture unsolicited events while opening and closing the settings OSD.
+- Record firmware, input, SDR/HDR, and picture mode before mapping each menu transition.
+- Verify the exact highlighted item after `KEY_MENU` opens the S95F settings surface.
+- Map one repeatable route from the settings surface to Picture, then Expert Settings.
 - Compare `/api/v2/` state while powered on, in standby, and changing apps.
 - Query/read before attempting any undocumented write.
 

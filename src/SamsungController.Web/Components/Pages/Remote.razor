@@ -86,7 +86,7 @@
     private DateTimeOffset? LastCommandAt { get; set; }
 
     private bool IsConnected => Snapshot.ConnectionState == SamsungConnectionState.Connected;
-    private bool ControlsDisabled => !IsConnected || IsBusy;
+    private bool ControlsDisabled => !IsConnected || IsBusy || Snapshot.MacroRunning || Snapshot.NavigationRunning;
     private string ConnectionClass => IsConnected ? "connected" : Snapshot.ConnectionState == SamsungConnectionState.Faulted ? "faulted" : "disconnected";
 
     protected override async Task OnInitializedAsync()

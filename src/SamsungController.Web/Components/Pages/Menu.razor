@@ -1,0 +1,287 @@
+@page "/menu"
+@implements IDisposable
+@inject SamsungControllerService Controller
+
+<PageTitle>Menu Navigator · SamsungController</PageTitle>
+
+<section class="page-heading compact-heading menu-heading">
+    <div>
+        <span class="eyebrow">MENU NAVIGATOR</span>
+        <h1>Know the route. Admit the uncertainty.</h1>
+        <p>Synchronize from a verified anchor, preview a data-driven path, and execute only transitions already observed on this TV.</p>
+    </div>
+    <div class="confidence-orb @ConfidenceClass">
+        <strong>@Navigation.State.Confidence</strong>
+        <span>prediction confidence</span>
+    </div>
+</section>
+
+@if (!string.IsNullOrWhiteSpace(ErrorMessage))
+{
+    <div class="notice danger" role="alert"><strong>Navigator needs attention</strong><span>@ErrorMessage</span></div>
+}
+
+<section class="menu-status-strip">
+    <div>
+        <span>PREDICTED LOCATION</span>
+        <strong>@(Navigation.State.Path ?? "Unknown — run an anchor")</strong>
+    </div>
+    <div>
+        <span>WHY</span>
+        <strong>@Navigation.State.Reason</strong>
+    </div>
+    <div>
+        <span>UPDATED</span>
+        <strong>@Navigation.State.UpdatedAt.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture)</strong>
+    </div>
+</section>
+
+<section class="navigator-layout">
+    <div class="panel menu-tree-panel">
+        <div class="panel-label"><span>S95F MENU MAP</span><span>@Navigation.Nodes.Count NODES</span></div>
+        <div class="definition-profile">
+            <div><span>Definition</span><strong>@(Navigation.DefinitionName ?? "Not loaded")</strong></div>
+            <div><span>Model</span><strong>@(Navigation.Model ?? "—")</strong></div>
+            <div><span>Firmware</span><strong>@(Navigation.Context?.Firmware ?? "—")</strong></div>
+            <div><span>Context</span><strong>@ContextLabel</strong></div>
+        </div>
+
+        <div class="menu-tree" role="tree" aria-label="Modeled Samsung menu">
+            @foreach (var node in Navigation.Nodes)
+            {
+                <button class="menu-node @(SelectedTarget == node.Id ? "selected" : "") @(Navigation.State.NodeId == node.Id ? "current" : "")"
+                        style="@($"padding-left: {14 + node.Depth * 18}px")"
+                        role="treeitem"
+                        @onclick="() => SelectTarget(node.Id)"
+                        disabled="@Navigation.IsRunning">
+                    <span class="tree-branch" aria-hidden="true"></span>
+                    <span>
+                        <strong>@node.Label</strong>
+                        <small>@(node.Description ?? node.Path)</small>
+                    </span>
+                    @if (Navigation.State.NodeId == node.Id)
+                    {
+                        <b class="node-badge current">Current</b>
+                    }
+                    else if (node.HasVerifiedRoute)
+                    {
+                        <b class="node-badge verified">Observed</b>
+                    }
+                    else if (node.HasDraftRoute)
+                    {
+                        <b class="node-badge draft">Draft</b>
+                    }
+                    else
+                    {
+                        <b class="node-badge unmapped">Unmapped</b>
+                    }
+                </button>
+            }
+        </div>
+
+        <div class="definition-editor">
+            <label>
+                <span>Menu definition YAML</span>
+                <input @bind="DefinitionPath" disabled="@Navigation.IsRunning" />
+            </label>
+            <button class="secondary-action" @onclick="LoadDefinitionAsync" disabled="@(Navigation.IsRunning || IsLoading)">@(IsLoading ? "Validating…" : "Load & validate")</button>
+        </div>
+    </div>
+
+    <aside class="navigator-side-stack">
+        <div class="panel anchor-panel">
+            <div class="panel-label"><span>RESYNCHRONIZE</span><span>ANCHORS</span></div>
+            <p>Anchors deliberately return the TV to a known state before planning.</p>
+            @foreach (var anchor in Navigation.Anchors)
+            {
+                <button class="anchor-card" @onclick="() => RunAnchorAsync(anchor.Id)" disabled="@(!CanAutomate || !anchor.Verified)">
+                    <span><strong>@anchor.Label</strong><small>@anchor.CommandCount commands · @anchor.TargetPath</small></span>
+                    <b>@(anchor.Verified ? "Run" : "Draft")</b>
+                </button>
+            }
+        </div>
+
+        <div class="panel plan-panel">
+            <div class="panel-label"><span>PLAN PREVIEW</span><span>@(Navigation.Plan is null ? "EMPTY" : "READY")</span></div>
+            <span class="selected-label">TARGET</span>
+            <strong class="selected-macro">@SelectedTargetPath</strong>
+            <button class="secondary-action plan-action" @onclick="CreatePlan" disabled="@(Navigation.IsRunning || Navigation.State.NodeId is null || SelectedTarget is null)">Calculate route</button>
+
+            @if (Navigation.Plan is { } plan)
+            {
+                <div class="plan-summary @(plan.UsesDraftTransitions ? "draft" : "verified")">
+                    <strong>@(plan.UsesDraftTransitions ? "Draft route" : "Verified route")</strong>
+                    <span>@plan.CommandCount commands · @plan.EstimatedDelay.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture)s delay</span>
+                </div>
+                <div class="transition-list">
+                    @foreach (var transition in plan.Transitions)
+                    {
+                        <div class="transition-card">
+                            <header><span>@transition.FromNodeId → @transition.ToNodeId</span><b>@(transition.Verified ? "Observed" : "Draft")</b></header>
+                            @foreach (var operation in transition.Operations)
+                            {
+                                <code>@operation.Key × @operation.Repeat @operation.Action</code>
+                            }
+                        </div>
+                    }
+                </div>
+                @if (Navigation.IsRunning)
+                {
+                    <button class="secondary-action danger-action plan-action" @onclick="Controller.CancelNavigation">Cancel navigation</button>
+                }
+                else
+                {
+                    <button class="primary-action" @onclick="ExecutePlanAsync" disabled="@(!CanExecutePlan)">Execute verified route <span>▶</span></button>
+                }
+                @if (plan.UsesDraftTransitions)
+                {
+                    <p class="field-note warning-note">Execution is blocked until every transition is marked verified in the YAML definition.</p>
+                }
+            }
+            else
+            {
+                <div class="plan-empty">Select a destination and calculate a route. Nothing is sent during planning.</div>
+            }
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(Navigation.Status) || Navigation.Progress is not null)
+        {
+            <div class="panel navigation-progress-panel">
+                <div class="panel-label"><span>LIVE EXECUTION</span><span>@(Navigation.IsRunning ? "RUNNING" : "IDLE")</span></div>
+                <strong>@Navigation.Status</strong>
+                @if (Navigation.Progress is { } progress)
+                {
+                    <code>@progress.CommandNumber/@progress.CommandCount · @progress.Key · @progress.Action</code>
+                    <small>@progress.SourcePath → @progress.TargetPath</small>
+                }
+            </div>
+        }
+    </aside>
+</section>
+
+@code {
+    private ControllerSnapshot Snapshot { get; set; } = null!;
+    private MenuNavigationSnapshot Navigation { get; set; } = null!;
+    private string DefinitionPath { get; set; } = string.Empty;
+    private string? SelectedTarget { get; set; }
+    private string? LocalError { get; set; }
+    private bool IsLoading { get; set; }
+
+    private string? ErrorMessage => LocalError ?? Navigation.Error;
+    private bool CanAutomate => Snapshot.ConnectionState == SamsungConnectionState.Connected &&
+        !Snapshot.MacroRunning && !Navigation.IsRunning;
+    private bool CanExecutePlan => CanAutomate && Navigation.Plan?.IsExecutable == true;
+    private string SelectedTargetPath => Navigation.Nodes.FirstOrDefault(node => node.Id == SelectedTarget)?.Path ?? "—";
+    private string ConfidenceClass => Navigation.State.Confidence.ToString().ToLowerInvariant();
+    private string ContextLabel => Navigation.Context is null
+        ? "—"
+        : $"{Navigation.Context.Signal} · {Navigation.Context.PictureMode} · {Navigation.Context.Input}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Snapshot = Controller.GetSnapshot();
+        Navigation = Controller.GetMenuNavigationSnapshot();
+        Controller.Changed += HandleControllerChanged;
+        await Controller.InitializeAsync();
+        Refresh();
+        DefinitionPath = Navigation.DefinitionPath;
+        SelectedTarget = Navigation.Nodes.FirstOrDefault(node => node.Id == "settings-overlay")?.Id
+            ?? Navigation.Nodes.FirstOrDefault()?.Id;
+    }
+
+    private void SelectTarget(string nodeId)
+    {
+        SelectedTarget = nodeId;
+        LocalError = null;
+    }
+
+    private void CreatePlan()
+    {
+        if (SelectedTarget is null)
+        {
+            return;
+        }
+
+        LocalError = null;
+        try
+        {
+            Controller.CreateNavigationPlan(SelectedTarget);
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+    }
+
+    private async Task RunAnchorAsync(string anchorId)
+    {
+        LocalError = null;
+        try
+        {
+            await Controller.RunMenuAnchorAsync(anchorId);
+        }
+        catch (OperationCanceledException)
+        {
+            // Live state already reports cancellation and invalidates prediction.
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+    }
+
+    private async Task ExecutePlanAsync()
+    {
+        LocalError = null;
+        try
+        {
+            await Controller.ExecuteNavigationPlanAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            // Live state already reports cancellation and invalidates prediction.
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+    }
+
+    private async Task LoadDefinitionAsync()
+    {
+        IsLoading = true;
+        LocalError = null;
+        try
+        {
+            await Controller.SetMenuDefinitionAsync(DefinitionPath);
+            Refresh();
+            DefinitionPath = Navigation.DefinitionPath;
+            SelectedTarget = Navigation.Nodes.FirstOrDefault()?.Id;
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private void HandleControllerChanged()
+    {
+        Refresh();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void Refresh()
+    {
+        Snapshot = Controller.GetSnapshot();
+        Navigation = Controller.GetMenuNavigationSnapshot();
+    }
+
+    public void Dispose()
+    {
+        Controller.Changed -= HandleControllerChanged;
+    }
+}

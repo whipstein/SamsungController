@@ -21,6 +21,8 @@ internal sealed record SamsungCliSettings
 
     public string? MacroFilePath { get; init; }
 
+    public string? MenuDefinitionPath { get; init; }
+
     public static async Task<SamsungCliSettings> LoadAsync(
         string path,
         CancellationToken cancellationToken)

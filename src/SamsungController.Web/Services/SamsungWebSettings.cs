@@ -21,6 +21,8 @@ internal sealed record SamsungWebSettings
 
     public string? MacroFilePath { get; init; }
 
+    public string? MenuDefinitionPath { get; init; }
+
     public static async Task<SamsungWebSettings> LoadAsync(
         string path,
         CancellationToken cancellationToken = default)

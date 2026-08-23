@@ -46,7 +46,7 @@ else if (Snapshot.ConnectionState == SamsungConnectionState.Pairing)
         </div>
         @if (CanDisconnect)
         {
-            <button class="secondary-action danger-action" type="button" @onclick="DisconnectAsync" disabled="@IsBusy">Disconnect <span>×</span></button>
+            <button class="secondary-action danger-action" type="button" @onclick="DisconnectAsync" disabled="@(IsBusy || Snapshot.MacroRunning || Snapshot.NavigationRunning)">Disconnect <span>×</span></button>
         }
         else
         {
@@ -67,6 +67,7 @@ else if (Snapshot.ConnectionState == SamsungConnectionState.Pairing)
             <div><dt>Authorization</dt><dd>@(Snapshot.HasToken ? "Token retained" : "Pair on connect")</dd></div>
             <div><dt>Generation</dt><dd>@(Snapshot.ConnectionGeneration == 0 ? "—" : Snapshot.ConnectionGeneration)</dd></div>
             <div><dt>Protocol capture</dt><dd>@(Snapshot.ConnectionState == SamsungConnectionState.Connected ? "Recording" : "Armed")</dd></div>
+            <div><dt>Menu prediction</dt><dd>@Snapshot.MenuConfidence</dd></div>
         </dl>
     </div>
 
@@ -75,6 +76,7 @@ else if (Snapshot.ConnectionState == SamsungConnectionState.Pairing)
         <div class="quick-links">
             <a href="remote"><span>Remote</span><small>Directional and volume control</small><b>→</b></a>
             <a href="macros"><span>Macro runner</span><small>Validated repeatable sequences</small><b>→</b></a>
+            <a href="menu"><span>Menu navigator</span><small>Predicted, confidence-aware paths</small><b>→</b></a>
             <a href="protocol"><span>Protocol</span><small>Inspect every RX / TX message</small><b>→</b></a>
         </div>
     </div>

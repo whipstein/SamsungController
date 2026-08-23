@@ -96,7 +96,7 @@
     private bool IsLoading { get; set; }
 
     private bool CanRun => Snapshot.ConnectionState == SamsungConnectionState.Connected &&
-        !Run.IsRunning && !string.IsNullOrWhiteSpace(SelectedMacro);
+        !Run.IsRunning && !Snapshot.NavigationRunning && !string.IsNullOrWhiteSpace(SelectedMacro);
 
     protected override async Task OnInitializedAsync()
     {

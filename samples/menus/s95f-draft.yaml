@@ -1,0 +1,110 @@
+version: 1
+id: s95f-picture-draft
+name: S95F Picture Menu Draft
+model: Samsung S95F
+
+# Update this context as observations are collected on the target TV.
+context:
+  firmware: unrecorded
+  signal: any
+  pictureMode: any
+  input: any
+
+# Parent relationships organize the navigator tree. They do not imply that an
+# executable route exists; only explicit transitions are eligible for plans.
+nodes:
+  - id: tv-interface
+    label: TV interface
+    description: Root for modeled Samsung UI states.
+
+  - id: normal-video
+    label: Normal video
+    parent: tv-interface
+    description: No Samsung menu is expected to be visible.
+
+  - id: settings-overlay
+    label: Settings overlay
+    parent: tv-interface
+    description: The settings surface opened by KEY_MENU; exact selection is not yet modeled.
+
+  - id: picture
+    label: Picture
+    parent: settings-overlay
+
+  - id: expert-settings
+    label: Expert Settings
+    parent: picture
+
+  - id: brightness
+    label: Brightness
+    parent: expert-settings
+
+  - id: contrast
+    label: Contrast
+    parent: expert-settings
+
+  - id: sharpness
+    label: Sharpness
+    parent: expert-settings
+
+  - id: color
+    label: Color
+    parent: expert-settings
+
+  - id: tint
+    label: Tint
+    parent: expert-settings
+
+  - id: white-balance
+    label: White Balance
+    parent: expert-settings
+
+  - id: white-balance-2-point
+    label: 2 Point
+    parent: white-balance
+
+  - id: white-balance-20-point
+    label: 20 Point
+    parent: white-balance
+
+  - id: gamma
+    label: Gamma
+    parent: expert-settings
+
+  - id: shadow-detail
+    label: Shadow Detail
+    parent: expert-settings
+
+  - id: color-space-settings
+    label: Color Space Settings
+    parent: expert-settings
+
+anchors:
+  - id: normal-video
+    label: Return to normal video
+    target: normal-video
+    verified: true
+    description: KEY_RETURN repeated three times was verified during the initial macro test.
+    steps:
+      - key: KEY_RETURN
+        repeat: 3
+        delay: 150ms
+
+transitions:
+  - id: open-settings-overlay
+    from: normal-video
+    to: settings-overlay
+    verified: true
+    description: KEY_MENU was verified during remote and macro testing; deeper selection remains unmapped.
+    steps:
+      - key: KEY_MENU
+        delay: 500ms
+
+  - id: close-settings-overlay
+    from: settings-overlay
+    to: normal-video
+    verified: true
+    description: Return closes the modeled settings surface.
+    steps:
+      - key: KEY_RETURN
+        delay: 300ms
