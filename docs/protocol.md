@@ -48,8 +48,8 @@ Parameters:
 
 ## Application queries
 
-The interactive console provides two known read/query events using the
-`ms.channel.emit` envelope:
+The interactive console and the Protocol page's **Research queries** panel
+provide two known read/query events using the `ms.channel.emit` envelope:
 
 ```json
 {

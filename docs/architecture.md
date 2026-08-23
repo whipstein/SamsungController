@@ -149,10 +149,17 @@ restricted to a known list so experimental keys can be sent.
 
 ## Reconnect behavior
 
-Each successful transport connection increments a generation number. An
-unexpected receive-loop termination schedules bounded exponential reconnects.
-A send failure also reconnects once and retries the complete command. Generation
-numbers in the session log distinguish traffic before and after reconnect.
+Each successful transport connection increments a generation number. When
+automatic reconnect is enabled, an unexpected receive-loop termination
+schedules bounded exponential reconnects and a send failure reconnects once
+before retrying the complete command. Generation numbers in the session log
+distinguish traffic before and after reconnect.
+
+Automatic reconnect remains a core-client option. The local web controller
+disables it: if the TV closes or loses the control channel, the shared web
+session immediately becomes `Disconnected`, all command controls disable, and
+the connection page offers an explicit reconnect. This prevents the UI from
+presenting a stale connected session.
 
 ## ColorControl-derived assumptions
 

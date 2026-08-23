@@ -71,7 +71,12 @@ The five views share one live TV session:
   through separate three-pass visual tests, runs verified resynchronization
   anchors, previews routes, tracks confidence, and refuses to execute draft transitions.
 - **Protocol** keeps the latest 500 RX/TX messages searchable in memory, offers
-  copy/export, and writes the complete NDJSON capture to the session directory.
+  copy/export and one-click read-only application research queries, and writes
+  the complete NDJSON capture to the session directory.
+
+If the TV drops the WebSocket connection, the web interface immediately returns
+to its disconnected state and disables TV commands. Reconnection is an explicit
+action from the Connection page.
 
 Pairing tokens in the browser console are redacted by default. Revealing them is
 an explicit per-page choice; the complete NDJSON log can still contain tokens

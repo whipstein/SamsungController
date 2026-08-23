@@ -98,6 +98,12 @@ internal sealed class FakeSamsungTransport : ISamsungTransport
 
     public void EnqueueInbound(string rawJson) => _inbound.Writer.TryWrite(rawJson);
 
+    public void LoseConnection()
+    {
+        IsConnected = false;
+        _inbound.Writer.TryComplete();
+    }
+
     public ValueTask DisposeAsync()
     {
         IsConnected = false;

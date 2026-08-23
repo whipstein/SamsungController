@@ -109,6 +109,46 @@ public sealed class SamsungTvClientTests
     }
 
     [Fact]
+    public async Task UnexpectedConnectionLossDisconnectsWhenReconnectIsDisabled()
+    {
+        var transport = new FakeSamsungTransport();
+        await using var client = new SamsungTvClient(transport, new InMemoryTokenStore());
+        await client.ConnectAsync(CreateOptions() with { AutoReconnect = false });
+        var disconnected = new TaskCompletionSource<SamsungConnectionStateChangedEventArgs>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        client.ConnectionStateChanged += (_, eventArgs) =>
+        {
+            if (eventArgs.Current == SamsungConnectionState.Disconnected)
+            {
+                disconnected.TrySetResult(eventArgs);
+            }
+        };
+
+        transport.LoseConnection();
+
+        var stateChange = await disconnected.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(SamsungConnectionState.Disconnected, client.State);
+        Assert.IsType<SamsungConnectionException>(stateChange.Error);
+        Assert.Contains("closed", stateChange.Error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, transport.ConnectCount);
+    }
+
+    [Fact]
+    public async Task SendFailureDisconnectsWhenReconnectIsDisabled()
+    {
+        var transport = new FakeSamsungTransport();
+        await using var client = new SamsungTvClient(transport, new InMemoryTokenStore());
+        await client.ConnectAsync(CreateOptions() with { AutoReconnect = false });
+        transport.FailNextSend = true;
+
+        await Assert.ThrowsAsync<System.Net.WebSockets.WebSocketException>(
+            () => client.SendKeyAsync("KEY_UP"));
+
+        Assert.Equal(SamsungConnectionState.Disconnected, client.State);
+        Assert.Equal(1, transport.ConnectCount);
+    }
+
+    [Fact]
     public async Task ApplicationNameIsBase64EncodedInEndpoint()
     {
         var transport = new FakeSamsungTransport();

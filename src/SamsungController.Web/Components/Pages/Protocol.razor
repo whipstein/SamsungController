@@ -65,12 +65,30 @@
         </div>
     </div>
 
-    <aside class="panel raw-panel">
-        <div class="panel-label"><span>RAW SENDER</span><span>DEVELOPER</span></div>
-        <label class="developer-toggle"><input type="checkbox" @bind="DeveloperMode" /> Enable raw JSON sender</label>
-        <p>Raw protocol messages can change device state. The sender remains locked until developer mode is enabled.</p>
-        <textarea @bind="RawPayload" rows="13" spellcheck="false" disabled="@(!DeveloperMode)" aria-label="Raw JSON payload"></textarea>
-        <button class="primary-action" @onclick="SendRawAsync" disabled="@(!CanSendRaw)">Send raw JSON <span>→</span></button>
+    <aside class="protocol-side-stack">
+        <section class="panel research-panel">
+            <div class="panel-label"><span>RESEARCH QUERIES</span><span>READ ONLY</span></div>
+            <p>Send known application-list queries. Firmware support varies; any response appears in the captured message stream.</p>
+            <button class="research-query" @onclick="SendEdenQueryAsync" disabled="@(!CanSendQuery)">
+                <span><strong>Eden applications</strong><code>ed.edenApp.get</code></span><b>Send →</b>
+            </button>
+            <button class="research-query" @onclick="SendInstalledQueryAsync" disabled="@(!CanSendQuery)">
+                <span><strong>Installed applications</strong><code>ed.installedApp.get</code></span><b>Send →</b>
+            </button>
+            @if (!string.IsNullOrWhiteSpace(ResearchStatus))
+            {
+                <div class="research-status" role="status">@ResearchStatus</div>
+            }
+            <small>Experimental read/query envelopes only. No setting writes are included.</small>
+        </section>
+
+        <section class="panel raw-panel">
+            <div class="panel-label"><span>RAW SENDER</span><span>DEVELOPER</span></div>
+            <label class="developer-toggle"><input type="checkbox" @bind="DeveloperMode" /> Enable raw JSON sender</label>
+            <p>Raw protocol messages can change device state. The sender remains locked until developer mode is enabled.</p>
+            <textarea @bind="RawPayload" rows="13" spellcheck="false" disabled="@(!DeveloperMode)" aria-label="Raw JSON payload"></textarea>
+            <button class="primary-action" @onclick="SendRawAsync" disabled="@(!CanSendRaw)">Send raw JSON <span>→</span></button>
+        </section>
     </aside>
 </section>
 
@@ -82,13 +100,18 @@
     private bool RevealSensitive { get; set; }
     private bool DeveloperMode { get; set; }
     private bool IsSending { get; set; }
+    private bool IsQuerying { get; set; }
     private string RawPayload { get; set; } = "{\n  \"method\": \"ms.remote.control\"\n}";
     private string? ErrorMessage { get; set; }
+    private string? ResearchStatus { get; set; }
 
     private bool CanSendRaw => DeveloperMode && !IsSending &&
         Snapshot.ConnectionState == SamsungConnectionState.Connected &&
         !Snapshot.MacroRunning && !Snapshot.NavigationRunning &&
         !string.IsNullOrWhiteSpace(RawPayload);
+    private bool CanSendQuery => !IsQuerying && !IsSending &&
+        Snapshot.ConnectionState == SamsungConnectionState.Connected &&
+        !Snapshot.MacroRunning && !Snapshot.NavigationRunning;
 
     private IReadOnlyList<SamsungMessage> FilteredMessages => Messages
         .Where(message => DirectionFilter == "All" || message.Direction.ToString() == DirectionFilter)
@@ -158,6 +181,32 @@
         }
     }
 
+    private async Task SendQueryAsync(SamsungQuery query, string label)
+    {
+        IsQuerying = true;
+        ErrorMessage = null;
+        ResearchStatus = null;
+        try
+        {
+            await Controller.SendQueryAsync(query);
+            ResearchStatus = $"{label} query sent · inspect RX messages for the response";
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = exception.Message;
+        }
+        finally
+        {
+            IsQuerying = false;
+        }
+    }
+
+    private Task SendEdenQueryAsync() =>
+        SendQueryAsync(SamsungQuery.EdenApplications, "Eden applications");
+
+    private Task SendInstalledQueryAsync() =>
+        SendQueryAsync(SamsungQuery.InstalledApplications, "Installed applications");
+
     private void HandleControllerChanged()
     {
         Refresh();
@@ -168,6 +217,10 @@
     {
         Snapshot = Controller.GetSnapshot();
         Messages = Controller.GetMessages();
+        if (Snapshot.ConnectionState != SamsungConnectionState.Connected)
+        {
+            ResearchStatus = null;
+        }
     }
 
     public void Dispose()

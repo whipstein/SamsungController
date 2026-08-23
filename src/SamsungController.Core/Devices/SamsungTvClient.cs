@@ -192,22 +192,30 @@ public sealed class SamsungTvClient : IAsyncDisposable
                     .ConfigureAwait(false);
                 await _transport.SendAsync(rawJson, cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception exception) when (
-                IsReconnectable(exception)
-                && _options?.AutoReconnect == true)
+            catch (Exception exception) when (IsReconnectable(exception))
             {
-                SetState(SamsungConnectionState.Reconnecting, exception);
-                await ConnectAsync(_options with { Token = Token }, cancellationToken)
-                    .ConfigureAwait(false);
+                if (_options?.AutoReconnect == true)
+                {
+                    SetState(SamsungConnectionState.Reconnecting, exception);
+                    await ConnectAsync(_options with { Token = Token }, cancellationToken)
+                        .ConfigureAwait(false);
 
-                await EmitAsync(
-                        SamsungProtocol.ParseMessage(
-                            rawJson,
-                            SamsungMessageDirection.Tx,
-                            ConnectionGeneration),
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                await _transport.SendAsync(rawJson, cancellationToken).ConfigureAwait(false);
+                    await EmitAsync(
+                            SamsungProtocol.ParseMessage(
+                                rawJson,
+                                SamsungMessageDirection.Tx,
+                                ConnectionGeneration),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    await _transport.SendAsync(rawJson, cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    SetState(SamsungConnectionState.Disconnected, exception);
+                    Interlocked.Increment(ref _activeGeneration);
+                    await StopCurrentSessionAsync(CancellationToken.None).ConfigureAwait(false);
+                    throw;
+                }
             }
         }
         finally
@@ -285,11 +293,19 @@ public sealed class SamsungTvClient : IAsyncDisposable
             if (!_disposed
                 && !cancellationToken.IsCancellationRequested
                 && generation == Interlocked.Read(ref _activeGeneration)
-                && wasAuthorized
-                && _options?.AutoReconnect == true)
+                && wasAuthorized)
             {
-                SetState(SamsungConnectionState.Reconnecting, failure);
-                ScheduleReconnect(generation);
+                var connectionLoss = failure ?? new SamsungConnectionException(
+                    "The Samsung TV closed the control connection.");
+                if (_options is { AutoReconnect: true, MaxReconnectAttempts: > 0 })
+                {
+                    SetState(SamsungConnectionState.Reconnecting, connectionLoss);
+                    ScheduleReconnect(generation);
+                }
+                else
+                {
+                    SetState(SamsungConnectionState.Disconnected, connectionLoss);
+                }
             }
         }
     }

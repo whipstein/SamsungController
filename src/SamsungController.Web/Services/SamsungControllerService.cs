@@ -354,6 +354,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 Secure = request.Secure,
                 Port = request.Port,
                 AllowUntrustedCertificate = request.AllowUntrustedCertificate,
+                AutoReconnect = false,
                 PairingTimeout = TimeSpan.FromSeconds(90)
             };
             await _client.ConnectAsync(options, cancellationToken).ConfigureAwait(false);
@@ -439,6 +440,15 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
         _menuStateTracker?.MarkUnknown(
             "A raw protocol request may have changed the TV menu outside the navigation model.");
+    }
+
+    public async Task SendQueryAsync(
+        SamsungQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureNoAutomationRunning("send a research query");
+        EnsureNoMenuRecording("send a research query");
+        await _client.SendQueryAsync(query, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task SetMenuDefinitionAsync(

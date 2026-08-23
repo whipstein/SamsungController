@@ -4,6 +4,7 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Configuration;
 using SamsungController.Automation.Navigation;
 using SamsungController.Core.Connection;
+using SamsungController.Core.Protocol;
 using SamsungController.Web.Services;
 
 namespace SamsungController.Web.Tests;
@@ -285,6 +286,65 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task LostTvConnectionAutomaticallyDisconnectsTheWebSession()
+    {
+        var (controller, transport) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            var disconnected = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            void HandleChanged()
+            {
+                if (controller.GetSnapshot().ConnectionState
+                    == SamsungConnectionState.Disconnected)
+                {
+                    disconnected.TrySetResult();
+                }
+            }
+
+            controller.Changed += HandleChanged;
+            try
+            {
+                transport.LoseConnection();
+                await disconnected.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            }
+            finally
+            {
+                controller.Changed -= HandleChanged;
+            }
+
+            var snapshot = controller.GetSnapshot();
+            Assert.Equal(SamsungConnectionState.Disconnected, snapshot.ConnectionState);
+            Assert.Contains("closed", snapshot.LastError, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task ReadOnlyResearchQueriesSendKnownApplicationEvents()
+    {
+        var (controller, transport) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            await controller.SendQueryAsync(SamsungQuery.EdenApplications);
+            await controller.SendQueryAsync(SamsungQuery.InstalledApplications);
+
+            Assert.Equal(
+                ["ed.edenApp.get", "ed.installedApp.get"],
+                transport.SentMessages.Select(message =>
+                {
+                    using var document = JsonDocument.Parse(message);
+                    Assert.Equal(
+                        "ms.channel.emit",
+                        document.RootElement.GetProperty("method").GetString());
+                    return document.RootElement
+                        .GetProperty("params")
+                        .GetProperty("event")
+                        .GetString()!;
+                }));
+        }
+    }
+
     private async Task<(SamsungControllerService Controller, RecordingSamsungTransport Transport)>
         CreateConnectedControllerAsync()
     {
@@ -552,6 +612,12 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         {
             IsConnected = false;
             return Task.CompletedTask;
+        }
+
+        public void LoseConnection()
+        {
+            IsConnected = false;
+            _inbound.Writer.TryComplete();
         }
 
         public ValueTask DisposeAsync()

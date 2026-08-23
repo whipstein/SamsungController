@@ -186,7 +186,15 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .message-meta { padding: 7px 12px 0; }
 .message-card pre { max-height: 280px; overflow: auto; margin: 0; padding: 9px 12px 13px; color: #b8c9ce; font: 10px/1.55 ui-monospace, "SFMono-Regular", Consolas, monospace; white-space: pre-wrap; word-break: break-word; }
 .parse-error { padding: 8px 12px; color: var(--danger); font-size: 9px; border-top: 1px solid rgba(255,119,119,.18); }
-.raw-panel { position: sticky; top: 24px; }
+.protocol-side-stack { position: sticky; top: 24px; display: grid; gap: 18px; }
+.research-panel p, .research-panel > small { color: var(--faint); font-size: 10px; line-height: 1.55; }
+.research-query { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 8px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 6px; background: #08131b; color: var(--ink); text-align: left; cursor: pointer; }
+.research-query:hover:not(:disabled) { border-color: rgba(124,231,220,.42); background: var(--cyan-soft); }
+.research-query span, .research-query strong, .research-query code { display: block; }
+.research-query strong { font-size: 11px; }
+.research-query code { margin-top: 4px; color: var(--faint); font-size: 8px; }
+.research-query b { color: var(--cyan); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; font-weight: 500; white-space: nowrap; }
+.research-status { margin: 10px 0; padding: 9px 10px; border-left: 2px solid var(--cyan); background: var(--cyan-soft); color: var(--cyan); font-size: 9px; line-height: 1.45; }
 .developer-toggle { display: flex; align-items: center; color: var(--amber); font-size: 11px; }
 .raw-panel p { color: var(--faint); font-size: 10px; line-height: 1.55; }
 .raw-panel textarea { resize: vertical; color: #b8c9ce; font: 10px/1.55 ui-monospace, "SFMono-Regular", Consolas, monospace; }
@@ -401,7 +409,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .return-fallback-row { grid-template-columns: 1fr; }
     .timing-profile-layout { grid-template-columns: 1fr; align-items: stretch; }
     .timing-profile-test { grid-template-columns: 1fr; align-items: stretch; }
-    .raw-panel { position: static; }
+    .protocol-side-stack { position: static; }
 }
 
 @media (max-width: 700px) {

@@ -32,6 +32,8 @@ Notes:
 - Verify the exact highlighted item after `KEY_MENU` opens the S95F settings surface.
 - Map one repeatable route from the settings surface to Picture, then Expert Settings.
 - Compare `/api/v2/` state while powered on, in standby, and changing apps.
+- Send `ed.edenApp.get` and `ed.installedApp.get` from the Protocol page and
+  record the exact S95F response or absence of a response.
 - Query/read before attempting any undocumented write.
 
 No service-menu or undocumented write is safe for automatic execution.
