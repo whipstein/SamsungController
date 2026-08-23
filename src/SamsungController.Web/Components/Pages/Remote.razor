@@ -17,6 +17,10 @@
 {
     <div class="notice pairing"><strong>Remote idle</strong><span>Connect to the TV before sending keys.</span><a href="/">Connection →</a></div>
 }
+@if (Authoring.IsRecording)
+{
+    <div class="notice recording-notice"><strong>Menu recording active</strong><span>Successful buttons on this page are being added to @Authoring.RecordingId.</span><a href="menu">Authoring studio →</a></div>
+}
 @if (!string.IsNullOrWhiteSpace(ErrorMessage))
 {
     <div class="notice danger" role="alert"><strong>Command failed</strong><span>@ErrorMessage</span></div>
@@ -78,6 +82,7 @@
 
 @code {
     private ControllerSnapshot Snapshot { get; set; } = null!;
+    private MenuAuthoringSnapshot Authoring { get; set; } = null!;
     private string CustomKey { get; set; } = "KEY_SOURCE";
     private RemoteKeyAction CustomAction { get; set; } = RemoteKeyAction.Click;
     private bool IsBusy { get; set; }
@@ -92,9 +97,11 @@
     protected override async Task OnInitializedAsync()
     {
         Snapshot = Controller.GetSnapshot();
+        Authoring = Controller.GetMenuAuthoringSnapshot();
         Controller.Changed += HandleControllerChanged;
         await Controller.InitializeAsync();
         Snapshot = Controller.GetSnapshot();
+        Authoring = Controller.GetMenuAuthoringSnapshot();
     }
 
     private Task SendCustomKeyAsync() => SendKeyAsync(CustomKey, CustomAction);
@@ -122,6 +129,7 @@
     private void HandleControllerChanged()
     {
         Snapshot = Controller.GetSnapshot();
+        Authoring = Controller.GetMenuAuthoringSnapshot();
         _ = InvokeAsync(StateHasChanged);
     }
 

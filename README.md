@@ -20,7 +20,7 @@ validated; see the [verification checklist](docs/architecture.md#s95f-verificati
 - Connection state and bounded automatic reconnect
 - Hierarchical YAML macros with variables, repeats, delays, cancellation, and execution progress
 - Localhost-only Blazor control surface for connection, remote keys, macros, menu navigation, and protocol inspection
-- Data-driven menu definitions, verified-route planning, deterministic anchors, and explicit prediction confidence
+- Data-driven menu definitions, live UI route recording, automatic draft YAML persistence, three-pass verification, deterministic anchors, and explicit prediction confidence
 - CLI commands: `connect`, `key`, `macro`, `console`, `listen`, `status`, and `forget`
 - Cross-platform console line editing with persistent, privacy-filtered history
 - Fake-transport tests that do not require a TV

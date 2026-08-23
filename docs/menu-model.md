@@ -101,13 +101,29 @@ can be planned or sent.
 
 1. Record the TV firmware, input, SDR/HDR state, and picture mode.
 2. Connect in the web interface and open **Menu**.
-3. Run **Return to normal video** and confirm no OSD remains visible.
-4. Select **Settings overlay**, calculate the verified route, execute it, and
-   confirm what the TV actually highlights.
-5. Add the next observed node/transition to a copy of the YAML.
-6. Leave the transition draft until the result is repeatable, then document the
-   evidence and set `verified: true`.
-7. Load and validate the edited definition from the Menu page.
+3. Open **Menu Authoring Studio**. Create a new TV interface there if no
+   definition exists; the generated YAML is stored in the per-user configuration
+   directory and loaded automatically.
+4. Choose **Anchor** or **Transition**, select existing nodes or describe a new
+   target node, and start live recording. For a transition, **Prepare source**
+   uses a verified anchor and verified routes to position the TV first.
+5. Use the embedded remote. Every successfully sent button controls the TV and
+   is captured; failed sends are not recorded.
+6. Stop the recording. The UI atomically adds it to the active YAML as a draft.
+7. Under **Replay and validate drafts**, run the draft. Transition validation
+   first executes a verified anchor and verified route to its source, then sends
+   the recorded buttons.
+8. Visually confirm the target after every run. Three confirmed passes update
+   the same YAML entry to `verified: true`; a failed confirmation resets the
+   count to zero.
+
+Draft cards can be replayed, re-recorded under the same identifier, or deleted
+entirely in the UI. Verified items are protected from this draft workflow.
+
+Validate an anchor before transitions that depend on it, and validate a parent
+transition before a deeper transition whose source is reached through that
+parent. The ordinary navigator continues to refuse draft execution outside this
+explicit authoring workflow.
 
 Do not map service-menu entries or undocumented writes through this normal-menu
 navigator.

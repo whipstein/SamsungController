@@ -63,6 +63,7 @@ public sealed class MenuDefinitionParserTests
         Assert.Equal("Home Theater System", definition.Context.Input);
 
         var picture = definition.Transitions["open-picture"];
+        Assert.True(picture.Verified);
         Assert.Equal("settings-overlay", picture.FromNodeId);
         Assert.Equal("picture", picture.ToNodeId);
         Assert.Collection(
@@ -71,10 +72,29 @@ public sealed class MenuDefinitionParserTests
             operation => Assert.Equal("KEY_ENTER", operation.Key));
 
         var expertSettings = definition.Transitions["open-expert-settings"];
+        Assert.True(expertSettings.Verified);
         Assert.Equal("picture", expertSettings.FromNodeId);
         Assert.Equal("expert-settings", expertSettings.ToNodeId);
         Assert.Equal(4, expertSettings.Operations[0].Repeat);
         Assert.Equal("KEY_ENTER", expertSettings.Operations[1].Key);
+
+        var exit = definition.Transitions["exit-expert-settings"];
+        Assert.True(exit.Verified);
+        Assert.Equal("normal-video", exit.ToNodeId);
+        Assert.Equal(2, Assert.Single(exit.Operations).Repeat);
+
+        var forwardPlan = new NavigationPlanner().Plan(
+            definition,
+            "normal-video",
+            "expert-settings");
+        Assert.True(forwardPlan.IsExecutable);
+        Assert.Equal(8, forwardPlan.CommandCount);
+        var exitPlan = new NavigationPlanner().Plan(
+            definition,
+            "expert-settings",
+            "normal-video");
+        Assert.True(exitPlan.IsExecutable);
+        Assert.Equal(2, exitPlan.CommandCount);
     }
 
     private const string ValidYaml =

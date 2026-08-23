@@ -36,6 +36,8 @@
     </div>
 </section>
 
+<MenuAuthoringStudio />
+
 <section class="navigator-layout">
     <div class="panel menu-tree-panel">
         <div class="panel-label"><span>S95F MENU MAP</span><span>@Navigation.Nodes.Count NODES</span></div>
@@ -164,6 +166,7 @@
     private MenuNavigationSnapshot Navigation { get; set; } = null!;
     private string DefinitionPath { get; set; } = string.Empty;
     private string? SelectedTarget { get; set; }
+    private string? LastObservedDefinitionPath { get; set; }
     private string? LocalError { get; set; }
     private bool IsLoading { get; set; }
 
@@ -277,7 +280,15 @@
     private void Refresh()
     {
         Snapshot = Controller.GetSnapshot();
-        Navigation = Controller.GetMenuNavigationSnapshot();
+        var navigation = Controller.GetMenuNavigationSnapshot();
+        if (string.IsNullOrWhiteSpace(DefinitionPath)
+            || DefinitionPath.Equals(LastObservedDefinitionPath, StringComparison.Ordinal))
+        {
+            DefinitionPath = navigation.DefinitionPath;
+        }
+
+        LastObservedDefinitionPath = navigation.DefinitionPath;
+        Navigation = navigation;
     }
 
     public void Dispose()

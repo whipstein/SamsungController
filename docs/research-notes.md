@@ -82,9 +82,10 @@ Observed result:
   - Four KEY_DOWN clicks followed by KEY_ENTER opened Expert Settings.
   - One Return click closed Settings from the modeled settings surface.
   - Two KEY_MENU clicks from within the menu system returned to video.
-Repeatability: Anchor and Settings open/close passed 3 out of 3. The deeper
-  Picture and Expert Settings routes were observed without unexpected behavior;
-  their repeatability count was not recorded.
+Repeatability: Anchor and Settings open/close passed 3 out of 3. The full route
+  through Picture to Expert Settings passed 3 out of 3. Two KEY_MENU clicks
+  from Expert Settings returned to video 3 out of 3.
 Risk: Normal
-Notes: Keep the two deeper transitions draft until their repeatability is confirmed.
+Notes: Picture, Expert Settings, and the Expert Settings exit route are verified
+  for the recorded firmware and viewing context.
 ```

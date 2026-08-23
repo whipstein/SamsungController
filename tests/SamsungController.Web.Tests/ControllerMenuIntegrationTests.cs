@@ -47,6 +47,59 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         Assert.Contains("must contain", snapshot.Error, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task NewDefinitionCanBeCreatedAndPersistedEntirelyThroughTheService()
+    {
+        Directory.CreateDirectory(_directory);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+
+        await controller.CreateMenuDefinitionAsync(new MenuDefinitionCreationRequest(
+            "new-tv",
+            "New TV Menu",
+            "Samsung Test TV",
+            "1000",
+            "SDR",
+            "Movie",
+            "HDMI 1"));
+
+        var snapshot = controller.GetMenuNavigationSnapshot();
+        Assert.Equal("New TV Menu", snapshot.DefinitionName);
+        Assert.Equal("1000", snapshot.Context?.Firmware);
+        Assert.Contains(snapshot.Nodes, node => node.Id == "normal-video");
+        Assert.True(File.Exists(snapshot.DefinitionPath));
+
+        var reparsed = await new MenuDefinitionParser().ParseFileAsync(snapshot.DefinitionPath);
+        Assert.Equal("new-tv", reparsed.Id);
+        Assert.Empty(reparsed.Anchors);
+        Assert.Empty(reparsed.Transitions);
+    }
+
+    [Fact]
+    public async Task DraftCanBeDeletedAndYamlIsUpdatedThroughTheService()
+    {
+        Directory.CreateDirectory(_directory);
+        var definitionPath = Path.Combine(_directory, "draft-menu.yaml");
+        await File.WriteAllTextAsync(definitionPath, DraftMenuYaml);
+        await WriteSettingsAsync(definitionPath);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+
+        var before = controller.GetMenuAuthoringSnapshot();
+        var candidate = Assert.Single(before.DraftCandidates);
+        Assert.Equal("open-settings", candidate.Id);
+        Assert.Equal("normal-video", candidate.SourceNodeId);
+        Assert.Equal("settings", candidate.TargetNodeId);
+
+        await controller.DeleteMenuAuthoringDraftAsync(
+            MenuAuthoringItemKind.Transition,
+            candidate.Id);
+
+        Assert.Empty(controller.GetMenuAuthoringSnapshot().DraftCandidates);
+        var reparsed = await new MenuDefinitionParser().ParseFileAsync(definitionPath);
+        Assert.Empty(reparsed.Transitions);
+    }
+
     private SamsungControllerService CreateController()
     {
         var configuration = new ConfigurationBuilder()
@@ -88,5 +141,33 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             verified: true
             steps:
               - key: KEY_RETURN
+        """;
+
+    private const string DraftMenuYaml =
+        """
+        version: 1
+        id: draft-test
+        name: Draft Test Menu
+        model: Test TV
+        nodes:
+          - id: normal-video
+            label: Normal video
+          - id: settings
+            label: Settings
+        anchors:
+          - id: normal
+            label: Normal video
+            target: normal-video
+            verified: true
+            steps:
+              - key: KEY_RETURN
+        transitions:
+          - id: open-settings
+            from: normal-video
+            to: settings
+            verified: false
+            steps:
+              - key: KEY_MENU
+                delay: 600ms
         """;
 }

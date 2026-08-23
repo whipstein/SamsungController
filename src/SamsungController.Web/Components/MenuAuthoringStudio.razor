@@ -1,0 +1,439 @@
+@implements IDisposable
+@inject SamsungControllerService Controller
+
+<section class="panel authoring-studio">
+    <div class="panel-label">
+        <span>MENU AUTHORING STUDIO</span>
+        <span class="@(Authoring.IsRecording ? "recording-indicator active" : "recording-indicator")">
+            @(Authoring.IsRecording ? "● RECORDING" : "UI → TV → YAML → 3× VERIFY")
+        </span>
+    </div>
+
+    <div class="authoring-intro">
+        <div>
+            <strong>Build routes without editing files.</strong>
+            <p>Record buttons while they control the TV, save the sequence as draft YAML, then replay it three times before it becomes verified.</p>
+        </div>
+        <button class="secondary-action" @onclick="ToggleDefinitionForm" disabled="@(Authoring.IsRecording || Navigation.IsRunning)">
+            @(ShowDefinitionForm ? "Close setup" : "New TV interface")
+        </button>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <div class="authoring-message error" role="alert">@ErrorMessage</div>
+    }
+    else if (!string.IsNullOrWhiteSpace(Authoring.Status))
+    {
+        <div class="authoring-message">@Authoring.Status</div>
+    }
+
+    @if (ShowDefinitionForm)
+    {
+        <div class="definition-setup-card">
+            <div class="authoring-section-title"><span>01</span><strong>Create a menu definition</strong></div>
+            <div class="authoring-form-grid">
+                <label><span>Definition ID</span><input @bind="DefinitionId" placeholder="living-room-tv" /></label>
+                <label><span>Name</span><input @bind="DefinitionName" placeholder="Living Room TV Menu" /></label>
+                <label><span>TV model</span><input @bind="DefinitionModel" placeholder="Samsung S95F" /></label>
+                <label><span>Firmware</span><input @bind="DefinitionFirmware" placeholder="1296" /></label>
+                <label><span>Signal</span><input @bind="DefinitionSignal" placeholder="SDR" /></label>
+                <label><span>Picture mode</span><input @bind="DefinitionPictureMode" placeholder="Filmmaker Mode" /></label>
+                <label class="wide-field"><span>Input/source</span><input @bind="DefinitionInput" placeholder="Home Theater System" /></label>
+            </div>
+            <button class="primary-action authoring-save" @onclick="CreateDefinitionAsync" disabled="@IsBusy">
+                Create and load definition <span>→</span>
+            </button>
+            <p class="field-note">The YAML file is created in SamsungController's per-user configuration directory and becomes the active definition.</p>
+        </div>
+    }
+
+    @if (Navigation.DefinitionName is not null)
+    {
+        <div class="authoring-workflow-grid">
+            <div class="authoring-config">
+                <div class="authoring-section-title"><span>01</span><strong>Describe the recording</strong></div>
+                <div class="authoring-form-grid compact">
+                    <label>
+                        <span>Record as</span>
+                        <select @bind="RecordingKind" disabled="@Authoring.IsRecording">
+                            <option value="@MenuAuthoringItemKind.Transition">Transition</option>
+                            <option value="@MenuAuthoringItemKind.Anchor">Anchor</option>
+                        </select>
+                    </label>
+                    <label><span>ID</span><input @bind="RecordingId" disabled="@Authoring.IsRecording" /></label>
+                    <label class="wide-field"><span>Label / intent</span><input @bind="RecordingLabel" disabled="@Authoring.IsRecording" /></label>
+                    @if (RecordingKind == MenuAuthoringItemKind.Transition)
+                    {
+                        <label>
+                            <span>Source node</span>
+                            <select @bind="SourceNodeId" disabled="@Authoring.IsRecording">
+                                @foreach (var node in Navigation.Nodes)
+                                {
+                                    <option value="@node.Id">@node.Path</option>
+                                }
+                            </select>
+                        </label>
+                    }
+                    <label>
+                        <span>Target</span>
+                        <select @bind="CreateNewTarget" disabled="@Authoring.IsRecording">
+                            <option value="false">Existing node</option>
+                            <option value="true">Create new node</option>
+                        </select>
+                    </label>
+                    @if (CreateNewTarget)
+                    {
+                        <label><span>New target ID</span><input @bind="NewTargetId" disabled="@Authoring.IsRecording" /></label>
+                        <label><span>New target label</span><input @bind="NewTargetLabel" disabled="@Authoring.IsRecording" /></label>
+                        <label>
+                            <span>Tree parent</span>
+                            <select @bind="NewTargetParentId" disabled="@Authoring.IsRecording">
+                                @foreach (var node in Navigation.Nodes)
+                                {
+                                    <option value="@node.Id">@node.Path</option>
+                                }
+                            </select>
+                        </label>
+                    }
+                    else
+                    {
+                        <label class="wide-field">
+                            <span>Target node</span>
+                            <select @bind="ExistingTargetId" disabled="@Authoring.IsRecording">
+                                @foreach (var node in Navigation.Nodes)
+                                {
+                                    <option value="@node.Id">@node.Path</option>
+                                }
+                            </select>
+                        </label>
+                    }
+                    <label>
+                        <span>Replay delay per press</span>
+                        <div class="number-with-unit"><input type="number" min="50" max="30000" step="50" @bind="ReplayDelayMilliseconds" disabled="@Authoring.IsRecording" /><b>ms</b></div>
+                    </label>
+                </div>
+
+                @if (!Authoring.IsRecording)
+                {
+                    <div class="authoring-start-actions">
+                        @if (RecordingKind == MenuAuthoringItemKind.Transition)
+                        {
+                            <button class="secondary-action" @onclick="PrepareSourceAsync" disabled="@(!CanPrepareSource)">Prepare source</button>
+                        }
+                        <button class="primary-action" @onclick="StartRecording" disabled="@(!CanStartRecording)">
+                            Start live recording <span>●</span>
+                        </button>
+                    </div>
+                    <p class="field-note">Reusing the ID of an existing draft replaces it; verified items are protected.</p>
+                }
+                else
+                {
+                    <div class="recording-actions">
+                        <button class="primary-action" @onclick="StopAndSaveAsync" disabled="@(IsBusy || Authoring.RecordedCommandCount == 0)">Stop + save draft <span>■</span></button>
+                        <button class="secondary-action" @onclick="Controller.UndoLastRecordedMenuCommand" disabled="@(Authoring.RecordedCommandCount == 0)">Undo last</button>
+                        <button class="secondary-action danger-action" @onclick="Controller.ClearRecordedMenuCommands" disabled="@(Authoring.RecordedCommandCount == 0)">Clear</button>
+                    </div>
+                }
+            </div>
+
+            <div class="authoring-controller">
+                <div class="authoring-section-title"><span>02</span><strong>Control and capture</strong></div>
+                <div class="authoring-remote" aria-label="Menu recording remote">
+                    <div class="authoring-remote-row">
+                        <button @onclick='() => SendRecordedKeyAsync("KEY_HOME")' disabled="@RecordButtonsDisabled">Home</button>
+                        <button @onclick='() => SendRecordedKeyAsync("KEY_MENU")' disabled="@RecordButtonsDisabled">Menu</button>
+                        <button @onclick='() => SendRecordedKeyAsync("KEY_EXIT")' disabled="@RecordButtonsDisabled">Exit</button>
+                    </div>
+                    <div class="authoring-dpad">
+                        <button class="up" aria-label="Up" @onclick='() => SendRecordedKeyAsync("KEY_UP")' disabled="@RecordButtonsDisabled">↑</button>
+                        <button class="left" aria-label="Left" @onclick='() => SendRecordedKeyAsync("KEY_LEFT")' disabled="@RecordButtonsDisabled">←</button>
+                        <button class="enter" aria-label="Enter" @onclick='() => SendRecordedKeyAsync("KEY_ENTER")' disabled="@RecordButtonsDisabled">OK</button>
+                        <button class="right" aria-label="Right" @onclick='() => SendRecordedKeyAsync("KEY_RIGHT")' disabled="@RecordButtonsDisabled">→</button>
+                        <button class="down" aria-label="Down" @onclick='() => SendRecordedKeyAsync("KEY_DOWN")' disabled="@RecordButtonsDisabled">↓</button>
+                    </div>
+                    <button class="authoring-return" @onclick='() => SendRecordedKeyAsync("KEY_RETURN")' disabled="@RecordButtonsDisabled">↩ Return</button>
+                </div>
+                <div class="custom-record-key">
+                    <input @bind="CustomKey" placeholder="KEY_SOURCE" disabled="@RecordButtonsDisabled" />
+                    <select @bind="CustomAction" disabled="@RecordButtonsDisabled">
+                        @foreach (var action in Enum.GetValues<RemoteKeyAction>())
+                        {
+                            <option value="@action">@action</option>
+                        }
+                    </select>
+                    <button class="secondary-action" @onclick="SendCustomRecordedKeyAsync" disabled="@(RecordButtonsDisabled || string.IsNullOrWhiteSpace(CustomKey))">Send</button>
+                </div>
+            </div>
+
+            <div class="authoring-capture">
+                <div class="authoring-section-title"><span>03</span><strong>Captured sequence</strong></div>
+                @if (Authoring.RecordedSteps.Count == 0)
+                {
+                    <div class="capture-empty">Start recording, then use the controls. Only successfully sent keys appear here.</div>
+                }
+                else
+                {
+                    <div class="recorded-step-list">
+                        @foreach (var step in Authoring.RecordedSteps)
+                        {
+                            <div><code>@step.Key</code><span>×@step.Repeat · @step.Action · @step.DelayAfter.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture)ms</span></div>
+                        }
+                    </div>
+                    <div class="recorded-total">@Authoring.RecordedCommandCount button presses captured</div>
+                }
+            </div>
+        </div>
+
+        <div class="validation-studio">
+            <div class="authoring-section-title"><span>04</span><strong>Replay and validate drafts</strong></div>
+            @if (Authoring.DraftCandidates.Count == 0)
+            {
+                <div class="capture-empty compact">No draft anchors or transitions are waiting for validation.</div>
+            }
+            else
+            {
+                <div class="validation-list">
+                    @foreach (var candidate in Authoring.DraftCandidates)
+                    {
+                        var isActive = Authoring.ActiveValidationKind == candidate.Kind && Authoring.ActiveValidationId == candidate.Id;
+                        <article class="validation-card @(isActive ? "active" : "")">
+                            <div>
+                                <span>@candidate.Kind</span>
+                                <strong>@candidate.Label</strong>
+                                <small>@(candidate.SourcePath is null ? candidate.TargetPath : $"{candidate.SourcePath} → {candidate.TargetPath}") · @candidate.CommandCount commands</small>
+                            </div>
+                            <div class="validation-card-actions">
+                                @if (isActive)
+                                {
+                                    <b>@Authoring.ValidationPasses/@Authoring.RequiredValidationPasses passed</b>
+                                }
+                                <button class="secondary-action" @onclick="() => PrepareRerecord(candidate)" disabled="@(Authoring.IsRecording || Navigation.IsRunning)">Re-record</button>
+                                <button class="secondary-action" @onclick="() => RunValidationAsync(candidate)" disabled="@(!CanRunValidation || Authoring.AwaitingValidationConfirmation)">Replay test</button>
+                                <button class="secondary-action danger-action" @onclick="() => DeleteDraftAsync(candidate)" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">Delete</button>
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+
+            @if (Authoring.AwaitingValidationConfirmation)
+            {
+                <div class="validation-confirmation">
+                    <div><span>VISUAL CONFIRMATION REQUIRED</span><strong>Did the TV reach @Authoring.ExpectedTargetPath?</strong></div>
+                    <button class="secondary-action danger-action" @onclick="() => ConfirmValidationAsync(false)" disabled="@IsBusy">No — reset count</button>
+                    <button class="primary-action" @onclick="() => ConfirmValidationAsync(true)" disabled="@IsBusy">Yes — count pass <span>✓</span></button>
+                </div>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    private const string NewNodeDefaultId = "new-menu-node";
+
+    private ControllerSnapshot Snapshot { get; set; } = null!;
+    private MenuNavigationSnapshot Navigation { get; set; } = null!;
+    private MenuAuthoringSnapshot Authoring { get; set; } = null!;
+    private MenuAuthoringItemKind RecordingKind { get; set; } = MenuAuthoringItemKind.Transition;
+    private string RecordingId { get; set; } = "new-transition";
+    private string RecordingLabel { get; set; } = "New menu transition";
+    private string SourceNodeId { get; set; } = string.Empty;
+    private string ExistingTargetId { get; set; } = string.Empty;
+    private bool CreateNewTarget { get; set; }
+    private string NewTargetId { get; set; } = NewNodeDefaultId;
+    private string NewTargetLabel { get; set; } = "New menu node";
+    private string NewTargetParentId { get; set; } = string.Empty;
+    private int ReplayDelayMilliseconds { get; set; } = 500;
+    private string CustomKey { get; set; } = "KEY_SOURCE";
+    private RemoteKeyAction CustomAction { get; set; } = RemoteKeyAction.Click;
+    private bool ShowDefinitionForm { get; set; }
+    private bool IsBusy { get; set; }
+    private bool IsSendingKey { get; set; }
+    private string? LocalError { get; set; }
+
+    private string DefinitionId { get; set; } = "samsung-menu";
+    private string DefinitionName { get; set; } = "Samsung TV Menu";
+    private string DefinitionModel { get; set; } = "Samsung TV";
+    private string DefinitionFirmware { get; set; } = "unrecorded";
+    private string DefinitionSignal { get; set; } = "any";
+    private string DefinitionPictureMode { get; set; } = "any";
+    private string DefinitionInput { get; set; } = "any";
+
+    private string? ErrorMessage => LocalError ?? Authoring.Error;
+    private bool IsConnected => Snapshot.ConnectionState == SamsungConnectionState.Connected;
+    private bool CanStartRecording => IsConnected && !IsBusy && !Snapshot.MacroRunning && !Navigation.IsRunning &&
+        !string.IsNullOrWhiteSpace(RecordingId) && !string.IsNullOrWhiteSpace(RecordingLabel) &&
+        !string.IsNullOrWhiteSpace(CreateNewTarget ? NewTargetId : ExistingTargetId) &&
+        (RecordingKind == MenuAuthoringItemKind.Anchor || !string.IsNullOrWhiteSpace(SourceNodeId));
+    private bool RecordButtonsDisabled => !Authoring.IsRecording || !IsConnected || IsSendingKey || Navigation.IsRunning;
+    private bool CanPrepareSource => RecordingKind == MenuAuthoringItemKind.Transition && IsConnected && !IsBusy &&
+        !Authoring.IsRecording && !Navigation.IsRunning && !Snapshot.MacroRunning && !string.IsNullOrWhiteSpace(SourceNodeId);
+    private bool CanRunValidation => IsConnected && !IsBusy && !Authoring.IsRecording && !Navigation.IsRunning && !Snapshot.MacroRunning;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Refresh();
+        Controller.Changed += HandleControllerChanged;
+        await Controller.InitializeAsync();
+        Refresh();
+        InitializeNodeDefaults();
+    }
+
+    private void ToggleDefinitionForm()
+    {
+        ShowDefinitionForm = !ShowDefinitionForm;
+        LocalError = null;
+    }
+
+    private async Task CreateDefinitionAsync()
+    {
+        await RunBusyAsync(async () =>
+        {
+            await Controller.CreateMenuDefinitionAsync(new MenuDefinitionCreationRequest(
+                DefinitionId,
+                DefinitionName,
+                DefinitionModel,
+                DefinitionFirmware,
+                DefinitionSignal,
+                DefinitionPictureMode,
+                DefinitionInput));
+            ShowDefinitionForm = false;
+            Refresh();
+            InitializeNodeDefaults(force: true);
+        });
+    }
+
+    private void StartRecording()
+    {
+        LocalError = null;
+        try
+        {
+            var targetId = CreateNewTarget ? NewTargetId : ExistingTargetId;
+            Controller.StartMenuRecording(new MenuRecordingRequest(
+                RecordingKind,
+                RecordingId,
+                RecordingLabel,
+                RecordingKind == MenuAuthoringItemKind.Transition ? SourceNodeId : null,
+                targetId,
+                CreateNewTarget ? NewTargetLabel : null,
+                CreateNewTarget ? NewTargetParentId : null,
+                ReplayDelayMilliseconds));
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+    }
+
+    private Task PrepareSourceAsync() =>
+        RunBusyAsync(() => Controller.PrepareMenuRecordingSourceAsync(SourceNodeId));
+
+    private Task StopAndSaveAsync() => RunBusyAsync(() => Controller.StopAndSaveMenuRecordingAsync());
+
+    private Task SendCustomRecordedKeyAsync() => SendRecordedKeyAsync(CustomKey, CustomAction);
+
+    private async Task SendRecordedKeyAsync(string key, RemoteKeyAction action = RemoteKeyAction.Click)
+    {
+        IsSendingKey = true;
+        LocalError = null;
+        try
+        {
+            await Controller.SendKeyAsync(key, action);
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            IsSendingKey = false;
+        }
+    }
+
+    private Task RunValidationAsync(MenuAuthoringCandidateSummary candidate) =>
+        RunBusyAsync(() => Controller.RunMenuAuthoringValidationAsync(candidate.Kind, candidate.Id));
+
+    private void PrepareRerecord(MenuAuthoringCandidateSummary candidate)
+    {
+        LocalError = null;
+        RecordingKind = candidate.Kind;
+        RecordingId = candidate.Id;
+        RecordingLabel = candidate.Label;
+        SourceNodeId = candidate.SourceNodeId ?? SourceNodeId;
+        ExistingTargetId = candidate.TargetNodeId;
+        CreateNewTarget = false;
+        ReplayDelayMilliseconds = candidate.ReplayDelayMilliseconds;
+    }
+
+    private Task DeleteDraftAsync(MenuAuthoringCandidateSummary candidate) =>
+        RunBusyAsync(() => Controller.DeleteMenuAuthoringDraftAsync(candidate.Kind, candidate.Id));
+
+    private Task ConfirmValidationAsync(bool passed) =>
+        RunBusyAsync(() => Controller.ConfirmMenuAuthoringValidationAsync(passed));
+
+    private async Task RunBusyAsync(Func<Task> action)
+    {
+        IsBusy = true;
+        LocalError = null;
+        try
+        {
+            await action();
+        }
+        catch (OperationCanceledException)
+        {
+            // Service state reports cancellation.
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void HandleControllerChanged()
+    {
+        Refresh();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void Refresh()
+    {
+        Snapshot = Controller.GetSnapshot();
+        Navigation = Controller.GetMenuNavigationSnapshot();
+        Authoring = Controller.GetMenuAuthoringSnapshot();
+    }
+
+    private void InitializeNodeDefaults(bool force = false)
+    {
+        if (Navigation.Nodes.Count == 0)
+        {
+            return;
+        }
+
+        if (force || string.IsNullOrWhiteSpace(SourceNodeId) || Navigation.Nodes.All(node => node.Id != SourceNodeId))
+        {
+            SourceNodeId = Navigation.Nodes.FirstOrDefault(node => node.Id == "normal-video")?.Id
+                ?? Navigation.Nodes[0].Id;
+        }
+
+        if (force || string.IsNullOrWhiteSpace(ExistingTargetId) || Navigation.Nodes.All(node => node.Id != ExistingTargetId))
+        {
+            ExistingTargetId = Navigation.Nodes.FirstOrDefault(node => node.Id != SourceNodeId)?.Id
+                ?? Navigation.Nodes[0].Id;
+        }
+
+        if (force || string.IsNullOrWhiteSpace(NewTargetParentId) || Navigation.Nodes.All(node => node.Id != NewTargetParentId))
+        {
+            NewTargetParentId = SourceNodeId;
+        }
+    }
+
+    public void Dispose()
+    {
+        Controller.Changed -= HandleControllerChanged;
+    }
+}

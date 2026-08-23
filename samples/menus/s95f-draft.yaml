@@ -111,8 +111,8 @@ transitions:
   - id: open-picture
     from: settings-overlay
     to: picture
-    verified: false
-    description: Observed on firmware 1296; repeatability count is not yet recorded.
+    verified: true
+    description: The full route through Picture to Expert Settings passed three out of three times on firmware 1296.
     steps:
       - key: KEY_DOWN
         delay: 150ms
@@ -122,11 +122,21 @@ transitions:
   - id: open-expert-settings
     from: picture
     to: expert-settings
-    verified: false
-    description: Observed on firmware 1296; repeatability count is not yet recorded.
+    verified: true
+    description: The full route through Picture to Expert Settings passed three out of three times on firmware 1296.
     steps:
       - key: KEY_DOWN
         repeat: 4
         delay: 150ms
       - key: KEY_ENTER
+        delay: 500ms
+
+  - id: exit-expert-settings
+    from: expert-settings
+    to: normal-video
+    verified: true
+    description: Two KEY_MENU clicks returned from Expert Settings to normal video three out of three times on firmware 1296.
+    steps:
+      - key: KEY_MENU
+        repeat: 2
         delay: 500ms
