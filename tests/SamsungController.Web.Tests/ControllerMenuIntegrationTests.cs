@@ -1,6 +1,9 @@
 using System.Text.Json;
+using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using Microsoft.Extensions.Configuration;
 using SamsungController.Automation.Navigation;
+using SamsungController.Core.Connection;
 using SamsungController.Web.Services;
 
 namespace SamsungController.Web.Tests;
@@ -240,6 +243,79 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             persisted.BelowMenuRoot.Operations.Select(operation => operation.Key));
     }
 
+    [Fact]
+    public async Task DraftReplaySendsOnlyTheRecordedCommands()
+    {
+        var (controller, transport) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            await controller.RunMenuAuthoringValidationAsync(
+                MenuAuthoringItemKind.Transition,
+                "open-picture-draft");
+
+            Assert.Equal(["KEY_DOWN", "KEY_ENTER"], GetSentKeys(transport));
+        }
+    }
+
+    [Fact]
+    public async Task SystemTimingTestSendsOnlyTheSelectedTraversal()
+    {
+        var (controller, transport) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            await controller.RunMenuTimingProfileTestAsync(
+                "open-settings",
+                new MenuTimingProfile(50, 50, 50));
+
+            Assert.Equal(["KEY_MENU"], GetSentKeys(transport));
+        }
+    }
+
+    [Fact]
+    public async Task ReturnTestSendsOnlyTheDisplayedScript()
+    {
+        var (controller, transport) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            await controller.RunMenuReturnStrategyTestAsync(
+                MenuReturnScriptKind.BelowMenuRoot,
+                "picture");
+
+            Assert.Equal(["KEY_MENU", "KEY_RETURN"], GetSentKeys(transport));
+        }
+    }
+
+    private async Task<(SamsungControllerService Controller, RecordingSamsungTransport Transport)>
+        CreateConnectedControllerAsync()
+    {
+        Directory.CreateDirectory(_directory);
+        var definitionPath = Path.Combine(_directory, "explicit-validation-menu.yaml");
+        await File.WriteAllTextAsync(definitionPath, ExplicitValidationMenuYaml);
+        await WriteSettingsAsync(definitionPath);
+        var transport = new RecordingSamsungTransport();
+        var controller = CreateController(transport);
+        await controller.InitializeAsync();
+        await controller.ConnectAsync(new TvConnectionRequest(
+            "Test TV",
+            "192.0.2.10",
+            Secure: true,
+            Port: null));
+        transport.SentMessages.Clear();
+        return (controller, transport);
+    }
+
+    private static string[] GetSentKeys(RecordingSamsungTransport transport) =>
+        transport.SentMessages
+            .Select(message =>
+            {
+                using var document = JsonDocument.Parse(message);
+                return document.RootElement
+                    .GetProperty("params")
+                    .GetProperty("DataOfCmd")
+                    .GetString()!;
+            })
+            .ToArray();
+
     private SamsungControllerService CreateController()
     {
         var configuration = new ConfigurationBuilder()
@@ -249,6 +325,17 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             })
             .Build();
         return new SamsungControllerService(configuration);
+    }
+
+    private SamsungControllerService CreateController(RecordingSamsungTransport transport)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["SamsungController:ConfigurationDirectory"] = _directory
+            })
+            .Build();
+        return new SamsungControllerService(configuration, transport, ImmediateMenuDelay.Instance);
     }
 
     private async Task WriteSettingsAsync(string definitionPath)
@@ -354,4 +441,124 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             steps:
               - key: KEY_RETURN
         """;
+
+    private const string ExplicitValidationMenuYaml =
+        """
+        version: 1
+        id: explicit-validation
+        name: Explicit Validation Menu
+        model: Test TV
+        timing:
+          defaultDelay: 50ms
+          screenChangeDelay: 50ms
+          returnDelay: 50ms
+        nodes:
+          - id: normal-video
+            label: Normal video
+          - id: settings
+            label: Settings
+          - id: picture
+            label: Picture
+            parent: settings
+        anchors:
+          - id: normal
+            label: Return to normal video
+            target: normal-video
+            verified: true
+            returnStrategy:
+              menuRoot: settings
+              atMenuRoot:
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+              belowMenuRoot:
+                verified: false
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_RETURN
+            steps:
+              - key: KEY_EXIT
+                repeat: 2
+        transitions:
+          - id: open-settings
+            from: normal-video
+            to: settings
+            verified: true
+            steps:
+              - key: KEY_MENU
+          - id: open-picture-draft
+            from: settings
+            to: picture
+            verified: false
+            steps:
+              - key: KEY_DOWN
+              - key: KEY_ENTER
+        """;
+
+    private sealed class ImmediateMenuDelay : IMenuDelay
+    {
+        public static ImmediateMenuDelay Instance { get; } = new();
+
+        public Task DelayAsync(
+            TimeSpan duration,
+            CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class RecordingSamsungTransport : ISamsungTransport
+    {
+        private readonly Channel<string> _inbound = Channel.CreateUnbounded<string>();
+        private long _generation;
+
+        public bool IsConnected { get; private set; }
+
+        public long Generation => Interlocked.Read(ref _generation);
+
+        public List<string> SentMessages { get; } = [];
+
+        public Task ConnectAsync(
+            Uri endpoint,
+            TimeSpan timeout,
+            bool allowUntrustedCertificate,
+            CancellationToken cancellationToken = default)
+        {
+            IsConnected = true;
+            Interlocked.Increment(ref _generation);
+            _inbound.Writer.TryWrite(JsonSerializer.Serialize(new
+            {
+                @event = "ms.channel.connect",
+                data = new { token = "test-token" }
+            }));
+            return Task.CompletedTask;
+        }
+
+        public Task SendAsync(
+            string rawJson,
+            CancellationToken cancellationToken = default)
+        {
+            SentMessages.Add(rawJson);
+            return Task.CompletedTask;
+        }
+
+        public async IAsyncEnumerable<string> ReceiveAsync(
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await foreach (var message in _inbound.Reader.ReadAllAsync(cancellationToken))
+            {
+                yield return message;
+            }
+        }
+
+        public Task DisconnectAsync(CancellationToken cancellationToken = default)
+        {
+            IsConnected = false;
+            return Task.CompletedTask;
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            IsConnected = false;
+            _inbound.Writer.TryComplete();
+            return ValueTask.CompletedTask;
+        }
+    }
 }

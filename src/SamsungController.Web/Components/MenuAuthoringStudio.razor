@@ -193,7 +193,7 @@
         {
             <div class="return-strategy-lab">
                 <div class="authoring-section-title"><span>04</span><strong>Return to normal video scripts</strong></div>
-                <p class="return-strategy-intro">The verified script matching the predicted menu depth is used automatically. Enter buttons in order, separated by commas.</p>
+                <p class="return-strategy-intro">The verified script matching the predicted menu depth is used automatically. Tests send only the script shown—place the TV at the named starting position first.</p>
                 <div class="return-script-grid">
                     <article class="return-script-card">
                         <header>
@@ -201,7 +201,7 @@
                             <b class="timing-profile-state @(returnStrategy.AtMenuRoot.Verified ? "verified" : "unverified")">@(returnStrategy.AtMenuRoot.Verified ? "VERIFIED" : "NEEDS VALIDATION")</b>
                         </header>
                         <label><span>KEY SCRIPT</span><input @bind="AtMenuRootScript" @bind:after="MarkReturnScriptsDirty" disabled="@(IsBusy || Navigation.IsRunning)" /></label>
-                        <small>Suggested behavior: <code>KEY_RETURN</code></small>
+                        <small>Place the TV at this menu first. Test sends only <code>@AtMenuRootScript</code>.</small>
                         <div class="return-script-actions">
                             @if (returnStrategy.ActiveValidationKind == MenuReturnScriptKind.AtMenuRoot)
                             {
@@ -217,9 +217,9 @@
                             <b class="timing-profile-state @(returnStrategy.BelowMenuRoot.Verified ? "verified" : "unverified")">@(returnStrategy.BelowMenuRoot.Verified ? "VERIFIED" : "NEEDS VALIDATION")</b>
                         </header>
                         <label><span>KEY SCRIPT</span><input @bind="BelowMenuRootScript" @bind:after="MarkReturnScriptsDirty" disabled="@(IsBusy || Navigation.IsRunning)" /></label>
-                        <small>Proposed behavior: <code>KEY_MENU, KEY_RETURN</code></small>
+                        <small>Place the TV at the selected deeper menu first. Test sends only <code>@BelowMenuRootScript</code>.</small>
                         <label>
-                            <span>TEST FROM</span>
+                            <span>EXPECTED START</span>
                             <select @bind="DeepReturnTestNodeId" disabled="@(IsBusy || Navigation.IsRunning)">
                                 @foreach (var node in returnStrategy.DeepTestNodes)
                                 {
@@ -305,11 +305,11 @@
             </div>
             @if (Authoring.TimingTestRoutes.Count == 0)
             {
-                <p class="field-note">Create a verified anchor and a reachable traversal before testing the system profile.</p>
+                <p class="field-note">Create a traversal before testing the system profile.</p>
             }
             else
             {
-                <p class="field-note">The test saves these values, returns to a known starting point, and replays the selected traversal using only system waits. Screen change covers Menu, OK, Home, Exit, and Source.</p>
+                <p class="field-note">Place the TV at the selected traversal's source first. The test saves these values and sends only that traversal, using system waits and no setup commands. Screen change covers Menu, OK, Home, Exit, and Source.</p>
             }
 
             @if (Authoring.AwaitingTimingValidationConfirmation)
@@ -324,6 +324,7 @@
 
         <div class="validation-studio">
             <div class="authoring-section-title"><span>06</span><strong>Timing lab and visual validation</strong></div>
+            <p class="field-note">Before replaying, place the TV at the source shown on the draft card. Replay sends only the recorded commands; it never resets or traverses to the source automatically.</p>
             @if (Authoring.DraftCandidates.Count == 0)
             {
                 <div class="capture-empty compact">No draft anchors or transitions are waiting for validation.</div>

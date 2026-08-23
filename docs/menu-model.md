@@ -142,20 +142,21 @@ can be planned or sent.
    is captured; failed sends are not recorded. The system timing profile supplies
    waits unless a button has a custom override in the timing lab.
 6. Stop the recording. The UI atomically adds it to the active YAML as a draft.
-7. Edit the **System-wide timing** profile, select a reachable traversal, and
-   choose **Test system profile**. Each test returns to a known starting point
-   and ignores per-button overrides on the selected traversal. Confirm three
-   successful visual runs to persist `timing.verified: true`.
+7. Edit the **System-wide timing** profile, select a traversal, and
+   place the TV at that traversal's source before choosing **Test system
+   profile**. The test sends only the displayed traversal and ignores its
+   per-button overrides. Confirm three successful visual runs to persist
+   `timing.verified: true`.
 8. In **Return to normal video scripts**, edit the Settings-root and deeper-menu
-   key sequences independently. **Save + test** first prepares the selected
-   known menu position, sends the proposed script to the TV, and asks for visual
-   confirmation. Three successful runs mark that script verified in the YAML.
+   key sequences independently. Place the TV at the named starting position,
+   then choose **Save + test**. It sends only the proposed script and asks for
+   visual confirmation. Three successful runs mark that script verified in the
+   YAML.
 9. Open the draft's **Timing lab**, enable custom waits only for exceptional
    button presses, then choose **Save + replay**.
-   Transition validation first executes a verified anchor and verified route to
-   its source, then sends the recorded buttons. That reset happens before every
-   validation attempt, so replay never depends on the menu position left behind
-   by recording or by the previous attempt.
+   First place the TV at the source displayed on the draft card. Validation
+   sends only the recorded buttons; no anchor or route-to-source commands are
+   added implicitly.
 10. Visually confirm the target after every run. Three confirmed passes update
    the same YAML entry to `verified: true`; a failed confirmation resets the
    count to zero.

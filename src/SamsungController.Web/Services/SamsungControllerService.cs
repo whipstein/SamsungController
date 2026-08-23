@@ -24,6 +24,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private readonly JsonFileSamsungTokenStore _tokenStore;
     private readonly NdjsonProtocolLogger _logger;
     private readonly SamsungTvClient _client;
+    private readonly IMenuDelay _menuDelay;
     private readonly List<SamsungMessage> _messages = [];
     private readonly List<MacroExecutionProgress> _macroProgress = [];
     private readonly MenuTraversalRecorder _menuRecorder = new();
@@ -53,8 +54,18 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private bool _disposed;
 
     public SamsungControllerService(IConfiguration configuration)
+        : this(configuration, new ClientWebSocketSamsungTransport(), SystemMenuDelay.Instance)
+    {
+    }
+
+    internal SamsungControllerService(
+        IConfiguration configuration,
+        ISamsungTransport transport,
+        IMenuDelay menuDelay)
     {
         ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(transport);
+        ArgumentNullException.ThrowIfNull(menuDelay);
         _configurationDirectory = Path.GetFullPath(
             configuration["SamsungController:ConfigurationDirectory"]
             ?? WebApplicationPaths.GetDefaultConfigurationDirectory());
@@ -72,9 +83,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
         _tokenStore = new JsonFileSamsungTokenStore(_tokenPath);
         _logger = new NdjsonProtocolLogger(ProtocolLogPath);
         _client = new SamsungTvClient(
-            new ClientWebSocketSamsungTransport(),
+            transport,
             _tokenStore,
             [_logger]);
+        _menuDelay = menuDelay;
         _client.ConnectionStateChanged += HandleConnectionStateChanged;
         _client.MessageObserved += HandleMessageObserved;
     }
@@ -722,8 +734,6 @@ public sealed class SamsungControllerService : IAsyncDisposable
         var transition = definition.Transitions.TryGetValue(transitionId, out var candidate)
             ? candidate
             : throw new KeyNotFoundException($"Menu transition '{transitionId}' was not found.");
-        _ = FindValidationSetup(definition, transition.FromNodeId);
-
         var delaysChanged = !definition.Timing.HasSameDelays(timing);
         var normalizedTiming = timing with { Verified = false };
         var updated = CopyMenuDefinition(definition, timing: normalizedTiming);
@@ -947,7 +957,6 @@ public sealed class SamsungControllerService : IAsyncDisposable
         var startNodeId = kind == MenuReturnScriptKind.AtMenuRoot
             ? context.Strategy.MenuRootNodeId
             : NormalizeDeepReturnTestNode(definition, context, deepStartNodeId);
-        _ = FindValidationSetup(definition, startNodeId);
         var signature = GetOperationSignature(script.Operations);
         var canContinue = previousSession is { AwaitingConfirmation: false }
                           && previousSession.Kind == kind
@@ -2025,7 +2034,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _navigationStatus = $"Authoring validation · {session.ItemId}";
             _navigationError = null;
             _navigationProgress = null;
-            _menuAuthoringStatus = "Preparing the recorded source position";
+            _menuAuthoringStatus = "Sending the recorded commands only";
             _menuAuthoringError = null;
         }
 
@@ -2033,13 +2042,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
         try
         {
             MenuStateTracker tracker;
-            MenuNavigator navigator;
             lock (_sync)
             {
                 tracker = _menuStateTracker
                     ?? throw new InvalidOperationException("No menu state tracker is available.");
-                navigator = _menuNavigator
-                    ?? throw new InvalidOperationException("No menu navigator is available.");
             }
 
             if (session.Kind == MenuAuthoringItemKind.Anchor)
@@ -2068,15 +2074,6 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 if (transition.Verified)
                 {
                     throw new InvalidOperationException($"Transition '{transition.Id}' is already verified.");
-                }
-
-                var setup = FindValidationSetup(definition, transition.FromNodeId);
-                await navigator.ExecuteAnchorAsync(setup.Anchor.Id, linkedSource.Token)
-                    .ConfigureAwait(false);
-                if (setup.Plan.Transitions.Count > 0)
-                {
-                    await navigator.ExecutePlanAsync(setup.Plan, linkedSource.Token)
-                        .ConfigureAwait(false);
                 }
 
                 await ExecuteAuthoringOperationsAsync(
@@ -2145,7 +2142,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _navigationStatus = $"System timing test · {session.TransitionId}";
             _navigationError = null;
             _navigationProgress = null;
-            _menuAuthoringStatus = "Preparing the known starting point";
+            _menuAuthoringStatus = "Sending the selected traversal only";
             _menuAuthoringError = null;
         }
 
@@ -2153,28 +2150,16 @@ public sealed class SamsungControllerService : IAsyncDisposable
         try
         {
             MenuStateTracker tracker;
-            MenuNavigator navigator;
             lock (_sync)
             {
                 tracker = _menuStateTracker
                     ?? throw new InvalidOperationException("No menu state tracker is available.");
-                navigator = _menuNavigator
-                    ?? throw new InvalidOperationException("No menu navigator is available.");
             }
 
             var transition = definition.Transitions.TryGetValue(session.TransitionId, out var candidate)
                 ? candidate
                 : throw new KeyNotFoundException(
                     $"Menu transition '{session.TransitionId}' was not found.");
-            var setup = FindValidationSetup(definition, transition.FromNodeId);
-            await navigator.ExecuteAnchorAsync(setup.Anchor.Id, linkedSource.Token)
-                .ConfigureAwait(false);
-            if (setup.Plan.Transitions.Count > 0)
-            {
-                await navigator.ExecutePlanAsync(setup.Plan, linkedSource.Token)
-                    .ConfigureAwait(false);
-            }
-
             var systemTimedOperations = transition.Operations
                 .Select(operation => operation with { DelayAfter = null })
                 .ToArray();
@@ -2247,7 +2232,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _navigationStatus = $"Return script test · {session.Kind}";
             _navigationError = null;
             _navigationProgress = null;
-            _menuAuthoringStatus = $"Preparing {definition.GetPath(session.StartNodeId)}";
+            _menuAuthoringStatus =
+                $"Sending the return script only · expected start: {definition.GetPath(session.StartNodeId)}";
             _menuAuthoringError = null;
         }
 
@@ -2255,22 +2241,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
         try
         {
             MenuStateTracker tracker;
-            MenuNavigator navigator;
             lock (_sync)
             {
                 tracker = _menuStateTracker
                     ?? throw new InvalidOperationException("No menu state tracker is available.");
-                navigator = _menuNavigator
-                    ?? throw new InvalidOperationException("No menu navigator is available.");
-            }
-
-            var setup = FindValidationSetup(definition, session.StartNodeId);
-            await navigator.ExecuteAnchorAsync(setup.Anchor.Id, linkedSource.Token)
-                .ConfigureAwait(false);
-            if (setup.Plan.Transitions.Count > 0)
-            {
-                await navigator.ExecutePlanAsync(setup.Plan, linkedSource.Token)
-                    .ConfigureAwait(false);
             }
 
             await ExecuteAuthoringOperationsAsync(
@@ -2412,7 +2386,6 @@ public sealed class SamsungControllerService : IAsyncDisposable
             .Where(node => definition.IsDescendantOf(
                 node.Id,
                 context.Strategy.MenuRootNodeId))
-            .Where(node => CanPrepareValidationSource(definition, node.Id))
             .OrderByDescending(node => definition.GetDepth(node.Id))
             .ThenBy(node => definition.GetPath(node.Id), StringComparer.OrdinalIgnoreCase)
             .Select(node => new MenuReturnTestNodeSummary(node.Id, definition.GetPath(node.Id)))
@@ -2513,7 +2486,6 @@ public sealed class SamsungControllerService : IAsyncDisposable
         MenuDefinition definition) =>
         definition.Transitions.Values
             .Where(transition => transition.Operations.Count > 0)
-            .Where(transition => CanPrepareValidationSource(definition, transition.FromNodeId))
             .OrderBy(transition => definition.GetPath(transition.FromNodeId), StringComparer.OrdinalIgnoreCase)
             .ThenBy(transition => definition.GetPath(transition.ToNodeId), StringComparer.OrdinalIgnoreCase)
             .Select(transition => new MenuTimingTestRouteSummary(
@@ -2523,21 +2495,6 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 transition.Operations.Sum(operation => operation.Repeat),
                 transition.Operations.Any(operation => operation.DelayAfter is not null)))
             .ToArray();
-
-    private static bool CanPrepareValidationSource(
-        MenuDefinition definition,
-        string sourceNodeId)
-    {
-        try
-        {
-            _ = FindValidationSetup(definition, sourceNodeId);
-            return true;
-        }
-        catch (InvalidOperationException)
-        {
-            return false;
-        }
-    }
 
     private static ValidationSetup FindValidationSetup(
         MenuDefinition definition,
@@ -2606,7 +2563,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 await _client.SendKeyAsync(operation.Key, operation.Action, cancellationToken)
                     .ConfigureAwait(false);
                 var delay = operation.DelayAfter ?? timing.GetDelay(operation.Key);
-                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                await _menuDelay.DelayAsync(delay, cancellationToken).ConfigureAwait(false);
             }
         }
     }
