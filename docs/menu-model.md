@@ -168,8 +168,9 @@ can be planned or sent.
    assign their parents, and save the hierarchy to YAML. Choose **Custom · TV
    order** and move siblings up or down to match the on-screen menu; switch to
    **Alphabetical** when that view is more useful. Display names and parents remain
-   editable; stable node IDs do not change after creation. Tree labels remain
-   red until an anchor or traversal to that menu position has been verified.
+   editable; stable node IDs do not change after creation. Tree labels are red
+   when no command has been recorded, yellow when a recorded command still needs
+   verification, and the standard color once verified.
    Node creation shares the editor with updates. **Add node** at the top opens a
    blank form while retaining the displayed parent-menu choice; **Save** creates
    it, **Cancel** restores the previously selected node, and **Update** changes an

@@ -61,7 +61,7 @@
             {
                 <div class="authoring-section-body">
                     <div class="menu-tree-toolbar">
-                        <p class="menu-tree-intro">Name and arrange the complete on-screen hierarchy first. Custom order is saved to YAML and can mirror the TV; alphabetical order is a temporary viewing aid.</p>
+                        <p class="menu-tree-intro">Name and arrange the complete on-screen hierarchy first. Custom order is saved to YAML and can mirror the TV; alphabetical order is a temporary viewing aid. Red has no recorded command; yellow is recorded and needs verification.</p>
                         <label>
                             <span>TREE ORDER</span>
                             <select @bind="TreeOrdering">
@@ -78,7 +78,7 @@
                              @ref="MenuTreeElement">
                             @foreach (var node in OrderedTreeNodes)
                             {
-                                <div class="menu-tree-node @(node.HasVerifiedRoute ? "" : "unverified") @(EditingNodeId?.Equals(node.Id, StringComparison.OrdinalIgnoreCase) == true ? "active" : "")">
+                                <div class="menu-tree-node @GetMenuTreeNodeStateClass(node) @(EditingNodeId?.Equals(node.Id, StringComparison.OrdinalIgnoreCase) == true ? "active" : "")">
                                     <button type="button"
                                             class="menu-tree-node-select"
                                             role="treeitem"
@@ -86,7 +86,7 @@
                                             aria-selected="@(EditingNodeId?.Equals(node.Id, StringComparison.OrdinalIgnoreCase) == true ? "true" : "false")"
                                             data-node-id="@node.Id"
                                             data-parent-id="@(node.ParentId ?? string.Empty)"
-                                            title="@(node.HasVerifiedRoute ? "Verified menu position" : "Menu position needs validation")"
+                                            title="@GetMenuTreeNodeStateTitle(node)"
                                             @onclick="() => EditMenuNode(node)">
                                         <span style="--tree-depth: @node.Depth">@node.Label</span>
                                         <small>@node.Id</small>
@@ -767,6 +767,18 @@
         FlattenTreeNodes(
             Navigation.Nodes,
             TreeOrdering == MenuTreeSortMode.Alphabetical);
+    private static string GetMenuTreeNodeStateClass(MenuNodeSummary node) =>
+        node.HasDraftRoute
+            ? "unverified"
+            : node.HasVerifiedRoute
+                ? "verified"
+                : "unrecorded";
+    private static string GetMenuTreeNodeStateTitle(MenuNodeSummary node) =>
+        node.HasDraftRoute
+            ? "Recorded menu command needs verification"
+            : node.HasVerifiedRoute
+                ? "Verified menu position"
+                : "No menu command has been recorded";
     private bool CanEditMenuTree => !IsBusy && !Authoring.IsRecording
         && !Navigation.IsRunning && !Snapshot.MacroRunning
         && !ConfirmMenuNodeDelete;

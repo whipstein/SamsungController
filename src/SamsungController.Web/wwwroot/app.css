@@ -388,7 +388,8 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .menu-tree-node-select { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 6px 9px 10px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .menu-tree-node-select:focus-visible { outline: 1px solid rgba(124,231,220,.5); outline-offset: -2px; }
 .menu-tree-node-select span { min-width: 0; padding-left: calc(var(--tree-depth) * 13px); overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.menu-tree-node.unverified .menu-tree-node-select span { color: var(--danger); }
+.menu-tree-node.unverified .menu-tree-node-select span { color: var(--amber); }
+.menu-tree-node.unrecorded .menu-tree-node-select span { color: var(--danger); }
 .menu-tree-node-select small { color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .menu-tree-order-actions { display: flex; gap: 3px; padding-right: 5px; }
 .menu-tree-order-actions button { width: 25px; height: 25px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: #0b1821; color: var(--muted); font-size: 11px; cursor: pointer; }
