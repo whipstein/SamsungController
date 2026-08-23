@@ -46,6 +46,7 @@ public sealed class MenuDefinitionWriter
             AppendScalar(yaml, 4, "target", anchor.TargetNodeId);
             AppendBoolean(yaml, 4, "verified", anchor.Verified);
             AppendOptionalScalar(yaml, 4, "description", anchor.Description);
+            AppendReturnStrategy(yaml, anchor.ReturnStrategy);
             AppendOperations(yaml, anchor.Operations);
         }
 
@@ -94,20 +95,21 @@ public sealed class MenuDefinitionWriter
 
     private static void AppendOperations(
         StringBuilder yaml,
-        IReadOnlyList<MenuOperation> operations)
+        IReadOnlyList<MenuOperation> operations,
+        int indentation = 4)
     {
-        yaml.AppendLine("    steps:");
+        yaml.Append(' ', indentation).AppendLine("steps:");
         foreach (var operation in operations)
         {
-            AppendListScalar(yaml, 6, "key", operation.Key);
+            AppendListScalar(yaml, indentation + 2, "key", operation.Key);
             if (operation.Action != Core.Protocol.RemoteKeyAction.Click)
             {
-                AppendScalar(yaml, 8, "action", operation.Action.ToString());
+                AppendScalar(yaml, indentation + 4, "action", operation.Action.ToString());
             }
 
             if (operation.Repeat != 1)
             {
-                AppendInteger(yaml, 8, "repeat", operation.Repeat);
+                AppendInteger(yaml, indentation + 4, "repeat", operation.Repeat);
             }
 
             if (operation.DelayAfter is { } delay)
@@ -115,9 +117,35 @@ public sealed class MenuDefinitionWriter
                 var milliseconds = delay.TotalMilliseconds.ToString(
                     "0.###",
                     CultureInfo.InvariantCulture);
-                yaml.Append(' ', 8).Append("delay: ").Append(milliseconds).AppendLine("ms");
+                yaml.Append(' ', indentation + 4).Append("delay: ").Append(milliseconds).AppendLine("ms");
             }
         }
+    }
+
+    private static void AppendReturnStrategy(
+        StringBuilder yaml,
+        MenuReturnStrategy? strategy)
+    {
+        if (strategy is null)
+        {
+            return;
+        }
+
+        yaml.AppendLine("    returnStrategy:");
+        AppendScalar(yaml, 6, "menuRoot", strategy.MenuRootNodeId);
+        AppendReturnScript(yaml, 6, "atMenuRoot", strategy.AtMenuRoot);
+        AppendReturnScript(yaml, 6, "belowMenuRoot", strategy.BelowMenuRoot);
+    }
+
+    private static void AppendReturnScript(
+        StringBuilder yaml,
+        int indentation,
+        string name,
+        MenuReturnScript script)
+    {
+        yaml.Append(' ', indentation).Append(name).AppendLine(":");
+        AppendBoolean(yaml, indentation + 2, "verified", script.Verified);
+        AppendOperations(yaml, script.Operations, indentation + 2);
     }
 
     private static void AppendListScalar(

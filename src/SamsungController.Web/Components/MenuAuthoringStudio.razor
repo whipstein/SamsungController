@@ -189,9 +189,74 @@
             </div>
         </div>
 
+        @if (Authoring.ReturnStrategy is { } returnStrategy)
+        {
+            <div class="return-strategy-lab">
+                <div class="authoring-section-title"><span>04</span><strong>Return to normal video scripts</strong></div>
+                <p class="return-strategy-intro">The verified script matching the predicted menu depth is used automatically. Enter buttons in order, separated by commas.</p>
+                <div class="return-script-grid">
+                    <article class="return-script-card">
+                        <header>
+                            <div><span>AT MENU ROOT</span><strong>@returnStrategy.MenuRootPath</strong></div>
+                            <b class="timing-profile-state @(returnStrategy.AtMenuRoot.Verified ? "verified" : "unverified")">@(returnStrategy.AtMenuRoot.Verified ? "VERIFIED" : "NEEDS VALIDATION")</b>
+                        </header>
+                        <label><span>KEY SCRIPT</span><input @bind="AtMenuRootScript" @bind:after="MarkReturnScriptsDirty" disabled="@(IsBusy || Navigation.IsRunning)" /></label>
+                        <small>Suggested behavior: <code>KEY_RETURN</code></small>
+                        <div class="return-script-actions">
+                            @if (returnStrategy.ActiveValidationKind == MenuReturnScriptKind.AtMenuRoot)
+                            {
+                                <b>@returnStrategy.ValidationPasses/@returnStrategy.RequiredValidationPasses passed</b>
+                            }
+                            <button class="primary-action" @onclick="TestAtMenuRootReturnAsync" disabled="@(!CanTestAtMenuRootReturn)">Save + test <span>▶</span></button>
+                        </div>
+                    </article>
+
+                    <article class="return-script-card">
+                        <header>
+                            <div><span>DEEPER MENU</span><strong>Any node below @returnStrategy.MenuRootPath</strong></div>
+                            <b class="timing-profile-state @(returnStrategy.BelowMenuRoot.Verified ? "verified" : "unverified")">@(returnStrategy.BelowMenuRoot.Verified ? "VERIFIED" : "NEEDS VALIDATION")</b>
+                        </header>
+                        <label><span>KEY SCRIPT</span><input @bind="BelowMenuRootScript" @bind:after="MarkReturnScriptsDirty" disabled="@(IsBusy || Navigation.IsRunning)" /></label>
+                        <small>Proposed behavior: <code>KEY_MENU, KEY_RETURN</code></small>
+                        <label>
+                            <span>TEST FROM</span>
+                            <select @bind="DeepReturnTestNodeId" disabled="@(IsBusy || Navigation.IsRunning)">
+                                @foreach (var node in returnStrategy.DeepTestNodes)
+                                {
+                                    <option value="@node.Id">@node.Path</option>
+                                }
+                            </select>
+                        </label>
+                        <div class="return-script-actions">
+                            @if (returnStrategy.ActiveValidationKind == MenuReturnScriptKind.BelowMenuRoot)
+                            {
+                                <b>@returnStrategy.ValidationPasses/@returnStrategy.RequiredValidationPasses passed</b>
+                            }
+                            <button class="primary-action" @onclick="TestBelowMenuRootReturnAsync" disabled="@(!CanTestBelowMenuRootReturn)">Save + test <span>▶</span></button>
+                        </div>
+                    </article>
+                </div>
+                <div class="return-fallback-row">
+                    <div><span>UNKNOWN POSITION FALLBACK</span><strong>@returnStrategy.AnchorLabel</strong></div>
+                    <code>@returnStrategy.FallbackScript</code>
+                    <small>This existing verified anchor remains the fallback when the predicted menu position is unavailable.</small>
+                    <button class="secondary-action" @onclick="SaveReturnScriptsAsync" disabled="@(!CanSaveReturnScripts)">Save scripts</button>
+                </div>
+
+                @if (returnStrategy.AwaitingValidationConfirmation)
+                {
+                    <div class="validation-confirmation return-validation-confirmation">
+                        <div><span>RETURN SCRIPT CONFIRMATION</span><strong>Did the TV return to @returnStrategy.ExpectedTargetPath?</strong></div>
+                        <button class="secondary-action danger-action" @onclick="() => ConfirmReturnScriptAsync(false)" disabled="@IsBusy">No — reset passes</button>
+                        <button class="primary-action" @onclick="() => ConfirmReturnScriptAsync(true)" disabled="@IsBusy">Yes — count pass <span>✓</span></button>
+                    </div>
+                }
+            </div>
+        }
+
         <div class="timing-profile-lab">
             <div class="authoring-section-title timing-profile-title">
-                <span>04</span><strong>System-wide timing</strong>
+                <span>05</span><strong>System-wide timing</strong>
                 <b class="timing-profile-state @(SystemTimingIsVerified ? "verified" : "unverified")">
                     @(SystemTimingIsVerified ? "VERIFIED" : "NEEDS VALIDATION")
                 </b>
@@ -258,7 +323,7 @@
         </div>
 
         <div class="validation-studio">
-            <div class="authoring-section-title"><span>05</span><strong>Timing lab and visual validation</strong></div>
+            <div class="authoring-section-title"><span>06</span><strong>Timing lab and visual validation</strong></div>
             @if (Authoring.DraftCandidates.Count == 0)
             {
                 <div class="capture-empty compact">No draft anchors or transitions are waiting for validation.</div>
@@ -356,6 +421,11 @@
     private int ScreenChangeDelayMilliseconds { get; set; } = 500;
     private int ReturnDelayMilliseconds { get; set; } = 300;
     private string SelectedTimingTestRouteId { get; set; } = string.Empty;
+    private string AtMenuRootScript { get; set; } = "KEY_RETURN";
+    private string BelowMenuRootScript { get; set; } = "KEY_MENU, KEY_RETURN";
+    private string DeepReturnTestNodeId { get; set; } = string.Empty;
+    private bool ReturnScriptsInitialized { get; set; }
+    private bool ReturnScriptsDirty { get; set; }
     private bool TimingProfileInitialized { get; set; }
     private bool TimingProfileDirty { get; set; }
     private MenuTimingProfile? LastObservedTiming { get; set; }
@@ -388,7 +458,8 @@
     private bool CanPrepareSource => RecordingKind == MenuAuthoringItemKind.Transition && IsConnected && !IsBusy &&
         !Authoring.IsRecording && !Navigation.IsRunning && !Snapshot.MacroRunning && !string.IsNullOrWhiteSpace(SourceNodeId);
     private bool CanRunValidation => IsConnected && !IsBusy && !Authoring.IsRecording && !Navigation.IsRunning
-        && !Snapshot.MacroRunning && !Authoring.AwaitingTimingValidationConfirmation;
+        && !Snapshot.MacroRunning && !Authoring.AwaitingTimingValidationConfirmation
+        && Authoring.ReturnStrategy?.AwaitingValidationConfirmation != true;
     private bool TimingProfileValid => IsValidWait(DefaultDelayMilliseconds)
         && IsValidWait(ScreenChangeDelayMilliseconds)
         && IsValidWait(ReturnDelayMilliseconds);
@@ -396,7 +467,8 @@
         !step.UseCustomDelay || IsValidWait(step.DelayAfterMilliseconds));
     private bool CanSaveSystemTiming => TimingProfileValid && !IsBusy && !Authoring.IsRecording
         && !Navigation.IsRunning && !Snapshot.MacroRunning && !Authoring.AwaitingValidationConfirmation
-        && !Authoring.AwaitingTimingValidationConfirmation;
+        && !Authoring.AwaitingTimingValidationConfirmation
+        && Authoring.ReturnStrategy?.AwaitingValidationConfirmation != true;
     private bool CanTestSystemTiming => CanRunValidation && TimingProfileValid
         && !Authoring.AwaitingValidationConfirmation
         && Authoring.TimingTestRoutes.Any(route =>
@@ -407,6 +479,16 @@
     private bool CanSaveCandidateTiming => CanSaveSystemTiming && TimingEditorKind is not null
         && TimingEditorId is not null && TimingSteps.Count > 0 && TimingOverridesValid;
     private bool CanSaveAndReplayTiming => CanSaveCandidateTiming && CanRunValidation;
+    private bool ReturnScriptsValid => TryParseKeyScript(AtMenuRootScript, out _)
+        && TryParseKeyScript(BelowMenuRootScript, out _);
+    private bool CanSaveReturnScripts => Authoring.ReturnStrategy is not null && ReturnScriptsValid
+        && !IsBusy && !Authoring.IsRecording && !Navigation.IsRunning && !Snapshot.MacroRunning
+        && !Authoring.AwaitingValidationConfirmation && !Authoring.AwaitingTimingValidationConfirmation
+        && Authoring.ReturnStrategy.AwaitingValidationConfirmation == false;
+    private bool CanTestAtMenuRootReturn => CanSaveReturnScripts && IsConnected;
+    private bool CanTestBelowMenuRootReturn => CanSaveReturnScripts && IsConnected
+        && Authoring.ReturnStrategy!.DeepTestNodes.Any(node =>
+            node.Id.Equals(DeepReturnTestNodeId, StringComparison.OrdinalIgnoreCase));
     private long TimingDurationMilliseconds => TimingSteps.Sum(step =>
         (long)(step.UseCustomDelay
             ? step.DelayAfterMilliseconds
@@ -594,6 +676,45 @@
     private Task ConfirmSystemTimingAsync(bool passed) =>
         RunBusyAsync(() => Controller.ConfirmMenuTimingProfileTestAsync(passed));
 
+    private void MarkReturnScriptsDirty() => ReturnScriptsDirty = true;
+
+    private Task SaveReturnScriptsAsync() => RunBusyAsync(async () =>
+    {
+        await SaveReturnScriptsCoreAsync();
+        Refresh();
+    });
+
+    private Task TestAtMenuRootReturnAsync() =>
+        SaveAndTestReturnScriptAsync(MenuReturnScriptKind.AtMenuRoot);
+
+    private Task TestBelowMenuRootReturnAsync() =>
+        SaveAndTestReturnScriptAsync(MenuReturnScriptKind.BelowMenuRoot);
+
+    private Task SaveAndTestReturnScriptAsync(MenuReturnScriptKind kind) => RunBusyAsync(async () =>
+    {
+        await SaveReturnScriptsCoreAsync();
+        await Controller.RunMenuReturnStrategyTestAsync(
+            kind,
+            kind == MenuReturnScriptKind.BelowMenuRoot ? DeepReturnTestNodeId : null);
+        Refresh();
+    });
+
+    private async Task SaveReturnScriptsCoreAsync()
+    {
+        if (!TryParseKeyScript(AtMenuRootScript, out var atMenuRootKeys)
+            || !TryParseKeyScript(BelowMenuRootScript, out var belowMenuRootKeys))
+        {
+            throw new InvalidOperationException(
+                "Each return script must contain one or more comma-separated KEY_ commands.");
+        }
+
+        await Controller.UpdateMenuReturnStrategyAsync(atMenuRootKeys, belowMenuRootKeys);
+        ReturnScriptsDirty = false;
+    }
+
+    private Task ConfirmReturnScriptAsync(bool passed) =>
+        RunBusyAsync(() => Controller.ConfirmMenuReturnStrategyTestAsync(passed));
+
     private async Task RunBusyAsync(Func<Task> action)
     {
         IsBusy = true;
@@ -638,6 +759,23 @@
 
         LastObservedTiming = authoring.Timing;
         Authoring = authoring;
+        if (Authoring.ReturnStrategy is { } returnStrategy)
+        {
+            if (!ReturnScriptsInitialized || !ReturnScriptsDirty)
+            {
+                AtMenuRootScript = returnStrategy.AtMenuRoot.Script;
+                BelowMenuRootScript = returnStrategy.BelowMenuRoot.Script;
+                ReturnScriptsInitialized = true;
+            }
+
+            if (string.IsNullOrWhiteSpace(DeepReturnTestNodeId)
+                || returnStrategy.DeepTestNodes.All(node =>
+                    !node.Id.Equals(DeepReturnTestNodeId, StringComparison.OrdinalIgnoreCase)))
+            {
+                DeepReturnTestNodeId = returnStrategy.DeepTestNodes.FirstOrDefault()?.Id
+                    ?? string.Empty;
+            }
+        }
         if (string.IsNullOrWhiteSpace(SelectedTimingTestRouteId)
             || Authoring.TimingTestRoutes.All(route =>
                 !route.Id.Equals(SelectedTimingTestRouteId, StringComparison.OrdinalIgnoreCase)))
@@ -666,6 +804,15 @@
 
     private static bool IsValidWait(int milliseconds) =>
         milliseconds is >= 50 and <= 30_000;
+
+    private static bool TryParseKeyScript(string script, out string[] keys)
+    {
+        keys = script.Split(
+            [',', '\n', '\r', '\t', ' '],
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return keys.Length is >= 1 and <= MenuDefinitionValidator.MaximumRepeat
+               && keys.All(key => key.StartsWith("KEY_", StringComparison.OrdinalIgnoreCase));
+    }
 
     private void LoadTimingSteps(MenuAuthoringCandidateSummary candidate)
     {

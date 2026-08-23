@@ -89,7 +89,18 @@ anchors:
     label: Return to normal video
     target: normal-video
     verified: true
-    description: Two KEY_MENU clicks returned to normal video from the menu system three out of three times on firmware 1296.
+    description: Uses state-aware return scripts when the predicted menu position is known and the two-Menu sequence as the unknown-position fallback.
+    returnStrategy:
+      menuRoot: settings-overlay
+      atMenuRoot:
+        verified: true
+        steps:
+          - key: KEY_RETURN
+      belowMenuRoot:
+        verified: false
+        steps:
+          - key: KEY_MENU
+          - key: KEY_RETURN
     steps:
       - key: KEY_MENU
         repeat: 2

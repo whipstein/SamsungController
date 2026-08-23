@@ -83,6 +83,76 @@ public sealed class MenuNavigatorTests
     }
 
     [Fact]
+    public async Task ReturnAnchorUsesMenuRootScriptWhenPositionIsKnown()
+    {
+        var definition = CreateStateAwareReturnDefinition();
+        var tracker = new MenuStateTracker(definition);
+        var target = new RecordingTarget();
+        var navigator = new MenuNavigator(definition, tracker, target);
+
+        await navigator.ExecuteAnchorAsync("normal");
+        await navigator.ExecutePlanAsync(navigator.Plan("settings"));
+        target.Keys.Clear();
+
+        await navigator.ExecuteAnchorAsync("normal");
+
+        Assert.Equal(["KEY_RETURN"], target.Keys);
+        Assert.Equal("normal", tracker.Current.NodeId);
+    }
+
+    [Fact]
+    public async Task ReturnAnchorUsesDeeperMenuScriptWhenPositionIsKnown()
+    {
+        var definition = CreateStateAwareReturnDefinition();
+        var tracker = new MenuStateTracker(definition);
+        var target = new RecordingTarget();
+        var navigator = new MenuNavigator(definition, tracker, target);
+
+        await navigator.ExecuteAnchorAsync("normal");
+        await navigator.ExecutePlanAsync(navigator.Plan("picture"));
+        target.Keys.Clear();
+
+        await navigator.ExecuteAnchorAsync("normal");
+
+        Assert.Equal(["KEY_MENU", "KEY_RETURN"], target.Keys);
+        Assert.Equal("normal", tracker.Current.NodeId);
+    }
+
+    [Fact]
+    public async Task ReturnAnchorUsesFallbackWhenPositionIsUnknownOrScriptIsUnverified()
+    {
+        var definition = CreateStateAwareReturnDefinition(deeperScriptVerified: false);
+        var tracker = new MenuStateTracker(definition);
+        var target = new RecordingTarget();
+        var navigator = new MenuNavigator(definition, tracker, target);
+
+        await navigator.ExecuteAnchorAsync("normal");
+        Assert.Equal(["KEY_MENU", "KEY_MENU"], target.Keys);
+
+        await navigator.ExecutePlanAsync(navigator.Plan("picture"));
+        target.Keys.Clear();
+        await navigator.ExecuteAnchorAsync("normal");
+
+        Assert.Equal(["KEY_MENU", "KEY_MENU"], target.Keys);
+    }
+
+    [Fact]
+    public async Task ReturnAnchorStillRunsFallbackWhenPredictionIsAlreadyAtTarget()
+    {
+        var definition = CreateStateAwareReturnDefinition();
+        var tracker = new MenuStateTracker(definition);
+        var target = new RecordingTarget();
+        var navigator = new MenuNavigator(definition, tracker, target);
+
+        await navigator.ExecuteAnchorAsync("normal");
+        target.Keys.Clear();
+        await navigator.ExecuteAnchorAsync("normal");
+
+        Assert.Equal(["KEY_MENU", "KEY_MENU"], target.Keys);
+        Assert.Equal(MenuStateConfidence.Synchronized, tracker.Current.Confidence);
+    }
+
+    [Fact]
     public void ManualUnmodeledNavigationInvalidatesPredictionButVolumeDoesNot()
     {
         var definition = CreateDefinition();
@@ -126,6 +196,46 @@ public sealed class MenuNavigatorTests
                 "normal",
                 [new MenuOperation("KEY_RETURN", Repeat: 2, DelayAfter: TimeSpan.FromMilliseconds(10))],
                 true)
+        ]);
+
+    private static MenuDefinition CreateStateAwareReturnDefinition(
+        bool deeperScriptVerified = true) => new(
+        "state-aware-return",
+        "State-aware return",
+        "TV",
+        new MenuDefinitionContext(),
+        [
+            new MenuNode("normal", "Normal video"),
+            new MenuNode("settings", "Settings"),
+            new MenuNode("picture", "Picture", "settings")
+        ],
+        [
+            new MenuTransition(
+                "open-settings",
+                "normal",
+                "settings",
+                [new MenuOperation("KEY_MENU")],
+                true),
+            new MenuTransition(
+                "open-picture",
+                "settings",
+                "picture",
+                [new MenuOperation("KEY_DOWN")],
+                true)
+        ],
+        [
+            new MenuAnchor(
+                "normal",
+                "Back to video",
+                "normal",
+                [new MenuOperation("KEY_MENU", Repeat: 2)],
+                true,
+                ReturnStrategy: new MenuReturnStrategy(
+                    "settings",
+                    new MenuReturnScript([new MenuOperation("KEY_RETURN")], true),
+                    new MenuReturnScript(
+                        [new MenuOperation("KEY_MENU"), new MenuOperation("KEY_RETURN")],
+                        deeperScriptVerified)))
         ]);
 
     private sealed class RecordingTarget : IMenuCommandTarget

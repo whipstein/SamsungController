@@ -94,6 +94,15 @@ public sealed class MenuDefinitionParserTests
         var reset = Assert.Single(normalVideo.Operations);
         Assert.Equal("KEY_MENU", reset.Key);
         Assert.Equal(2, reset.Repeat);
+        var returnStrategy = Assert.IsType<MenuReturnStrategy>(normalVideo.ReturnStrategy);
+        Assert.Equal("settings-overlay", returnStrategy.MenuRootNodeId);
+        Assert.True(returnStrategy.AtMenuRoot.Verified);
+        Assert.Equal("KEY_RETURN", Assert.Single(returnStrategy.AtMenuRoot.Operations).Key);
+        Assert.False(returnStrategy.BelowMenuRoot.Verified);
+        Assert.Collection(
+            returnStrategy.BelowMenuRoot.Operations,
+            operation => Assert.Equal("KEY_MENU", operation.Key),
+            operation => Assert.Equal("KEY_RETURN", operation.Key));
 
         var picture = definition.Transitions["open-picture"];
         Assert.True(picture.Verified);

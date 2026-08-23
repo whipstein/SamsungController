@@ -218,6 +218,37 @@ public sealed record MenuTimingTestRouteSummary(
     int CommandCount,
     bool HasCustomDelays);
 
+public enum MenuReturnScriptKind
+{
+    AtMenuRoot,
+    BelowMenuRoot
+}
+
+public sealed record MenuReturnScriptSummary(
+    MenuReturnScriptKind Kind,
+    string Label,
+    string Script,
+    bool Verified);
+
+public sealed record MenuReturnTestNodeSummary(
+    string Id,
+    string Path);
+
+public sealed record MenuReturnStrategySummary(
+    string AnchorId,
+    string AnchorLabel,
+    string MenuRootNodeId,
+    string MenuRootPath,
+    string FallbackScript,
+    MenuReturnScriptSummary AtMenuRoot,
+    MenuReturnScriptSummary BelowMenuRoot,
+    IReadOnlyList<MenuReturnTestNodeSummary> DeepTestNodes,
+    MenuReturnScriptKind? ActiveValidationKind,
+    int ValidationPasses,
+    int RequiredValidationPasses,
+    bool AwaitingValidationConfirmation,
+    string? ExpectedTargetPath);
+
 public sealed record MenuAuthoringSnapshot(
     bool IsRecording,
     MenuAuthoringItemKind? RecordingKind,
@@ -228,6 +259,7 @@ public sealed record MenuAuthoringSnapshot(
     IReadOnlyList<MenuRecordedStepSummary> RecordedSteps,
     int RecordedCommandCount,
     MenuTimingProfile Timing,
+    MenuReturnStrategySummary? ReturnStrategy,
     IReadOnlyList<MenuTimingTestRouteSummary> TimingTestRoutes,
     string? ActiveTimingTestRouteId,
     int TimingValidationPasses,

@@ -38,7 +38,14 @@ public sealed class MenuDefinitionWriterTests : IDisposable
                     "Return to video",
                     "normal-video",
                     [new MenuOperation("KEY_RETURN", Repeat: 3, DelayAfter: TimeSpan.FromMilliseconds(300))],
-                    true)
+                    true,
+                    ReturnStrategy: new MenuReturnStrategy(
+                        "settings",
+                        new MenuReturnScript([new MenuOperation("KEY_RETURN")], true),
+                        new MenuReturnScript([
+                            new MenuOperation("KEY_MENU"),
+                            new MenuOperation("KEY_RETURN")
+                        ])))
             ],
             new MenuTimingProfile(175, 650, 325, true));
         var path = Path.Combine(_directory, "menu.yaml");
@@ -53,6 +60,15 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Assert.Contains("  verified: true", await File.ReadAllTextAsync(path), StringComparison.Ordinal);
         Assert.Equal("Owner's settings", reparsed.Nodes["settings"].Description);
         Assert.True(reparsed.Anchors["normal"].Verified);
+        var returnStrategy = Assert.IsType<MenuReturnStrategy>(
+            reparsed.Anchors["normal"].ReturnStrategy);
+        Assert.Equal("settings", returnStrategy.MenuRootNodeId);
+        Assert.True(returnStrategy.AtMenuRoot.Verified);
+        Assert.Equal("KEY_RETURN", Assert.Single(returnStrategy.AtMenuRoot.Operations).Key);
+        Assert.False(returnStrategy.BelowMenuRoot.Verified);
+        Assert.Equal(
+            ["KEY_MENU", "KEY_RETURN"],
+            returnStrategy.BelowMenuRoot.Operations.Select(operation => operation.Key));
         var transition = reparsed.Transitions["open-settings"];
         Assert.False(transition.Verified);
         Assert.Equal(4, transition.Operations[0].Repeat);

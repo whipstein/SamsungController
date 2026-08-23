@@ -78,6 +78,7 @@ public sealed class MenuDefinitionValidator
             }
 
             ValidateOperations(location, anchor.Operations, errors);
+            ValidateReturnStrategy(definition, anchor, location, errors);
         }
 
         foreach (var transition in definition.Transitions.Values)
@@ -133,6 +134,43 @@ public sealed class MenuDefinitionValidator
                 $"timing.{name}",
                 "System timing must be between 50 and 30000 milliseconds."));
         }
+    }
+
+    private static void ValidateReturnStrategy(
+        MenuDefinition definition,
+        MenuAnchor anchor,
+        string anchorLocation,
+        ICollection<MenuDefinitionValidationError> errors)
+    {
+        if (anchor.ReturnStrategy is not { } strategy)
+        {
+            return;
+        }
+
+        var location = $"{anchorLocation} returnStrategy";
+        if (!definition.Nodes.ContainsKey(strategy.MenuRootNodeId))
+        {
+            errors.Add(new MenuDefinitionValidationError(
+                location,
+                $"Menu root node '{strategy.MenuRootNodeId}' does not exist."));
+        }
+        else if (strategy.MenuRootNodeId.Equals(
+                     anchor.TargetNodeId,
+                     StringComparison.OrdinalIgnoreCase))
+        {
+            errors.Add(new MenuDefinitionValidationError(
+                location,
+                "The menu root and return target must be different nodes."));
+        }
+
+        ValidateOperations(
+            $"{location} atMenuRoot",
+            strategy.AtMenuRoot.Operations,
+            errors);
+        ValidateOperations(
+            $"{location} belowMenuRoot",
+            strategy.BelowMenuRoot.Operations,
+            errors);
     }
 
     public void ValidateAndThrow(MenuDefinition definition)

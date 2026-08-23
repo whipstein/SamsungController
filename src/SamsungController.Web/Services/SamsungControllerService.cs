@@ -46,6 +46,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private NavigationProgress? _navigationProgress;
     private MenuValidationSession? _menuValidation;
     private MenuTimingValidationSession? _menuTimingValidation;
+    private MenuReturnValidationSession? _menuReturnValidation;
     private string? _menuAuthoringStatus;
     private string? _menuAuthoringError;
     private string? _lastError;
@@ -282,6 +283,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
             var timingTestRoutes = definition is null
                 ? []
                 : GetTimingTestRoutes(definition);
+            var returnStrategy = definition is null
+                ? null
+                : GetReturnStrategySummary(definition, _menuReturnValidation);
             var request = _menuRecorder.Request;
             var steps = _menuRecorder.Operations
                 .Select(operation => new MenuRecordedStepSummary(
@@ -300,6 +304,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 steps,
                 steps.Sum(step => step.Repeat),
                 definition?.Timing ?? new MenuTimingProfile(),
+                returnStrategy,
                 timingTestRoutes,
                 _menuTimingValidation?.TransitionId,
                 _menuTimingValidation?.Passes ?? 0,
@@ -706,6 +711,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 throw new InvalidOperationException(
                     "Confirm the pending draft replay before testing the system timing profile.");
             }
+
+            if (_menuReturnValidation?.AwaitingConfirmation == true)
+            {
+                throw new InvalidOperationException(
+                    "Confirm the pending return-script test before testing the system timing profile.");
+            }
         }
 
         var transition = definition.Transitions.TryGetValue(transitionId, out var candidate)
@@ -831,6 +842,236 @@ public sealed class SamsungControllerService : IAsyncDisposable
             };
             _menuAuthoringStatus =
                 $"System timing verified · {MenuTimingValidationSession.RequiredPasses}/{MenuTimingValidationSession.RequiredPasses} passes saved to YAML";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
+    }
+
+    public async Task UpdateMenuReturnStrategyAsync(
+        IReadOnlyList<string> atMenuRootKeys,
+        IReadOnlyList<string> belowMenuRootKeys,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(atMenuRootKeys);
+        ArgumentNullException.ThrowIfNull(belowMenuRootKeys);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("change return-to-video scripts");
+        EnsureNoMenuRecording("change return-to-video scripts");
+
+        MenuDefinition definition;
+        MenuValidationSession? previousDraftValidation;
+        MenuTimingValidationSession? previousTimingValidation;
+        MenuReturnValidationSession? previousReturnValidation;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+            previousDraftValidation = _menuValidation;
+            previousTimingValidation = _menuTimingValidation;
+            previousReturnValidation = _menuReturnValidation;
+        }
+
+        var context = GetRequiredReturnStrategyContext(definition);
+        var atMenuRoot = UpdateReturnScript(context.Strategy.AtMenuRoot, atMenuRootKeys);
+        var belowMenuRoot = UpdateReturnScript(context.Strategy.BelowMenuRoot, belowMenuRootKeys);
+        var atMenuRootChanged = atMenuRoot != context.Strategy.AtMenuRoot;
+        var belowMenuRootChanged = belowMenuRoot != context.Strategy.BelowMenuRoot;
+        var strategy = new MenuReturnStrategy(
+            context.Strategy.MenuRootNodeId,
+            atMenuRoot,
+            belowMenuRoot);
+        var anchors = definition.Anchors.Values
+            .Select(anchor => anchor.Id.Equals(context.Anchor.Id, StringComparison.OrdinalIgnoreCase)
+                ? anchor with { ReturnStrategy = strategy }
+                : anchor)
+            .ToArray();
+        var updated = CopyMenuDefinition(definition, anchors: anchors);
+        new MenuDefinitionValidator().ValidateAndThrow(updated);
+        await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
+
+        var activeScriptChanged = previousReturnValidation?.Kind switch
+        {
+            MenuReturnScriptKind.AtMenuRoot => atMenuRootChanged,
+            MenuReturnScriptKind.BelowMenuRoot => belowMenuRootChanged,
+            _ => false
+        };
+        lock (_sync)
+        {
+            _menuValidation = previousDraftValidation;
+            _menuTimingValidation = previousTimingValidation;
+            _menuReturnValidation = activeScriptChanged ? null : previousReturnValidation;
+            _menuAuthoringStatus = atMenuRootChanged || belowMenuRootChanged
+                ? "Return-to-video scripts saved to YAML · changed scripts require 3/3 validation"
+                : "Return-to-video scripts saved to YAML";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
+    }
+
+    public async Task RunMenuReturnStrategyTestAsync(
+        MenuReturnScriptKind kind,
+        string? deepStartNodeId,
+        CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("test a return-to-video script");
+        EnsureNoMenuRecording("test a return-to-video script");
+
+        MenuDefinition definition;
+        MenuReturnValidationSession? previousSession;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+            previousSession = _menuReturnValidation;
+            if (previousSession?.AwaitingConfirmation == true)
+            {
+                throw new InvalidOperationException(
+                    "Confirm whether the previous return-script test passed before replaying it.");
+            }
+
+            if (_menuValidation?.AwaitingConfirmation == true
+                || _menuTimingValidation?.AwaitingConfirmation == true)
+            {
+                throw new InvalidOperationException(
+                    "Confirm the pending visual test before testing a return-to-video script.");
+            }
+        }
+
+        var context = GetRequiredReturnStrategyContext(definition);
+        var script = kind == MenuReturnScriptKind.AtMenuRoot
+            ? context.Strategy.AtMenuRoot
+            : context.Strategy.BelowMenuRoot;
+        var startNodeId = kind == MenuReturnScriptKind.AtMenuRoot
+            ? context.Strategy.MenuRootNodeId
+            : NormalizeDeepReturnTestNode(definition, context, deepStartNodeId);
+        _ = FindValidationSetup(definition, startNodeId);
+        var signature = GetOperationSignature(script.Operations);
+        var canContinue = previousSession is { AwaitingConfirmation: false }
+                          && previousSession.Kind == kind
+                          && previousSession.StartNodeId.Equals(
+                              startNodeId,
+                              StringComparison.OrdinalIgnoreCase)
+                          && previousSession.ScriptSignature == signature
+                          && previousSession.Passes < MenuReturnValidationSession.RequiredPasses;
+        var session = canContinue
+            ? previousSession!
+            : new MenuReturnValidationSession(
+                kind,
+                startNodeId,
+                signature,
+                0,
+                false,
+                definition.GetPath(context.Anchor.TargetNodeId));
+        lock (_sync)
+        {
+            _menuReturnValidation = session;
+            _menuAuthoringStatus =
+                $"Return script test · pass {session.Passes + 1}/{MenuReturnValidationSession.RequiredPasses}";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
+        await ExecuteMenuReturnStrategyTestAsync(
+                definition,
+                context,
+                script,
+                session,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task ConfirmMenuReturnStrategyTestAsync(
+        bool passed,
+        CancellationToken cancellationToken = default)
+    {
+        MenuReturnValidationSession session;
+        MenuDefinition definition;
+        MenuValidationSession? draftValidation;
+        MenuTimingValidationSession? timingValidation;
+        lock (_sync)
+        {
+            session = _menuReturnValidation
+                ?? throw new InvalidOperationException("No return-to-video script validation is active.");
+            if (!session.AwaitingConfirmation)
+            {
+                throw new InvalidOperationException(
+                    "Run the return-to-video script before confirming its result.");
+            }
+
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+            draftValidation = _menuValidation;
+            timingValidation = _menuTimingValidation;
+        }
+
+        var context = GetRequiredReturnStrategyContext(definition);
+        var currentScript = session.Kind == MenuReturnScriptKind.AtMenuRoot
+            ? context.Strategy.AtMenuRoot
+            : context.Strategy.BelowMenuRoot;
+        if (GetOperationSignature(currentScript.Operations) != session.ScriptSignature)
+        {
+            throw new InvalidOperationException(
+                "The return script changed after this replay. Run the test again before confirming it.");
+        }
+
+        if (!passed)
+        {
+            var unverified = SetReturnScriptVerified(definition, context, session.Kind, verified: false);
+            await PersistActiveMenuDefinitionAsync(unverified, cancellationToken).ConfigureAwait(false);
+            lock (_sync)
+            {
+                _menuValidation = draftValidation;
+                _menuTimingValidation = timingValidation;
+                _menuReturnValidation = session with
+                {
+                    Passes = 0,
+                    AwaitingConfirmation = false
+                };
+                _menuAuthoringStatus = "Return script test failed · validation reset to 0/3";
+                _menuAuthoringError = null;
+            }
+
+            _menuStateTracker?.MarkUnknown(
+                "The user reported that the return-to-video script did not reach normal video.");
+            NotifyChanged();
+            return;
+        }
+
+        var passes = session.Passes + 1;
+        if (passes < MenuReturnValidationSession.RequiredPasses)
+        {
+            lock (_sync)
+            {
+                _menuReturnValidation = session with
+                {
+                    Passes = passes,
+                    AwaitingConfirmation = false
+                };
+                _menuAuthoringStatus =
+                    $"Return script test passed · {passes}/{MenuReturnValidationSession.RequiredPasses}";
+                _menuAuthoringError = null;
+            }
+
+            NotifyChanged();
+            return;
+        }
+
+        var verified = SetReturnScriptVerified(definition, context, session.Kind, verified: true);
+        await PersistActiveMenuDefinitionAsync(verified, cancellationToken).ConfigureAwait(false);
+        lock (_sync)
+        {
+            _menuValidation = draftValidation;
+            _menuTimingValidation = timingValidation;
+            _menuReturnValidation = session with
+            {
+                Passes = MenuReturnValidationSession.RequiredPasses,
+                AwaitingConfirmation = false
+            };
+            _menuAuthoringStatus =
+                $"Return script verified · {MenuReturnValidationSession.RequiredPasses}/{MenuReturnValidationSession.RequiredPasses} passes saved to YAML";
             _menuAuthoringError = null;
         }
 
@@ -970,6 +1211,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
             {
                 throw new InvalidOperationException(
                     "Confirm the pending system timing test before replaying a draft.");
+            }
+
+            if (_menuReturnValidation?.AwaitingConfirmation == true)
+            {
+                throw new InvalidOperationException(
+                    "Confirm the pending return-script test before replaying a draft.");
             }
 
             _menuValidation = session;
@@ -1985,6 +2232,283 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
     }
 
+    private async Task ExecuteMenuReturnStrategyTestAsync(
+        MenuDefinition definition,
+        ReturnStrategyContext context,
+        MenuReturnScript script,
+        MenuReturnValidationSession session,
+        CancellationToken cancellationToken)
+    {
+        BeginAutomation(isNavigation: true);
+        using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        lock (_sync)
+        {
+            _navigationSource = linkedSource;
+            _navigationStatus = $"Return script test · {session.Kind}";
+            _navigationError = null;
+            _navigationProgress = null;
+            _menuAuthoringStatus = $"Preparing {definition.GetPath(session.StartNodeId)}";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
+        try
+        {
+            MenuStateTracker tracker;
+            MenuNavigator navigator;
+            lock (_sync)
+            {
+                tracker = _menuStateTracker
+                    ?? throw new InvalidOperationException("No menu state tracker is available.");
+                navigator = _menuNavigator
+                    ?? throw new InvalidOperationException("No menu navigator is available.");
+            }
+
+            var setup = FindValidationSetup(definition, session.StartNodeId);
+            await navigator.ExecuteAnchorAsync(setup.Anchor.Id, linkedSource.Token)
+                .ConfigureAwait(false);
+            if (setup.Plan.Transitions.Count > 0)
+            {
+                await navigator.ExecutePlanAsync(setup.Plan, linkedSource.Token)
+                    .ConfigureAwait(false);
+            }
+
+            await ExecuteAuthoringOperationsAsync(
+                    $"Test return script · {session.Kind}",
+                    definition.GetPath(session.StartNodeId),
+                    definition.GetPath(context.Anchor.TargetNodeId),
+                    script.Operations,
+                    definition.Timing,
+                    linkedSource.Token)
+                .ConfigureAwait(false);
+            tracker.ApplyAnchor(context.Anchor);
+
+            lock (_sync)
+            {
+                _menuReturnValidation = session with { AwaitingConfirmation = true };
+                _navigationStatus =
+                    $"Awaiting return-script confirmation · {session.ExpectedTargetPath}";
+                _menuAuthoringStatus = $"Did the TV return to {session.ExpectedTargetPath}?";
+            }
+        }
+        catch (OperationCanceledException) when (linkedSource.IsCancellationRequested)
+        {
+            _menuStateTracker?.MarkUnknown("Return-script validation was cancelled.");
+            lock (_sync)
+            {
+                _menuReturnValidation = session with { AwaitingConfirmation = false };
+                _menuAuthoringStatus = "Return script test cancelled";
+            }
+
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _menuStateTracker?.MarkUnknown("Return-script validation did not complete.");
+            lock (_sync)
+            {
+                _menuReturnValidation = session with { AwaitingConfirmation = false };
+                _menuAuthoringStatus = "Return script test failed to run";
+                _menuAuthoringError = exception.Message;
+            }
+
+            throw;
+        }
+        finally
+        {
+            lock (_sync)
+            {
+                _navigationSource = null;
+            }
+
+            EndAutomation(isNavigation: true);
+            NotifyChanged();
+        }
+    }
+
+    private static MenuReturnStrategySummary? GetReturnStrategySummary(
+        MenuDefinition definition,
+        MenuReturnValidationSession? validation)
+    {
+        var context = TryGetReturnStrategyContext(definition);
+        if (context is null)
+        {
+            return null;
+        }
+
+        return new MenuReturnStrategySummary(
+            context.Anchor.Id,
+            context.Anchor.Label,
+            context.Strategy.MenuRootNodeId,
+            definition.GetPath(context.Strategy.MenuRootNodeId),
+            FormatKeyScript(context.Anchor.Operations),
+            new MenuReturnScriptSummary(
+                MenuReturnScriptKind.AtMenuRoot,
+                "At Settings",
+                FormatKeyScript(context.Strategy.AtMenuRoot.Operations),
+                context.Strategy.AtMenuRoot.Verified),
+            new MenuReturnScriptSummary(
+                MenuReturnScriptKind.BelowMenuRoot,
+                "Deeper menu",
+                FormatKeyScript(context.Strategy.BelowMenuRoot.Operations),
+                context.Strategy.BelowMenuRoot.Verified),
+            GetDeepReturnTestNodes(definition, context),
+            validation?.Kind,
+            validation?.Passes ?? 0,
+            MenuReturnValidationSession.RequiredPasses,
+            validation?.AwaitingConfirmation ?? false,
+            validation?.ExpectedTargetPath);
+    }
+
+    private static ReturnStrategyContext GetRequiredReturnStrategyContext(
+        MenuDefinition definition) =>
+        TryGetReturnStrategyContext(definition)
+        ?? throw new InvalidOperationException(
+            "No return-to-normal-video anchor and Settings route could be identified in this menu definition.");
+
+    private static ReturnStrategyContext? TryGetReturnStrategyContext(
+        MenuDefinition definition)
+    {
+        var anchor = definition.Anchors.TryGetValue("normal-video", out var namedAnchor)
+            ? namedAnchor
+            : definition.Anchors.Values.FirstOrDefault(candidate =>
+                candidate.TargetNodeId.Equals("normal-video", StringComparison.OrdinalIgnoreCase));
+        if (anchor is null)
+        {
+            return null;
+        }
+
+        if (anchor.ReturnStrategy is { } existing)
+        {
+            return new ReturnStrategyContext(anchor, existing);
+        }
+
+        var returnTransition = definition.Transitions.Values
+            .Where(transition =>
+                transition.ToNodeId.Equals(anchor.TargetNodeId, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(transition => transition.Verified)
+            .ThenBy(transition => definition.GetDepth(transition.FromNodeId))
+            .FirstOrDefault(transition => definition.Transitions.Values.Any(open =>
+                open.FromNodeId.Equals(anchor.TargetNodeId, StringComparison.OrdinalIgnoreCase)
+                && open.ToNodeId.Equals(transition.FromNodeId, StringComparison.OrdinalIgnoreCase)));
+        if (returnTransition is null)
+        {
+            return null;
+        }
+
+        return new ReturnStrategyContext(
+            anchor,
+            new MenuReturnStrategy(
+                returnTransition.FromNodeId,
+                new MenuReturnScript(returnTransition.Operations, returnTransition.Verified),
+                new MenuReturnScript(
+                    [new MenuOperation("KEY_MENU"), new MenuOperation("KEY_RETURN")])));
+    }
+
+    private static IReadOnlyList<MenuReturnTestNodeSummary> GetDeepReturnTestNodes(
+        MenuDefinition definition,
+        ReturnStrategyContext context) =>
+        definition.Nodes.Values
+            .Where(node => definition.IsDescendantOf(
+                node.Id,
+                context.Strategy.MenuRootNodeId))
+            .Where(node => CanPrepareValidationSource(definition, node.Id))
+            .OrderByDescending(node => definition.GetDepth(node.Id))
+            .ThenBy(node => definition.GetPath(node.Id), StringComparer.OrdinalIgnoreCase)
+            .Select(node => new MenuReturnTestNodeSummary(node.Id, definition.GetPath(node.Id)))
+            .ToArray();
+
+    private static MenuReturnScript UpdateReturnScript(
+        MenuReturnScript current,
+        IReadOnlyList<string> keys)
+    {
+        var normalizedKeys = NormalizeReturnScriptKeys(keys);
+        var currentKeys = ExpandOperations(current.Operations)
+            .Select(operation => operation.Key)
+            .ToArray();
+        if (currentKeys.SequenceEqual(normalizedKeys, StringComparer.OrdinalIgnoreCase))
+        {
+            return current;
+        }
+
+        var operations = CoalesceOperations(normalizedKeys
+            .Select(key => new MenuOperation(key))
+            .ToArray());
+        return new MenuReturnScript(operations, Verified: false);
+    }
+
+    private static string[] NormalizeReturnScriptKeys(IReadOnlyList<string> keys)
+    {
+        if (keys.Count is < 1 or > MenuDefinitionValidator.MaximumRepeat)
+        {
+            throw new InvalidOperationException(
+                $"A return script must contain between 1 and {MenuDefinitionValidator.MaximumRepeat} button presses.");
+        }
+
+        var normalized = new string[keys.Count];
+        for (var index = 0; index < keys.Count; index++)
+        {
+            if (string.IsNullOrWhiteSpace(keys[index]))
+            {
+                throw new InvalidOperationException(
+                    $"Return script button {index + 1} cannot be empty.");
+            }
+
+            normalized[index] = keys[index].Trim().ToUpperInvariant();
+        }
+
+        return normalized;
+    }
+
+    private static string NormalizeDeepReturnTestNode(
+        MenuDefinition definition,
+        ReturnStrategyContext context,
+        string? nodeId)
+    {
+        if (string.IsNullOrWhiteSpace(nodeId))
+        {
+            throw new InvalidOperationException(
+                "Choose a deeper menu position for this return-script test.");
+        }
+
+        var normalized = nodeId.Trim();
+        definition.GetRequiredNode(normalized);
+        if (!definition.IsDescendantOf(normalized, context.Strategy.MenuRootNodeId))
+        {
+            throw new InvalidOperationException(
+                $"'{definition.GetPath(normalized)}' is not below '{definition.GetPath(context.Strategy.MenuRootNodeId)}'.");
+        }
+
+        return normalized;
+    }
+
+    private static MenuDefinition SetReturnScriptVerified(
+        MenuDefinition definition,
+        ReturnStrategyContext context,
+        MenuReturnScriptKind kind,
+        bool verified)
+    {
+        var strategy = context.Strategy;
+        strategy = kind == MenuReturnScriptKind.AtMenuRoot
+            ? strategy with { AtMenuRoot = strategy.AtMenuRoot with { Verified = verified } }
+            : strategy with { BelowMenuRoot = strategy.BelowMenuRoot with { Verified = verified } };
+        var anchors = definition.Anchors.Values
+            .Select(anchor => anchor.Id.Equals(context.Anchor.Id, StringComparison.OrdinalIgnoreCase)
+                ? anchor with { ReturnStrategy = strategy }
+                : anchor)
+            .ToArray();
+        return CopyMenuDefinition(definition, anchors: anchors);
+    }
+
+    private static string FormatKeyScript(IReadOnlyList<MenuOperation> operations) =>
+        string.Join(", ", ExpandOperations(operations).Select(operation => operation.Key));
+
+    private static string GetOperationSignature(IReadOnlyList<MenuOperation> operations) =>
+        string.Join(
+            "|",
+            operations.Select(operation =>
+                $"{operation.Key.ToUpperInvariant()}:{operation.Action}:{operation.Repeat}:{operation.DelayAfter?.Ticks}"));
+
     private static IReadOnlyList<MenuTimingTestRouteSummary> GetTimingTestRoutes(
         MenuDefinition definition) =>
         definition.Transitions.Values
@@ -2204,6 +2728,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _navigationError = null;
             _menuValidation = null;
             _menuTimingValidation = null;
+            _menuReturnValidation = null;
             _menuAuthoringError = null;
         }
 
@@ -2455,4 +2980,19 @@ public sealed class SamsungControllerService : IAsyncDisposable
     {
         public const int RequiredPasses = 3;
     }
+
+    private sealed record MenuReturnValidationSession(
+        MenuReturnScriptKind Kind,
+        string StartNodeId,
+        string ScriptSignature,
+        int Passes,
+        bool AwaitingConfirmation,
+        string ExpectedTargetPath)
+    {
+        public const int RequiredPasses = 3;
+    }
+
+    private sealed record ReturnStrategyContext(
+        MenuAnchor Anchor,
+        MenuReturnStrategy Strategy);
 }

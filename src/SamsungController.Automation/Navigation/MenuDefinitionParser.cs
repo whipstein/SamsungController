@@ -16,7 +16,11 @@ public sealed class MenuDefinitionParser
     private static readonly HashSet<string> NodeFields =
         new(["id", "label", "parent", "description"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> AnchorFields =
-        new(["id", "label", "target", "verified", "description", "steps"], StringComparer.OrdinalIgnoreCase);
+        new(["id", "label", "target", "verified", "description", "returnStrategy", "steps"], StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> ReturnStrategyFields =
+        new(["menuRoot", "atMenuRoot", "belowMenuRoot"], StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> ReturnScriptFields =
+        new(["verified", "steps"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> TransitionFields =
         new(["id", "from", "to", "verified", "description", "steps"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> StepFields =
@@ -167,10 +171,37 @@ public sealed class MenuDefinitionParser
                 RequiredScalar(fields, "target", context),
                 ParseOperations(RequiredSequence(fields, "steps", context), context),
                 OptionalBoolean(fields, "verified", context),
-                OptionalScalar(fields, "description")));
+                OptionalScalar(fields, "description"),
+                fields.TryGetValue("returnStrategy", out var strategyNode)
+                    ? ParseReturnStrategy(strategyNode, context)
+                    : null));
         }
 
         return anchors;
+    }
+
+    private static MenuReturnStrategy ParseReturnStrategy(
+        YamlNode node,
+        string anchorContext)
+    {
+        var context = $"{anchorContext} returnStrategy";
+        var fields = ReadFields(RequireMapping(node, context), context);
+        EnsureAllowedFields(fields, ReturnStrategyFields, context);
+        return new MenuReturnStrategy(
+            RequiredScalar(fields, "menuRoot", context),
+            ParseReturnScript(RequiredMapping(fields, "atMenuRoot", context), $"{context} atMenuRoot"),
+            ParseReturnScript(RequiredMapping(fields, "belowMenuRoot", context), $"{context} belowMenuRoot"));
+    }
+
+    private static MenuReturnScript ParseReturnScript(
+        YamlMappingNode mapping,
+        string context)
+    {
+        var fields = ReadFields(mapping, context);
+        EnsureAllowedFields(fields, ReturnScriptFields, context);
+        return new MenuReturnScript(
+            ParseOperations(RequiredSequence(fields, "steps", context), context),
+            OptionalBoolean(fields, "verified", context));
     }
 
     private static IReadOnlyList<MenuTransition> ParseTransitions(YamlSequenceNode sequence)
@@ -332,6 +363,20 @@ public sealed class MenuDefinitionParser
         }
 
         return RequireSequence(node, $"'{name}' in {context}");
+    }
+
+    private static YamlMappingNode RequiredMapping(
+        IReadOnlyDictionary<string, YamlNode> fields,
+        string name,
+        string context)
+    {
+        if (!fields.TryGetValue(name, out var node))
+        {
+            throw new MenuDefinitionParseException(
+                $"{context} must contain an '{name}' mapping.");
+        }
+
+        return RequireMapping(node, $"'{name}' in {context}");
     }
 
     private static Dictionary<string, YamlNode> ReadFields(

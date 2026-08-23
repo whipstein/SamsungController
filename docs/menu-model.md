@@ -70,6 +70,17 @@ anchors:
     label: Return to normal video
     target: normal-video
     verified: true
+    returnStrategy:
+      menuRoot: settings-overlay
+      atMenuRoot:
+        verified: true
+        steps:
+          - key: KEY_RETURN
+      belowMenuRoot:
+        verified: false
+        steps:
+          - key: KEY_MENU
+          - key: KEY_RETURN
     steps:
       - key: KEY_MENU
         repeat: 2
@@ -104,6 +115,13 @@ Home, Exit, and Source, and `returnDelay` applies to Return. A step-level
 current three global values passed the system profile's independent three-run
 visual test. Changing any global value clears it.
 
+A normal-video anchor can optionally define `returnStrategy`. When the predicted
+position is the configured `menuRoot`, the navigator uses `atMenuRoot`; when it
+is a descendant, it uses `belowMenuRoot`. Each script must pass its own three-run
+visual test before normal navigation can use it. If position confidence is too
+low, the applicable script is unverified, or an older definition has no return
+strategy, the anchor's ordinary `steps` remain the deterministic fallback.
+
 Unknown YAML fields, missing node references, parent cycles, invalid actions,
 unsafe repeat counts, and excessive delays fail validation before any command
 can be planned or sent.
@@ -128,13 +146,17 @@ can be planned or sent.
    choose **Test system profile**. Each test returns to a known starting point
    and ignores per-button overrides on the selected traversal. Confirm three
    successful visual runs to persist `timing.verified: true`.
-8. Open the draft's **Timing lab**, enable custom waits only for exceptional
+8. In **Return to normal video scripts**, edit the Settings-root and deeper-menu
+   key sequences independently. **Save + test** first prepares the selected
+   known menu position, sends the proposed script to the TV, and asks for visual
+   confirmation. Three successful runs mark that script verified in the YAML.
+9. Open the draft's **Timing lab**, enable custom waits only for exceptional
    button presses, then choose **Save + replay**.
    Transition validation first executes a verified anchor and verified route to
    its source, then sends the recorded buttons. That reset happens before every
    validation attempt, so replay never depends on the menu position left behind
    by recording or by the previous attempt.
-9. Visually confirm the target after every run. Three confirmed passes update
+10. Visually confirm the target after every run. Three confirmed passes update
    the same YAML entry to `verified: true`; a failed confirmation resets the
    count to zero.
 

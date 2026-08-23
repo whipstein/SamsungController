@@ -57,13 +57,23 @@ public sealed record MenuTransition(
     bool Verified = false,
     string? Description = null);
 
+public sealed record MenuReturnScript(
+    IReadOnlyList<MenuOperation> Operations,
+    bool Verified = false);
+
+public sealed record MenuReturnStrategy(
+    string MenuRootNodeId,
+    MenuReturnScript AtMenuRoot,
+    MenuReturnScript BelowMenuRoot);
+
 public sealed record MenuAnchor(
     string Id,
     string Label,
     string TargetNodeId,
     IReadOnlyList<MenuOperation> Operations,
     bool Verified = false,
-    string? Description = null);
+    string? Description = null,
+    MenuReturnStrategy? ReturnStrategy = null);
 
 public sealed class MenuDefinition
 {
@@ -160,6 +170,30 @@ public sealed class MenuDefinition
         }
 
         return depth;
+    }
+
+    public bool IsDescendantOf(string nodeId, string ancestorNodeId)
+    {
+        var current = GetRequiredNode(nodeId);
+        GetRequiredNode(ancestorNodeId);
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (!string.IsNullOrWhiteSpace(current.ParentId))
+        {
+            if (!visited.Add(current.Id))
+            {
+                throw new InvalidOperationException(
+                    $"Menu parent cycle encountered while resolving '{nodeId}'.");
+            }
+
+            if (current.ParentId.Equals(ancestorNodeId, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            current = GetRequiredNode(current.ParentId);
+        }
+
+        return false;
     }
 
     private static IReadOnlyDictionary<string, T> ToUniqueDictionary<T>(

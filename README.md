@@ -20,7 +20,7 @@ validated; see the [verification checklist](docs/architecture.md#s95f-verificati
 - Connection state and bounded automatic reconnect
 - Hierarchical YAML macros with variables, repeats, delays, cancellation, and execution progress
 - Localhost-only Blazor control surface for connection, remote keys, macros, menu navigation, and protocol inspection
-- Data-driven menu definitions, live UI route recording, system-wide timing calibration with per-button overrides, automatic draft YAML persistence, three-pass verification, deterministic anchors, and explicit prediction confidence
+- Data-driven menu definitions, live UI route recording, state-aware return-to-video scripts, system-wide timing calibration with per-button overrides, automatic draft YAML persistence, three-pass verification, deterministic anchors, and explicit prediction confidence
 - CLI commands: `connect`, `key`, `macro`, `console`, `listen`, `status`, and `forget`
 - Cross-platform console line editing with persistent, privacy-filtered history
 - Fake-transport tests that do not require a TV
@@ -66,9 +66,10 @@ The five views share one live TV session:
   Click/Press/Release commands.
 - **Macros** loads and validates a YAML catalog, remembers its path, streams
   operation progress, and supports cancellation.
-- **Menu** loads the draft S95F definition, calibrates system-wide and per-button
-  replay waits through separate three-pass visual tests, runs verified resynchronization anchors,
-  previews routes, tracks confidence, and refuses to execute draft transitions.
+- **Menu** loads the draft S95F definition, exposes separate Settings-root and
+  deeper-menu return scripts, calibrates system-wide and per-button replay waits
+  through separate three-pass visual tests, runs verified resynchronization
+  anchors, previews routes, tracks confidence, and refuses to execute draft transitions.
 - **Protocol** keeps the latest 500 RX/TX messages searchable in memory, offers
   copy/export, and writes the complete NDJSON capture to the session directory.
 

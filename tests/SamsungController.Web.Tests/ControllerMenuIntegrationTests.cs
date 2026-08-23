@@ -207,6 +207,39 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         Assert.Equal(0, controller.GetMenuAuthoringSnapshot().TimingValidationPasses);
     }
 
+    [Fact]
+    public async Task ReturnStrategyCanBeInferredAndSavedEntirelyThroughTheService()
+    {
+        Directory.CreateDirectory(_directory);
+        var definitionPath = Path.Combine(_directory, "return-menu.yaml");
+        await File.WriteAllTextAsync(definitionPath, ReturnStrategyMenuYaml);
+        await WriteSettingsAsync(definitionPath);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+
+        var inferred = Assert.IsType<MenuReturnStrategySummary>(
+            controller.GetMenuAuthoringSnapshot().ReturnStrategy);
+        Assert.Equal("settings", inferred.MenuRootNodeId);
+        Assert.Equal("KEY_RETURN", inferred.AtMenuRoot.Script);
+        Assert.True(inferred.AtMenuRoot.Verified);
+        Assert.Equal("KEY_MENU, KEY_RETURN", inferred.BelowMenuRoot.Script);
+        Assert.False(inferred.BelowMenuRoot.Verified);
+
+        await controller.UpdateMenuReturnStrategyAsync(
+            ["KEY_RETURN"],
+            ["KEY_MENU", "KEY_RETURN"]);
+
+        var reparsed = await new MenuDefinitionParser().ParseFileAsync(definitionPath);
+        var persisted = Assert.IsType<MenuReturnStrategy>(
+            reparsed.Anchors["normal"].ReturnStrategy);
+        Assert.Equal("settings", persisted.MenuRootNodeId);
+        Assert.True(persisted.AtMenuRoot.Verified);
+        Assert.False(persisted.BelowMenuRoot.Verified);
+        Assert.Equal(
+            ["KEY_MENU", "KEY_RETURN"],
+            persisted.BelowMenuRoot.Operations.Select(operation => operation.Key));
+    }
+
     private SamsungControllerService CreateController()
     {
         var configuration = new ConfigurationBuilder()
@@ -286,5 +319,39 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
               - key: KEY_DOWN
                 repeat: 2
                 delay: 700ms
+        """;
+
+    private const string ReturnStrategyMenuYaml =
+        """
+        version: 1
+        id: return-test
+        name: Return Test Menu
+        model: Test TV
+        nodes:
+          - id: normal-video
+            label: Normal video
+          - id: settings
+            label: Settings
+        anchors:
+          - id: normal
+            label: Return to normal video
+            target: normal-video
+            verified: true
+            steps:
+              - key: KEY_MENU
+                repeat: 2
+        transitions:
+          - id: open-settings
+            from: normal-video
+            to: settings
+            verified: true
+            steps:
+              - key: KEY_MENU
+          - id: close-settings
+            from: settings
+            to: normal-video
+            verified: true
+            steps:
+              - key: KEY_RETURN
         """;
 }

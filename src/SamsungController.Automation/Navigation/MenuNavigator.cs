@@ -94,11 +94,12 @@ public sealed class MenuNavigator
 
         try
         {
+            var script = ResolveAnchorScript(anchor);
             await ExecuteOperationsAsync(
-                    $"Anchor · {anchor.Label}",
+                    $"Anchor · {anchor.Label} · {script.Label}",
                     _stateTracker.Current.Path ?? "Unknown",
                     _definition.GetPath(anchor.TargetNodeId),
-                    anchor.Operations,
+                    script.Operations,
                     cancellationToken)
                 .ConfigureAwait(false);
             _stateTracker.ApplyAnchor(anchor);
@@ -108,6 +109,35 @@ public sealed class MenuNavigator
             _stateTracker.MarkUnknown($"Anchor '{anchor.Label}' did not complete.");
             throw;
         }
+    }
+
+    private ResolvedAnchorScript ResolveAnchorScript(MenuAnchor anchor)
+    {
+        var state = _stateTracker.Current;
+        if (state.NodeId is null
+            || state.Confidence is not (MenuStateConfidence.Synchronized or MenuStateConfidence.Probable))
+        {
+            return new ResolvedAnchorScript("unknown fallback", anchor.Operations);
+        }
+
+        if (anchor.ReturnStrategy is not { } strategy)
+        {
+            return new ResolvedAnchorScript("fallback", anchor.Operations);
+        }
+
+        if (state.NodeId.Equals(strategy.MenuRootNodeId, StringComparison.OrdinalIgnoreCase)
+            && strategy.AtMenuRoot.Verified)
+        {
+            return new ResolvedAnchorScript("menu root script", strategy.AtMenuRoot.Operations);
+        }
+
+        if (_definition.IsDescendantOf(state.NodeId, strategy.MenuRootNodeId)
+            && strategy.BelowMenuRoot.Verified)
+        {
+            return new ResolvedAnchorScript("deeper menu script", strategy.BelowMenuRoot.Operations);
+        }
+
+        return new ResolvedAnchorScript("unverified strategy fallback", anchor.Operations);
     }
 
     public async Task ExecutePlanAsync(
@@ -203,4 +233,8 @@ public sealed class MenuNavigator
             // Progress observers cannot interrupt navigation.
         }
     }
+
+    private sealed record ResolvedAnchorScript(
+        string Label,
+        IReadOnlyList<MenuOperation> Operations);
 }
