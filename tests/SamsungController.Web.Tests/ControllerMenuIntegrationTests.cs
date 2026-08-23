@@ -80,6 +80,42 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task VerifiedSettingRemovalDeletesItsSubtreeAndRelatedRoutes()
+    {
+        Directory.CreateDirectory(_directory);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+
+        await controller.DeleteVerifiedMenuSettingAsync("settings-overlay");
+
+        var snapshot = controller.GetMenuNavigationSnapshot();
+        Assert.Contains(snapshot.Nodes, node => node.Id == "normal-video");
+        Assert.DoesNotContain(snapshot.Nodes, node => node.Id == "settings-overlay");
+        Assert.DoesNotContain(snapshot.Nodes, node => node.Id == "expert-settings");
+        var reparsed = await new MenuDefinitionParser().ParseFileAsync(snapshot.DefinitionPath);
+        Assert.Equal(2, reparsed.Nodes.Count);
+        Assert.Empty(reparsed.Transitions);
+        Assert.Null(reparsed.Anchors["normal-video"].ReturnStrategy);
+        Assert.Contains(
+            "Verified setting removed",
+            controller.GetMenuAuthoringSnapshot().Status,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task VerifiedKnownStateSettingCannotBeRemoved()
+    {
+        Directory.CreateDirectory(_directory);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            controller.DeleteVerifiedMenuSettingAsync("normal-video"));
+
+        Assert.Contains("known-state anchor", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task DraftCanBeDeletedAndYamlIsUpdatedThroughTheService()
     {
         Directory.CreateDirectory(_directory);
@@ -308,6 +344,20 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task SuccessfulConnectionAutomaticallyRunsThePreferredVerifiedAnchor()
+    {
+        var (controller, transport) = await CreateConnectedControllerAsync(
+            clearSentMessages: false);
+        await using (controller)
+        {
+            Assert.Equal(["KEY_EXIT", "KEY_EXIT"], GetSentKeys(transport));
+            var snapshot = controller.GetSnapshot();
+            Assert.Equal("Normal video", snapshot.MenuLabel);
+            Assert.Equal(MenuStateConfidence.Synchronized, snapshot.MenuConfidence);
+        }
+    }
+
+    [Fact]
     public async Task MenuNavigationPlansUseVerifiedTransitionsOnly()
     {
         var (controller, _) = await CreateConnectedControllerAsync();
@@ -468,7 +518,9 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     private async Task<(SamsungControllerService Controller, RecordingSamsungTransport Transport)>
-        CreateConnectedControllerAsync(string? definitionYaml = null)
+        CreateConnectedControllerAsync(
+            string? definitionYaml = null,
+            bool clearSentMessages = true)
     {
         Directory.CreateDirectory(_directory);
         var definitionPath = Path.Combine(_directory, "explicit-validation-menu.yaml");
@@ -484,7 +536,11 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             "192.0.2.10",
             Secure: true,
             Port: null));
-        transport.SentMessages.Clear();
+        if (clearSentMessages)
+        {
+            transport.SentMessages.Clear();
+        }
+
         return (controller, transport);
     }
 

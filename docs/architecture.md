@@ -71,6 +71,12 @@ Synchronized confidence.
 The Blazor page only requests plans and displays immutable snapshots; it does
 not construct Samsung protocol messages or calculate graph paths.
 
+After the web controller completes a connection, it runs one verified anchor to
+establish a known initial state, preferring an anchor that targets
+`normal-video`. This connection-time synchronization does not reintroduce
+implicit reset commands before later route, timing, return-script, or draft
+validation execution.
+
 ## Local web boundary
 
 The web host defaults to `http://127.0.0.1:5050`; it is not exposed on a LAN
@@ -89,6 +95,12 @@ through the same controller methods as the Remote, Macros, and Menu views, so
 connection, automation, and menu-recording guards remain centralized. A missing
 quick-access setting gets a default `normal-video` anchor action. An explicitly
 saved empty list remains empty, allowing the default to be removed intentionally.
+
+Build & Verify may delete an incorrect verified setting after a two-step UI
+confirmation. Deletion removes the setting's full descendant subtree and every
+transition that references it, and clears a return strategy whose menu root was
+removed. Verified anchor targets are protected so connection-time
+synchronization always retains a known-state foundation.
 
 ## WebSocket handshake
 

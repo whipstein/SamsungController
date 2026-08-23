@@ -48,6 +48,45 @@
         </div>
     }
 
+    @if (VerifiedSettings.Count > 0)
+    {
+        <div class="verified-setting-manager">
+            <div class="authoring-section-title"><span>!</span><strong>Manage verified settings</strong></div>
+            <p>Remove an incorrect validated setting from the map. Removal also deletes its descendants and every route that enters or leaves them.</p>
+            <div class="verified-setting-list">
+                @foreach (var setting in VerifiedSettings)
+                {
+                    var isProtected = IsKnownStateSetting(setting);
+                    var isConfirming = PendingVerifiedSettingRemovalId?.Equals(
+                        setting.Id,
+                        StringComparison.OrdinalIgnoreCase) == true;
+                    <div class="verified-setting-row @(isConfirming ? "confirming" : "")">
+                        <span>
+                            <strong>@setting.Label</strong>
+                            <small>@setting.Path</small>
+                        </span>
+                        @if (isProtected)
+                        {
+                            <b>Known state</b>
+                        }
+                        else if (isConfirming)
+                        {
+                            <div class="verified-setting-confirm">
+                                <button class="secondary-action" @onclick="CancelVerifiedSettingRemoval" disabled="@IsBusy">Cancel</button>
+                                <button class="secondary-action danger-action" @onclick="() => RemoveVerifiedSettingAsync(setting)" disabled="@IsBusy">Confirm removal</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <button class="secondary-action danger-action" @onclick="() => RemoveVerifiedSettingAsync(setting)" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">Remove</button>
+                        }
+                    </div>
+                }
+            </div>
+            <p class="field-note">Verified anchor targets are protected because automatic connection synchronization depends on them.</p>
+        </div>
+    }
+
     @if (Navigation.DefinitionName is not null)
     {
         <div class="authoring-workflow-grid">
@@ -437,6 +476,7 @@
     private bool IsBusy { get; set; }
     private bool IsSendingKey { get; set; }
     private string? LocalError { get; set; }
+    private string? PendingVerifiedSettingRemovalId { get; set; }
 
     private string DefinitionId { get; set; } = "samsung-menu";
     private string DefinitionName { get; set; } = "Samsung TV Menu";
@@ -447,6 +487,9 @@
     private string DefinitionInput { get; set; } = "any";
 
     private string? ErrorMessage => LocalError ?? Authoring.Error;
+    private IReadOnlyList<MenuNodeSummary> VerifiedSettings => Navigation.Nodes
+        .Where(node => node.HasVerifiedRoute)
+        .ToArray();
     private bool IsConnected => Snapshot.ConnectionState == SamsungConnectionState.Connected;
     private bool CanStartRecording => IsConnected && !IsBusy && !Snapshot.MacroRunning && !Navigation.IsRunning &&
         (CreateNewTarget
@@ -671,6 +714,40 @@
     private Task DeleteDraftAsync(MenuAuthoringCandidateSummary candidate) =>
         RunBusyAsync(() => Controller.DeleteMenuAuthoringDraftAsync(candidate.Kind, candidate.Id));
 
+    private bool IsKnownStateSetting(MenuNodeSummary setting) => Navigation.Anchors.Any(anchor =>
+        anchor.Verified
+        && (anchor.TargetPath.Equals(setting.Path, StringComparison.OrdinalIgnoreCase)
+            || anchor.TargetPath.StartsWith(
+                setting.Path + " / ",
+                StringComparison.OrdinalIgnoreCase)));
+
+    private async Task RemoveVerifiedSettingAsync(MenuNodeSummary setting)
+    {
+        if (!string.Equals(
+                PendingVerifiedSettingRemovalId,
+                setting.Id,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            PendingVerifiedSettingRemovalId = setting.Id;
+            LocalError = null;
+            return;
+        }
+
+        await RunBusyAsync(async () =>
+        {
+            await Controller.DeleteVerifiedMenuSettingAsync(setting.Id);
+            PendingVerifiedSettingRemovalId = null;
+            Refresh();
+            InitializeNodeDefaults(force: true);
+        });
+    }
+
+    private void CancelVerifiedSettingRemoval()
+    {
+        PendingVerifiedSettingRemovalId = null;
+        LocalError = null;
+    }
+
     private Task ConfirmValidationAsync(bool passed) =>
         RunBusyAsync(() => Controller.ConfirmMenuAuthoringValidationAsync(passed));
 
@@ -792,6 +869,13 @@
                 || !candidate.Id.Equals(TimingEditorId, StringComparison.OrdinalIgnoreCase)))
         {
             CloseTimingEditor();
+        }
+
+        if (PendingVerifiedSettingRemovalId is not null
+            && Navigation.Nodes.All(node =>
+                !node.Id.Equals(PendingVerifiedSettingRemovalId, StringComparison.OrdinalIgnoreCase)))
+        {
+            PendingVerifiedSettingRemovalId = null;
         }
     }
 

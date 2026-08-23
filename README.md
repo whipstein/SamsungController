@@ -80,7 +80,8 @@ Samsung's remote-control channel does not report the actual on-screen cursor.
   verification. The verified map is the first working surface on the page.
 - **Build & Verify** owns new-interface setup, live traversal recording, separate
   Settings-root and deeper-menu return scripts, system-wide and per-button wait
-  calibration, draft management, and the required three-pass visual tests.
+  calibration, draft management, guarded removal of incorrect verified settings,
+  and the required three-pass visual tests.
 - **Protocol** keeps the latest 500 RX/TX messages searchable in memory, offers
   copy/export and one-click read-only application research queries, captures
   labeled `/api/v2/` snapshots for app/power-state comparison, and writes the
@@ -89,6 +90,11 @@ Samsung's remote-control channel does not report the actual on-screen cursor.
 If the TV drops the WebSocket connection, the web interface immediately returns
 to its disconnected state and disables TV commands. Reconnection is an explicit
 action from the Connection page.
+
+After each successful web connection, SamsungController automatically runs the
+preferred verified known-state anchor, prioritizing the anchor that targets
+`normal-video`. This is the only implicit menu-positioning sequence; routes and
+authoring tests still send only their explicitly displayed commands.
 
 Pairing tokens, UUIDs, MAC addresses, and IP addresses in the browser console
 are redacted by default. Tokens and device identifiers have independent,

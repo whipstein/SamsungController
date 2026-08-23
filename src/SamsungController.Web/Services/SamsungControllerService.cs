@@ -418,6 +418,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 _hasToken = _client.Token is not null;
             }
 
+            await SynchronizeMenuAfterConnectAsync(cancellationToken).ConfigureAwait(false);
             NotifyChanged();
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -1498,6 +1499,82 @@ public sealed class SamsungControllerService : IAsyncDisposable
         NotifyChanged();
     }
 
+    public async Task DeleteVerifiedMenuSettingAsync(
+        string nodeId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(nodeId);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("remove a verified menu setting");
+        EnsureNoMenuRecording("remove a verified menu setting");
+
+        MenuDefinition definition;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+        }
+
+        var normalizedNodeId = nodeId.Trim();
+        definition.GetRequiredNode(normalizedNodeId);
+        var isVerifiedSetting = definition.Transitions.Values.Any(transition =>
+                transition.Verified
+                && transition.ToNodeId.Equals(normalizedNodeId, StringComparison.OrdinalIgnoreCase))
+            || definition.Anchors.Values.Any(anchor =>
+                anchor.Verified
+                && anchor.TargetNodeId.Equals(normalizedNodeId, StringComparison.OrdinalIgnoreCase));
+        if (!isVerifiedSetting)
+        {
+            throw new InvalidOperationException(
+                $"Menu setting '{definition.GetPath(normalizedNodeId)}' is not verified.");
+        }
+
+        var removedNodeIds = GetMenuSubtreeNodeIds(definition, normalizedNodeId);
+        var protectedAnchor = definition.Anchors.Values.FirstOrDefault(anchor =>
+            anchor.Verified && removedNodeIds.Contains(anchor.TargetNodeId));
+        if (protectedAnchor is not null)
+        {
+            throw new InvalidOperationException(
+                $"'{definition.GetPath(normalizedNodeId)}' contains the verified known-state anchor " +
+                $"'{protectedAnchor.Label}' and cannot be removed.");
+        }
+
+        var removedPath = definition.GetPath(normalizedNodeId);
+        var removedTransitionCount = definition.Transitions.Values.Count(transition =>
+            removedNodeIds.Contains(transition.FromNodeId)
+            || removedNodeIds.Contains(transition.ToNodeId));
+        var updated = new MenuDefinition(
+            definition.Id,
+            definition.Name,
+            definition.Model,
+            definition.Context,
+            definition.Nodes.Values.Where(node => !removedNodeIds.Contains(node.Id)),
+            definition.Transitions.Values.Where(transition =>
+                !removedNodeIds.Contains(transition.FromNodeId)
+                && !removedNodeIds.Contains(transition.ToNodeId)),
+            definition.Anchors.Values
+                .Where(anchor => !removedNodeIds.Contains(anchor.TargetNodeId))
+                .Select(anchor => anchor.ReturnStrategy is { } strategy
+                                  && removedNodeIds.Contains(strategy.MenuRootNodeId)
+                    ? anchor with { ReturnStrategy = null }
+                    : anchor),
+            definition.Timing);
+        new MenuDefinitionValidator().ValidateAndThrow(updated);
+        await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
+        lock (_sync)
+        {
+            _menuRecorder.Reset();
+            _menuValidation = null;
+            _menuTimingValidation = null;
+            _menuReturnValidation = null;
+            _menuAuthoringStatus =
+                $"Verified setting removed · {removedPath} · {removedNodeIds.Count} settings and {removedTransitionCount} routes deleted";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
+    }
+
     public async Task ConfirmMenuAuthoringValidationAsync(
         bool passed,
         CancellationToken cancellationToken = default)
@@ -1845,6 +1922,51 @@ public sealed class SamsungControllerService : IAsyncDisposable
         NotifyChanged();
     }
 
+    private async Task SynchronizeMenuAfterConnectAsync(CancellationToken cancellationToken)
+    {
+        MenuAnchor? anchor;
+        lock (_sync)
+        {
+            anchor = _menuDefinition?.Anchors.Values
+                .Where(candidate => candidate.Verified)
+                .OrderBy(candidate =>
+                    candidate.Id.Equals("normal-video", StringComparison.OrdinalIgnoreCase)
+                    || candidate.TargetNodeId.Equals("normal-video", StringComparison.OrdinalIgnoreCase)
+                        ? 0
+                        : 1)
+                .ThenBy(candidate => candidate.Label, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault();
+            if (anchor is null)
+            {
+                _navigationStatus = "Connected · no verified known-state anchor is available";
+                _navigationError = null;
+            }
+        }
+
+        if (anchor is null)
+        {
+            _menuStateTracker?.MarkUnknown(
+                "The TV connected, but no verified anchor is available to establish a known menu state.");
+            NotifyChanged();
+            return;
+        }
+
+        try
+        {
+            await RunMenuAnchorAsync(anchor.Id, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            lock (_sync)
+            {
+                _lastError =
+                    $"Connected, but automatic menu synchronization failed: {exception.Message}";
+            }
+
+            NotifyChanged();
+        }
+    }
+
     private async Task RunNavigationAsync(
         string operationName,
         Func<MenuNavigator, CancellationToken, Task> execute,
@@ -2006,6 +2128,32 @@ public sealed class SamsungControllerService : IAsyncDisposable
             }
 
             result.Add(operation);
+        }
+
+        return result;
+    }
+
+    private static HashSet<string> GetMenuSubtreeNodeIds(
+        MenuDefinition definition,
+        string rootNodeId)
+    {
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            rootNodeId
+        };
+        var changed = true;
+        while (changed)
+        {
+            changed = false;
+            foreach (var node in definition.Nodes.Values)
+            {
+                if (node.ParentId is not null
+                    && result.Contains(node.ParentId)
+                    && result.Add(node.Id))
+                {
+                    changed = true;
+                }
+            }
         }
 
         return result;

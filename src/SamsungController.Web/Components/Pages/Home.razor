@@ -19,7 +19,7 @@
 
 @if (!string.IsNullOrWhiteSpace(ErrorMessage))
 {
-    <div class="notice danger" role="alert"><strong>Connection error</strong><span>@ErrorMessage</span></div>
+    <div class="notice danger" role="alert"><strong>@(Snapshot.ConnectionState == SamsungConnectionState.Connected ? "Connection warning" : "Connection error")</strong><span>@ErrorMessage</span></div>
 }
 else if (Snapshot.ConnectionState == SamsungConnectionState.Pairing)
 {
@@ -54,7 +54,7 @@ else if (Snapshot.ConnectionState == SamsungConnectionState.Pairing)
                 @(IsBusy ? "Opening channel…" : "Connect to display") <span>→</span>
             </button>
         }
-        <p class="field-note">The TV may ask you to approve SamsungController on first connection.</p>
+        <p class="field-note">After connecting, SamsungController automatically runs the preferred verified anchor to establish a known menu state. The TV may ask you to approve the first connection.</p>
     </div>
 
     <div class="panel signal-panel">

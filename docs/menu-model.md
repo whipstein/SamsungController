@@ -42,6 +42,11 @@ or protocol feedback from the TV. The default **Return to video** quick-access
 button runs the verified `normal-video` anchor and, on success, restores a
 Synchronized prediction.
 
+The web connection workflow also runs the preferred verified anchor once after
+the control channel is authorized. It prioritizes a target named
+`normal-video`, then falls back to another verified anchor. No additional anchor
+or reset commands are inserted before later navigation or validation runs.
+
 ## Version 1 YAML
 
 The initial S95F definition is
@@ -171,6 +176,9 @@ can be planned or sent.
 
 Draft cards can be replayed, re-recorded under the same identifier, or deleted
 entirely in the UI. Verified items are protected from this draft workflow.
+The separate **Manage verified settings** area can remove an incorrect verified
+setting after a second confirmation. Its descendants and all related routes are
+removed with it; verified anchor targets are protected from deletion.
 
 Validate an anchor before transitions that depend on it, and validate a parent
 transition before a deeper transition whose source is reached through that
