@@ -344,6 +344,25 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task NavigateToMenuNodePlansAndExecutesItsVerifiedRoute()
+    {
+        var allVerifiedYaml = ExplicitValidationMenuYaml.Replace(
+            "verified: false",
+            "verified: true",
+            StringComparison.Ordinal);
+        var (controller, transport) = await CreateConnectedControllerAsync(allVerifiedYaml);
+        await using (controller)
+        {
+            await controller.NavigateToMenuNodeAsync("picture");
+
+            Assert.Equal(["KEY_MENU", "KEY_DOWN", "KEY_ENTER"], GetSentKeys(transport));
+            var snapshot = controller.GetSnapshot();
+            Assert.Equal("Picture", snapshot.MenuLabel);
+            Assert.Equal(MenuStateConfidence.Probable, snapshot.MenuConfidence);
+        }
+    }
+
+    [Fact]
     public async Task SuccessfulConnectionAutomaticallyRunsThePreferredVerifiedAnchor()
     {
         var (controller, transport) = await CreateConnectedControllerAsync(

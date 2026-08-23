@@ -56,7 +56,9 @@ against the Samsung S95F.
 modeled menu locations; explicit transitions contain the only key sequences the
 planner may use. Anchors establish deterministic starting nodes. Draft
 transitions are confined to the Build & Verify workflow. The everyday Menu page
-lists and plans only `verified: true` destinations, anchors, and transitions.
+lists and runs only `verified: true` destinations, anchors, and transitions.
+Selecting a destination creates and executes its verified plan as one controller
+operation; the separate planning controls remain available for route inspection.
 Only verified routes can reach the TV from that page.
 
 `MenuStateTracker` records a predicted node, reason, timestamp, and confidence
@@ -68,8 +70,8 @@ acknowledgements, so a planned transition yields Probable rather than
 Synchronized confidence.
 
 `MenuNavigator` owns plan and anchor execution through `IMenuCommandTarget`.
-The Blazor page only requests plans and displays immutable snapshots; it does
-not construct Samsung protocol messages or calculate graph paths.
+The Blazor page requests navigation actions and displays immutable snapshots;
+it does not construct Samsung protocol messages or calculate graph paths.
 
 After the web controller completes a connection, it runs one verified anchor to
 establish a known initial state, preferring an anchor that targets
@@ -101,6 +103,11 @@ confirmation. Deletion removes the setting's full descendant subtree and every
 transition that references it, and clears a return strategy whose menu root was
 removed. Verified anchor targets are protected so connection-time
 synchronization always retains a known-state foundation.
+
+Build & Verify tracks the attention state of its collapsible return-script,
+system-timing, and draft-validation sections. A user may keep a section minimized
+while its state is unchanged; a transition from verified to needing validation,
+or from no drafts to pending drafts, automatically expands the affected section.
 
 ## WebSocket handshake
 

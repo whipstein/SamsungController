@@ -77,11 +77,13 @@ Samsung's remote-control channel does not report the actual on-screen cursor.
 - **Macros** loads and validates a YAML catalog, remembers its path, streams
   operation progress, and supports cancellation.
 - **Menu** presents only destinations, anchors, and routes that already passed
-  verification. The verified map is the first working surface on the page.
+  verification. Clicking a verified destination immediately plans and executes
+  its proven route; the route-preview controls remain available for inspection.
 - **Build & Verify** owns new-interface setup, live traversal recording, separate
   Settings-root and deeper-menu return scripts, system-wide and per-button wait
   calibration, draft management, guarded removal of incorrect verified settings,
-  and the required three-pass visual tests.
+  and the required three-pass visual tests. Independent sections can be minimized;
+  a collapsed section reopens when its verified state newly needs validation.
 - **Protocol** keeps the latest 500 RX/TX messages searchable in memory, offers
   copy/export and one-click read-only application research queries, captures
   labeled `/api/v2/` snapshots for app/power-state comparison, and writes the

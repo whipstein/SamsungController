@@ -50,40 +50,47 @@
 
     @if (VerifiedSettings.Count > 0)
     {
-        <div class="verified-setting-manager">
-            <div class="authoring-section-title"><span>!</span><strong>Manage verified settings</strong></div>
-            <p>Remove an incorrect validated setting from the map. Removal also deletes its descendants and every route that enters or leaves them.</p>
-            <div class="verified-setting-list">
-                @foreach (var setting in VerifiedSettings)
-                {
-                    var isProtected = IsKnownStateSetting(setting);
-                    var isConfirming = PendingVerifiedSettingRemovalId?.Equals(
-                        setting.Id,
-                        StringComparison.OrdinalIgnoreCase) == true;
-                    <div class="verified-setting-row @(isConfirming ? "confirming" : "")">
-                        <span>
-                            <strong>@setting.Label</strong>
-                            <small>@setting.Path</small>
-                        </span>
-                        @if (isProtected)
+        <div class="verified-setting-manager collapsible-authoring-section @(ManageVerifiedSettingsExpanded ? "" : "collapsed")">
+            <button type="button" class="authoring-section-title authoring-section-toggle" @onclick="ToggleManageVerifiedSettings" aria-expanded="@(ManageVerifiedSettingsExpanded ? "true" : "false")">
+                <span>!</span><strong>Manage verified settings</strong><i aria-hidden="true">@(ManageVerifiedSettingsExpanded ? "−" : "+")</i>
+            </button>
+            @if (ManageVerifiedSettingsExpanded)
+            {
+                <div class="authoring-section-body">
+                    <p>Remove an incorrect validated setting from the map. Removal also deletes its descendants and every route that enters or leaves them.</p>
+                    <div class="verified-setting-list">
+                        @foreach (var setting in VerifiedSettings)
                         {
-                            <b>Known state</b>
-                        }
-                        else if (isConfirming)
-                        {
-                            <div class="verified-setting-confirm">
-                                <button class="secondary-action" @onclick="CancelVerifiedSettingRemoval" disabled="@IsBusy">Cancel</button>
-                                <button class="secondary-action danger-action" @onclick="() => RemoveVerifiedSettingAsync(setting)" disabled="@IsBusy">Confirm removal</button>
+                            var isProtected = IsKnownStateSetting(setting);
+                            var isConfirming = PendingVerifiedSettingRemovalId?.Equals(
+                                setting.Id,
+                                StringComparison.OrdinalIgnoreCase) == true;
+                            <div class="verified-setting-row @(isConfirming ? "confirming" : "")">
+                                <span>
+                                    <strong>@setting.Label</strong>
+                                    <small>@setting.Path</small>
+                                </span>
+                                @if (isProtected)
+                                {
+                                    <b>Known state</b>
+                                }
+                                else if (isConfirming)
+                                {
+                                    <div class="verified-setting-confirm">
+                                        <button class="secondary-action" @onclick="CancelVerifiedSettingRemoval" disabled="@IsBusy">Cancel</button>
+                                        <button class="secondary-action danger-action" @onclick="() => RemoveVerifiedSettingAsync(setting)" disabled="@IsBusy">Confirm removal</button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <button class="secondary-action danger-action" @onclick="() => RemoveVerifiedSettingAsync(setting)" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">Remove</button>
+                                }
                             </div>
                         }
-                        else
-                        {
-                            <button class="secondary-action danger-action" @onclick="() => RemoveVerifiedSettingAsync(setting)" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">Remove</button>
-                        }
                     </div>
-                }
-            </div>
-            <p class="field-note">Verified anchor targets are protected because automatic connection synchronization depends on them.</p>
+                    <p class="field-note">Verified anchor targets are protected because automatic connection synchronization depends on them.</p>
+                </div>
+            }
         </div>
     }
 
@@ -230,10 +237,19 @@
 
         @if (Authoring.ReturnStrategy is { } returnStrategy)
         {
-            <div class="return-strategy-lab">
-                <div class="authoring-section-title"><span>04</span><strong>Return to normal video scripts</strong></div>
-                <p class="return-strategy-intro">The verified script matching the predicted menu depth is used automatically. Tests send only the script shown—place the TV at the named starting position first.</p>
-                <div class="return-script-grid">
+            <div class="return-strategy-lab collapsible-authoring-section @(ReturnScriptsExpanded ? "" : "collapsed")">
+                <button type="button" class="authoring-section-title authoring-section-toggle" @onclick="ToggleReturnScripts" aria-expanded="@(ReturnScriptsExpanded ? "true" : "false")">
+                    <span>04</span><strong>Return to normal video scripts</strong>
+                    <b class="timing-profile-state @(ReturnScriptsNeedValidation ? "unverified" : "verified")">
+                        @(ReturnScriptsNeedValidation ? "NEEDS VALIDATION" : "VERIFIED")
+                    </b>
+                    <i aria-hidden="true">@(ReturnScriptsExpanded ? "−" : "+")</i>
+                </button>
+                @if (ReturnScriptsExpanded)
+                {
+                    <div class="authoring-section-body">
+                        <p class="return-strategy-intro">The verified script matching the predicted menu depth is used automatically. Tests send only the script shown—place the TV at the named starting position first.</p>
+                        <div class="return-script-grid">
                     <article class="return-script-card">
                         <header>
                             <div><span>AT MENU ROOT</span><strong>@returnStrategy.MenuRootPath</strong></div>
@@ -290,17 +306,23 @@
                         <button class="primary-action" @onclick="() => ConfirmReturnScriptAsync(true)" disabled="@IsBusy">Yes — count pass <span>✓</span></button>
                     </div>
                 }
+                    </div>
+                }
             </div>
         }
 
-        <div class="timing-profile-lab">
-            <div class="authoring-section-title timing-profile-title">
+        <div class="timing-profile-lab collapsible-authoring-section @(SystemTimingExpanded ? "" : "collapsed")">
+            <button type="button" class="authoring-section-title authoring-section-toggle timing-profile-title" @onclick="ToggleSystemTiming" aria-expanded="@(SystemTimingExpanded ? "true" : "false")">
                 <span>05</span><strong>System-wide timing</strong>
                 <b class="timing-profile-state @(SystemTimingIsVerified ? "verified" : "unverified")">
                     @(SystemTimingIsVerified ? "VERIFIED" : "NEEDS VALIDATION")
                 </b>
-            </div>
-            <div class="timing-profile-layout">
+                <i aria-hidden="true">@(SystemTimingExpanded ? "−" : "+")</i>
+            </button>
+            @if (SystemTimingExpanded)
+            {
+                <div class="authoring-section-body">
+                    <div class="timing-profile-layout">
                 <div>
                     <strong>One profile for every menu route.</strong>
                     <p>These waits apply throughout this TV interface. A button can override its system wait inside a draft's timing lab.</p>
@@ -359,11 +381,23 @@
                     <button class="primary-action" @onclick="() => ConfirmSystemTimingAsync(true)" disabled="@IsBusy">Yes — count pass <span>✓</span></button>
                 </div>
             }
+                </div>
+            }
         </div>
 
-        <div class="validation-studio">
-            <div class="authoring-section-title"><span>06</span><strong>Timing lab and visual validation</strong></div>
-            <p class="field-note">Before replaying, place the TV at the source shown on the draft card. Replay sends only the recorded commands; it never resets or traverses to the source automatically.</p>
+        <div class="validation-studio collapsible-authoring-section @(DraftValidationExpanded ? "" : "collapsed")">
+            <button type="button" class="authoring-section-title authoring-section-toggle" @onclick="ToggleDraftValidation" aria-expanded="@(DraftValidationExpanded ? "true" : "false")">
+                <span>06</span><strong>Timing lab and visual validation</strong>
+                @if (DraftValidationNeedsAttention)
+                {
+                    <b class="timing-profile-state unverified">@Authoring.DraftCandidates.Count NEED VALIDATION</b>
+                }
+                <i aria-hidden="true">@(DraftValidationExpanded ? "−" : "+")</i>
+            </button>
+            @if (DraftValidationExpanded)
+            {
+                <div class="authoring-section-body">
+                    <p class="field-note">Before replaying, place the TV at the source shown on the draft card. Replay sends only the recorded commands; it never resets or traverses to the source automatically.</p>
             @if (Authoring.DraftCandidates.Count == 0)
             {
                 <div class="capture-empty compact">No draft anchors or transitions are waiting for validation.</div>
@@ -436,6 +470,8 @@
                     <button class="primary-action" @onclick="() => ConfirmValidationAsync(true)" disabled="@IsBusy">Yes — count pass <span>✓</span></button>
                 </div>
             }
+                </div>
+            }
         </div>
     }
 </section>
@@ -477,6 +513,14 @@
     private bool IsSendingKey { get; set; }
     private string? LocalError { get; set; }
     private string? PendingVerifiedSettingRemovalId { get; set; }
+    private bool ManageVerifiedSettingsExpanded { get; set; } = true;
+    private bool ReturnScriptsExpanded { get; set; } = true;
+    private bool SystemTimingExpanded { get; set; } = true;
+    private bool DraftValidationExpanded { get; set; } = true;
+    private bool AttentionStateInitialized { get; set; }
+    private bool ReturnScriptsPreviouslyNeededValidation { get; set; }
+    private bool SystemTimingPreviouslyNeededValidation { get; set; }
+    private int PreviousDraftValidationCount { get; set; }
 
     private string DefinitionId { get; set; } = "samsung-menu";
     private string DefinitionName { get; set; } = "Samsung TV Menu";
@@ -520,6 +564,11 @@
     private bool SystemTimingIsVerified => !TimingProfileDirty
         && Authoring.Timing.Verified
         && Authoring.Timing.HasSameDelays(CreateTimingProfile());
+    private bool ReturnScriptsNeedValidation => Authoring.ReturnStrategy is { } returnStrategy
+        && (ReturnScriptsDirty
+            || !returnStrategy.AtMenuRoot.Verified
+            || !returnStrategy.BelowMenuRoot.Verified);
+    private bool DraftValidationNeedsAttention => Authoring.DraftCandidates.Count > 0;
     private bool CanSaveCandidateTiming => CanSaveSystemTiming && TimingEditorKind is not null
         && TimingEditorId is not null && TimingSteps.Count > 0 && TimingOverridesValid;
     private bool CanSaveAndReplayTiming => CanSaveCandidateTiming && CanRunValidation;
@@ -552,6 +601,15 @@
         ShowDefinitionForm = !ShowDefinitionForm;
         LocalError = null;
     }
+
+    private void ToggleManageVerifiedSettings() =>
+        ManageVerifiedSettingsExpanded = !ManageVerifiedSettingsExpanded;
+
+    private void ToggleReturnScripts() => ReturnScriptsExpanded = !ReturnScriptsExpanded;
+
+    private void ToggleSystemTiming() => SystemTimingExpanded = !SystemTimingExpanded;
+
+    private void ToggleDraftValidation() => DraftValidationExpanded = !DraftValidationExpanded;
 
     private async Task CreateDefinitionAsync()
     {
@@ -636,7 +694,11 @@
         Refresh();
     });
 
-    private void MarkTimingProfileDirty() => TimingProfileDirty = true;
+    private void MarkTimingProfileDirty()
+    {
+        TimingProfileDirty = true;
+        UpdateAttentionSections();
+    }
 
     private void ToggleTimingEditor(MenuAuthoringCandidateSummary candidate)
     {
@@ -754,7 +816,11 @@
     private Task ConfirmSystemTimingAsync(bool passed) =>
         RunBusyAsync(() => Controller.ConfirmMenuTimingProfileTestAsync(passed));
 
-    private void MarkReturnScriptsDirty() => ReturnScriptsDirty = true;
+    private void MarkReturnScriptsDirty()
+    {
+        ReturnScriptsDirty = true;
+        UpdateAttentionSections();
+    }
 
     private Task SaveReturnScriptsAsync() => RunBusyAsync(async () =>
     {
@@ -877,6 +943,37 @@
         {
             PendingVerifiedSettingRemovalId = null;
         }
+
+        UpdateAttentionSections();
+    }
+
+    private void UpdateAttentionSections()
+    {
+        var returnScriptsNeedValidation = ReturnScriptsNeedValidation;
+        var systemTimingNeedsValidation = !SystemTimingIsVerified;
+        var draftValidationCount = Authoring.DraftCandidates.Count;
+        if (AttentionStateInitialized)
+        {
+            if (!ReturnScriptsPreviouslyNeededValidation && returnScriptsNeedValidation)
+            {
+                ReturnScriptsExpanded = true;
+            }
+
+            if (!SystemTimingPreviouslyNeededValidation && systemTimingNeedsValidation)
+            {
+                SystemTimingExpanded = true;
+            }
+
+            if (draftValidationCount > PreviousDraftValidationCount)
+            {
+                DraftValidationExpanded = true;
+            }
+        }
+
+        ReturnScriptsPreviouslyNeededValidation = returnScriptsNeedValidation;
+        SystemTimingPreviouslyNeededValidation = systemTimingNeedsValidation;
+        PreviousDraftValidationCount = draftValidationCount;
+        AttentionStateInitialized = true;
     }
 
     private MenuTimingProfile CreateTimingProfile() => new(

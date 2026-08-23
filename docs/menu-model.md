@@ -179,6 +179,14 @@ entirely in the UI. Verified items are protected from this draft workflow.
 The separate **Manage verified settings** area can remove an incorrect verified
 setting after a second confirmation. Its descendants and all related routes are
 removed with it; verified anchor targets are protected from deletion.
+Build & Verify sections can be minimized. If a minimized return script or system
+timing profile changes from verified to needing validation, it opens automatically;
+the validation section likewise opens when a new draft appears.
+
+On the ordinary **Menu** page, clicking a verified destination immediately plans
+and executes the verified route from the predicted current state. Planning fails
+without sending commands when the current state is unknown or no verified path
+exists. The route-preview controls remain available for inspecting commands.
 
 Validate an anchor before transitions that depend on it, and validate a parent
 transition before a deeper transition whose source is reached through that

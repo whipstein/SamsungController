@@ -1704,6 +1704,18 @@ public sealed class SamsungControllerService : IAsyncDisposable
             cancellationToken);
     }
 
+    public Task NavigateToMenuNodeAsync(
+        string targetNodeId,
+        CancellationToken cancellationToken = default)
+    {
+        var plan = CreateNavigationPlan(targetNodeId);
+        return RunNavigationAsync(
+            $"Navigate · {plan.TargetPath}",
+            (navigator, token) => navigator.ExecutePlanAsync(plan, token),
+            clearPlanOnSuccess: true,
+            cancellationToken);
+    }
+
     public void CancelNavigation()
     {
         lock (_sync)

@@ -8,7 +8,7 @@
     <div>
         <span class="eyebrow">VERIFIED MENUS</span>
         <h1>Your proven menu map.</h1>
-        <p>Select a verified destination, calculate its route, and send only commands that have passed visual verification on this TV.</p>
+        <p>Click a verified destination to execute its proven route immediately. Only commands that passed visual verification on this TV are sent.</p>
     </div>
     <div class="menu-heading-aside">
         <div class="confidence-orb @ConfidenceClass">
@@ -31,7 +31,7 @@
 
 <section class="navigator-layout">
     <div class="panel menu-tree-panel">
-        <div class="panel-label"><span>VERIFIED MENU MAP</span><span>@VerifiedNodes.Count DESTINATIONS</span></div>
+        <div class="panel-label"><span>VERIFIED MENU MAP · CLICK TO RUN</span><span>@VerifiedNodes.Count DESTINATIONS</span></div>
 
         @if (VerifiedNodes.Count == 0)
         {
@@ -49,15 +49,16 @@
                     <button class="menu-node @(SelectedTarget == node.Id ? "selected" : "") @(Navigation.State.NodeId == node.Id ? "current" : "")"
                             style="@($"padding-left: {14 + node.Depth * 18}px")"
                             role="treeitem"
-                            @onclick="() => SelectTarget(node.Id)"
-                            disabled="@Navigation.IsRunning">
+                            aria-label="Run verified route to @node.Path"
+                            @onclick="() => RunTargetAsync(node.Id)"
+                            disabled="@(!CanAutomate)">
                         <span class="tree-branch" aria-hidden="true"></span>
                         <span>
                             <strong>@node.Label</strong>
                             <small>@(node.Description ?? node.Path)</small>
                         </span>
                         <b class="node-badge @(Navigation.State.NodeId == node.Id ? "current" : "verified")">
-                            @(Navigation.State.NodeId == node.Id ? "Current" : "Verified")
+                            @(Navigation.State.NodeId == node.Id ? "Current" : "Run")
                         </b>
                     </button>
                 }
@@ -117,7 +118,7 @@
             }
             else
             {
-                <div class="plan-empty">Select a verified destination and calculate its route. Nothing is sent during planning.</div>
+                <div class="plan-empty">Click a verified destination to run it immediately. Use Calculate route afterward when you want to inspect its command sequence.</div>
             }
         </div>
 
@@ -175,10 +176,22 @@
         SelectDefaultTarget();
     }
 
-    private void SelectTarget(string nodeId)
+    private async Task RunTargetAsync(string nodeId)
     {
         SelectedTarget = nodeId;
         LocalError = null;
+        try
+        {
+            await Controller.NavigateToMenuNodeAsync(nodeId);
+        }
+        catch (OperationCanceledException)
+        {
+            // Live state already reports cancellation and invalidates prediction.
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
     }
 
     private void SelectDefaultTarget()

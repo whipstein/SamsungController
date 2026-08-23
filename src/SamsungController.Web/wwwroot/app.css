@@ -346,8 +346,8 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .authoring-message { margin-top: 14px; padding: 10px 12px; border: 1px solid rgba(124,231,220,.2); border-radius: 6px; background: var(--cyan-soft); color: var(--cyan); font-size: 10px; }
 .authoring-message.error { border-color: rgba(255,119,119,.28); background: rgba(255,119,119,.07); color: var(--danger); }
 .verified-setting-manager { padding: 18px 0; border-bottom: 1px solid var(--line); }
-.verified-setting-manager > p { margin: -5px 0 13px; color: var(--muted); font-size: 10px; line-height: 1.55; }
-.verified-setting-manager > .field-note { margin: 11px 0 0; color: var(--faint); }
+.verified-setting-manager .authoring-section-body > p { margin: -5px 0 13px; color: var(--muted); font-size: 10px; line-height: 1.55; }
+.verified-setting-manager .authoring-section-body > .field-note { margin: 11px 0 0; color: var(--faint); }
 .verified-setting-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .verified-setting-row { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 7px; background: #09151e; }
 .verified-setting-row.confirming { border-color: rgba(255,119,119,.38); background: rgba(255,119,119,.055); }
@@ -362,6 +362,11 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .authoring-section-title { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .authoring-section-title span { display: grid; width: 23px; height: 23px; place-items: center; border: 1px solid var(--line-strong); border-radius: 50%; color: var(--cyan); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .authoring-section-title strong { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.authoring-section-toggle { width: 100%; padding: 0; border: 0; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+.authoring-section-toggle:hover strong { color: var(--cyan); }
+.authoring-section-toggle > i { min-width: 23px; margin-left: auto; color: var(--muted); font: normal 17px/1 ui-monospace, "SFMono-Regular", Consolas, monospace; text-align: center; }
+.authoring-section-toggle > .timing-profile-state + i { margin-left: 0; }
+.collapsible-authoring-section.collapsed > .authoring-section-toggle { margin-bottom: 0; }
 .authoring-form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .authoring-form-grid.compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .authoring-form-grid .wide-field { grid-column: span 2; }
@@ -426,7 +431,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .timing-profile-fields { display: grid; grid-template-columns: repeat(3, minmax(105px, 1fr)); gap: 9px; }
 .timing-profile-fields label > span { font-size: 8px; }
 .timing-profile-fields input { padding: 10px 35px 10px 10px; font-size: 10px; }
-.timing-profile-title .timing-profile-state { margin-left: auto; padding: 4px 7px; border: 1px solid; border-radius: 999px; font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; }
+.authoring-section-toggle .timing-profile-state { margin-left: auto; padding: 4px 7px; border: 1px solid; border-radius: 999px; font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; white-space: nowrap; }
 .timing-profile-state.verified { color: var(--cyan); border-color: rgba(124,231,220,.28); background: rgba(124,231,220,.07); }
 .timing-profile-state.unverified { color: var(--amber); border-color: rgba(242,181,107,.28); background: rgba(242,181,107,.07); }
 .timing-profile-actions { display: flex; align-items: end; }
