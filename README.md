@@ -17,6 +17,7 @@ validated; see the [verification checklist](docs/architecture.md#s95f-verificati
 - Arbitrary Samsung key strings for research
 - Complete RX/TX NDJSON session recording
 - Unknown/malformed message preservation
+- Read-only, labeled `/api/v2/` device-state snapshots for cross-state comparison
 - Connection state and bounded automatic reconnect
 - Hierarchical YAML macros with variables, repeats, delays, cancellation, and execution progress
 - Localhost-only Blazor control surface for connection, remote keys, macros, menu navigation, and protocol inspection
@@ -71,8 +72,9 @@ The five views share one live TV session:
   through separate three-pass visual tests, runs verified resynchronization
   anchors, previews routes, tracks confidence, and refuses to execute draft transitions.
 - **Protocol** keeps the latest 500 RX/TX messages searchable in memory, offers
-  copy/export and one-click read-only application research queries, and writes
-  the complete NDJSON capture to the session directory.
+  copy/export and one-click read-only application research queries, captures
+  labeled `/api/v2/` snapshots for app/power-state comparison, and writes the
+  complete protocol capture to the session directory.
 
 If the TV drops the WebSocket connection, the web interface immediately returns
 to its disconnected state and disables TV commands. Reconnection is an explicit

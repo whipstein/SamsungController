@@ -19,7 +19,26 @@ public static class ProtocolMessageFormatter
             return message.RawJson;
         }
 
-        var payload = message.ParsedPayload.DeepClone();
+        return FormatPayload(message.ParsedPayload, revealSensitive);
+    }
+
+    public static string FormatJson(string rawJson, bool revealSensitive)
+    {
+        ArgumentNullException.ThrowIfNull(rawJson);
+        try
+        {
+            var payload = JsonNode.Parse(rawJson);
+            return payload is null ? rawJson : FormatPayload(payload, revealSensitive);
+        }
+        catch (JsonException)
+        {
+            return rawJson;
+        }
+    }
+
+    private static string FormatPayload(JsonNode parsedPayload, bool revealSensitive)
+    {
+        var payload = parsedPayload.DeepClone();
         if (!revealSensitive)
         {
             RedactTokens(payload);

@@ -62,12 +62,33 @@ provide two known read/query events using the `ms.channel.emit` envelope:
 }
 ```
 
-The second event is `ed.installedApp.get`. Support and response shapes are
-firmware-dependent and remain to be verified on the S95F. These envelopes are
-treated as experimental protocol behavior even though their names imply reads.
+The second event is `ed.installedApp.get`. The first connected-session test on
+the S95F produced no observable response to either event; see the research log.
+Support and response shapes remain firmware- and state-dependent hypotheses.
+These envelopes are treated as experimental protocol behavior even though their
+names imply reads.
 
 The envelope was independently implemented after checking the behavior in the
 [samsungctl WebSocket implementation](https://github.com/roberodin/ha-samsungtv-custom/blob/master/custom_components/samsungtv_custom/samsungctl_080b/remote_websocket.py).
+
+## Device-information probes
+
+The Protocol page can issue a read-only `GET /api/v2/` request against the
+configured TV endpoint. Secure profiles use HTTPS and port 8002 by default;
+non-secure profiles use HTTP and port 8001. A configured port override is
+honored, and acceptance of the TV certificate follows the saved connection
+profile.
+
+Each probe has a user-entered state label such as `Powered on`, `Netflix SDR`,
+or `Standby`. Up to 20 observations remain available for comparison and JSON
+export in the running web session. Successful HTTP responses are also added to
+the protocol stream and NDJSON capture with their exact response body. Network
+failures are retained as observations, which allows a no-response standby test
+to be distinguished from a probe that was never attempted.
+
+The response is diagnostic data only. SamsungController does not infer a
+current application, power state, or supported feature until those fields have
+been validated on the target TV.
 
 ## Session recordings
 

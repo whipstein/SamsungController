@@ -18,6 +18,7 @@ public sealed record ControllerSnapshot(
     string ApplicationName,
     bool Secure,
     int? Port,
+    bool AllowUntrustedCertificate,
     string MacroFilePath,
     SamsungConnectionState ConnectionState,
     long ConnectionGeneration,
@@ -30,6 +31,20 @@ public sealed record ControllerSnapshot(
     bool NavigationRunning,
     string? MenuPath,
     MenuStateConfidence MenuConfidence);
+
+public sealed record DeviceInfoObservation(
+    DateTimeOffset Timestamp,
+    string Label,
+    string Endpoint,
+    int? StatusCode,
+    bool IsSuccess,
+    string RawContent,
+    string? ParseError,
+    string? Error);
+
+public sealed record DeviceInfoSnapshot(
+    bool IsQuerying,
+    IReadOnlyList<DeviceInfoObservation> Observations);
 
 public sealed record MacroSummary(
     string Name,

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using SamsungController.Automation.Macros;
 using SamsungController.Automation.Navigation;
 using SamsungController.Core.Connection;
@@ -12,6 +13,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
 {
     private const int MessageCapacity = 500;
     private const int MacroProgressCapacity = 500;
+    private const int DeviceInfoObservationCapacity = 20;
 
     private readonly object _sync = new();
     private readonly SemaphoreSlim _initializationGate = new(1, 1);
@@ -24,9 +26,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private readonly JsonFileSamsungTokenStore _tokenStore;
     private readonly NdjsonProtocolLogger _logger;
     private readonly SamsungTvClient _client;
+    private readonly ISamsungDeviceInfoClient _deviceInfoClient;
     private readonly IMenuDelay _menuDelay;
     private readonly List<SamsungMessage> _messages = [];
     private readonly List<MacroExecutionProgress> _macroProgress = [];
+    private readonly List<DeviceInfoObservation> _deviceInfoObservations = [];
     private readonly MenuTraversalRecorder _menuRecorder = new();
 
     private SamsungWebSettings _settings = new();
@@ -40,6 +44,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private bool _hasToken;
     private int _macroRunning;
     private int _navigationRunning;
+    private int _deviceInfoQuerying;
     private string? _activeMacro;
     private string? _lastMacroStatus;
     private string? _navigationStatus;
@@ -54,14 +59,19 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private bool _disposed;
 
     public SamsungControllerService(IConfiguration configuration)
-        : this(configuration, new ClientWebSocketSamsungTransport(), SystemMenuDelay.Instance)
+        : this(
+            configuration,
+            new ClientWebSocketSamsungTransport(),
+            SystemMenuDelay.Instance,
+            new SamsungDeviceInfoClient())
     {
     }
 
     internal SamsungControllerService(
         IConfiguration configuration,
         ISamsungTransport transport,
-        IMenuDelay menuDelay)
+        IMenuDelay menuDelay,
+        ISamsungDeviceInfoClient? deviceInfoClient = null)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(transport);
@@ -87,6 +97,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _tokenStore,
             [_logger]);
         _menuDelay = menuDelay;
+        _deviceInfoClient = deviceInfoClient ?? new SamsungDeviceInfoClient();
         _client.ConnectionStateChanged += HandleConnectionStateChanged;
         _client.MessageObserved += HandleMessageObserved;
     }
@@ -171,6 +182,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 _settings.ApplicationName,
                 _settings.Secure,
                 _settings.Port,
+                _settings.AllowUntrustedCertificate,
                 macroPath,
                 _client.State,
                 _client.ConnectionGeneration,
@@ -183,6 +195,16 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 Volatile.Read(ref _navigationRunning) == 1,
                 menuState?.Path,
                 menuState?.Confidence ?? MenuStateConfidence.Unknown);
+        }
+    }
+
+    public DeviceInfoSnapshot GetDeviceInfoSnapshot()
+    {
+        lock (_sync)
+        {
+            return new DeviceInfoSnapshot(
+                Volatile.Read(ref _deviceInfoQuerying) == 1,
+                _deviceInfoObservations.ToArray());
         }
     }
 
@@ -366,7 +388,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                             ? "Samsung TV"
                             : request.DisplayName.Trim(),
                         Secure = request.Secure,
-                        Port = request.Port
+                        Port = request.Port,
+                        AllowUntrustedCertificate = request.AllowUntrustedCertificate
                     },
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -449,6 +472,116 @@ public sealed class SamsungControllerService : IAsyncDisposable
         EnsureNoAutomationRunning("send a research query");
         EnsureNoMenuRecording("send a research query");
         await _client.SendQueryAsync(query, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<DeviceInfoObservation> ProbeDeviceInfoAsync(
+        string? label,
+        CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        if (Interlocked.Exchange(ref _deviceInfoQuerying, 1) == 1)
+        {
+            throw new InvalidOperationException("A device-information probe is already running.");
+        }
+
+        NotifyChanged();
+        try
+        {
+            SamsungWebSettings settings;
+            lock (_sync)
+            {
+                settings = _settings;
+            }
+
+            if (string.IsNullOrWhiteSpace(settings.Host))
+            {
+                throw new InvalidOperationException("Configure a TV host before probing device information.");
+            }
+
+            var observationLabel = string.IsNullOrWhiteSpace(label)
+                ? "Unlabeled state"
+                : label.Trim();
+            var request = new SamsungDeviceInfoRequest
+            {
+                Host = settings.Host,
+                Secure = settings.Secure,
+                Port = settings.Port,
+                AllowUntrustedCertificate = settings.AllowUntrustedCertificate
+            };
+            var endpoint = SamsungDeviceInfoClient.GetEndpoint(request);
+            await RecordProtocolMessageAsync(
+                    CreateDeviceInfoRequestMessage(endpoint, observationLabel),
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            DeviceInfoObservation observation;
+            try
+            {
+                var response = await _deviceInfoClient.GetAsync(request, cancellationToken)
+                    .ConfigureAwait(false);
+                observation = new DeviceInfoObservation(
+                    response.Timestamp,
+                    observationLabel,
+                    response.Endpoint.AbsoluteUri,
+                    (int)response.StatusCode,
+                    response.IsSuccessStatusCode,
+                    response.RawContent,
+                    response.ParseError,
+                    null);
+                await RecordProtocolMessageAsync(
+                        new SamsungMessage(
+                            response.Timestamp,
+                            SamsungMessageDirection.Rx,
+                            response.Endpoint.AbsoluteUri,
+                            $"HTTP {(int)response.StatusCode} · {observationLabel}",
+                            response.ParsedPayload,
+                            response.RawContent,
+                            response.ParseError,
+                            _client.ConnectionGeneration),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                observation = new DeviceInfoObservation(
+                    DateTimeOffset.UtcNow,
+                    observationLabel,
+                    endpoint.AbsoluteUri,
+                    null,
+                    false,
+                    string.Empty,
+                    null,
+                    exception.Message);
+            }
+
+            lock (_sync)
+            {
+                _deviceInfoObservations.Add(observation);
+                if (_deviceInfoObservations.Count > DeviceInfoObservationCapacity)
+                {
+                    _deviceInfoObservations.RemoveRange(
+                        0,
+                        _deviceInfoObservations.Count - DeviceInfoObservationCapacity);
+                }
+            }
+
+            return observation;
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _deviceInfoQuerying, 0);
+            NotifyChanged();
+        }
+    }
+
+    public void ClearDeviceInfoObservations()
+    {
+        lock (_sync)
+        {
+            _deviceInfoObservations.Clear();
+        }
+
+        NotifyChanged();
     }
 
     public async Task SetMenuDefinitionAsync(
@@ -2797,6 +2930,33 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
 
         NotifyChanged();
+    }
+
+    private SamsungMessage CreateDeviceInfoRequestMessage(Uri endpoint, string label)
+    {
+        var rawJson = JsonSerializer.Serialize(new
+        {
+            method = "GET",
+            endpoint = endpoint.AbsoluteUri,
+            label
+        });
+        return new SamsungMessage(
+            DateTimeOffset.UtcNow,
+            SamsungMessageDirection.Tx,
+            endpoint.AbsoluteUri,
+            $"GET /api/v2/ · {label}",
+            JsonNode.Parse(rawJson),
+            rawJson,
+            null,
+            _client.ConnectionGeneration);
+    }
+
+    private async Task RecordProtocolMessageAsync(
+        SamsungMessage message,
+        CancellationToken cancellationToken)
+    {
+        await _logger.WriteAsync(message, cancellationToken).ConfigureAwait(false);
+        HandleMessageObserved(this, new SamsungMessageEventArgs(message));
     }
 
     private void HandleMessageObserved(object? sender, SamsungMessageEventArgs eventArgs)

@@ -186,6 +186,7 @@ else if (Snapshot.ConnectionState == SamsungConnectionState.Pairing)
         Host = snapshot.Host ?? string.Empty;
         Secure = snapshot.Secure;
         Port = snapshot.Port;
+        AllowUntrustedCertificate = snapshot.AllowUntrustedCertificate;
     }
 
     public void Dispose()

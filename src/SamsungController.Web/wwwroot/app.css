@@ -195,6 +195,27 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .research-query code { margin-top: 4px; color: var(--faint); font-size: 8px; }
 .research-query b { color: var(--cyan); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; font-weight: 500; white-space: nowrap; }
 .research-status { margin: 10px 0; padding: 9px 10px; border-left: 2px solid var(--cyan); background: var(--cyan-soft); color: var(--cyan); font-size: 9px; line-height: 1.45; }
+.device-probe { margin-top: 18px; padding-top: 17px; border-top: 1px solid var(--line); }
+.device-probe-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.device-probe-heading strong { color: var(--ink); font-size: 11px; }
+.device-probe-heading code { color: var(--faint); font-size: 8px; }
+.device-probe label { display: block; margin-top: 12px; }
+.device-probe input { padding: 9px 10px; font-size: 10px; }
+.device-probe .research-query code { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.device-observations-panel { margin-top: 18px; }
+.device-observation-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin: -8px 0 16px; }
+.device-observation-toolbar p { max-width: 720px; margin: 0; color: var(--faint); font-size: 10px; line-height: 1.55; }
+.device-observation-toolbar > div { display: flex; gap: 8px; white-space: nowrap; }
+.device-observation-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.device-observation-card { min-width: 0; border: 1px solid var(--line); border-left: 2px solid var(--danger); border-radius: 6px; background: #08131b; overflow: hidden; }
+.device-observation-card.success { border-left-color: var(--cyan); }
+.device-observation-card header { display: grid; grid-template-columns: 1fr auto auto; gap: 13px; align-items: center; padding: 11px 12px; border-bottom: 1px solid var(--line); }
+.device-observation-card header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.device-observation-card header span { color: var(--danger); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.device-observation-card.success header span { color: var(--cyan); }
+.device-observation-card header small { color: var(--faint); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.device-observation-card pre { max-height: 300px; overflow: auto; margin: 0; padding: 10px 12px 13px; color: #b8c9ce; font: 10px/1.55 ui-monospace, "SFMono-Regular", Consolas, monospace; white-space: pre-wrap; word-break: break-word; }
+.device-observation-error { padding: 13px 12px; color: var(--danger); font-size: 10px; line-height: 1.5; }
 .developer-toggle { display: flex; align-items: center; color: var(--amber); font-size: 11px; }
 .raw-panel p { color: var(--faint); font-size: 10px; line-height: 1.55; }
 .raw-panel textarea { resize: vertical; color: #b8c9ce; font: 10px/1.55 ui-monospace, "SFMono-Regular", Consolas, monospace; }
@@ -410,6 +431,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .timing-profile-layout { grid-template-columns: 1fr; align-items: stretch; }
     .timing-profile-test { grid-template-columns: 1fr; align-items: stretch; }
     .protocol-side-stack { position: static; }
+    .device-observation-list { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 700px) {
@@ -436,5 +458,9 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .timing-editor-actions .primary-action { width: 100%; }
     .sensitive-row { display: block; }
     .sensitive-row span { display: block; margin-top: 8px; }
+    .device-observation-toolbar { display: block; }
+    .device-observation-toolbar > div { margin-top: 12px; flex-wrap: wrap; }
+    .device-observation-card header { grid-template-columns: 1fr auto; }
+    .device-observation-card header small { grid-column: 1 / -1; }
     .notice { grid-template-columns: 1fr; }
 }

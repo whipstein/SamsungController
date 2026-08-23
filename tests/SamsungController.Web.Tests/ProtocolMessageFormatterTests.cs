@@ -56,6 +56,19 @@ public sealed class ProtocolMessageFormatterTests
         Assert.Equal("original", message.ParsedPayload?["data"]?["token"]?.GetValue<string>());
     }
 
+    [Fact]
+    public void RawDeviceInfoJsonUsesTheSameTokenRedactionPolicy()
+    {
+        const string rawJson = """{"device":{"token":"secret","name":"TV"}}""";
+
+        var redacted = ProtocolMessageFormatter.FormatJson(rawJson, revealSensitive: false);
+        var revealed = ProtocolMessageFormatter.FormatJson(rawJson, revealSensitive: true);
+
+        Assert.DoesNotContain("secret", redacted, StringComparison.Ordinal);
+        Assert.Contains("[redacted]", redacted, StringComparison.Ordinal);
+        Assert.Contains("secret", revealed, StringComparison.Ordinal);
+    }
+
     private static SamsungMessage CreateMessage(string rawJson) => new(
         DateTimeOffset.UtcNow,
         SamsungMessageDirection.Rx,

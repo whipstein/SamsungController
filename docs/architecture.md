@@ -35,6 +35,9 @@ SamsungController.Web
 - `ISamsungTokenStore` keeps persistence outside protocol logic.
 - `ISamsungMessageSink` receives every complete TX/RX message. The initial
   `NdjsonProtocolLogger` records sessions without interpreting away unknown data.
+- `SamsungDeviceInfoClient` performs isolated, read-only HTTP(S) `/api/v2/`
+  probes. It preserves raw and parsed responses without coupling REST research
+  to the WebSocket transport.
 - `samsungctl` owns user configuration, paths, terminal output, and process
   lifetime. The core library does not depend on the CLI.
 - `SamsungController.Web` is an ASP.NET Core/Blazor Server presentation layer.
@@ -111,6 +114,9 @@ disabled in the core connection options.
 
 The token file lives in the operating system's per-user configuration directory,
 not in the repository. The CLI never prints the token.
+
+The web profile also persists its certificate-trust choice so WebSocket and
+device-information probes apply the same endpoint policy after a restart.
 
 ## Message model
 

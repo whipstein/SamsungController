@@ -19,6 +19,8 @@ internal sealed record SamsungWebSettings
 
     public int? Port { get; init; }
 
+    public bool AllowUntrustedCertificate { get; init; } = true;
+
     public string? MacroFilePath { get; init; }
 
     public string? MenuDefinitionPath { get; init; }

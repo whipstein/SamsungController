@@ -80,6 +80,15 @@
                 <div class="research-status" role="status">@ResearchStatus</div>
             }
             <small>Experimental read/query envelopes only. No setting writes are included.</small>
+
+            <div class="device-probe">
+                <div class="device-probe-heading"><strong>Device information</strong><code>GET /api/v2/</code></div>
+                <p>Label the TV state, then capture it. This also works while the WebSocket is disconnected so standby failures can be recorded.</p>
+                <label><span>State label</span><input @bind="DeviceInfoLabel" placeholder="Powered on · Home" disabled="@DeviceInfo.IsQuerying" /></label>
+                <button class="research-query" @onclick="ProbeDeviceInfoAsync" disabled="@(!CanProbeDeviceInfo)">
+                    <span><strong>@(DeviceInfo.IsQuerying ? "Probing…" : "Capture device state")</strong><code>@DeviceInfoEndpoint</code></span><b>GET →</b>
+                </button>
+            </div>
         </section>
 
         <section class="panel raw-panel">
@@ -92,8 +101,52 @@
     </aside>
 </section>
 
+@if (DeviceInfo.Observations.Count > 0)
+{
+    <section class="panel device-observations-panel">
+        <div class="panel-label">
+            <span>DEVICE STATE SNAPSHOTS</span>
+            <span>@DeviceInfo.Observations.Count / 20 RETAINED</span>
+        </div>
+        <div class="device-observation-toolbar">
+            <p>Compare labeled responses across applications and power states. Successful responses also appear in the protocol stream and complete NDJSON capture.</p>
+            <div>
+                <button class="toolbar-button" @onclick="ExportDeviceInfoAsync">Export snapshots</button>
+                <button class="toolbar-button" @onclick="Controller.ClearDeviceInfoObservations">Clear snapshots</button>
+            </div>
+        </div>
+        <div class="device-observation-list">
+            @foreach (var observation in DeviceInfo.Observations.Reverse())
+            {
+                <article class="device-observation-card @(observation.IsSuccess ? "success" : "failed")">
+                    <header>
+                        <strong>@observation.Label</strong>
+                        <span>@(observation.StatusCode is null ? "NO RESPONSE" : $"HTTP {observation.StatusCode}")</span>
+                        <small>@observation.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture)</small>
+                    </header>
+                    <div class="message-meta">@observation.Endpoint</div>
+                    @if (!string.IsNullOrWhiteSpace(observation.Error))
+                    {
+                        <div class="device-observation-error">@observation.Error</div>
+                    }
+                    else
+                    {
+                        <pre>@FormatDeviceInfo(observation.RawContent)</pre>
+                        @if (!string.IsNullOrWhiteSpace(observation.ParseError))
+                        {
+                            <div class="parse-error">Response was not JSON: @observation.ParseError</div>
+                        }
+                    }
+                </article>
+            }
+        </div>
+    </section>
+}
+
 @code {
+    private static readonly JsonSerializerOptions PrettyJson = new() { WriteIndented = true };
     private ControllerSnapshot Snapshot { get; set; } = null!;
+    private DeviceInfoSnapshot DeviceInfo { get; set; } = null!;
     private IReadOnlyList<SamsungMessage> Messages { get; set; } = [];
     private string Search { get; set; } = string.Empty;
     private string DirectionFilter { get; set; } = "All";
@@ -104,14 +157,22 @@
     private string RawPayload { get; set; } = "{\n  \"method\": \"ms.remote.control\"\n}";
     private string? ErrorMessage { get; set; }
     private string? ResearchStatus { get; set; }
+    private string DeviceInfoLabel { get; set; } = "Powered on";
 
     private bool CanSendRaw => DeveloperMode && !IsSending &&
         Snapshot.ConnectionState == SamsungConnectionState.Connected &&
         !Snapshot.MacroRunning && !Snapshot.NavigationRunning &&
         !string.IsNullOrWhiteSpace(RawPayload);
     private bool CanSendQuery => !IsQuerying && !IsSending &&
+        !DeviceInfo.IsQuerying &&
         Snapshot.ConnectionState == SamsungConnectionState.Connected &&
         !Snapshot.MacroRunning && !Snapshot.NavigationRunning;
+    private bool CanProbeDeviceInfo => !IsQuerying && !IsSending &&
+        !DeviceInfo.IsQuerying && !string.IsNullOrWhiteSpace(Snapshot.Host) &&
+        !Snapshot.MacroRunning && !Snapshot.NavigationRunning;
+    private string DeviceInfoEndpoint => string.IsNullOrWhiteSpace(Snapshot.Host)
+        ? "Configure a TV host first"
+        : $"{(Snapshot.Secure ? "https" : "http")}://{Snapshot.Host}:{Snapshot.Port ?? (Snapshot.Secure ? 8002 : 8001)}/api/v2/";
 
     private IReadOnlyList<SamsungMessage> FilteredMessages => Messages
         .Where(message => DirectionFilter == "All" || message.Direction.ToString() == DirectionFilter)
@@ -122,6 +183,7 @@
     protected override async Task OnInitializedAsync()
     {
         Snapshot = Controller.GetSnapshot();
+        DeviceInfo = Controller.GetDeviceInfoSnapshot();
         Messages = Controller.GetMessages();
         Controller.Changed += HandleControllerChanged;
         await Controller.InitializeAsync();
@@ -207,6 +269,60 @@
     private Task SendInstalledQueryAsync() =>
         SendQueryAsync(SamsungQuery.InstalledApplications, "Installed applications");
 
+    private async Task ProbeDeviceInfoAsync()
+    {
+        ErrorMessage = null;
+        ResearchStatus = null;
+        try
+        {
+            var observation = await Controller.ProbeDeviceInfoAsync(DeviceInfoLabel);
+            ResearchStatus = observation.Error is null
+                ? $"Captured {observation.Label} · HTTP {observation.StatusCode}"
+                : $"Captured {observation.Label} · no response";
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = exception.Message;
+        }
+    }
+
+    private async Task ExportDeviceInfoAsync()
+    {
+        ErrorMessage = null;
+        try
+        {
+            var export = JsonSerializer.Serialize(
+                DeviceInfo.Observations.Select(observation => new
+                {
+                    observation.Timestamp,
+                    observation.Label,
+                    observation.Endpoint,
+                    observation.StatusCode,
+                    observation.IsSuccess,
+                    Response = FormatDeviceInfo(observation.RawContent),
+                    observation.ParseError,
+                    observation.Error
+                }),
+                PrettyJson);
+            var fileName = $"samsung-device-info-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.json";
+            await JavaScript.InvokeVoidAsync("samsungController.downloadText", fileName, export);
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = exception.Message;
+        }
+    }
+
+    private string FormatDeviceInfo(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return "(empty response)";
+        }
+
+        return ProtocolMessageFormatter.FormatJson(content, RevealSensitive);
+    }
+
     private void HandleControllerChanged()
     {
         Refresh();
@@ -216,11 +332,8 @@
     private void Refresh()
     {
         Snapshot = Controller.GetSnapshot();
+        DeviceInfo = Controller.GetDeviceInfoSnapshot();
         Messages = Controller.GetMessages();
-        if (Snapshot.ConnectionState != SamsungConnectionState.Connected)
-        {
-            ResearchStatus = null;
-        }
     }
 
     public void Dispose()
