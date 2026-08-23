@@ -32,7 +32,16 @@
         <header class="topbar">
             <div class="topbar-primary">
                 <div><span class="eyebrow">S95F CONTROL PLANE</span></div>
-                <div class="connection-pill @StateClass"><span></span>@Snapshot.ConnectionState</div>
+                <div class="topbar-connection-control">
+                    <div class="connection-pill @StateClass"><span></span>@Snapshot.ConnectionState</div>
+                    <button type="button"
+                            class="topbar-connection-button @(CanDisconnectFromHeader ? "disconnect" : "connect")"
+                            title="@HeaderConnectionTitle"
+                            @onclick="ToggleConnectionAsync"
+                            disabled="@HeaderConnectionDisabled">
+                        @(ConnectionControlBusy ? "Working…" : CanDisconnectFromHeader ? "Disconnect" : "Connect")
+                    </button>
+                </div>
             </div>
 
             <div class="persistent-control-bar">
@@ -66,7 +75,11 @@
                 </div>
             </div>
 
-            @if (!string.IsNullOrWhiteSpace(QuickAccessError))
+            @if (!string.IsNullOrWhiteSpace(ConnectionControlError))
+            {
+                <div class="topbar-feedback danger" role="alert">@ConnectionControlError</div>
+            }
+            else if (!string.IsNullOrWhiteSpace(QuickAccessError))
             {
                 <div class="topbar-feedback danger" role="alert">@QuickAccessError</div>
             }
@@ -167,11 +180,23 @@
     private bool ShowQuickEditor { get; set; }
     private bool QuickEditorBusy { get; set; }
     private bool QuickActionBusy { get; set; }
+    private bool ConnectionControlBusy { get; set; }
     private string? QuickAccessError { get; set; }
     private string? QuickAccessStatus { get; set; }
+    private string? ConnectionControlError { get; set; }
 
     private bool QuickControlsDisabled => Snapshot.ConnectionState != SamsungConnectionState.Connected ||
         Snapshot.MacroRunning || Snapshot.NavigationRunning || Authoring.IsRecording || QuickActionBusy;
+    private bool CanDisconnectFromHeader =>
+        Snapshot.ConnectionState != SamsungConnectionState.Disconnected;
+    private bool HeaderConnectionDisabled => ConnectionControlBusy ||
+        Snapshot.MacroRunning || Snapshot.NavigationRunning || Authoring.IsRecording ||
+        (!CanDisconnectFromHeader && string.IsNullOrWhiteSpace(Snapshot.Host));
+    private string HeaderConnectionTitle => CanDisconnectFromHeader
+        ? "Disconnect from the TV"
+        : string.IsNullOrWhiteSpace(Snapshot.Host)
+            ? "Save a TV IP address on the Connection page first"
+            : $"Connect to {Snapshot.Host}";
     private bool CanAddQuickAction => !QuickEditorBusy && QuickActions.Count < 12 &&
         (QuickEditorKind == QuickAccessActionKind.RemoteKey
             ? !string.IsNullOrWhiteSpace(QuickKey)
@@ -198,6 +223,47 @@
         Controller.Changed += HandleControllerChanged;
         await Controller.InitializeAsync();
         Refresh();
+    }
+
+    private async Task ToggleConnectionAsync()
+    {
+        var disconnect = CanDisconnectFromHeader;
+        ConnectionControlBusy = true;
+        ConnectionControlError = null;
+        try
+        {
+            if (disconnect)
+            {
+                await Controller.DisconnectAsync();
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(Snapshot.Host))
+            {
+                throw new InvalidOperationException(
+                    "Save a TV IP address on the Connection page before connecting.");
+            }
+
+            await Controller.ConnectAsync(new TvConnectionRequest(
+                Snapshot.DisplayName,
+                Snapshot.Host,
+                Snapshot.Secure,
+                Snapshot.Port,
+                Snapshot.AllowUntrustedCertificate));
+        }
+        catch (OperationCanceledException)
+        {
+            // A cancelled connection or disconnection has already updated the shared state.
+        }
+        catch (Exception exception)
+        {
+            ConnectionControlError = exception.Message;
+        }
+        finally
+        {
+            ConnectionControlBusy = false;
+            Refresh();
+        }
     }
 
     private async Task ToggleQuickEditorAsync()

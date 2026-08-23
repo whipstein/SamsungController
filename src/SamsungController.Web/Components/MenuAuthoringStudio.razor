@@ -513,10 +513,10 @@
     private bool IsSendingKey { get; set; }
     private string? LocalError { get; set; }
     private string? PendingVerifiedSettingRemovalId { get; set; }
-    private bool ManageVerifiedSettingsExpanded { get; set; } = true;
-    private bool ReturnScriptsExpanded { get; set; } = true;
-    private bool SystemTimingExpanded { get; set; } = true;
-    private bool DraftValidationExpanded { get; set; } = true;
+    private bool ManageVerifiedSettingsExpanded { get; set; }
+    private bool ReturnScriptsExpanded { get; set; }
+    private bool SystemTimingExpanded { get; set; }
+    private bool DraftValidationExpanded { get; set; }
     private bool AttentionStateInitialized { get; set; }
     private bool ReturnScriptsPreviouslyNeededValidation { get; set; }
     private bool SystemTimingPreviouslyNeededValidation { get; set; }
@@ -952,7 +952,19 @@
         var returnScriptsNeedValidation = ReturnScriptsNeedValidation;
         var systemTimingNeedsValidation = !SystemTimingIsVerified;
         var draftValidationCount = Authoring.DraftCandidates.Count;
-        if (AttentionStateInitialized)
+
+        if (!AttentionStateInitialized)
+        {
+            if (Navigation.DefinitionName is null)
+            {
+                return;
+            }
+
+            ReturnScriptsExpanded = returnScriptsNeedValidation;
+            SystemTimingExpanded = systemTimingNeedsValidation;
+            DraftValidationExpanded = draftValidationCount > 0;
+        }
+        else
         {
             if (!ReturnScriptsPreviouslyNeededValidation && returnScriptsNeedValidation)
             {

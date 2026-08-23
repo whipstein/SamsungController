@@ -43,6 +43,7 @@ a { color: inherit; }
 .topbar { position: sticky; top: 0; z-index: 50; min-height: 75px; border-bottom: 1px solid var(--line); padding: 0 clamp(24px, 4vw, 60px); background: rgba(7,16,24,.96); backdrop-filter: blur(18px); }
 .topbar-primary { min-height: 58px; display: flex; align-items: center; justify-content: space-between; }
 .eyebrow { font: 10px ui-monospace, "SFMono-Regular", Consolas, monospace; color: var(--cyan); letter-spacing: .16em; }
+.topbar-connection-control { display: flex; align-items: center; gap: 8px; }
 .connection-pill { padding: 8px 11px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font: 10px ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; letter-spacing: .07em; }
 .connection-pill span { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--faint); margin-right: 7px; }
 .connection-pill.connected { color: var(--cyan); border-color: rgba(124,231,220,.28); }
@@ -51,6 +52,11 @@ a { color: inherit; }
 .connection-pill.working span, .page-state.working span { background: var(--amber); box-shadow: 0 0 10px rgba(242,181,107,.6); }
 .connection-pill.faulted { color: var(--danger); }
 .connection-pill.faulted span, .page-state.faulted span { background: var(--danger); }
+.topbar-connection-button { min-height: 32px; padding: 7px 11px; border: 1px solid var(--line-strong); border-radius: 999px; background: #0a151e; color: var(--muted); cursor: pointer; font: 9px ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; letter-spacing: .06em; }
+.topbar-connection-button.connect { color: var(--cyan); border-color: rgba(124,231,220,.28); }
+.topbar-connection-button.disconnect { color: var(--amber); border-color: rgba(242,181,107,.28); }
+.topbar-connection-button:hover:not(:disabled) { background: var(--cyan-soft); border-color: rgba(124,231,220,.5); color: var(--ink); }
+.topbar-connection-button:disabled { cursor: not-allowed; opacity: .48; }
 .persistent-control-bar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(230px, .38fr); gap: 24px; align-items: stretch; padding: 12px 0 14px; border-top: 1px solid var(--line); }
 .topbar-label { display: block; margin-bottom: 7px; color: var(--faint); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .13em; }
 .quick-access-region { min-width: 0; }
