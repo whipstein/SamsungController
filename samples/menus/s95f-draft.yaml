@@ -3,12 +3,11 @@ id: s95f-picture-draft
 name: S95F Picture Menu Draft
 model: Samsung S95F
 
-# Update this context as observations are collected on the target TV.
 context:
-  firmware: unrecorded
-  signal: any
-  pictureMode: any
-  input: any
+  firmware: "1296"
+  signal: SDR
+  pictureMode: Filmmaker Mode
+  input: Home Theater System
 
 # Parent relationships organize the navigator tree. They do not imply that an
 # executable route exists; only explicit transitions are eligible for plans.
@@ -25,7 +24,7 @@ nodes:
   - id: settings-overlay
     label: Settings overlay
     parent: tv-interface
-    description: The settings surface opened by KEY_MENU; exact selection is not yet modeled.
+    description: Settings opened by KEY_MENU; initially highlights the last modified command in the observed context.
 
   - id: picture
     label: Picture
@@ -95,7 +94,7 @@ transitions:
     from: normal-video
     to: settings-overlay
     verified: true
-    description: KEY_MENU was verified during remote and macro testing; deeper selection remains unmapped.
+    description: KEY_MENU opened Settings and the open/close traversal passed three out of three times on firmware 1296.
     steps:
       - key: KEY_MENU
         delay: 500ms
@@ -104,7 +103,30 @@ transitions:
     from: settings-overlay
     to: normal-video
     verified: true
-    description: Return closes the modeled settings surface.
+    description: Return closed Settings and the open/close traversal passed three out of three times on firmware 1296.
     steps:
       - key: KEY_RETURN
         delay: 300ms
+
+  - id: open-picture
+    from: settings-overlay
+    to: picture
+    verified: false
+    description: Observed on firmware 1296; repeatability count is not yet recorded.
+    steps:
+      - key: KEY_DOWN
+        delay: 150ms
+      - key: KEY_ENTER
+        delay: 500ms
+
+  - id: open-expert-settings
+    from: picture
+    to: expert-settings
+    verified: false
+    description: Observed on firmware 1296; repeatability count is not yet recorded.
+    steps:
+      - key: KEY_DOWN
+        repeat: 4
+        delay: 150ms
+      - key: KEY_ENTER
+        delay: 500ms

@@ -47,6 +47,36 @@ public sealed class MenuDefinitionParserTests
         Assert.Contains("milliseconds", exception.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task BundledS95fDefinitionContainsObservedExpertSettingsRoute()
+    {
+        var path = Path.Combine(
+            AppContext.BaseDirectory,
+            "menu-definitions",
+            "s95f-draft.yaml");
+
+        var definition = await new MenuDefinitionParser().ParseFileAsync(path);
+
+        Assert.Equal("1296", definition.Context.Firmware);
+        Assert.Equal("SDR", definition.Context.Signal);
+        Assert.Equal("Filmmaker Mode", definition.Context.PictureMode);
+        Assert.Equal("Home Theater System", definition.Context.Input);
+
+        var picture = definition.Transitions["open-picture"];
+        Assert.Equal("settings-overlay", picture.FromNodeId);
+        Assert.Equal("picture", picture.ToNodeId);
+        Assert.Collection(
+            picture.Operations,
+            operation => Assert.Equal("KEY_DOWN", operation.Key),
+            operation => Assert.Equal("KEY_ENTER", operation.Key));
+
+        var expertSettings = definition.Transitions["open-expert-settings"];
+        Assert.Equal("picture", expertSettings.FromNodeId);
+        Assert.Equal("expert-settings", expertSettings.ToNodeId);
+        Assert.Equal(4, expertSettings.Operations[0].Repeat);
+        Assert.Equal("KEY_ENTER", expertSettings.Operations[1].Key);
+    }
+
     private const string ValidYaml =
         """
         version: 1

@@ -59,3 +59,32 @@ Risk: Normal
 Notes: No conclusion yet about application-query support or physical-remote/OSD
 event availability beyond this short observation.
 ```
+
+## 2026-08-22 — S95F firmware 1296 menu traversal
+
+```text
+Date/time (UTC): 2026-08-22 (exact time not recorded)
+TV model: Samsung S95F
+Firmware: 1296
+Input/source: Home Theater System
+SDR or HDR: SDR
+Picture mode: Filmmaker Mode
+API/channel: wss://TV:8002/api/v2/channels/samsung.remote.control
+Request:
+  - Anchor: KEY_RETURN x3
+  - Normal video to Picture: KEY_MENU, KEY_DOWN, KEY_ENTER
+  - Picture to Expert Settings: KEY_DOWN x4, KEY_ENTER
+Response: No menu-position response was available; the user visually confirmed the OSD.
+Observed result:
+  - The Return anchor removed the OSD.
+  - KEY_MENU opened Settings with the last modified command highlighted.
+  - KEY_DOWN followed by KEY_ENTER opened Picture.
+  - Four KEY_DOWN clicks followed by KEY_ENTER opened Expert Settings.
+  - One Return click closed Settings from the modeled settings surface.
+  - Two KEY_MENU clicks from within the menu system returned to video.
+Repeatability: Anchor and Settings open/close passed 3 out of 3. The deeper
+  Picture and Expert Settings routes were observed without unexpected behavior;
+  their repeatability count was not recorded.
+Risk: Normal
+Notes: Keep the two deeper transitions draft until their repeatability is confirmed.
+```
