@@ -74,8 +74,11 @@
                             <button class="secondary-action menu-tree-new" @onclick="BeginNewMenuNode" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">+ New node</button>
                             @foreach (var node in OrderedTreeNodes)
                             {
-                                <div class="menu-tree-node @(EditingNodeId?.Equals(node.Id, StringComparison.OrdinalIgnoreCase) == true ? "active" : "")">
-                                    <button type="button" class="menu-tree-node-select" @onclick="() => EditMenuNode(node)">
+                                <div class="menu-tree-node @(node.HasVerifiedRoute ? "" : "unverified") @(EditingNodeId?.Equals(node.Id, StringComparison.OrdinalIgnoreCase) == true ? "active" : "")">
+                                    <button type="button"
+                                            class="menu-tree-node-select"
+                                            title="@(node.HasVerifiedRoute ? "Verified menu position" : "Menu position needs validation")"
+                                            @onclick="() => EditMenuNode(node)">
                                         <span style="--tree-depth: @node.Depth">@node.Label</span>
                                         <small>@node.Id</small>
                                     </button>

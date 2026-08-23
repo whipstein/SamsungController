@@ -168,7 +168,8 @@ can be planned or sent.
    assign their parents, and save the hierarchy to YAML. Choose **Custom · TV
    order** and move siblings up or down to match the on-screen menu; switch to
    **Alphabetical** when that view is more useful. Display names and parents remain
-   editable; stable node IDs do not change after creation.
+   editable; stable node IDs do not change after creation. Tree labels remain
+   red until an anchor or traversal to that menu position has been verified.
 5. Choose **Anchor** or **Transition**, select two predefined nodes, and start
    live recording. For a transition, **Prepare source**
    uses a verified anchor and verified routes to position the TV first. The UI
