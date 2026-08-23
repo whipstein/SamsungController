@@ -333,6 +333,9 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .transition-card + .transition-card { margin-top: 7px; }
 .transition-card header { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 7px; color: var(--muted); font-size: 9px; }
 .transition-card header b { color: var(--cyan); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; }
+.transition-card.anchor-leg-card { border-color: rgba(242,181,107,.3); background: rgba(242,181,107,.045); }
+.transition-card.anchor-leg-card header b { color: var(--amber); }
+.transition-card.anchor-leg-card small { display: block; margin: 0 0 7px; color: var(--muted); font-size: 8px; }
 .transition-card code { display: block; color: #b8c9ce; font: 9px/1.5 ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .plan-empty { min-height: 90px; display: grid; place-items: center; padding: 15px; border: 1px dashed var(--line-strong); border-radius: 7px; color: var(--faint); font-size: 10px; text-align: center; }
 .warning-note { color: var(--amber); }

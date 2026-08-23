@@ -119,6 +119,74 @@ public sealed class MenuNavigatorTests
     }
 
     [Fact]
+    public async Task PlanUsesVerifiedAnchorWhenNoDirectRouteExists()
+    {
+        var definition = CreateStateAwareReturnDefinition();
+        var tracker = new MenuStateTracker(definition);
+        var target = new RecordingTarget();
+        var navigator = new MenuNavigator(definition, tracker, target);
+
+        await navigator.ExecuteAnchorAsync("normal");
+        await navigator.ExecutePlanAsync(navigator.Plan("picture", includeDraftTransitions: false));
+        target.Keys.Clear();
+
+        var plan = navigator.Plan("settings", includeDraftTransitions: false);
+
+        Assert.True(plan.UsesAnchor);
+        Assert.Equal("normal", plan.AnchorLeg?.AnchorId);
+        Assert.Equal(3, plan.CommandCount);
+
+        await navigator.ExecutePlanAsync(plan);
+
+        Assert.Equal(["KEY_MENU", "KEY_RETURN", "KEY_MENU"], target.Keys);
+        Assert.Equal("settings", tracker.Current.NodeId);
+    }
+
+    [Fact]
+    public async Task PlanPrefersShorterDirectRouteOverAnchorRoute()
+    {
+        var definition = CreateStateAwareReturnDefinition(directReturnRepeat: 1);
+        var tracker = new MenuStateTracker(definition);
+        var target = new RecordingTarget();
+        var navigator = new MenuNavigator(definition, tracker, target);
+
+        await navigator.ExecuteAnchorAsync("normal");
+        await navigator.ExecutePlanAsync(navigator.Plan("picture", includeDraftTransitions: false));
+        target.Keys.Clear();
+
+        var plan = navigator.Plan("settings", includeDraftTransitions: false);
+
+        Assert.False(plan.UsesAnchor);
+        Assert.Equal("close-picture", Assert.Single(plan.Transitions).Id);
+
+        await navigator.ExecutePlanAsync(plan);
+
+        Assert.Equal(["KEY_RETURN"], target.Keys);
+    }
+
+    [Fact]
+    public async Task PlanPrefersShorterAnchorRouteOverLongDirectRoute()
+    {
+        var definition = CreateStateAwareReturnDefinition(directReturnRepeat: 4);
+        var tracker = new MenuStateTracker(definition);
+        var target = new RecordingTarget();
+        var navigator = new MenuNavigator(definition, tracker, target);
+
+        await navigator.ExecuteAnchorAsync("normal");
+        await navigator.ExecutePlanAsync(navigator.Plan("picture", includeDraftTransitions: false));
+        target.Keys.Clear();
+
+        var plan = navigator.Plan("settings", includeDraftTransitions: false);
+
+        Assert.True(plan.UsesAnchor);
+        Assert.Equal(3, plan.CommandCount);
+
+        await navigator.ExecutePlanAsync(plan);
+
+        Assert.Equal(["KEY_MENU", "KEY_RETURN", "KEY_MENU"], target.Keys);
+    }
+
+    [Fact]
     public async Task ReturnAnchorUsesFallbackWhenPositionIsUnknownOrScriptIsUnverified()
     {
         var definition = CreateStateAwareReturnDefinition(deeperScriptVerified: false);
@@ -213,7 +281,8 @@ public sealed class MenuNavigatorTests
         ]);
 
     private static MenuDefinition CreateStateAwareReturnDefinition(
-        bool deeperScriptVerified = true) => new(
+        bool deeperScriptVerified = true,
+        int? directReturnRepeat = null) => new(
         "state-aware-return",
         "State-aware return",
         "TV",
@@ -223,20 +292,7 @@ public sealed class MenuNavigatorTests
             new MenuNode("settings", "Settings"),
             new MenuNode("picture", "Picture", "settings")
         ],
-        [
-            new MenuTransition(
-                "open-settings",
-                "normal",
-                "settings",
-                [new MenuOperation("KEY_MENU")],
-                true),
-            new MenuTransition(
-                "open-picture",
-                "settings",
-                "picture",
-                [new MenuOperation("KEY_DOWN")],
-                true)
-        ],
+        CreateStateAwareTransitions(directReturnRepeat),
         [
             new MenuAnchor(
                 "normal",
@@ -251,6 +307,37 @@ public sealed class MenuNavigatorTests
                         [new MenuOperation("KEY_MENU"), new MenuOperation("KEY_RETURN")],
                         deeperScriptVerified)))
         ]);
+
+    private static IReadOnlyList<MenuTransition> CreateStateAwareTransitions(
+        int? directReturnRepeat)
+    {
+        var transitions = new List<MenuTransition>
+        {
+            new(
+                "open-settings",
+                "normal",
+                "settings",
+                [new MenuOperation("KEY_MENU")],
+                true),
+            new(
+                "open-picture",
+                "settings",
+                "picture",
+                [new MenuOperation("KEY_DOWN")],
+                true)
+        };
+        if (directReturnRepeat is { } repeat)
+        {
+            transitions.Add(new MenuTransition(
+                "close-picture",
+                "picture",
+                "settings",
+                [new MenuOperation("KEY_RETURN", Repeat: repeat)],
+                true));
+        }
+
+        return transitions;
+    }
 
     private sealed class RecordingTarget : IMenuCommandTarget
     {

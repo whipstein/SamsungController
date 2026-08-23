@@ -74,11 +74,69 @@ public sealed class MenuNavigator
                 "Menu position is unknown. Run a verified anchor before planning navigation.");
         }
 
-        return new NavigationPlanner().Plan(
-            _definition,
-            state.NodeId,
-            targetNodeId,
-            includeDraftTransitions);
+        var planner = new NavigationPlanner();
+        var candidates = new List<NavigationPlan>();
+        NavigationPlanningException? directRouteError = null;
+        try
+        {
+            candidates.Add(planner.Plan(
+                _definition,
+                state.NodeId,
+                targetNodeId,
+                includeDraftTransitions));
+        }
+        catch (NavigationPlanningException exception)
+        {
+            directRouteError = exception;
+        }
+
+        foreach (var anchor in _definition.Anchors.Values.Where(anchor =>
+                     anchor.Verified
+                     && !anchor.TargetNodeId.Equals(
+                         state.NodeId,
+                         StringComparison.OrdinalIgnoreCase)))
+        {
+            NavigationPlan routeFromAnchor;
+            try
+            {
+                routeFromAnchor = planner.Plan(
+                    _definition,
+                    anchor.TargetNodeId,
+                    targetNodeId,
+                    includeDraftTransitions);
+            }
+            catch (NavigationPlanningException)
+            {
+                continue;
+            }
+
+            var script = ResolveAnchorScript(anchor);
+            candidates.Add(routeFromAnchor with
+            {
+                SourceNodeId = state.NodeId,
+                SourcePath = state.Path ?? _definition.GetPath(state.NodeId),
+                AnchorLeg = new NavigationAnchorLeg(
+                    anchor.Id,
+                    $"{anchor.Label} · {script.Label}",
+                    state.NodeId,
+                    state.Path ?? _definition.GetPath(state.NodeId),
+                    anchor.TargetNodeId,
+                    _definition.GetPath(anchor.TargetNodeId),
+                    script.Operations,
+                    anchor.Verified)
+            });
+        }
+
+        if (candidates.Count == 0)
+        {
+            throw directRouteError ?? new NavigationPlanningException(
+                $"No navigation route exists from '{state.Path}' to '{_definition.GetPath(targetNodeId)}'.");
+        }
+
+        return candidates
+            .OrderBy(GetPlanCost)
+            .ThenBy(plan => plan.UsesAnchor)
+            .First();
     }
 
     public async Task ExecuteAnchorAsync(
@@ -168,6 +226,31 @@ public sealed class MenuNavigator
 
         try
         {
+            if (plan.AnchorLeg is { } anchorLeg)
+            {
+                var anchor = _definition.GetRequiredAnchor(anchorLeg.AnchorId);
+                if (!anchor.Verified
+                    || !anchor.TargetNodeId.Equals(
+                        anchorLeg.TargetNodeId,
+                        StringComparison.OrdinalIgnoreCase)
+                    || !anchorLeg.SourceNodeId.Equals(
+                        plan.SourceNodeId,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        "The navigation plan contains an invalid known-state anchor leg.");
+                }
+
+                await ExecuteOperationsAsync(
+                        $"Anchor · {anchorLeg.Label}",
+                        anchorLeg.SourcePath,
+                        anchorLeg.TargetPath,
+                        anchorLeg.Operations,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                _stateTracker.ApplyAnchor(anchor);
+            }
+
             foreach (var transition in plan.Transitions)
             {
                 await ExecuteOperationsAsync(
@@ -232,6 +315,27 @@ public sealed class MenuNavigator
         {
             // Progress observers cannot interrupt navigation.
         }
+    }
+
+    private long GetPlanCost(NavigationPlan plan)
+    {
+        const long draftPenalty = 1_000_000;
+        var anchorCost = plan.AnchorLeg is null
+            ? 0
+            : GetOperationsCost(plan.AnchorLeg.Operations);
+        return anchorCost + plan.Transitions.Sum(transition =>
+            GetOperationsCost(transition.Operations)
+            + (transition.Verified ? 0 : draftPenalty));
+    }
+
+    private long GetOperationsCost(IReadOnlyList<MenuOperation> operations)
+    {
+        var commands = operations.Sum(operation => operation.Repeat);
+        var delayMilliseconds = operations.Sum(operation =>
+            (long)Math.Ceiling(
+                (operation.DelayAfter ?? _definition.Timing.GetDelay(operation.Key)).TotalMilliseconds
+                * operation.Repeat));
+        return commands * 1000L + delayMilliseconds;
     }
 
     private sealed record ResolvedAnchorScript(

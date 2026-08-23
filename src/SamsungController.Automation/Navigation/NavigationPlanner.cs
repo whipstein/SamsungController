@@ -1,5 +1,15 @@
 namespace SamsungController.Automation.Navigation;
 
+public sealed record NavigationAnchorLeg(
+    string AnchorId,
+    string Label,
+    string SourceNodeId,
+    string SourcePath,
+    string TargetNodeId,
+    string TargetPath,
+    IReadOnlyList<MenuOperation> Operations,
+    bool Verified);
+
 public sealed record NavigationPlan(
     string DefinitionId,
     string SourceNodeId,
@@ -7,17 +17,24 @@ public sealed record NavigationPlan(
     string TargetNodeId,
     string TargetPath,
     IReadOnlyList<MenuTransition> Transitions,
-    MenuTimingProfile Timing)
+    MenuTimingProfile Timing,
+    NavigationAnchorLeg? AnchorLeg = null)
 {
     public bool UsesDraftTransitions => Transitions.Any(transition => !transition.Verified);
 
-    public bool IsExecutable => !UsesDraftTransitions;
+    public bool UsesAnchor => AnchorLeg is not null;
 
-    public int CommandCount => Transitions.Sum(transition =>
-        transition.Operations.Sum(operation => operation.Repeat));
+    public bool IsExecutable => !UsesDraftTransitions && AnchorLeg?.Verified != false;
+
+    public int CommandCount => (AnchorLeg?.Operations.Sum(operation => operation.Repeat) ?? 0)
+        + Transitions.Sum(transition =>
+            transition.Operations.Sum(operation => operation.Repeat));
 
     public TimeSpan EstimatedDelay => TimeSpan.FromTicks(
-        Transitions.Sum(transition =>
+        (AnchorLeg?.Operations.Sum(operation =>
+             (operation.DelayAfter ?? Timing.GetDelay(operation.Key)).Ticks
+             * operation.Repeat) ?? 0)
+        + Transitions.Sum(transition =>
             transition.Operations.Sum(operation =>
                 (operation.DelayAfter ?? Timing.GetDelay(operation.Key)).Ticks
                 * operation.Repeat)));

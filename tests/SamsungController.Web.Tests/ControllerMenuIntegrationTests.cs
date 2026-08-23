@@ -395,6 +395,36 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task NavigateBetweenVerifiedDestinationsUsesExplicitReturnLeg()
+    {
+        var allVerifiedYaml = ExplicitValidationMenuYaml.Replace(
+            "verified: false",
+            "verified: true",
+            StringComparison.Ordinal);
+        var (controller, transport) = await CreateConnectedControllerAsync(allVerifiedYaml);
+        await using (controller)
+        {
+            await controller.NavigateToMenuNodeAsync("picture");
+            transport.SentMessages.Clear();
+
+            var plan = controller.CreateNavigationPlan("settings");
+
+            Assert.True(plan.UsesAnchor);
+            Assert.Equal("normal", plan.AnchorLeg?.AnchorId);
+            Assert.Equal(
+                ["KEY_MENU", "KEY_RETURN"],
+                plan.AnchorLeg?.Operations.Select(operation => operation.Key));
+
+            await controller.ExecuteNavigationPlanAsync();
+
+            Assert.Equal(["KEY_MENU", "KEY_RETURN", "KEY_MENU"], GetSentKeys(transport));
+            var snapshot = controller.GetSnapshot();
+            Assert.Equal("Settings", snapshot.MenuLabel);
+            Assert.Equal(MenuStateConfidence.Probable, snapshot.MenuConfidence);
+        }
+    }
+
+    [Fact]
     public async Task SuccessfulConnectionAutomaticallyRunsThePreferredVerifiedAnchor()
     {
         var (controller, transport) = await CreateConnectedControllerAsync(
