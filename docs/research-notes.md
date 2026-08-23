@@ -31,7 +31,8 @@ Notes:
 - Record firmware, input, SDR/HDR, and picture mode before mapping each menu transition.
 - Verify the exact highlighted item after `KEY_MENU` opens the S95F settings surface.
 - Map one repeatable route from the settings surface to Picture, then Expert Settings.
-- Compare `/api/v2/` state while powered on, in standby, and changing apps.
+- Compare `/api/v2/` state in standby and while changing apps; the first three
+  powered-on menu-position captures were identical.
 - Repeat `ed.edenApp.get` and `ed.installedApp.get` while changing app or power
   state; the first connected-session attempt produced no observable response.
 - Query/read before attempting any undocumented write.
@@ -114,4 +115,35 @@ Risk: Experimental (read/query only)
 Notes: This establishes only that no response was observed in this session. It
   does not establish that the events are unsupported in all S95F states,
   firmware versions, channels, or request variants.
+```
+
+## 2026-08-23 — powered-on device information across menu positions
+
+```text
+Date/time (UTC): 2026-08-23 15:14:39–15:17:04
+TV model: Samsung S95F; API modelName QN65S95FAFXZA
+Firmware: 1296 (assumed unchanged from the previous observation; the API
+  reported firmwareVersion "Unknown")
+Input/source: Not reconfirmed
+SDR or HDR: Not reconfirmed
+Picture mode: Not reconfirmed
+API/channel: HTTPS GET /api/v2/ on port 8002
+Request:
+  - Label: Powered on - Home
+  - Label: Powered on - Contrast
+  - Label: Powered on - White Balance 20 pt Percentage Select
+Response: HTTP 200 with a JSON device-information document for every request.
+Observed result:
+  - All three normalized response payloads were identical.
+  - device.PowerState was "on" in all three conditions.
+  - The response identified Tizen, a 3840x2160 display, wired networking,
+    TokenAuthSupport, EDEN availability, remote availability, and API version
+    2.0.25.
+  - No field identified the current OSD menu, selected picture control, or
+    picture-control value.
+Repeatability: One capture at each of three powered-on menu positions.
+Risk: Experimental (read/query only)
+Notes: Unique device identifiers, MAC address, and LAN address from the source
+  capture are intentionally omitted. This result applies only to the three
+  observed menu positions; application changes and standby remain untested.
 ```
