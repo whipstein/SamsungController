@@ -108,6 +108,8 @@ transitions:
     from: normal-video
     to: settings-overlay
     verified: true
+    returnSteps:
+      - key: KEY_RETURN
     steps:
       - key: KEY_MENU
 ```
@@ -136,6 +138,11 @@ Home, Exit, and Source, and `returnDelay` applies to Return. A step-level
 `delay` is an explicit per-button override. `verified` records whether the
 current three global values passed the system profile's independent three-run
 visual test. Changing any global value clears it.
+
+A transition can optionally contain `returnSteps` immediately before its normal
+`steps`. These return keys describe how that transition's target returns to the
+normal-video anchor. They are recorded as phase two of the same traversal and
+share the transition's `verified` state and three-pass count.
 
 A normal-video anchor can optionally define `returnStrategy`. A verified entry
 in `overrides` takes priority when the predicted position exactly matches its
@@ -167,9 +174,9 @@ can be planned or sent.
    uses a verified anchor and verified routes to position the TV first. The UI
    derives the transition's internal YAML identifier from its target control;
    selecting the same source and target again automatically replaces that draft.
-   To replace the default return command, check **Redefine return to normal
-   video** and choose the state from which its validation should begin. This
-   records a separate replacement draft and leaves the verified default active.
+   To define a target-specific return, check **Also record return to normal
+   video**. Record the forward traversal first, choose **Continue · record
+   return**, and then record the return keys as phase two of the same draft.
 6. Use the embedded remote. Every successfully sent button controls the TV and
    is captured; failed sends are not recorded. The system timing profile supplies
    waits unless a button has a custom override in the timing lab.
@@ -188,16 +195,15 @@ can be planned or sent.
 10. Open the draft's **Timing lab**, enable custom waits only for exceptional
    button presses, then choose **Save + replay**.
    Use **Prepare source** when desired, or place the TV at the displayed source
-   manually. While a default return replacement is pending, Prepare source sends
-   that draft first and then follows any verified route to the selected start
-   state; if the preparation is wrong or incomplete, adjust the TV manually.
-   **Replay test** itself still sends only the draft under validation, with no
-   anchor or route-to-source commands added implicitly.
+   manually. For a traversal with integrated return keys, Prepare source sends
+   those keys first and then follows any verified route to the forward source;
+   if preparation is wrong or incomplete, adjust the TV manually. **Replay
+   test** sends the forward keys. Both operations stay on the same draft card
+   and retain one validation count.
 11. Visually confirm the target after every run. Three confirmed passes update
    the same YAML entry to `verified: true`; a failed confirmation resets the
-   count to zero. On the third pass, a default return replacement is promoted
-   into the original anchor so quick access and connection synchronization keep
-   the same stable target.
+   count to zero. Once verified, the normal-video anchor uses the transition's
+   recorded return whenever that exact target is the predicted current state.
 
 Draft cards can be replayed, re-recorded under the same identifier, or deleted
 entirely in the UI. Verified items are protected from this draft workflow.

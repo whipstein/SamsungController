@@ -148,6 +148,35 @@ public sealed class MenuTraversalRecorderTests
     }
 
     [Fact]
+    public void ForwardAndReturnKeysRemainInOneTwoPhaseRecording()
+    {
+        var recorder = new MenuTraversalRecorder();
+        recorder.Start(new MenuRecordingRequest(
+            MenuAuthoringItemKind.Transition,
+            "open-picture",
+            "Open Picture",
+            "normal-video",
+            "settings",
+            null,
+            null,
+            RecordReturnToVideo: true),
+            new MenuTimingProfile());
+
+        recorder.Record("KEY_MENU", RemoteKeyAction.Click);
+        recorder.BeginReturnToVideo();
+        recorder.Record("KEY_RETURN", RemoteKeyAction.Click);
+
+        Assert.True(recorder.IsRecordingReturnToVideo);
+        Assert.Equal("KEY_MENU", Assert.Single(recorder.ForwardOperations).Key);
+        Assert.Equal(
+            "KEY_RETURN",
+            Assert.Single(recorder.ReturnToVideoOperations).Key);
+        Assert.Equal(
+            "KEY_RETURN",
+            Assert.Single(recorder.Operations).Key);
+    }
+
+    [Fact]
     public void UndoRemovesOneButtonPressFromARepeat()
     {
         var recorder = new MenuTraversalRecorder();

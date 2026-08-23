@@ -117,6 +117,10 @@ public sealed class MenuDefinitionValidator
             }
 
             ValidateOperations(location, transition.Operations, errors);
+            if (transition.ReturnToVideoOperations is { } returnOperations)
+            {
+                ValidateOperations($"{location} returnSteps", returnOperations, errors);
+            }
         }
 
         return errors;

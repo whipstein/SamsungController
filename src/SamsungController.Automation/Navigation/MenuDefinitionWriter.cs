@@ -60,6 +60,11 @@ public sealed class MenuDefinitionWriter
             AppendScalar(yaml, 4, "to", transition.ToNodeId);
             AppendBoolean(yaml, 4, "verified", transition.Verified);
             AppendOptionalScalar(yaml, 4, "description", transition.Description);
+            if (transition.ReturnToVideoOperations is { Count: > 0 } returnOperations)
+            {
+                AppendOperations(yaml, returnOperations, name: "returnSteps");
+            }
+
             AppendOperations(yaml, transition.Operations);
         }
 
@@ -97,9 +102,10 @@ public sealed class MenuDefinitionWriter
     private static void AppendOperations(
         StringBuilder yaml,
         IReadOnlyList<MenuOperation> operations,
-        int indentation = 4)
+        int indentation = 4,
+        string name = "steps")
     {
-        yaml.Append(' ', indentation).AppendLine("steps:");
+        yaml.Append(' ', indentation).Append(name).AppendLine(":");
         foreach (var operation in operations)
         {
             AppendListScalar(yaml, indentation + 2, "key", operation.Key);

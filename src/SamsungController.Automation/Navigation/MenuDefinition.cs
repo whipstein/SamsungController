@@ -55,7 +55,8 @@ public sealed record MenuTransition(
     string ToNodeId,
     IReadOnlyList<MenuOperation> Operations,
     bool Verified = false,
-    string? Description = null);
+    string? Description = null,
+    IReadOnlyList<MenuOperation>? ReturnToVideoOperations = null);
 
 public sealed record MenuReturnScript(
     IReadOnlyList<MenuOperation> Operations,

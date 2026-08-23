@@ -30,7 +30,11 @@ public sealed class MenuDefinitionWriterTests : IDisposable
                         new MenuOperation("KEY_DOWN", Repeat: 4, DelayAfter: TimeSpan.FromMilliseconds(250)),
                         new MenuOperation("KEY_ENTER", RemoteKeyAction.Press, DelayAfter: TimeSpan.FromMilliseconds(500))
                     ],
-                    Description: "Recorded in the UI")
+                    Description: "Recorded in the UI",
+                    ReturnToVideoOperations:
+                    [
+                        new MenuOperation("KEY_RETURN", DelayAfter: TimeSpan.FromMilliseconds(325))
+                    ])
             ],
             [
                 new MenuAnchor(
@@ -85,6 +89,12 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Assert.Equal(4, transition.Operations[0].Repeat);
         Assert.Equal(RemoteKeyAction.Press, transition.Operations[1].Action);
         Assert.Equal(TimeSpan.FromMilliseconds(500), transition.Operations[1].DelayAfter);
+        Assert.Equal(
+            "KEY_RETURN",
+            Assert.Single(transition.ReturnToVideoOperations!).Key);
+        Assert.Equal(
+            TimeSpan.FromMilliseconds(325),
+            Assert.Single(transition.ReturnToVideoOperations!).DelayAfter);
     }
 
     [Fact]

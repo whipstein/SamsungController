@@ -24,7 +24,7 @@ public sealed class MenuDefinitionParser
     private static readonly HashSet<string> ReturnScriptFields =
         new(["verified", "steps"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> TransitionFields =
-        new(["id", "from", "to", "verified", "description", "steps"], StringComparer.OrdinalIgnoreCase);
+        new(["id", "from", "to", "verified", "description", "returnSteps", "steps"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> StepFields =
         new(["key", "action", "repeat", "delay"], StringComparer.OrdinalIgnoreCase);
 
@@ -244,7 +244,12 @@ public sealed class MenuDefinitionParser
                 RequiredScalar(fields, "to", context),
                 ParseOperations(RequiredSequence(fields, "steps", context), context),
                 OptionalBoolean(fields, "verified", context),
-                OptionalScalar(fields, "description")));
+                OptionalScalar(fields, "description"),
+                fields.TryGetValue("returnSteps", out var returnStepsNode)
+                    ? ParseOperations(
+                        RequireSequence(returnStepsNode, $"'returnSteps' in {context}"),
+                        $"{context}, return-to-video")
+                    : null));
         }
 
         return transitions;

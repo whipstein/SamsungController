@@ -140,7 +140,8 @@ public sealed record MenuRecordingRequest(
     string? SourceNodeId,
     string TargetNodeId,
     string? NewTargetLabel,
-    string? NewTargetParentId)
+    string? NewTargetParentId,
+    bool RecordReturnToVideo = false)
 {
     public MenuRecordingRequest ResolveIdentity(MenuDefinition definition)
     {
@@ -254,7 +255,9 @@ public sealed record MenuAuthoringCandidateSummary(
     string? SourcePath,
     string TargetPath,
     int CommandCount,
-    IReadOnlyList<MenuAuthoringReplayStepSummary> ReplaySteps);
+    IReadOnlyList<MenuAuthoringReplayStepSummary> ReplaySteps,
+    int ReturnCommandCount,
+    IReadOnlyList<MenuAuthoringReplayStepSummary> ReturnReplaySteps);
 
 public sealed record MenuTimingTestRouteSummary(
     string Id,
@@ -312,6 +315,10 @@ public sealed record MenuAuthoringSnapshot(
     string? RecordingLabel,
     string? SourceNodeId,
     string? TargetNodeId,
+    bool RecordsReturnToVideo,
+    bool IsRecordingReturnToVideo,
+    int ForwardRecordedCommandCount,
+    int ReturnRecordedCommandCount,
     IReadOnlyList<MenuRecordedStepSummary> RecordedSteps,
     int RecordedCommandCount,
     MenuTimingProfile Timing,

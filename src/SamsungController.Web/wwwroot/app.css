@@ -418,7 +418,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .return-recording-toggle > span { display: flex; flex-direction: column; gap: 4px; }
 .return-recording-toggle strong { color: var(--text); font-size: 11px; }
 .return-recording-toggle small { color: var(--muted); font-size: 9px; line-height: 1.45; }
-.return-recording-intent { min-height: 70px; }
+.integrated-return-toggle { margin: 12px 0 0; }
 .auto-route-identity { display: flex; min-height: 58px; flex-direction: column; justify-content: center; padding: 8px 10px; border: 1px dashed rgba(124,231,220,.22); border-radius: 6px; background: rgba(124,231,220,.035); }
 .auto-route-identity span { color: var(--cyan); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .09em; }
 .auto-route-identity strong { margin-top: 4px; font-size: 10px; }
@@ -432,6 +432,8 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .authoring-workflow-grid { display: grid; grid-template-columns: 1.05fr .7fr .8fr; gap: 1px; margin-top: 18px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--line); }
 .authoring-config, .authoring-controller, .authoring-capture { min-width: 0; padding: 17px; background: #08131b; }
 .recording-actions { display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; margin-top: 15px; }
+.recording-phase-note { margin: 14px 0 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.recording-phase-note strong { color: var(--cyan); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
 .authoring-remote { max-width: 280px; margin: 0 auto; }
 .authoring-remote-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
 .authoring-remote-row button, .authoring-return { border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface-2); color: var(--muted); padding: 10px 6px; font-size: 9px; cursor: pointer; }

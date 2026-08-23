@@ -6,6 +6,7 @@ namespace SamsungController.Web.Services;
 public sealed class MenuTraversalRecorder
 {
     private readonly List<MenuOperation> _operations = [];
+    private readonly List<MenuOperation> _returnOperations = [];
 
     public bool IsRecording { get; private set; }
 
@@ -13,7 +14,14 @@ public sealed class MenuTraversalRecorder
 
     public MenuTimingProfile Timing { get; private set; } = new();
 
-    public IReadOnlyList<MenuOperation> Operations => _operations;
+    public bool IsRecordingReturnToVideo { get; private set; }
+
+    public IReadOnlyList<MenuOperation> Operations =>
+        IsRecordingReturnToVideo ? _returnOperations : _operations;
+
+    public IReadOnlyList<MenuOperation> ForwardOperations => _operations;
+
+    public IReadOnlyList<MenuOperation> ReturnToVideoOperations => _returnOperations;
 
     public void Start(MenuRecordingRequest request, MenuTimingProfile timing)
     {
@@ -23,7 +31,26 @@ public sealed class MenuTraversalRecorder
         Request = request;
         Timing = timing;
         _operations.Clear();
+        _returnOperations.Clear();
+        IsRecordingReturnToVideo = false;
         IsRecording = true;
+    }
+
+    public void BeginReturnToVideo()
+    {
+        if (!IsRecording || Request?.RecordReturnToVideo != true)
+        {
+            throw new InvalidOperationException(
+                "This recording does not include a return-to-video sequence.");
+        }
+
+        if (_operations.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "Record at least one traversal command before recording its return sequence.");
+        }
+
+        IsRecordingReturnToVideo = true;
     }
 
     public void Record(string key, RemoteKeyAction action)
@@ -35,37 +62,39 @@ public sealed class MenuTraversalRecorder
 
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         var normalizedKey = key.Trim();
-        if (_operations.Count > 0)
+        var operations = IsRecordingReturnToVideo ? _returnOperations : _operations;
+        if (operations.Count > 0)
         {
-            var previous = _operations[^1];
+            var previous = operations[^1];
             if (previous.Key.Equals(normalizedKey, StringComparison.OrdinalIgnoreCase)
                 && previous.Action == action
                 && previous.DelayAfter is null
                 && previous.Repeat < MenuDefinitionValidator.MaximumRepeat)
             {
-                _operations[^1] = previous with { Repeat = previous.Repeat + 1 };
+                operations[^1] = previous with { Repeat = previous.Repeat + 1 };
                 return;
             }
         }
 
-        _operations.Add(new MenuOperation(normalizedKey, action));
+        operations.Add(new MenuOperation(normalizedKey, action));
     }
 
     public void UndoLastCommand()
     {
-        if (!IsRecording || _operations.Count == 0)
+        var operations = IsRecordingReturnToVideo ? _returnOperations : _operations;
+        if (!IsRecording || operations.Count == 0)
         {
             return;
         }
 
-        var previous = _operations[^1];
+        var previous = operations[^1];
         if (previous.Repeat > 1)
         {
-            _operations[^1] = previous with { Repeat = previous.Repeat - 1 };
+            operations[^1] = previous with { Repeat = previous.Repeat - 1 };
         }
         else
         {
-            _operations.RemoveAt(_operations.Count - 1);
+            operations.RemoveAt(operations.Count - 1);
         }
     }
 
@@ -73,7 +102,7 @@ public sealed class MenuTraversalRecorder
     {
         if (IsRecording)
         {
-            _operations.Clear();
+            OperationsList.Clear();
         }
     }
 
@@ -102,6 +131,11 @@ public sealed class MenuTraversalRecorder
         IsRecording = false;
         Request = null;
         Timing = new MenuTimingProfile();
+        IsRecordingReturnToVideo = false;
         _operations.Clear();
+        _returnOperations.Clear();
     }
+
+    private List<MenuOperation> OperationsList =>
+        IsRecordingReturnToVideo ? _returnOperations : _operations;
 }

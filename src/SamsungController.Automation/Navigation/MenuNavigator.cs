@@ -189,18 +189,35 @@ public sealed class MenuNavigator
             return new ResolvedAnchorScript("unknown fallback", anchor.Operations);
         }
 
-        if (anchor.ReturnStrategy is not { } strategy)
-        {
-            return new ResolvedAnchorScript("fallback", anchor.Operations);
-        }
-
-        var nodeOverride = strategy.NodeOverrides?.FirstOrDefault(item =>
+        var nodeOverride = anchor.ReturnStrategy?.NodeOverrides?.FirstOrDefault(item =>
             item.NodeId.Equals(state.NodeId, StringComparison.OrdinalIgnoreCase));
         if (nodeOverride?.Script.Verified == true)
         {
             return new ResolvedAnchorScript(
                 $"{_definition.GetPath(nodeOverride.NodeId)} override",
                 nodeOverride.Script.Operations);
+        }
+
+        var integratedReturn = _definition.Transitions.Values
+            .Where(transition => transition.Verified
+                && transition.ToNodeId.Equals(
+                    state.NodeId,
+                    StringComparison.OrdinalIgnoreCase)
+                && transition.ReturnToVideoOperations is { Count: > 0 })
+            .OrderBy(transition => transition.ReturnToVideoOperations!.Sum(
+                operation => operation.Repeat))
+            .ThenBy(transition => transition.Id, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+        if (integratedReturn is not null)
+        {
+            return new ResolvedAnchorScript(
+                $"{_definition.GetPath(integratedReturn.ToNodeId)} recorded return",
+                integratedReturn.ReturnToVideoOperations!);
+        }
+
+        if (anchor.ReturnStrategy is not { } strategy)
+        {
+            return new ResolvedAnchorScript("fallback", anchor.Operations);
         }
 
         if (state.NodeId.Equals(strategy.MenuRootNodeId, StringComparison.OrdinalIgnoreCase)

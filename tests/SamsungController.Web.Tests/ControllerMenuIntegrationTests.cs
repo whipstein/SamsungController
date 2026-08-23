@@ -399,87 +399,109 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task ReturnReplacementDraftPreparesItsValidationSourceAndPromotesAfterThreePasses()
+    public async Task TraversalAndRecordedReturnSharePreparationAndThreePassValidation()
     {
         var (controller, transport) = await CreateConnectedControllerAsync();
         await using (controller)
         {
             controller.StartMenuRecording(new MenuRecordingRequest(
-                MenuAuthoringItemKind.Anchor,
-                SamsungControllerService.ReturnToVideoReplacementAnchorId,
-                "Return to normal video (replacement)",
+                MenuAuthoringItemKind.Transition,
+                string.Empty,
+                "Picture",
                 "settings",
-                "normal-video",
+                "picture",
                 null,
-                null));
+                null,
+                RecordReturnToVideo: true));
+            await controller.SendKeyAsync("KEY_DOWN");
+            await controller.SendKeyAsync("KEY_ENTER");
+            controller.BeginReturnToVideoRecording();
             await controller.SendKeyAsync("KEY_HOME");
             await controller.StopAndSaveMenuRecordingAsync();
 
-            var draft = Assert.Single(
-                controller.GetMenuAuthoringSnapshot().DraftCandidates,
-                item => item.Id == SamsungControllerService.ReturnToVideoReplacementAnchorId);
+            var draft = Assert.Single(controller.GetMenuAuthoringSnapshot().DraftCandidates);
+            Assert.Equal("open-picture-draft", draft.Id);
             Assert.Equal("settings", draft.SourceNodeId);
-            Assert.Equal("normal-video", draft.TargetNodeId);
+            Assert.Equal("picture", draft.TargetNodeId);
+            Assert.Equal(2, draft.CommandCount);
+            Assert.Equal(1, draft.ReturnCommandCount);
 
             var beforeValidation = await new MenuDefinitionParser().ParseFileAsync(
                 controller.GetMenuNavigationSnapshot().DefinitionPath);
             Assert.Equal(2, Assert.Single(beforeValidation.Anchors["normal"].Operations).Repeat);
             Assert.Equal(
-                "settings",
-                beforeValidation.Anchors[SamsungControllerService.ReturnToVideoReplacementAnchorId]
-                    .ValidationSourceNodeId);
-
-            transport.SentMessages.Clear();
-            await controller.PrepareMenuRecordingSourceAsync("settings");
-            Assert.Equal(["KEY_HOME", "KEY_MENU"], GetSentKeys(transport));
+                "KEY_HOME",
+                Assert.Single(beforeValidation.Transitions["open-picture-draft"]
+                    .ReturnToVideoOperations!).Key);
 
             for (var pass = 1; pass <= 3; pass++)
             {
                 transport.SentMessages.Clear();
+                await controller.PrepareMenuAuthoringValidationSourceAsync(
+                    MenuAuthoringItemKind.Transition,
+                    "open-picture-draft");
+                Assert.Equal(["KEY_HOME", "KEY_MENU"], GetSentKeys(transport));
+                Assert.Equal(
+                    pass - 1,
+                    controller.GetMenuAuthoringSnapshot().ValidationPasses);
+
+                transport.SentMessages.Clear();
                 await controller.RunMenuAuthoringValidationAsync(
-                    MenuAuthoringItemKind.Anchor,
-                    SamsungControllerService.ReturnToVideoReplacementAnchorId);
-                Assert.Equal(["KEY_HOME"], GetSentKeys(transport));
+                    MenuAuthoringItemKind.Transition,
+                    "open-picture-draft");
+                Assert.Equal(["KEY_DOWN", "KEY_ENTER"], GetSentKeys(transport));
                 await controller.ConfirmMenuAuthoringValidationAsync(passed: true);
             }
 
-            var promoted = await new MenuDefinitionParser().ParseFileAsync(
+            var verified = await new MenuDefinitionParser().ParseFileAsync(
                 controller.GetMenuNavigationSnapshot().DefinitionPath);
-            Assert.DoesNotContain(
-                SamsungControllerService.ReturnToVideoReplacementAnchorId,
-                promoted.Anchors.Keys);
-            var original = promoted.Anchors["normal"];
-            Assert.True(original.Verified);
-            Assert.Equal("KEY_HOME", Assert.Single(original.Operations).Key);
-            Assert.NotNull(original.ReturnStrategy);
+            var transition = verified.Transitions["open-picture-draft"];
+            Assert.True(transition.Verified);
+            Assert.Equal(
+                "KEY_HOME",
+                Assert.Single(transition.ReturnToVideoOperations!).Key);
+
+            await controller.RunMenuAnchorAsync("normal");
+            controller.CreateNavigationPlan("picture");
+            await controller.ExecuteNavigationPlanAsync();
+            transport.SentMessages.Clear();
+            await controller.RunMenuAnchorAsync("normal");
+            Assert.Equal(["KEY_HOME"], GetSentKeys(transport));
         }
     }
 
     [Fact]
-    public async Task ReturnReplacementPrepareAllowsManualPositioningWhenNoVerifiedRouteExists()
+    public async Task LegacySeparateReturnDraftIsMigratedIntoItsTraversal()
     {
-        var (controller, transport) = await CreateConnectedControllerAsync();
+        var legacyYaml = ExplicitValidationMenuYaml.Replace(
+            "transitions:",
+            """
+              - id: return-to-video-replacement
+                label: Return to normal video (replacement)
+                target: normal-video
+                verified: false
+                validationSource: picture
+                steps:
+                  - key: KEY_HOME
+            transitions:
+            """,
+            StringComparison.Ordinal);
+        var (controller, transport) = await CreateConnectedControllerAsync(legacyYaml);
         await using (controller)
         {
-            controller.StartMenuRecording(new MenuRecordingRequest(
-                MenuAuthoringItemKind.Anchor,
-                SamsungControllerService.ReturnToVideoReplacementAnchorId,
-                "Return to normal video (replacement)",
-                "picture",
-                "normal-video",
-                null,
-                null));
-            await controller.SendKeyAsync("KEY_HOME");
-            await controller.StopAndSaveMenuRecordingAsync();
+            var candidate = Assert.Single(controller.GetMenuAuthoringSnapshot().DraftCandidates);
+            Assert.Equal("open-picture-draft", candidate.Id);
+            Assert.Equal(1, candidate.ReturnCommandCount);
+            Assert.DoesNotContain(
+                controller.GetMenuNavigationSnapshot().Anchors,
+                anchor => anchor.Id == SamsungControllerService.ReturnToVideoReplacementAnchorId);
 
             transport.SentMessages.Clear();
-            await controller.PrepareMenuRecordingSourceAsync("picture");
+            await controller.PrepareMenuAuthoringValidationSourceAsync(
+                MenuAuthoringItemKind.Transition,
+                "open-picture-draft");
 
-            Assert.Equal(["KEY_HOME"], GetSentKeys(transport));
-            Assert.Contains(
-                "manually position",
-                controller.GetMenuAuthoringSnapshot().Status,
-                StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(["KEY_HOME", "KEY_MENU"], GetSentKeys(transport));
         }
     }
 
