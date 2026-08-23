@@ -305,6 +305,13 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .recorded-step-list code { color: var(--cyan); font: 9px ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .recorded-step-list span { color: var(--faint); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; white-space: nowrap; }
 .recorded-total { margin-top: 12px; color: var(--muted); font-size: 9px; }
+.timing-profile-lab { margin-top: 18px; padding: 18px; border: 1px solid rgba(124,231,220,.2); border-radius: 8px; background: rgba(124,231,220,.035); }
+.timing-profile-layout { display: grid; grid-template-columns: minmax(190px, .8fr) minmax(360px, 1.4fr) auto; gap: 18px; align-items: end; }
+.timing-profile-layout > div > strong { display: block; font-size: 12px; }
+.timing-profile-layout > div > p { margin: 6px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.timing-profile-fields { display: grid; grid-template-columns: repeat(3, minmax(105px, 1fr)); gap: 9px; }
+.timing-profile-fields label > span { font-size: 8px; }
+.timing-profile-fields input { padding: 10px 35px 10px 10px; font-size: 10px; }
 .validation-studio { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
 .validation-list { display: grid; gap: 8px; }
 .validation-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 12px 13px; border: 1px solid var(--line); border-radius: 7px; background: #08131b; }
@@ -315,6 +322,27 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .validation-card small { margin-top: 5px; color: var(--muted); font-size: 8px; }
 .validation-card-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .validation-card-actions b { color: var(--amber); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.timing-step-editor { grid-column: 1 / -1; margin-top: 2px; padding-top: 14px; border-top: 1px solid var(--line); }
+.timing-step-editor > header { display: flex; justify-content: space-between; gap: 18px; align-items: end; margin-bottom: 10px; }
+.timing-step-editor > header strong { margin: 0; font-size: 10px; }
+.timing-step-editor > header small { max-width: 580px; margin-top: 4px; line-height: 1.45; }
+.timing-step-editor > header > div:last-child { text-align: right; }
+.timing-step-editor > header > div:last-child span { color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; }
+.timing-step-editor > header > div:last-child b { display: block; margin-top: 4px; color: var(--cyan); font: 10px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.timing-step-list { display: grid; gap: 5px; max-height: 390px; overflow: auto; }
+.timing-step-row { display: grid; grid-template-columns: 28px minmax(120px, 1fr) 58px 82px minmax(105px, 145px); gap: 10px; align-items: center; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: rgba(7,16,24,.55); }
+.timing-step-row > b { color: var(--faint); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.timing-step-row > code { color: var(--cyan); font: 9px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.timing-step-row > small { margin: 0; color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; }
+.timing-override-toggle { display: flex; align-items: center; gap: 7px; color: var(--muted); }
+.timing-override-toggle input { width: 14px; margin: 0; accent-color: var(--cyan); }
+.timing-override-toggle span { display: inline; margin: 0; color: var(--muted); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: none; }
+.timing-step-input input { padding: 8px 34px 8px 9px; font-size: 9px; }
+.timing-system-wait { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 8px 9px; border: 1px dashed var(--line-strong); border-radius: 6px; }
+.timing-system-wait span { display: inline; color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; }
+.timing-system-wait b { color: var(--muted); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; white-space: nowrap; }
+.timing-editor-actions { display: grid; grid-template-columns: auto auto minmax(190px, .35fr); justify-content: end; gap: 8px; margin-top: 11px; }
+.timing-editor-actions .primary-action { width: auto; gap: 18px; }
 .validation-confirmation { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(190px, .35fr); gap: 10px; align-items: center; margin-top: 13px; padding: 13px; border: 1px solid rgba(242,181,107,.3); border-radius: 7px; background: rgba(242,181,107,.07); }
 .validation-confirmation span, .validation-confirmation strong { display: block; }
 .validation-confirmation span { color: var(--amber); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .1em; }
@@ -336,6 +364,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .remote-layout, .macro-layout, .protocol-layout { grid-template-columns: 1fr; }
     .navigator-layout { grid-template-columns: 1fr; }
     .authoring-workflow-grid { grid-template-columns: 1fr; }
+    .timing-profile-layout { grid-template-columns: 1fr; align-items: stretch; }
     .raw-panel { position: static; }
 }
 
@@ -356,6 +385,11 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .authoring-form-grid .wide-field { grid-column: auto; }
     .recording-actions, .authoring-start-actions, .validation-confirmation, .validation-card { grid-template-columns: 1fr; }
     .validation-card-actions { justify-content: space-between; }
+    .timing-profile-fields { grid-template-columns: 1fr; }
+    .timing-step-row { grid-template-columns: 26px minmax(100px, 1fr) 58px; }
+    .timing-step-row .timing-override-toggle, .timing-step-row .timing-step-input, .timing-step-row .timing-system-wait { grid-column: span 1; }
+    .timing-editor-actions { grid-template-columns: 1fr; }
+    .timing-editor-actions .primary-action { width: 100%; }
     .sensitive-row { display: block; }
     .sensitive-row span { display: block; margin-top: 8px; }
     .notice { grid-template-columns: 1fr; }

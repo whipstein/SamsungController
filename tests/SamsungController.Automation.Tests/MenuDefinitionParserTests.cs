@@ -61,6 +61,9 @@ public sealed class MenuDefinitionParserTests
         Assert.Equal("SDR", definition.Context.Signal);
         Assert.Equal("Filmmaker Mode", definition.Context.PictureMode);
         Assert.Equal("Home Theater System", definition.Context.Input);
+        Assert.Equal(150, definition.Timing.DefaultDelayMilliseconds);
+        Assert.Equal(500, definition.Timing.ScreenChangeDelayMilliseconds);
+        Assert.Equal(300, definition.Timing.ReturnDelayMilliseconds);
 
         var normalVideo = definition.GetRequiredAnchor("normal-video");
         Assert.True(normalVideo.Verified);
@@ -95,12 +98,14 @@ public sealed class MenuDefinitionParserTests
             "expert-settings");
         Assert.True(forwardPlan.IsExecutable);
         Assert.Equal(8, forwardPlan.CommandCount);
+        Assert.Equal(TimeSpan.FromMilliseconds(2250), forwardPlan.EstimatedDelay);
         var exitPlan = new NavigationPlanner().Plan(
             definition,
             "expert-settings",
             "normal-video");
         Assert.True(exitPlan.IsExecutable);
         Assert.Equal(2, exitPlan.CommandCount);
+        Assert.Equal(TimeSpan.FromMilliseconds(1000), exitPlan.EstimatedDelay);
     }
 
     private const string ValidYaml =

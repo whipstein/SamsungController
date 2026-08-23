@@ -5,27 +5,23 @@ namespace SamsungController.Web.Services;
 
 public sealed class MenuTraversalRecorder
 {
-    private const int ScreenChangeDelayMilliseconds = 500;
-    private const int ReturnDelayMilliseconds = 300;
     private readonly List<MenuOperation> _operations = [];
 
     public bool IsRecording { get; private set; }
 
     public MenuRecordingRequest? Request { get; private set; }
 
+    public MenuTimingProfile Timing { get; private set; } = new();
+
     public IReadOnlyList<MenuOperation> Operations => _operations;
 
-    public void Start(MenuRecordingRequest request)
+    public void Start(MenuRecordingRequest request, MenuTimingProfile timing)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (request.ReplayDelayMilliseconds is < 50 or > 30_000)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(request),
-                "Replay delay must be between 50 and 30000 milliseconds.");
-        }
+        ArgumentNullException.ThrowIfNull(timing);
 
         Request = request;
+        Timing = timing;
         _operations.Clear();
         IsRecording = true;
     }
@@ -39,13 +35,12 @@ public sealed class MenuTraversalRecorder
 
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         var normalizedKey = key.Trim();
-        var delay = GetReplayDelay(normalizedKey, Request!.ReplayDelayMilliseconds);
         if (_operations.Count > 0)
         {
             var previous = _operations[^1];
             if (previous.Key.Equals(normalizedKey, StringComparison.OrdinalIgnoreCase)
                 && previous.Action == action
-                && previous.DelayAfter == delay
+                && previous.DelayAfter is null
                 && previous.Repeat < MenuDefinitionValidator.MaximumRepeat)
             {
                 _operations[^1] = previous with { Repeat = previous.Repeat + 1 };
@@ -53,21 +48,7 @@ public sealed class MenuTraversalRecorder
             }
         }
 
-        _operations.Add(new MenuOperation(normalizedKey, action, DelayAfter: delay));
-    }
-
-    private static TimeSpan GetReplayDelay(string key, int directionalDelayMilliseconds)
-    {
-        var minimumDelay = key.ToUpperInvariant() switch
-        {
-            "KEY_MENU" or "KEY_ENTER" or "KEY_HOME" or "KEY_EXIT" or "KEY_SOURCE" =>
-                ScreenChangeDelayMilliseconds,
-            "KEY_RETURN" => ReturnDelayMilliseconds,
-            _ => directionalDelayMilliseconds
-        };
-        return TimeSpan.FromMilliseconds(Math.Max(
-            directionalDelayMilliseconds,
-            minimumDelay));
+        _operations.Add(new MenuOperation(normalizedKey, action));
     }
 
     public void UndoLastCommand()
@@ -120,6 +101,7 @@ public sealed class MenuTraversalRecorder
     {
         IsRecording = false;
         Request = null;
+        Timing = new MenuTimingProfile();
         _operations.Clear();
     }
 }

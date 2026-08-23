@@ -6,7 +6,8 @@ public sealed record NavigationPlan(
     string SourcePath,
     string TargetNodeId,
     string TargetPath,
-    IReadOnlyList<MenuTransition> Transitions)
+    IReadOnlyList<MenuTransition> Transitions,
+    MenuTimingProfile Timing)
 {
     public bool UsesDraftTransitions => Transitions.Any(transition => !transition.Verified);
 
@@ -18,7 +19,8 @@ public sealed record NavigationPlan(
     public TimeSpan EstimatedDelay => TimeSpan.FromTicks(
         Transitions.Sum(transition =>
             transition.Operations.Sum(operation =>
-                (operation.DelayAfter?.Ticks ?? 0) * operation.Repeat)));
+                (operation.DelayAfter ?? Timing.GetDelay(operation.Key)).Ticks
+                * operation.Repeat)));
 }
 
 public sealed class NavigationPlanningException : Exception
@@ -74,7 +76,7 @@ public sealed class NavigationPlanner
                          transition.FromNodeId.Equals(nodeId, StringComparison.OrdinalIgnoreCase)
                          && (transition.Verified || includeDraftTransitions)))
             {
-                var nextDistance = distance + GetCost(transition);
+                var nextDistance = distance + GetCost(transition, definition.Timing);
                 if (distances.TryGetValue(transition.ToNodeId, out var existing)
                     && existing <= nextDistance)
                 {
@@ -118,14 +120,17 @@ public sealed class NavigationPlanner
             definition.GetPath(sourceNodeId),
             targetNodeId,
             definition.GetPath(targetNodeId),
-            transitions);
+            transitions,
+            definition.Timing);
 
-    private static long GetCost(MenuTransition transition)
+    private static long GetCost(MenuTransition transition, MenuTimingProfile timing)
     {
         const long draftPenalty = 1_000_000;
         var commands = transition.Operations.Sum(operation => operation.Repeat);
         var delayMilliseconds = transition.Operations.Sum(operation =>
-            (long)Math.Ceiling((operation.DelayAfter?.TotalMilliseconds ?? 0) * operation.Repeat));
+            (long)Math.Ceiling(
+                (operation.DelayAfter ?? timing.GetDelay(operation.Key)).TotalMilliseconds
+                * operation.Repeat));
         return commands * 1000L
                + delayMilliseconds
                + (transition.Verified ? 0 : draftPenalty);

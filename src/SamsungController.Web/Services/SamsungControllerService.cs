@@ -264,7 +264,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         null,
                         definition.GetPath(anchor.TargetNodeId),
                         anchor.Operations.Sum(operation => operation.Repeat),
-                        GetDirectionalDelayMilliseconds(anchor.Operations)))
+                        GetReplaySteps(anchor.Operations, definition.Timing)))
                     .Concat(definition.Transitions.Values
                         .Where(transition => !transition.Verified)
                         .Select(transition => new MenuAuthoringCandidateSummary(
@@ -276,7 +276,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                             definition.GetPath(transition.FromNodeId),
                             definition.GetPath(transition.ToNodeId),
                             transition.Operations.Sum(operation => operation.Repeat),
-                            GetDirectionalDelayMilliseconds(transition.Operations))))
+                            GetReplaySteps(transition.Operations, definition.Timing))))
                     .ToArray();
             var request = _menuRecorder.Request;
             var steps = _menuRecorder.Operations
@@ -284,7 +284,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     operation.Key,
                     operation.Action,
                     operation.Repeat,
-                    operation.DelayAfter ?? TimeSpan.Zero))
+                    operation.DelayAfter ?? _menuRecorder.Timing.GetDelay(operation.Key)))
                 .ToArray();
             return new MenuAuthoringSnapshot(
                 _menuRecorder.IsRecording,
@@ -295,6 +295,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 request?.TargetNodeId,
                 steps,
                 steps.Sum(step => step.Repeat),
+                definition?.Timing ?? new MenuTimingProfile(),
                 candidates,
                 _menuValidation?.Kind,
                 _menuValidation?.ItemId,
@@ -537,7 +538,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         ValidateRecordingRequest(definition, normalized);
         lock (_sync)
         {
-            _menuRecorder.Start(normalized);
+            _menuRecorder.Start(normalized, definition.Timing);
             _menuValidation = null;
             _menuAuthoringStatus = "Recording · every successful UI key is being sent to the TV and captured";
             _menuAuthoringError = null;
@@ -621,6 +622,125 @@ public sealed class SamsungControllerService : IAsyncDisposable
         {
             NotifyChanged();
         }
+    }
+
+    public async Task UpdateMenuTimingProfileAsync(
+        MenuTimingProfile timing,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(timing);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("change system menu timing");
+        EnsureNoMenuRecording("change system menu timing");
+
+        MenuDefinition definition;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+        }
+
+        var updated = CopyMenuDefinition(definition, timing: timing);
+        new MenuDefinitionValidator().ValidateAndThrow(updated);
+        await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
+        lock (_sync)
+        {
+            _menuValidation = null;
+            _menuAuthoringStatus = "System timing saved to YAML · run a draft timing test to validate it visually";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
+    }
+
+    public async Task UpdateMenuAuthoringTimingAsync(
+        MenuAuthoringItemKind kind,
+        string itemId,
+        MenuTimingProfile timing,
+        IReadOnlyList<MenuAuthoringReplayStepUpdate> steps,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(itemId);
+        ArgumentNullException.ThrowIfNull(timing);
+        ArgumentNullException.ThrowIfNull(steps);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("change draft replay timing");
+        EnsureNoMenuRecording("change draft replay timing");
+
+        MenuDefinition definition;
+        IReadOnlyList<MenuOperation> operations;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+            operations = GetDraftOperations(definition, kind, itemId);
+        }
+
+        var expanded = ExpandOperations(operations);
+        if (steps.Count != expanded.Count)
+        {
+            throw new InvalidOperationException(
+                $"The draft contains {expanded.Count} button presses, but {steps.Count} timing values were supplied. Reopen the timing lab and try again.");
+        }
+
+        var tuned = new List<MenuOperation>(expanded.Count);
+        for (var index = 0; index < expanded.Count; index++)
+        {
+            var step = steps[index];
+            if (step.Position != index + 1)
+            {
+                throw new InvalidOperationException("Draft timing positions are out of date. Reopen the timing lab and try again.");
+            }
+
+            if (step.UseCustomDelay && step.DelayAfterMilliseconds is < 50 or > 30_000)
+            {
+                throw new InvalidOperationException(
+                    $"Custom wait for press {step.Position} must be between 50 and 30000 milliseconds.");
+            }
+
+            tuned.Add(expanded[index] with
+            {
+                DelayAfter = step.UseCustomDelay
+                    ? TimeSpan.FromMilliseconds(step.DelayAfterMilliseconds)
+                    : null
+            });
+        }
+
+        var coalesced = CoalesceOperations(tuned);
+        var anchors = definition.Anchors.Values
+            .Select(anchor => kind == MenuAuthoringItemKind.Anchor
+                              && anchor.Id.Equals(itemId, StringComparison.OrdinalIgnoreCase)
+                ? anchor with { Operations = coalesced }
+                : anchor)
+            .ToArray();
+        var transitions = definition.Transitions.Values
+            .Select(transition => kind == MenuAuthoringItemKind.Transition
+                                  && transition.Id.Equals(itemId, StringComparison.OrdinalIgnoreCase)
+                ? transition with { Operations = coalesced }
+                : transition)
+            .ToArray();
+        var updated = CopyMenuDefinition(
+            definition,
+            transitions,
+            anchors,
+            timing);
+        new MenuDefinitionValidator().ValidateAndThrow(updated);
+        await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
+
+        var expectedTargetPath = GetAuthoringTargetPath(updated, kind, itemId);
+        lock (_sync)
+        {
+            _menuValidation = new MenuValidationSession(
+                kind,
+                itemId.Trim(),
+                0,
+                false,
+                expectedTargetPath);
+            _menuAuthoringStatus = "System timing and button overrides saved to YAML · validation restarted at 0/3";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
     }
 
     public async Task RunMenuAuthoringValidationAsync(
@@ -748,7 +868,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 || !transition.Id.Equals(itemId, StringComparison.OrdinalIgnoreCase)),
             definition.Anchors.Values.Where(anchor =>
                 kind != MenuAuthoringItemKind.Anchor
-                || !anchor.Id.Equals(itemId, StringComparison.OrdinalIgnoreCase)));
+                || !anchor.Id.Equals(itemId, StringComparison.OrdinalIgnoreCase)),
+            definition.Timing);
         await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
         lock (_sync)
         {
@@ -1102,18 +1223,103 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private static string NormalizeContextValue(string value) =>
         string.IsNullOrWhiteSpace(value) ? "any" : value.Trim();
 
-    private static int GetDirectionalDelayMilliseconds(IReadOnlyList<MenuOperation> operations) =>
-        (int)Math.Clamp(
-            operations.FirstOrDefault(operation =>
-                    operation.Key.Equals("KEY_UP", StringComparison.OrdinalIgnoreCase)
-                    || operation.Key.Equals("KEY_DOWN", StringComparison.OrdinalIgnoreCase)
-                    || operation.Key.Equals("KEY_LEFT", StringComparison.OrdinalIgnoreCase)
-                    || operation.Key.Equals("KEY_RIGHT", StringComparison.OrdinalIgnoreCase))
-                ?.DelayAfter?.TotalMilliseconds
-            ?? operations.FirstOrDefault()?.DelayAfter?.TotalMilliseconds
-            ?? 150,
-            50,
-            30_000);
+    private static IReadOnlyList<MenuAuthoringReplayStepSummary> GetReplaySteps(
+        IReadOnlyList<MenuOperation> operations,
+        MenuTimingProfile timing)
+    {
+        var result = new List<MenuAuthoringReplayStepSummary>();
+        foreach (var operation in operations)
+        {
+            var systemDelay = timing.GetDelay(operation.Key);
+            var effectiveDelay = operation.DelayAfter ?? systemDelay;
+            for (var repeat = 0; repeat < operation.Repeat; repeat++)
+            {
+                result.Add(new MenuAuthoringReplayStepSummary(
+                    result.Count + 1,
+                    operation.Key,
+                    operation.Action,
+                    checked((int)effectiveDelay.TotalMilliseconds),
+                    checked((int)systemDelay.TotalMilliseconds),
+                    operation.DelayAfter is not null));
+            }
+        }
+
+        return result;
+    }
+
+    private static IReadOnlyList<MenuOperation> GetDraftOperations(
+        MenuDefinition definition,
+        MenuAuthoringItemKind kind,
+        string itemId)
+    {
+        if (kind == MenuAuthoringItemKind.Anchor)
+        {
+            var anchor = definition.GetRequiredAnchor(itemId);
+            if (anchor.Verified)
+            {
+                throw new InvalidOperationException("Verified anchors cannot be changed in the timing lab.");
+            }
+
+            return anchor.Operations;
+        }
+
+        var transition = definition.Transitions.TryGetValue(itemId, out var existing)
+            ? existing
+            : throw new KeyNotFoundException($"Menu transition '{itemId}' was not found.");
+        if (transition.Verified)
+        {
+            throw new InvalidOperationException("Verified transitions cannot be changed in the timing lab.");
+        }
+
+        return transition.Operations;
+    }
+
+    private static IReadOnlyList<MenuOperation> ExpandOperations(
+        IReadOnlyList<MenuOperation> operations) =>
+        operations
+            .SelectMany(operation => Enumerable.Range(0, operation.Repeat)
+                .Select(_ => operation with { Repeat = 1 }))
+            .ToArray();
+
+    private static IReadOnlyList<MenuOperation> CoalesceOperations(
+        IReadOnlyList<MenuOperation> operations)
+    {
+        var result = new List<MenuOperation>();
+        foreach (var operation in operations)
+        {
+            if (result.Count > 0)
+            {
+                var previous = result[^1];
+                if (previous.Key.Equals(operation.Key, StringComparison.OrdinalIgnoreCase)
+                    && previous.Action == operation.Action
+                    && previous.DelayAfter == operation.DelayAfter
+                    && previous.Repeat < MenuDefinitionValidator.MaximumRepeat)
+                {
+                    result[^1] = previous with { Repeat = previous.Repeat + 1 };
+                    continue;
+                }
+            }
+
+            result.Add(operation);
+        }
+
+        return result;
+    }
+
+    private static MenuDefinition CopyMenuDefinition(
+        MenuDefinition definition,
+        IEnumerable<MenuTransition>? transitions = null,
+        IEnumerable<MenuAnchor>? anchors = null,
+        MenuTimingProfile? timing = null) =>
+        new(
+            definition.Id,
+            definition.Name,
+            definition.Model,
+            definition.Context,
+            definition.Nodes.Values,
+            transitions ?? definition.Transitions.Values,
+            anchors ?? definition.Anchors.Values,
+            timing ?? definition.Timing);
 
     private static MenuRecordingRequest NormalizeRecordingRequest(MenuRecordingRequest request) =>
         request with
@@ -1165,9 +1371,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 request.NewTargetParentId));
         }
 
-        var placeholder = new MenuOperation(
-            "KEY_RETURN",
-            DelayAfter: TimeSpan.FromMilliseconds(request.ReplayDelayMilliseconds));
+        var placeholder = new MenuOperation("KEY_RETURN");
         var anchors = definition.Anchors.Values
             .Where(anchor => request.Kind != MenuAuthoringItemKind.Anchor
                              || !anchor.Id.Equals(request.ItemId, StringComparison.OrdinalIgnoreCase))
@@ -1205,7 +1409,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             definition.Context,
             nodes,
             transitions,
-            anchors);
+            anchors,
+            definition.Timing);
         new MenuDefinitionValidator().ValidateAndThrow(candidate);
     }
 
@@ -1262,7 +1467,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             definition.Context,
             nodes,
             transitions,
-            anchors);
+            anchors,
+            definition.Timing);
         new MenuDefinitionValidator().ValidateAndThrow(updated);
         return updated;
     }
@@ -1357,7 +1563,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             definition.Context,
             definition.Nodes.Values,
             transitions,
-            anchors);
+            anchors,
+            definition.Timing);
     }
 
     private async Task ExecuteMenuAuthoringValidationAsync(
@@ -1403,6 +1610,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         tracker.Current.Path ?? "Unknown",
                         definition.GetPath(anchor.TargetNodeId),
                         anchor.Operations,
+                        definition.Timing,
                         linkedSource.Token)
                     .ConfigureAwait(false);
                 tracker.ApplyAnchor(anchor);
@@ -1431,6 +1639,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         definition.GetPath(transition.FromNodeId),
                         definition.GetPath(transition.ToNodeId),
                         transition.Operations,
+                        definition.Timing,
                         linkedSource.Token)
                     .ConfigureAwait(false);
                 tracker.ApplyTransition(transition);
@@ -1516,6 +1725,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         string sourcePath,
         string targetPath,
         IReadOnlyList<MenuOperation> operations,
+        MenuTimingProfile timing,
         CancellationToken cancellationToken)
     {
         var commandCount = operations.Sum(operation => operation.Repeat);
@@ -1543,10 +1753,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 NotifyChanged();
                 await _client.SendKeyAsync(operation.Key, operation.Action, cancellationToken)
                     .ConfigureAwait(false);
-                if (operation.DelayAfter is { } delay)
-                {
-                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-                }
+                var delay = operation.DelayAfter ?? timing.GetDelay(operation.Key);
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
             }
         }
     }

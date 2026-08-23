@@ -39,7 +39,8 @@ public sealed class MenuDefinitionWriterTests : IDisposable
                     "normal-video",
                     [new MenuOperation("KEY_RETURN", Repeat: 3, DelayAfter: TimeSpan.FromMilliseconds(300))],
                     true)
-            ]);
+            ],
+            new MenuTimingProfile(175, 650, 325));
         var path = Path.Combine(_directory, "menu.yaml");
 
         await new MenuDefinitionWriter().WriteFileAsync(path, definition);
@@ -48,6 +49,7 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Assert.Equal(definition.Id, reparsed.Id);
         Assert.Equal(definition.Name, reparsed.Name);
         Assert.Equal(definition.Context, reparsed.Context);
+        Assert.Equal(definition.Timing, reparsed.Timing);
         Assert.Equal("Owner's settings", reparsed.Nodes["settings"].Description);
         Assert.True(reparsed.Anchors["normal"].Verified);
         var transition = reparsed.Transitions["open-settings"];

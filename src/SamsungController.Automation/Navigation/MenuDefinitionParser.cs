@@ -8,9 +8,11 @@ namespace SamsungController.Automation.Navigation;
 public sealed class MenuDefinitionParser
 {
     private static readonly HashSet<string> RootFields =
-        new(["version", "id", "name", "model", "context", "nodes", "anchors", "transitions"], StringComparer.OrdinalIgnoreCase);
+        new(["version", "id", "name", "model", "context", "timing", "nodes", "anchors", "transitions"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ContextFields =
         new(["firmware", "signal", "pictureMode", "input"], StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> TimingFields =
+        new(["defaultDelay", "screenChangeDelay", "returnDelay"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> NodeFields =
         new(["id", "label", "parent", "description"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> AnchorFields =
@@ -40,6 +42,7 @@ public sealed class MenuDefinitionParser
             ValidateVersion(RequiredScalar(fields, "version", "document root"));
 
             var context = ParseContext(fields.GetValueOrDefault("context"));
+            var timing = ParseTiming(fields.GetValueOrDefault("timing"));
             var nodes = ParseNodes(RequiredSequence(fields, "nodes", "document root"));
             var anchors = fields.TryGetValue("anchors", out var anchorsNode)
                 ? ParseAnchors(RequireSequence(anchorsNode, "anchors"))
@@ -55,7 +58,8 @@ public sealed class MenuDefinitionParser
                 context,
                 nodes,
                 transitions,
-                anchors);
+                anchors,
+                timing);
         }
         catch (MenuDefinitionParseException)
         {
@@ -72,6 +76,30 @@ public sealed class MenuDefinitionParser
             throw new MenuDefinitionParseException(exception.Message, exception);
         }
     }
+
+    private static MenuTimingProfile ParseTiming(YamlNode? node)
+    {
+        if (node is null)
+        {
+            return new MenuTimingProfile();
+        }
+
+        var fields = ReadFields(RequireMapping(node, "timing"), "timing");
+        EnsureAllowedFields(fields, TimingFields, "timing");
+        var defaults = new MenuTimingProfile();
+        return new MenuTimingProfile(
+            ParseTimingMilliseconds(fields, "defaultDelay", defaults.DefaultDelayMilliseconds),
+            ParseTimingMilliseconds(fields, "screenChangeDelay", defaults.ScreenChangeDelayMilliseconds),
+            ParseTimingMilliseconds(fields, "returnDelay", defaults.ReturnDelayMilliseconds));
+    }
+
+    private static int ParseTimingMilliseconds(
+        IReadOnlyDictionary<string, YamlNode> fields,
+        string name,
+        int defaultValue) =>
+        fields.TryGetValue(name, out var node)
+            ? checked((int)ParseDuration(RequireScalar(node, $"{name} in timing"), "timing").TotalMilliseconds)
+            : defaultValue;
 
     public async Task<MenuDefinition> ParseFileAsync(
         string path,

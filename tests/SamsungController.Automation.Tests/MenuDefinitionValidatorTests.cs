@@ -23,7 +23,8 @@ public sealed class MenuDefinitionValidatorTests
                     "first",
                     [new MenuOperation("", Repeat: 0)])
             ],
-            [new MenuAnchor("anchor", "Anchor", "missing", [])]);
+            [new MenuAnchor("anchor", "Anchor", "missing", [])],
+            new MenuTimingProfile(DefaultDelayMilliseconds: 20));
 
         var errors = new MenuDefinitionValidator().Validate(definition);
 
@@ -33,5 +34,6 @@ public sealed class MenuDefinitionValidatorTests
         Assert.Contains(errors, error => error.Message.Contains("key cannot be empty", StringComparison.Ordinal));
         Assert.Contains(errors, error => error.Message.Contains("Repeat", StringComparison.Ordinal));
         Assert.Contains(errors, error => error.Message.Contains("At least one", StringComparison.Ordinal));
+        Assert.Contains(errors, error => error.Location == "timing.defaultDelay");
     }
 }

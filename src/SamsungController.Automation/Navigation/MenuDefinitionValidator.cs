@@ -35,6 +35,7 @@ public sealed class MenuDefinitionValidator
         ValidateIdentifier("definition", definition.Id, errors);
         ValidateRequired("definition", "name", definition.Name, errors);
         ValidateRequired("definition", "model", definition.Model, errors);
+        ValidateTiming(definition.Timing, errors);
         if (definition.Nodes.Count == 0)
         {
             errors.Add(new MenuDefinitionValidationError(
@@ -110,6 +111,28 @@ public sealed class MenuDefinitionValidator
         }
 
         return errors;
+    }
+
+    private static void ValidateTiming(
+        MenuTimingProfile timing,
+        ICollection<MenuDefinitionValidationError> errors)
+    {
+        ValidateTimingValue("defaultDelay", timing.DefaultDelayMilliseconds, errors);
+        ValidateTimingValue("screenChangeDelay", timing.ScreenChangeDelayMilliseconds, errors);
+        ValidateTimingValue("returnDelay", timing.ReturnDelayMilliseconds, errors);
+    }
+
+    private static void ValidateTimingValue(
+        string name,
+        int milliseconds,
+        ICollection<MenuDefinitionValidationError> errors)
+    {
+        if (milliseconds is < 50 or > 30_000)
+        {
+            errors.Add(new MenuDefinitionValidationError(
+                $"timing.{name}",
+                "System timing must be between 50 and 30000 milliseconds."));
+        }
     }
 
     public void ValidateAndThrow(MenuDefinition definition)

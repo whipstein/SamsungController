@@ -9,6 +9,25 @@ public sealed record MenuDefinitionContext(
     string PictureMode = "any",
     string Input = "any");
 
+public sealed record MenuTimingProfile(
+    int DefaultDelayMilliseconds = 150,
+    int ScreenChangeDelayMilliseconds = 500,
+    int ReturnDelayMilliseconds = 300)
+{
+    public TimeSpan GetDelay(string key)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        var milliseconds = key.Trim().ToUpperInvariant() switch
+        {
+            "KEY_MENU" or "KEY_ENTER" or "KEY_HOME" or "KEY_EXIT" or "KEY_SOURCE" =>
+                ScreenChangeDelayMilliseconds,
+            "KEY_RETURN" => ReturnDelayMilliseconds,
+            _ => DefaultDelayMilliseconds
+        };
+        return TimeSpan.FromMilliseconds(milliseconds);
+    }
+}
+
 public sealed record MenuNode(
     string Id,
     string Label,
@@ -50,12 +69,14 @@ public sealed class MenuDefinition
         MenuDefinitionContext context,
         IEnumerable<MenuNode> nodes,
         IEnumerable<MenuTransition> transitions,
-        IEnumerable<MenuAnchor> anchors)
+        IEnumerable<MenuAnchor> anchors,
+        MenuTimingProfile? timing = null)
     {
         Id = id;
         Name = name;
         Model = model;
         Context = context ?? throw new ArgumentNullException(nameof(context));
+        Timing = timing ?? new MenuTimingProfile();
         _nodes = ToUniqueDictionary(nodes, node => node.Id, "node");
         _transitions = ToUniqueDictionary(transitions, transition => transition.Id, "transition");
         _anchors = ToUniqueDictionary(anchors, anchor => anchor.Id, "anchor");
@@ -68,6 +89,8 @@ public sealed class MenuDefinition
     public string Model { get; }
 
     public MenuDefinitionContext Context { get; }
+
+    public MenuTimingProfile Timing { get; }
 
     public IReadOnlyDictionary<string, MenuNode> Nodes => _nodes;
 

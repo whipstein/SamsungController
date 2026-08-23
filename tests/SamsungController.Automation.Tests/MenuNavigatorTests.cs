@@ -59,6 +59,30 @@ public sealed class MenuNavigatorTests
     }
 
     [Fact]
+    public async Task SystemTimingAppliesWhenStepsHaveNoCustomDelay()
+    {
+        var definition = new MenuDefinition(
+            "timed",
+            "Timed",
+            "TV",
+            new MenuDefinitionContext(),
+            [new MenuNode("normal", "Normal"), new MenuNode("settings", "Settings")],
+            [new MenuTransition("open", "normal", "settings", [new MenuOperation("KEY_MENU")], true)],
+            [new MenuAnchor("normal", "Normal", "normal", [new MenuOperation("KEY_RETURN", Repeat: 2)], true)],
+            new MenuTimingProfile(125, 650, 325));
+        var tracker = new MenuStateTracker(definition);
+        var delay = new RecordingDelay();
+        var navigator = new MenuNavigator(definition, tracker, new RecordingTarget(), delay);
+
+        await navigator.ExecuteAnchorAsync("normal");
+        await navigator.ExecutePlanAsync(navigator.Plan("settings"));
+
+        Assert.Equal(
+            [TimeSpan.FromMilliseconds(325), TimeSpan.FromMilliseconds(325), TimeSpan.FromMilliseconds(650)],
+            delay.Delays);
+    }
+
+    [Fact]
     public void ManualUnmodeledNavigationInvalidatesPredictionButVolumeDoesNot()
     {
         var definition = CreateDefinition();

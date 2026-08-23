@@ -186,10 +186,8 @@ public sealed class MenuNavigator
                         operation.Action,
                         cancellationToken)
                     .ConfigureAwait(false);
-                if (operation.DelayAfter is { } delay)
-                {
-                    await _delay.DelayAsync(delay, cancellationToken).ConfigureAwait(false);
-                }
+                var delay = operation.DelayAfter ?? _definition.Timing.GetDelay(operation.Key);
+                await _delay.DelayAsync(delay, cancellationToken).ConfigureAwait(false);
             }
         }
     }

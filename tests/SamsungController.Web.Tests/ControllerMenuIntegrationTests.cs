@@ -90,6 +90,20 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         Assert.Equal("open-settings", candidate.Id);
         Assert.Equal("normal-video", candidate.SourceNodeId);
         Assert.Equal("settings", candidate.TargetNodeId);
+        Assert.Equal(3, candidate.CommandCount);
+        Assert.Collection(
+            candidate.ReplaySteps,
+            step =>
+            {
+                Assert.Equal(600, step.EffectiveDelayMilliseconds);
+                Assert.False(step.HasCustomDelay);
+            },
+            step =>
+            {
+                Assert.Equal(700, step.EffectiveDelayMilliseconds);
+                Assert.True(step.HasCustomDelay);
+            },
+            step => Assert.True(step.HasCustomDelay));
 
         await controller.DeleteMenuAuthoringDraftAsync(
             MenuAuthoringItemKind.Transition,
@@ -98,6 +112,70 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         Assert.Empty(controller.GetMenuAuthoringSnapshot().DraftCandidates);
         var reparsed = await new MenuDefinitionParser().ParseFileAsync(definitionPath);
         Assert.Empty(reparsed.Transitions);
+    }
+
+    [Fact]
+    public async Task SystemTimingAndPerButtonOverridesArePersistedToDraftYaml()
+    {
+        Directory.CreateDirectory(_directory);
+        var definitionPath = Path.Combine(_directory, "timed-menu.yaml");
+        await File.WriteAllTextAsync(definitionPath, DraftMenuYaml);
+        await WriteSettingsAsync(definitionPath);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+
+        await controller.UpdateMenuAuthoringTimingAsync(
+            MenuAuthoringItemKind.Transition,
+            "open-settings",
+            new MenuTimingProfile(175, 650, 325),
+            [
+                new MenuAuthoringReplayStepUpdate(1, false, 600),
+                new MenuAuthoringReplayStepUpdate(2, false, 700),
+                new MenuAuthoringReplayStepUpdate(3, true, 900)
+            ]);
+
+        var reparsed = await new MenuDefinitionParser().ParseFileAsync(definitionPath);
+        Assert.Equal(new MenuTimingProfile(175, 650, 325), reparsed.Timing);
+        var operations = reparsed.Transitions["open-settings"].Operations;
+        Assert.Collection(
+            operations,
+            operation =>
+            {
+                Assert.Equal("KEY_MENU", operation.Key);
+                Assert.Null(operation.DelayAfter);
+            },
+            operation =>
+            {
+                Assert.Equal("KEY_DOWN", operation.Key);
+                Assert.Null(operation.DelayAfter);
+            },
+            operation =>
+            {
+                Assert.Equal("KEY_DOWN", operation.Key);
+                Assert.Equal(TimeSpan.FromMilliseconds(900), operation.DelayAfter);
+            });
+
+        var snapshot = controller.GetMenuAuthoringSnapshot();
+        Assert.Equal(new MenuTimingProfile(175, 650, 325), snapshot.Timing);
+        Assert.Equal(0, snapshot.ValidationPasses);
+        Assert.Contains("validation restarted", snapshot.Status, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SystemTimingCanBeSavedWithoutChangingButtonOverrides()
+    {
+        Directory.CreateDirectory(_directory);
+        var definitionPath = Path.Combine(_directory, "timing-only.yaml");
+        await File.WriteAllTextAsync(definitionPath, DraftMenuYaml);
+        await WriteSettingsAsync(definitionPath);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+
+        await controller.UpdateMenuTimingProfileAsync(new MenuTimingProfile(225, 750, 400));
+
+        var reparsed = await new MenuDefinitionParser().ParseFileAsync(definitionPath);
+        Assert.Equal(new MenuTimingProfile(225, 750, 400), reparsed.Timing);
+        Assert.Equal(TimeSpan.FromMilliseconds(700), reparsed.Transitions["open-settings"].Operations[1].DelayAfter);
     }
 
     private SamsungControllerService CreateController()
@@ -131,6 +209,10 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         id: test
         name: Test Menu
         model: Test TV
+        timing:
+          defaultDelay: 125ms
+          screenChangeDelay: 600ms
+          returnDelay: 300ms
         nodes:
           - id: normal-video
             label: Normal video
@@ -149,6 +231,10 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         id: draft-test
         name: Draft Test Menu
         model: Test TV
+        timing:
+          defaultDelay: 125ms
+          screenChangeDelay: 600ms
+          returnDelay: 300ms
         nodes:
           - id: normal-video
             label: Normal video
@@ -168,6 +254,8 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             verified: false
             steps:
               - key: KEY_MENU
-                delay: 600ms
+              - key: KEY_DOWN
+                repeat: 2
+                delay: 700ms
         """;
 }

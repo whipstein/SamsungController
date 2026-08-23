@@ -9,6 +9,11 @@ context:
   pictureMode: Filmmaker Mode
   input: Home Theater System
 
+timing:
+  defaultDelay: 150ms
+  screenChangeDelay: 500ms
+  returnDelay: 300ms
+
 # Parent relationships organize the navigator tree. They do not imply that an
 # executable route exists; only explicit transitions are eligible for plans.
 nodes:
@@ -87,7 +92,6 @@ anchors:
     steps:
       - key: KEY_MENU
         repeat: 2
-        delay: 500ms
 
 transitions:
   - id: open-settings-overlay
@@ -97,7 +101,6 @@ transitions:
     description: KEY_MENU opened Settings and the open/close traversal passed three out of three times on firmware 1296.
     steps:
       - key: KEY_MENU
-        delay: 500ms
 
   - id: close-settings-overlay
     from: settings-overlay
@@ -106,7 +109,6 @@ transitions:
     description: Return closed Settings and the open/close traversal passed three out of three times on firmware 1296.
     steps:
       - key: KEY_RETURN
-        delay: 300ms
 
   - id: open-picture
     from: settings-overlay
@@ -115,9 +117,7 @@ transitions:
     description: The full route through Picture to Expert Settings passed three out of three times on firmware 1296.
     steps:
       - key: KEY_DOWN
-        delay: 150ms
       - key: KEY_ENTER
-        delay: 500ms
 
   - id: open-expert-settings
     from: picture
@@ -127,9 +127,7 @@ transitions:
     steps:
       - key: KEY_DOWN
         repeat: 4
-        delay: 150ms
       - key: KEY_ENTER
-        delay: 500ms
 
   - id: exit-expert-settings
     from: expert-settings
@@ -139,4 +137,3 @@ transitions:
     steps:
       - key: KEY_MENU
         repeat: 2
-        delay: 500ms

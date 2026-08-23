@@ -1,3 +1,4 @@
+using SamsungController.Automation.Navigation;
 using SamsungController.Core.Protocol;
 using SamsungController.Web.Services;
 
@@ -16,8 +17,8 @@ public sealed class MenuTraversalRecorderTests
             "picture",
             "expert",
             null,
-            null,
-            450));
+            null),
+            new MenuTimingProfile(450, 600, 350));
 
         recorder.Record("KEY_DOWN", RemoteKeyAction.Click);
         recorder.Record("KEY_DOWN", RemoteKeyAction.Click);
@@ -31,17 +32,19 @@ public sealed class MenuTraversalRecorderTests
             {
                 Assert.Equal("KEY_DOWN", operation.Key);
                 Assert.Equal(2, operation.Repeat);
-                Assert.Equal(TimeSpan.FromMilliseconds(450), operation.DelayAfter);
+                Assert.Null(operation.DelayAfter);
             },
             operation =>
             {
                 Assert.Equal("KEY_ENTER", operation.Key);
-                Assert.Equal(TimeSpan.FromMilliseconds(500), operation.DelayAfter);
+                Assert.Null(operation.DelayAfter);
             });
+        Assert.Equal(TimeSpan.FromMilliseconds(450), recorder.Timing.GetDelay("KEY_DOWN"));
+        Assert.Equal(TimeSpan.FromMilliseconds(600), recorder.Timing.GetDelay("KEY_ENTER"));
     }
 
     [Fact]
-    public void UsesFastDirectionalPacingAndLongerScreenSettling()
+    public void RecordsSystemTimingAsInheritedInsteadOfEmbeddingOverrides()
     {
         var recorder = new MenuTraversalRecorder();
         recorder.Start(new MenuRecordingRequest(
@@ -51,7 +54,8 @@ public sealed class MenuTraversalRecorderTests
             "normal",
             "picture",
             null,
-            null));
+            null),
+            new MenuTimingProfile());
 
         recorder.Record("KEY_MENU", RemoteKeyAction.Click);
         recorder.Record("KEY_DOWN", RemoteKeyAction.Click);
@@ -60,10 +64,10 @@ public sealed class MenuTraversalRecorderTests
 
         Assert.Collection(
             recorder.Operations,
-            operation => Assert.Equal(TimeSpan.FromMilliseconds(500), operation.DelayAfter),
-            operation => Assert.Equal(TimeSpan.FromMilliseconds(150), operation.DelayAfter),
-            operation => Assert.Equal(TimeSpan.FromMilliseconds(500), operation.DelayAfter),
-            operation => Assert.Equal(TimeSpan.FromMilliseconds(300), operation.DelayAfter));
+            operation => Assert.Null(operation.DelayAfter),
+            operation => Assert.Null(operation.DelayAfter),
+            operation => Assert.Null(operation.DelayAfter),
+            operation => Assert.Null(operation.DelayAfter));
     }
 
     [Fact]
@@ -77,7 +81,8 @@ public sealed class MenuTraversalRecorderTests
             null,
             "normal-video",
             null,
-            null));
+            null),
+            new MenuTimingProfile());
         recorder.Record("KEY_RETURN", RemoteKeyAction.Click);
         recorder.Record("KEY_RETURN", RemoteKeyAction.Click);
 

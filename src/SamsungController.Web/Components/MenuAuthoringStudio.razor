@@ -108,10 +108,6 @@
                             </select>
                         </label>
                     }
-                    <label>
-                        <span>D-pad replay delay</span>
-                        <div class="number-with-unit"><input type="number" min="50" max="30000" step="50" @bind="ReplayDelayMilliseconds" disabled="@Authoring.IsRecording" /><b>ms</b></div>
-                    </label>
                 </div>
 
                 @if (!Authoring.IsRecording)
@@ -125,7 +121,7 @@
                             Start live recording <span>●</span>
                         </button>
                     </div>
-                    <p class="field-note">D-pad keys use the selected pace. Menu, OK, Home, Exit, and Source wait at least 500ms for the screen; Return waits at least 300ms. Reusing a draft ID replaces it; verified items are protected.</p>
+                    <p class="field-note">New recordings inherit the system-wide timing profile below. Reusing a draft ID replaces it; verified items are protected.</p>
                 }
                 else
                 {
@@ -185,8 +181,34 @@
             </div>
         </div>
 
+        <div class="timing-profile-lab">
+            <div class="authoring-section-title"><span>04</span><strong>System-wide timing</strong></div>
+            <div class="timing-profile-layout">
+                <div>
+                    <strong>One profile for every menu route.</strong>
+                    <p>These waits apply throughout this TV interface. A button can override its system wait inside a draft's timing lab.</p>
+                </div>
+                <div class="timing-profile-fields">
+                    <label>
+                        <span>Default / D-pad</span>
+                        <div class="number-with-unit"><input type="number" min="50" max="30000" step="50" @bind="DefaultDelayMilliseconds" @bind:after="MarkTimingProfileDirty" disabled="@(Authoring.IsRecording || Navigation.IsRunning)" /><b>ms</b></div>
+                    </label>
+                    <label>
+                        <span>Screen change</span>
+                        <div class="number-with-unit"><input type="number" min="50" max="30000" step="50" @bind="ScreenChangeDelayMilliseconds" @bind:after="MarkTimingProfileDirty" disabled="@(Authoring.IsRecording || Navigation.IsRunning)" /><b>ms</b></div>
+                    </label>
+                    <label>
+                        <span>Return</span>
+                        <div class="number-with-unit"><input type="number" min="50" max="30000" step="50" @bind="ReturnDelayMilliseconds" @bind:after="MarkTimingProfileDirty" disabled="@(Authoring.IsRecording || Navigation.IsRunning)" /><b>ms</b></div>
+                    </label>
+                </div>
+                <button class="secondary-action" @onclick="SaveSystemTimingAsync" disabled="@(!CanSaveSystemTiming)">Save system profile</button>
+            </div>
+            <p class="field-note">Screen change covers Menu, OK, Home, Exit, and Source. Saving a changed profile resets draft validation evidence; use “Save + replay” below to evaluate it visually.</p>
+        </div>
+
         <div class="validation-studio">
-            <div class="authoring-section-title"><span>04</span><strong>Replay and validate drafts</strong></div>
+            <div class="authoring-section-title"><span>05</span><strong>Timing lab and visual validation</strong></div>
             @if (Authoring.DraftCandidates.Count == 0)
             {
                 <div class="capture-empty compact">No draft anchors or transitions are waiting for validation.</div>
@@ -209,9 +231,43 @@
                                     <b>@Authoring.ValidationPasses/@Authoring.RequiredValidationPasses passed</b>
                                 }
                                 <button class="secondary-action" @onclick="() => PrepareRerecord(candidate)" disabled="@(Authoring.IsRecording || Navigation.IsRunning)">Re-record</button>
+                                <button class="secondary-action" @onclick="() => ToggleTimingEditor(candidate)" disabled="@(Authoring.IsRecording || Navigation.IsRunning)">@(IsTimingEditorOpen(candidate) ? "Close timing" : "Timing lab")</button>
                                 <button class="secondary-action" @onclick="() => RunValidationAsync(candidate)" disabled="@(!CanRunValidation || Authoring.AwaitingValidationConfirmation)">Replay test</button>
                                 <button class="secondary-action danger-action" @onclick="() => DeleteDraftAsync(candidate)" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">Delete</button>
                             </div>
+                            @if (IsTimingEditorOpen(candidate))
+                            {
+                                <div class="timing-step-editor">
+                                    <header>
+                                        <div><strong>Press-by-press waits</strong><small>Waits occur after the named button. System values follow the profile above.</small></div>
+                                        <div><span>ESTIMATED REPLAY</span><b>@TimingDurationMilliseconds.ToString("N0", CultureInfo.InvariantCulture) ms</b></div>
+                                    </header>
+                                    <div class="timing-step-list">
+                                        @foreach (var step in TimingSteps)
+                                        {
+                                            <div class="timing-step-row">
+                                                <b>@step.Position.ToString("00", CultureInfo.InvariantCulture)</b>
+                                                <code>@step.Key</code>
+                                                <small>@step.Action</small>
+                                                <label class="timing-override-toggle"><input type="checkbox" @bind="step.UseCustomDelay" /><span>Custom</span></label>
+                                                @if (step.UseCustomDelay)
+                                                {
+                                                    <div class="number-with-unit timing-step-input"><input type="number" min="50" max="30000" step="50" @bind="step.DelayAfterMilliseconds" /><b>ms</b></div>
+                                                }
+                                                else
+                                                {
+                                                    <div class="timing-system-wait"><span>System</span><b>@GetSystemDelayMilliseconds(step.Key) ms</b></div>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                    <div class="timing-editor-actions">
+                                        <button class="secondary-action" @onclick="UseSystemTimingForAllSteps" disabled="@IsBusy">Use system for all</button>
+                                        <button class="secondary-action" @onclick="() => SaveCandidateTimingAsync(candidate)" disabled="@(!CanSaveCandidateTiming)">Save to YAML</button>
+                                        <button class="primary-action" @onclick="() => SaveAndReplayTimingAsync(candidate)" disabled="@(!CanSaveAndReplayTiming)">Save + replay <span>▶</span></button>
+                                    </div>
+                                </div>
+                            }
                         </article>
                     }
                 </div>
@@ -221,7 +277,7 @@
             {
                 <div class="validation-confirmation">
                     <div><span>VISUAL CONFIRMATION REQUIRED</span><strong>Did the TV reach @Authoring.ExpectedTargetPath?</strong></div>
-                    <button class="secondary-action danger-action" @onclick="() => ConfirmValidationAsync(false)" disabled="@IsBusy">No — reset count</button>
+                    <button class="secondary-action danger-action" @onclick="() => ConfirmValidationAsync(false)" disabled="@IsBusy">No — adjust timing</button>
                     <button class="primary-action" @onclick="() => ConfirmValidationAsync(true)" disabled="@IsBusy">Yes — count pass <span>✓</span></button>
                 </div>
             }
@@ -244,9 +300,17 @@
     private string NewTargetId { get; set; } = NewNodeDefaultId;
     private string NewTargetLabel { get; set; } = "New menu node";
     private string NewTargetParentId { get; set; } = string.Empty;
-    private int ReplayDelayMilliseconds { get; set; } = 150;
     private string CustomKey { get; set; } = "KEY_SOURCE";
     private RemoteKeyAction CustomAction { get; set; } = RemoteKeyAction.Click;
+    private int DefaultDelayMilliseconds { get; set; } = 150;
+    private int ScreenChangeDelayMilliseconds { get; set; } = 500;
+    private int ReturnDelayMilliseconds { get; set; } = 300;
+    private bool TimingProfileInitialized { get; set; }
+    private bool TimingProfileDirty { get; set; }
+    private MenuTimingProfile? LastObservedTiming { get; set; }
+    private MenuAuthoringItemKind? TimingEditorKind { get; set; }
+    private string? TimingEditorId { get; set; }
+    private List<TimingStepEdit> TimingSteps { get; } = [];
     private bool ShowDefinitionForm { get; set; }
     private bool IsBusy { get; set; }
     private bool IsSendingKey { get; set; }
@@ -270,6 +334,20 @@
     private bool CanPrepareSource => RecordingKind == MenuAuthoringItemKind.Transition && IsConnected && !IsBusy &&
         !Authoring.IsRecording && !Navigation.IsRunning && !Snapshot.MacroRunning && !string.IsNullOrWhiteSpace(SourceNodeId);
     private bool CanRunValidation => IsConnected && !IsBusy && !Authoring.IsRecording && !Navigation.IsRunning && !Snapshot.MacroRunning;
+    private bool TimingProfileValid => IsValidWait(DefaultDelayMilliseconds)
+        && IsValidWait(ScreenChangeDelayMilliseconds)
+        && IsValidWait(ReturnDelayMilliseconds);
+    private bool TimingOverridesValid => TimingSteps.All(step =>
+        !step.UseCustomDelay || IsValidWait(step.DelayAfterMilliseconds));
+    private bool CanSaveSystemTiming => TimingProfileValid && !IsBusy && !Authoring.IsRecording
+        && !Navigation.IsRunning && !Snapshot.MacroRunning && !Authoring.AwaitingValidationConfirmation;
+    private bool CanSaveCandidateTiming => CanSaveSystemTiming && TimingEditorKind is not null
+        && TimingEditorId is not null && TimingSteps.Count > 0 && TimingOverridesValid;
+    private bool CanSaveAndReplayTiming => CanSaveCandidateTiming && CanRunValidation;
+    private long TimingDurationMilliseconds => TimingSteps.Sum(step =>
+        (long)(step.UseCustomDelay
+            ? step.DelayAfterMilliseconds
+            : GetSystemDelayMilliseconds(step.Key)));
 
     protected override async Task OnInitializedAsync()
     {
@@ -317,8 +395,7 @@
                 RecordingKind == MenuAuthoringItemKind.Transition ? SourceNodeId : null,
                 targetId,
                 CreateNewTarget ? NewTargetLabel : null,
-                CreateNewTarget ? NewTargetParentId : null,
-                ReplayDelayMilliseconds));
+                CreateNewTarget ? NewTargetParentId : null));
         }
         catch (Exception exception)
         {
@@ -354,6 +431,73 @@
     private Task RunValidationAsync(MenuAuthoringCandidateSummary candidate) =>
         RunBusyAsync(() => Controller.RunMenuAuthoringValidationAsync(candidate.Kind, candidate.Id));
 
+    private Task SaveSystemTimingAsync() => RunBusyAsync(async () =>
+    {
+        await Controller.UpdateMenuTimingProfileAsync(CreateTimingProfile());
+        TimingProfileDirty = false;
+        Refresh();
+    });
+
+    private void MarkTimingProfileDirty() => TimingProfileDirty = true;
+
+    private void ToggleTimingEditor(MenuAuthoringCandidateSummary candidate)
+    {
+        LocalError = null;
+        if (IsTimingEditorOpen(candidate))
+        {
+            CloseTimingEditor();
+            return;
+        }
+
+        TimingEditorKind = candidate.Kind;
+        TimingEditorId = candidate.Id;
+        LoadTimingSteps(candidate);
+    }
+
+    private bool IsTimingEditorOpen(MenuAuthoringCandidateSummary candidate) =>
+        TimingEditorKind == candidate.Kind
+        && string.Equals(TimingEditorId, candidate.Id, StringComparison.OrdinalIgnoreCase);
+
+    private void UseSystemTimingForAllSteps()
+    {
+        foreach (var step in TimingSteps)
+        {
+            step.UseCustomDelay = false;
+        }
+    }
+
+    private Task SaveCandidateTimingAsync(MenuAuthoringCandidateSummary candidate) =>
+        SaveCandidateTimingCoreAsync(candidate, replay: false);
+
+    private Task SaveAndReplayTimingAsync(MenuAuthoringCandidateSummary candidate) =>
+        SaveCandidateTimingCoreAsync(candidate, replay: true);
+
+    private Task SaveCandidateTimingCoreAsync(
+        MenuAuthoringCandidateSummary candidate,
+        bool replay) =>
+        RunBusyAsync(async () =>
+        {
+            await Controller.UpdateMenuAuthoringTimingAsync(
+                candidate.Kind,
+                candidate.Id,
+                CreateTimingProfile(),
+                TimingSteps.Select(step => new MenuAuthoringReplayStepUpdate(
+                        step.Position,
+                        step.UseCustomDelay,
+                        step.DelayAfterMilliseconds))
+                    .ToArray());
+            TimingProfileDirty = false;
+            Refresh();
+            var refreshed = Authoring.DraftCandidates.First(item =>
+                item.Kind == candidate.Kind
+                && item.Id.Equals(candidate.Id, StringComparison.OrdinalIgnoreCase));
+            LoadTimingSteps(refreshed);
+            if (replay)
+            {
+                await Controller.RunMenuAuthoringValidationAsync(candidate.Kind, candidate.Id);
+            }
+        });
+
     private void PrepareRerecord(MenuAuthoringCandidateSummary candidate)
     {
         LocalError = null;
@@ -363,7 +507,6 @@
         SourceNodeId = candidate.SourceNodeId ?? SourceNodeId;
         ExistingTargetId = candidate.TargetNodeId;
         CreateNewTarget = false;
-        ReplayDelayMilliseconds = candidate.ReplayDelayMilliseconds;
     }
 
     private Task DeleteDraftAsync(MenuAuthoringCandidateSummary candidate) =>
@@ -404,7 +547,49 @@
     {
         Snapshot = Controller.GetSnapshot();
         Navigation = Controller.GetMenuNavigationSnapshot();
-        Authoring = Controller.GetMenuAuthoringSnapshot();
+        var authoring = Controller.GetMenuAuthoringSnapshot();
+        if (!TimingProfileInitialized
+            || (!TimingProfileDirty && authoring.Timing != LastObservedTiming))
+        {
+            DefaultDelayMilliseconds = authoring.Timing.DefaultDelayMilliseconds;
+            ScreenChangeDelayMilliseconds = authoring.Timing.ScreenChangeDelayMilliseconds;
+            ReturnDelayMilliseconds = authoring.Timing.ReturnDelayMilliseconds;
+            TimingProfileInitialized = true;
+        }
+
+        LastObservedTiming = authoring.Timing;
+        Authoring = authoring;
+        if (TimingEditorId is not null
+            && Authoring.DraftCandidates.All(candidate =>
+                candidate.Kind != TimingEditorKind
+                || !candidate.Id.Equals(TimingEditorId, StringComparison.OrdinalIgnoreCase)))
+        {
+            CloseTimingEditor();
+        }
+    }
+
+    private MenuTimingProfile CreateTimingProfile() => new(
+        DefaultDelayMilliseconds,
+        ScreenChangeDelayMilliseconds,
+        ReturnDelayMilliseconds);
+
+    private int GetSystemDelayMilliseconds(string key) => checked((int)
+        CreateTimingProfile().GetDelay(key).TotalMilliseconds);
+
+    private static bool IsValidWait(int milliseconds) =>
+        milliseconds is >= 50 and <= 30_000;
+
+    private void LoadTimingSteps(MenuAuthoringCandidateSummary candidate)
+    {
+        TimingSteps.Clear();
+        TimingSteps.AddRange(candidate.ReplaySteps.Select(step => new TimingStepEdit(step)));
+    }
+
+    private void CloseTimingEditor()
+    {
+        TimingEditorKind = null;
+        TimingEditorId = null;
+        TimingSteps.Clear();
     }
 
     private void InitializeNodeDefaults(bool force = false)
@@ -435,5 +620,18 @@
     public void Dispose()
     {
         Controller.Changed -= HandleControllerChanged;
+    }
+
+    private sealed class TimingStepEdit(MenuAuthoringReplayStepSummary step)
+    {
+        public int Position { get; } = step.Position;
+
+        public string Key { get; } = step.Key;
+
+        public RemoteKeyAction Action { get; } = step.Action;
+
+        public bool UseCustomDelay { get; set; } = step.HasCustomDelay;
+
+        public int DelayAfterMilliseconds { get; set; } = step.EffectiveDelayMilliseconds;
     }
 }

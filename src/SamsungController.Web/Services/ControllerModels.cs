@@ -95,14 +95,26 @@ public sealed record MenuRecordingRequest(
     string? SourceNodeId,
     string TargetNodeId,
     string? NewTargetLabel,
-    string? NewTargetParentId,
-    int ReplayDelayMilliseconds = 150);
+    string? NewTargetParentId);
 
 public sealed record MenuRecordedStepSummary(
     string Key,
     RemoteKeyAction Action,
     int Repeat,
     TimeSpan DelayAfter);
+
+public sealed record MenuAuthoringReplayStepSummary(
+    int Position,
+    string Key,
+    RemoteKeyAction Action,
+    int EffectiveDelayMilliseconds,
+    int SystemDelayMilliseconds,
+    bool HasCustomDelay);
+
+public sealed record MenuAuthoringReplayStepUpdate(
+    int Position,
+    bool UseCustomDelay,
+    int DelayAfterMilliseconds);
 
 public sealed record MenuAuthoringCandidateSummary(
     MenuAuthoringItemKind Kind,
@@ -113,7 +125,7 @@ public sealed record MenuAuthoringCandidateSummary(
     string? SourcePath,
     string TargetPath,
     int CommandCount,
-    int ReplayDelayMilliseconds);
+    IReadOnlyList<MenuAuthoringReplayStepSummary> ReplaySteps);
 
 public sealed record MenuAuthoringSnapshot(
     bool IsRecording,
@@ -124,6 +136,7 @@ public sealed record MenuAuthoringSnapshot(
     string? TargetNodeId,
     IReadOnlyList<MenuRecordedStepSummary> RecordedSteps,
     int RecordedCommandCount,
+    MenuTimingProfile Timing,
     IReadOnlyList<MenuAuthoringCandidateSummary> DraftCandidates,
     MenuAuthoringItemKind? ActiveValidationKind,
     string? ActiveValidationId,

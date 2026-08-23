@@ -22,6 +22,11 @@ public sealed class MenuDefinitionWriter
         AppendScalar(yaml, 2, "pictureMode", definition.Context.PictureMode);
         AppendScalar(yaml, 2, "input", definition.Context.Input);
         yaml.AppendLine();
+        yaml.AppendLine("timing:");
+        AppendDuration(yaml, 2, "defaultDelay", definition.Timing.DefaultDelayMilliseconds);
+        AppendDuration(yaml, 2, "screenChangeDelay", definition.Timing.ScreenChangeDelayMilliseconds);
+        AppendDuration(yaml, 2, "returnDelay", definition.Timing.ReturnDelayMilliseconds);
+        yaml.AppendLine();
         yaml.AppendLine("nodes:");
         foreach (var node in definition.Nodes.Values)
         {
@@ -166,6 +171,17 @@ public sealed class MenuDefinitionWriter
             .Append(name)
             .Append(": ")
             .AppendLine(value.ToString(CultureInfo.InvariantCulture));
+
+    private static void AppendDuration(
+        StringBuilder yaml,
+        int indentation,
+        string name,
+        int milliseconds) =>
+        yaml.Append(' ', indentation)
+            .Append(name)
+            .Append(": ")
+            .Append(milliseconds.ToString(CultureInfo.InvariantCulture))
+            .AppendLine("ms");
 
     private static string Quote(string value) => $"'{value.Replace("'", "''", StringComparison.Ordinal)}'";
 }

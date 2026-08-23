@@ -52,6 +52,11 @@ context:
   pictureMode: any
   input: any
 
+timing:
+  defaultDelay: 150ms
+  screenChangeDelay: 500ms
+  returnDelay: 300ms
+
 nodes:
   - id: normal-video
     label: Normal video
@@ -67,7 +72,6 @@ anchors:
     steps:
       - key: KEY_MENU
         repeat: 2
-        delay: 500ms
 
 transitions:
   - id: open-settings-overlay
@@ -76,7 +80,6 @@ transitions:
     verified: true
     steps:
       - key: KEY_MENU
-        delay: 500ms
 ```
 
 Parent relationships on nodes control tree presentation only. They do not imply
@@ -90,8 +93,13 @@ Supported key-step fields are:
 - key: KEY_RIGHT
   action: Click       # Click, Press, or Release
   repeat: 2           # 1..100
-  delay: 150ms        # delay after each send; ms or s
+  delay: 250ms        # optional override of system timing; ms or s
 ```
+
+The `timing` profile is system-wide for the menu definition. `defaultDelay`
+applies to D-pad and custom keys, `screenChangeDelay` applies to Menu, OK,
+Home, Exit, and Source, and `returnDelay` applies to Return. A step-level
+`delay` is an explicit per-button override.
 
 Unknown YAML fields, missing node references, parent cycles, invalid actions,
 unsafe repeat counts, and excessive delays fail validation before any command
@@ -108,15 +116,15 @@ can be planned or sent.
    target node, and start live recording. For a transition, **Prepare source**
    uses a verified anchor and verified routes to position the TV first.
 5. Use the embedded remote. Every successfully sent button controls the TV and
-   is captured; failed sends are not recorded. The selected D-pad delay controls
-   directional replay pacing. Screen-changing keys retain longer settling times
-   (at least 500 ms for Menu/OK/Home/Exit/Source and 300 ms for Return).
+   is captured; failed sends are not recorded. The system timing profile supplies
+   waits unless a button has a custom override in the timing lab.
 6. Stop the recording. The UI atomically adds it to the active YAML as a draft.
-7. Under **Replay and validate drafts**, run the draft. Transition validation
-   first executes a verified anchor and verified route to its source, then sends
-   the recorded buttons. That reset happens before every validation attempt, so
-   replay never depends on the menu position left behind by recording or by the
-   previous attempt.
+7. Open the draft's **Timing lab**. Edit the system-wide profile, enable custom
+   waits only for exceptional button presses, then choose **Save + replay**.
+   Transition validation first executes a verified anchor and verified route to
+   its source, then sends the recorded buttons. That reset happens before every
+   validation attempt, so replay never depends on the menu position left behind
+   by recording or by the previous attempt.
 8. Visually confirm the target after every run. Three confirmed passes update
    the same YAML entry to `verified: true`; a failed confirmation resets the
    count to zero.
