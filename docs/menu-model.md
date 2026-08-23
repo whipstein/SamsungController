@@ -117,7 +117,9 @@ can be planned or sent.
    directory and loaded automatically.
 4. Choose **Anchor** or **Transition**, select existing nodes or describe a new
    target node, and start live recording. For a transition, **Prepare source**
-   uses a verified anchor and verified routes to position the TV first.
+   uses a verified anchor and verified routes to position the TV first. The UI
+   derives the transition's internal YAML identifier from its target control;
+   selecting the same source and target again automatically replaces that draft.
 5. Use the embedded remote. Every successfully sent button controls the TV and
    is captured; failed sends are not recorded. The system timing profile supplies
    waits unless a button has a custom override in the timing lab.

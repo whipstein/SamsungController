@@ -95,7 +95,91 @@ public sealed record MenuRecordingRequest(
     string? SourceNodeId,
     string TargetNodeId,
     string? NewTargetLabel,
-    string? NewTargetParentId);
+    string? NewTargetParentId)
+{
+    public MenuRecordingRequest ResolveIdentity(MenuDefinition definition)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        if (Kind != MenuAuthoringItemKind.Transition)
+        {
+            return this;
+        }
+
+        if (string.IsNullOrWhiteSpace(SourceNodeId))
+        {
+            throw new InvalidOperationException("Choose a source control for the traversal recording.");
+        }
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(TargetNodeId);
+        var sourceNodeId = SourceNodeId.Trim();
+        var targetNodeId = TargetNodeId.Trim();
+        var matchingRoutes = definition.Transitions.Values
+            .Where(transition =>
+                transition.FromNodeId.Equals(sourceNodeId, StringComparison.OrdinalIgnoreCase)
+                && transition.ToNodeId.Equals(targetNodeId, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        var matchingDrafts = matchingRoutes
+            .Where(transition => !transition.Verified)
+            .ToArray();
+        if (matchingDrafts.Length > 1)
+        {
+            throw new InvalidOperationException(
+                $"More than one draft traversal already connects '{sourceNodeId}' to '{targetNodeId}'. Remove the duplicate YAML routes before recording this target again.");
+        }
+
+        if (matchingDrafts.Length == 0 && matchingRoutes.Any(transition => transition.Verified))
+        {
+            throw new InvalidOperationException(
+                $"The traversal from '{sourceNodeId}' to '{targetNodeId}' is already verified.");
+        }
+
+        var targetLabel = definition.Nodes.TryGetValue(targetNodeId, out var targetNode)
+            ? targetNode.Label
+            : string.IsNullOrWhiteSpace(NewTargetLabel)
+                ? targetNodeId
+                : NewTargetLabel.Trim();
+        return this with
+        {
+            ItemId = matchingDrafts.Length == 1
+                ? matchingDrafts[0].Id
+                : CreateTransitionId(definition, sourceNodeId, targetNodeId),
+            Label = targetLabel,
+            SourceNodeId = sourceNodeId,
+            TargetNodeId = targetNodeId
+        };
+    }
+
+    private static string CreateTransitionId(
+        MenuDefinition definition,
+        string sourceNodeId,
+        string targetNodeId)
+    {
+        var targetBasedId = $"to-{targetNodeId}";
+        if (IsAvailable(definition, targetBasedId))
+        {
+            return targetBasedId;
+        }
+
+        var routeBasedId = $"{sourceNodeId}-to-{targetNodeId}";
+        if (IsAvailable(definition, routeBasedId))
+        {
+            return routeBasedId;
+        }
+
+        for (var suffix = 2; ; suffix++)
+        {
+            var candidate = $"{routeBasedId}-{suffix}";
+            if (IsAvailable(definition, candidate))
+            {
+                return candidate;
+            }
+        }
+    }
+
+    private static bool IsAvailable(MenuDefinition definition, string itemId) =>
+        !definition.Transitions.ContainsKey(itemId)
+        && !definition.Anchors.ContainsKey(itemId);
+}
 
 public sealed record MenuRecordedStepSummary(
     string Key,

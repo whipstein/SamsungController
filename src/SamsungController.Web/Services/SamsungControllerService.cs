@@ -271,7 +271,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         .Select(transition => new MenuAuthoringCandidateSummary(
                             MenuAuthoringItemKind.Transition,
                             transition.Id,
-                            transition.Id,
+                            definition.GetRequiredNode(transition.ToNodeId).Label,
                             transition.FromNodeId,
                             transition.ToNodeId,
                             definition.GetPath(transition.FromNodeId),
@@ -544,7 +544,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     _navigationError ?? "Create or load a menu definition before recording.");
         }
 
-        var normalized = NormalizeRecordingRequest(request);
+        var normalized = NormalizeRecordingRequest(request).ResolveIdentity(definition);
         ValidateRecordingRequest(definition, normalized);
         lock (_sync)
         {

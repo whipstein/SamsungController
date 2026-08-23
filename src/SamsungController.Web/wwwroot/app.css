@@ -275,6 +275,10 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .authoring-form-grid .wide-field { grid-column: span 2; }
 .authoring-form-grid label > span { font-size: 9px; }
 .authoring-form-grid input, .authoring-form-grid select { padding: 10px 11px; font-size: 10px; }
+.auto-route-identity { display: flex; min-height: 58px; flex-direction: column; justify-content: center; padding: 8px 10px; border: 1px dashed rgba(124,231,220,.22); border-radius: 6px; background: rgba(124,231,220,.035); }
+.auto-route-identity span { color: var(--cyan); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .09em; }
+.auto-route-identity strong { margin-top: 4px; font-size: 10px; }
+.auto-route-identity small { margin-top: 3px; color: var(--muted); font-size: 8px; line-height: 1.4; }
 .authoring-save { margin-top: 15px; }
 .authoring-start-actions { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; margin-top: 15px; }
 .authoring-start-actions > .primary-action:only-child { grid-column: 1 / -1; }

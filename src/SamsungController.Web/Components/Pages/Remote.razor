@@ -19,7 +19,7 @@
 }
 @if (Authoring.IsRecording)
 {
-    <div class="notice recording-notice"><strong>Menu recording active</strong><span>Successful buttons on this page are being added to @Authoring.RecordingId.</span><a href="menu">Authoring studio →</a></div>
+    <div class="notice recording-notice"><strong>Menu recording active</strong><span>Successful buttons on this page are being recorded for @Authoring.RecordingLabel.</span><a href="menu">Authoring studio →</a></div>
 }
 @if (!string.IsNullOrWhiteSpace(ErrorMessage))
 {

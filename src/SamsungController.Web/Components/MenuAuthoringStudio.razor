@@ -61,12 +61,15 @@
                             <option value="@MenuAuthoringItemKind.Anchor">Anchor</option>
                         </select>
                     </label>
-                    <label><span>ID</span><input @bind="RecordingId" disabled="@Authoring.IsRecording" /></label>
-                    <label class="wide-field"><span>Label / intent</span><input @bind="RecordingLabel" disabled="@Authoring.IsRecording" /></label>
-                    @if (RecordingKind == MenuAuthoringItemKind.Transition)
+                    @if (RecordingKind == MenuAuthoringItemKind.Anchor)
+                    {
+                        <label><span>Anchor ID</span><input @bind="RecordingId" disabled="@Authoring.IsRecording" /></label>
+                        <label class="wide-field"><span>Label / intent</span><input @bind="RecordingLabel" disabled="@Authoring.IsRecording" /></label>
+                    }
+                    else
                     {
                         <label>
-                            <span>Source node</span>
+                            <span>Source control</span>
                             <select @bind="SourceNodeId" disabled="@Authoring.IsRecording">
                                 @foreach (var node in Navigation.Nodes)
                                 {
@@ -74,6 +77,11 @@
                                 }
                             </select>
                         </label>
+                        <div class="auto-route-identity wide-field">
+                            <span>AUTOMATIC TRAVERSAL</span>
+                            <strong>Identified by source and target</strong>
+                            <small>An existing draft for the same route is replaced automatically.</small>
+                        </div>
                     }
                     <label>
                         <span>Target</span>
@@ -121,7 +129,7 @@
                             Start live recording <span>●</span>
                         </button>
                     </div>
-                    <p class="field-note">New recordings inherit the system-wide timing profile below. Reusing a draft ID replaces it; verified items are protected.</p>
+                    <p class="field-note">New recordings inherit the system-wide timing profile below. Traversals are matched to their source and target controls automatically; verified routes remain protected.</p>
                 }
                 else
                 {
@@ -334,8 +342,8 @@
     private MenuNavigationSnapshot Navigation { get; set; } = null!;
     private MenuAuthoringSnapshot Authoring { get; set; } = null!;
     private MenuAuthoringItemKind RecordingKind { get; set; } = MenuAuthoringItemKind.Transition;
-    private string RecordingId { get; set; } = "new-transition";
-    private string RecordingLabel { get; set; } = "New menu transition";
+    private string RecordingId { get; set; } = "new-anchor";
+    private string RecordingLabel { get; set; } = "Return to known state";
     private string SourceNodeId { get; set; } = string.Empty;
     private string ExistingTargetId { get; set; } = string.Empty;
     private bool CreateNewTarget { get; set; }
@@ -370,9 +378,12 @@
     private string? ErrorMessage => LocalError ?? Authoring.Error;
     private bool IsConnected => Snapshot.ConnectionState == SamsungConnectionState.Connected;
     private bool CanStartRecording => IsConnected && !IsBusy && !Snapshot.MacroRunning && !Navigation.IsRunning &&
-        !string.IsNullOrWhiteSpace(RecordingId) && !string.IsNullOrWhiteSpace(RecordingLabel) &&
-        !string.IsNullOrWhiteSpace(CreateNewTarget ? NewTargetId : ExistingTargetId) &&
-        (RecordingKind == MenuAuthoringItemKind.Anchor || !string.IsNullOrWhiteSpace(SourceNodeId));
+        (CreateNewTarget
+            ? !string.IsNullOrWhiteSpace(NewTargetId) && !string.IsNullOrWhiteSpace(NewTargetLabel)
+            : !string.IsNullOrWhiteSpace(ExistingTargetId)) &&
+        (RecordingKind == MenuAuthoringItemKind.Transition
+            ? !string.IsNullOrWhiteSpace(SourceNodeId)
+            : !string.IsNullOrWhiteSpace(RecordingId) && !string.IsNullOrWhiteSpace(RecordingLabel));
     private bool RecordButtonsDisabled => !Authoring.IsRecording || !IsConnected || IsSendingKey || Navigation.IsRunning;
     private bool CanPrepareSource => RecordingKind == MenuAuthoringItemKind.Transition && IsConnected && !IsBusy &&
         !Authoring.IsRecording && !Navigation.IsRunning && !Snapshot.MacroRunning && !string.IsNullOrWhiteSpace(SourceNodeId);
@@ -442,8 +453,8 @@
             var targetId = CreateNewTarget ? NewTargetId : ExistingTargetId;
             Controller.StartMenuRecording(new MenuRecordingRequest(
                 RecordingKind,
-                RecordingId,
-                RecordingLabel,
+                RecordingKind == MenuAuthoringItemKind.Anchor ? RecordingId : string.Empty,
+                RecordingKind == MenuAuthoringItemKind.Anchor ? RecordingLabel : GetTargetLabel(targetId),
                 RecordingKind == MenuAuthoringItemKind.Transition ? SourceNodeId : null,
                 targetId,
                 CreateNewTarget ? NewTargetLabel : null,
@@ -563,8 +574,12 @@
     {
         LocalError = null;
         RecordingKind = candidate.Kind;
-        RecordingId = candidate.Id;
-        RecordingLabel = candidate.Label;
+        if (candidate.Kind == MenuAuthoringItemKind.Anchor)
+        {
+            RecordingId = candidate.Id;
+            RecordingLabel = candidate.Label;
+        }
+
         SourceNodeId = candidate.SourceNodeId ?? SourceNodeId;
         ExistingTargetId = candidate.TargetNodeId;
         CreateNewTarget = false;
@@ -689,6 +704,12 @@
             NewTargetParentId = SourceNodeId;
         }
     }
+
+    private string GetTargetLabel(string targetId) => CreateNewTarget
+        ? NewTargetLabel
+        : Navigation.Nodes.FirstOrDefault(node =>
+            node.Id.Equals(targetId, StringComparison.OrdinalIgnoreCase))?.Label
+          ?? targetId;
 
     public void Dispose()
     {

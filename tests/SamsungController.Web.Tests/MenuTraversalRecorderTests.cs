@@ -7,6 +7,83 @@ namespace SamsungController.Web.Tests;
 public sealed class MenuTraversalRecorderTests
 {
     [Fact]
+    public void TransitionIdentityReusesDraftWithTheSameSourceAndTarget()
+    {
+        var definition = CreateDefinition([
+            new MenuTransition(
+                "legacy-open-settings",
+                "normal-video",
+                "settings",
+                [new MenuOperation("KEY_MENU")])
+        ]);
+        var request = new MenuRecordingRequest(
+            MenuAuthoringItemKind.Transition,
+            "new-transition",
+            "Ignored transition intent",
+            "normal-video",
+            "settings",
+            null,
+            null);
+
+        var resolved = request.ResolveIdentity(definition);
+
+        Assert.Equal("legacy-open-settings", resolved.ItemId);
+        Assert.Equal("Settings", resolved.Label);
+    }
+
+    [Fact]
+    public void TransitionIdentityIgnoresAnExistingUnrelatedDefaultId()
+    {
+        var definition = CreateDefinition([
+            new MenuTransition(
+                "new-transition",
+                "settings",
+                "normal-video",
+                [new MenuOperation("KEY_RETURN")])
+        ]);
+        var request = new MenuRecordingRequest(
+            MenuAuthoringItemKind.Transition,
+            string.Empty,
+            string.Empty,
+            "normal-video",
+            "settings",
+            null,
+            null);
+
+        var resolved = request.ResolveIdentity(definition);
+
+        Assert.Equal("to-settings", resolved.ItemId);
+        Assert.Equal("Settings", resolved.Label);
+    }
+
+    [Fact]
+    public void VerifiedRouteIsProtectedByItsSourceAndTargetInsteadOfItsId()
+    {
+        var definition = CreateDefinition([
+            new MenuTransition(
+                "open-settings",
+                "normal-video",
+                "settings",
+                [new MenuOperation("KEY_MENU")],
+                Verified: true)
+        ]);
+        var request = new MenuRecordingRequest(
+            MenuAuthoringItemKind.Transition,
+            "unrelated-id",
+            string.Empty,
+            "normal-video",
+            "settings",
+            null,
+            null);
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => request.ResolveIdentity(definition));
+
+        Assert.Contains("already verified", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("unrelated-id", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void CapturesSuccessfulButtonOrderAndCoalescesRepeats()
     {
         var recorder = new MenuTraversalRecorder();
@@ -90,4 +167,17 @@ public sealed class MenuTraversalRecorderTests
 
         Assert.Equal(1, Assert.Single(recorder.Operations).Repeat);
     }
+
+    private static MenuDefinition CreateDefinition(IReadOnlyList<MenuTransition> transitions) =>
+        new(
+            "recording-test",
+            "Recording Test",
+            "Test TV",
+            new MenuDefinitionContext(),
+            [
+                new MenuNode("normal-video", "Normal video"),
+                new MenuNode("settings", "Settings")
+            ],
+            transitions,
+            []);
 }
