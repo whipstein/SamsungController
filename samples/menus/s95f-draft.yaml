@@ -13,6 +13,7 @@ timing:
   defaultDelay: 150ms
   screenChangeDelay: 500ms
   returnDelay: 300ms
+  verified: false
 
 # Parent relationships organize the navigator tree. They do not imply that an
 # executable route exists; only explicit transitions are eligible for plans.

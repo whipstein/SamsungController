@@ -48,6 +48,30 @@ public sealed class MenuDefinitionParserTests
     }
 
     [Fact]
+    public void ParsesPersistedSystemTimingVerification()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: timing-test
+            name: Timing Test
+            model: Test TV
+            timing:
+              defaultDelay: 175ms
+              screenChangeDelay: 650ms
+              returnDelay: 325ms
+              verified: true
+            nodes:
+              - id: normal-video
+                label: Normal video
+            """;
+
+        var definition = new MenuDefinitionParser().Parse(yaml);
+
+        Assert.Equal(new MenuTimingProfile(175, 650, 325, true), definition.Timing);
+    }
+
+    [Fact]
     public async Task BundledS95fDefinitionContainsObservedExpertSettingsRoute()
     {
         var path = Path.Combine(

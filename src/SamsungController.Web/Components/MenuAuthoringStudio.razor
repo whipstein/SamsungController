@@ -182,7 +182,12 @@
         </div>
 
         <div class="timing-profile-lab">
-            <div class="authoring-section-title"><span>04</span><strong>System-wide timing</strong></div>
+            <div class="authoring-section-title timing-profile-title">
+                <span>04</span><strong>System-wide timing</strong>
+                <b class="timing-profile-state @(SystemTimingIsVerified ? "verified" : "unverified")">
+                    @(SystemTimingIsVerified ? "VERIFIED" : "NEEDS VALIDATION")
+                </b>
+            </div>
             <div class="timing-profile-layout">
                 <div>
                     <strong>One profile for every menu route.</strong>
@@ -202,9 +207,46 @@
                         <div class="number-with-unit"><input type="number" min="50" max="30000" step="50" @bind="ReturnDelayMilliseconds" @bind:after="MarkTimingProfileDirty" disabled="@(Authoring.IsRecording || Navigation.IsRunning)" /><b>ms</b></div>
                     </label>
                 </div>
-                <button class="secondary-action" @onclick="SaveSystemTimingAsync" disabled="@(!CanSaveSystemTiming)">Save system profile</button>
+                <div class="timing-profile-actions">
+                    <button class="secondary-action" @onclick="SaveSystemTimingAsync" disabled="@(!CanSaveSystemTiming)">Save system profile</button>
+                </div>
             </div>
-            <p class="field-note">Screen change covers Menu, OK, Home, Exit, and Source. Saving a changed profile resets draft validation evidence; use “Save + replay” below to evaluate it visually.</p>
+            <div class="timing-profile-test">
+                <label>
+                    <span>VALIDATION TRAVERSAL</span>
+                    <select @bind="SelectedTimingTestRouteId" disabled="@(IsBusy || Authoring.AwaitingTimingValidationConfirmation)">
+                        <option value="">Select a traversal</option>
+                        @foreach (var route in Authoring.TimingTestRoutes)
+                        {
+                            <option value="@route.Id">@route.SourcePath → @route.TargetPath · @route.CommandCount commands</option>
+                        }
+                    </select>
+                </label>
+                <div class="timing-profile-test-score">
+                    <span>SYSTEM PROFILE</span>
+                    <b>@Authoring.TimingValidationPasses/@Authoring.RequiredTimingValidationPasses passed</b>
+                </div>
+                <button class="primary-action" @onclick="TestSystemTimingAsync" disabled="@(!CanTestSystemTiming)">
+                    Test system profile <span>▶</span>
+                </button>
+            </div>
+            @if (Authoring.TimingTestRoutes.Count == 0)
+            {
+                <p class="field-note">Create a verified anchor and a reachable traversal before testing the system profile.</p>
+            }
+            else
+            {
+                <p class="field-note">The test saves these values, returns to a known starting point, and replays the selected traversal using only system waits. Screen change covers Menu, OK, Home, Exit, and Source.</p>
+            }
+
+            @if (Authoring.AwaitingTimingValidationConfirmation)
+            {
+                <div class="validation-confirmation timing-validation-confirmation">
+                    <div><span>SYSTEM TIMING CONFIRMATION</span><strong>Did the TV reach @Authoring.TimingValidationExpectedTargetPath?</strong></div>
+                    <button class="secondary-action danger-action" @onclick="() => ConfirmSystemTimingAsync(false)" disabled="@IsBusy">No — reset passes</button>
+                    <button class="primary-action" @onclick="() => ConfirmSystemTimingAsync(true)" disabled="@IsBusy">Yes — count pass <span>✓</span></button>
+                </div>
+            }
         </div>
 
         <div class="validation-studio">
@@ -305,6 +347,7 @@
     private int DefaultDelayMilliseconds { get; set; } = 150;
     private int ScreenChangeDelayMilliseconds { get; set; } = 500;
     private int ReturnDelayMilliseconds { get; set; } = 300;
+    private string SelectedTimingTestRouteId { get; set; } = string.Empty;
     private bool TimingProfileInitialized { get; set; }
     private bool TimingProfileDirty { get; set; }
     private MenuTimingProfile? LastObservedTiming { get; set; }
@@ -333,14 +376,23 @@
     private bool RecordButtonsDisabled => !Authoring.IsRecording || !IsConnected || IsSendingKey || Navigation.IsRunning;
     private bool CanPrepareSource => RecordingKind == MenuAuthoringItemKind.Transition && IsConnected && !IsBusy &&
         !Authoring.IsRecording && !Navigation.IsRunning && !Snapshot.MacroRunning && !string.IsNullOrWhiteSpace(SourceNodeId);
-    private bool CanRunValidation => IsConnected && !IsBusy && !Authoring.IsRecording && !Navigation.IsRunning && !Snapshot.MacroRunning;
+    private bool CanRunValidation => IsConnected && !IsBusy && !Authoring.IsRecording && !Navigation.IsRunning
+        && !Snapshot.MacroRunning && !Authoring.AwaitingTimingValidationConfirmation;
     private bool TimingProfileValid => IsValidWait(DefaultDelayMilliseconds)
         && IsValidWait(ScreenChangeDelayMilliseconds)
         && IsValidWait(ReturnDelayMilliseconds);
     private bool TimingOverridesValid => TimingSteps.All(step =>
         !step.UseCustomDelay || IsValidWait(step.DelayAfterMilliseconds));
     private bool CanSaveSystemTiming => TimingProfileValid && !IsBusy && !Authoring.IsRecording
-        && !Navigation.IsRunning && !Snapshot.MacroRunning && !Authoring.AwaitingValidationConfirmation;
+        && !Navigation.IsRunning && !Snapshot.MacroRunning && !Authoring.AwaitingValidationConfirmation
+        && !Authoring.AwaitingTimingValidationConfirmation;
+    private bool CanTestSystemTiming => CanRunValidation && TimingProfileValid
+        && !Authoring.AwaitingValidationConfirmation
+        && Authoring.TimingTestRoutes.Any(route =>
+            route.Id.Equals(SelectedTimingTestRouteId, StringComparison.OrdinalIgnoreCase));
+    private bool SystemTimingIsVerified => !TimingProfileDirty
+        && Authoring.Timing.Verified
+        && Authoring.Timing.HasSameDelays(CreateTimingProfile());
     private bool CanSaveCandidateTiming => CanSaveSystemTiming && TimingEditorKind is not null
         && TimingEditorId is not null && TimingSteps.Count > 0 && TimingOverridesValid;
     private bool CanSaveAndReplayTiming => CanSaveCandidateTiming && CanRunValidation;
@@ -438,6 +490,15 @@
         Refresh();
     });
 
+    private Task TestSystemTimingAsync() => RunBusyAsync(async () =>
+    {
+        await Controller.RunMenuTimingProfileTestAsync(
+            SelectedTimingTestRouteId,
+            CreateTimingProfile());
+        TimingProfileDirty = false;
+        Refresh();
+    });
+
     private void MarkTimingProfileDirty() => TimingProfileDirty = true;
 
     private void ToggleTimingEditor(MenuAuthoringCandidateSummary candidate)
@@ -515,6 +576,9 @@
     private Task ConfirmValidationAsync(bool passed) =>
         RunBusyAsync(() => Controller.ConfirmMenuAuthoringValidationAsync(passed));
 
+    private Task ConfirmSystemTimingAsync(bool passed) =>
+        RunBusyAsync(() => Controller.ConfirmMenuTimingProfileTestAsync(passed));
+
     private async Task RunBusyAsync(Func<Task> action)
     {
         IsBusy = true;
@@ -559,6 +623,15 @@
 
         LastObservedTiming = authoring.Timing;
         Authoring = authoring;
+        if (string.IsNullOrWhiteSpace(SelectedTimingTestRouteId)
+            || Authoring.TimingTestRoutes.All(route =>
+                !route.Id.Equals(SelectedTimingTestRouteId, StringComparison.OrdinalIgnoreCase)))
+        {
+            SelectedTimingTestRouteId = Authoring.ActiveTimingTestRouteId
+                ?? Authoring.TimingTestRoutes.FirstOrDefault()?.Id
+                ?? string.Empty;
+        }
+
         if (TimingEditorId is not null
             && Authoring.DraftCandidates.All(candidate =>
                 candidate.Kind != TimingEditorKind

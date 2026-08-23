@@ -12,7 +12,7 @@ public sealed class MenuDefinitionParser
     private static readonly HashSet<string> ContextFields =
         new(["firmware", "signal", "pictureMode", "input"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> TimingFields =
-        new(["defaultDelay", "screenChangeDelay", "returnDelay"], StringComparer.OrdinalIgnoreCase);
+        new(["defaultDelay", "screenChangeDelay", "returnDelay", "verified"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> NodeFields =
         new(["id", "label", "parent", "description"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> AnchorFields =
@@ -90,7 +90,8 @@ public sealed class MenuDefinitionParser
         return new MenuTimingProfile(
             ParseTimingMilliseconds(fields, "defaultDelay", defaults.DefaultDelayMilliseconds),
             ParseTimingMilliseconds(fields, "screenChangeDelay", defaults.ScreenChangeDelayMilliseconds),
-            ParseTimingMilliseconds(fields, "returnDelay", defaults.ReturnDelayMilliseconds));
+            ParseTimingMilliseconds(fields, "returnDelay", defaults.ReturnDelayMilliseconds),
+            OptionalBoolean(fields, "verified", "timing"));
     }
 
     private static int ParseTimingMilliseconds(

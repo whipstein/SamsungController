@@ -312,6 +312,17 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .timing-profile-fields { display: grid; grid-template-columns: repeat(3, minmax(105px, 1fr)); gap: 9px; }
 .timing-profile-fields label > span { font-size: 8px; }
 .timing-profile-fields input { padding: 10px 35px 10px 10px; font-size: 10px; }
+.timing-profile-title .timing-profile-state { margin-left: auto; padding: 4px 7px; border: 1px solid; border-radius: 999px; font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; }
+.timing-profile-state.verified { color: var(--cyan); border-color: rgba(124,231,220,.28); background: rgba(124,231,220,.07); }
+.timing-profile-state.unverified { color: var(--amber); border-color: rgba(242,181,107,.28); background: rgba(242,181,107,.07); }
+.timing-profile-actions { display: flex; align-items: end; }
+.timing-profile-test { display: grid; grid-template-columns: minmax(260px, 1fr) auto auto; gap: 12px; align-items: end; margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(124,231,220,.12); }
+.timing-profile-test label > span, .timing-profile-test-score span { display: block; margin-bottom: 6px; color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .09em; }
+.timing-profile-test select { width: 100%; }
+.timing-profile-test-score { min-width: 92px; padding-bottom: 8px; }
+.timing-profile-test-score b { font-size: 10px; white-space: nowrap; }
+.timing-profile-test .primary-action { width: auto; gap: 15px; }
+.timing-validation-confirmation { margin-top: 16px; }
 .validation-studio { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
 .validation-list { display: grid; gap: 8px; }
 .validation-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 12px 13px; border: 1px solid var(--line); border-radius: 7px; background: #08131b; }
@@ -365,6 +376,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .navigator-layout { grid-template-columns: 1fr; }
     .authoring-workflow-grid { grid-template-columns: 1fr; }
     .timing-profile-layout { grid-template-columns: 1fr; align-items: stretch; }
+    .timing-profile-test { grid-template-columns: 1fr; align-items: stretch; }
     .raw-panel { position: static; }
 }
 

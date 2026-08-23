@@ -67,7 +67,7 @@ The five views share one live TV session:
 - **Macros** loads and validates a YAML catalog, remembers its path, streams
   operation progress, and supports cancellation.
 - **Menu** loads the draft S95F definition, calibrates system-wide and per-button
-  replay waits through visual tests, runs verified resynchronization anchors,
+  replay waits through separate three-pass visual tests, runs verified resynchronization anchors,
   previews routes, tracks confidence, and refuses to execute draft transitions.
 - **Protocol** keeps the latest 500 RX/TX messages searchable in memory, offers
   copy/export, and writes the complete NDJSON capture to the session directory.

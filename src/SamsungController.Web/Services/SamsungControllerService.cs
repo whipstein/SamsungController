@@ -45,6 +45,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private string? _navigationError;
     private NavigationProgress? _navigationProgress;
     private MenuValidationSession? _menuValidation;
+    private MenuTimingValidationSession? _menuTimingValidation;
     private string? _menuAuthoringStatus;
     private string? _menuAuthoringError;
     private string? _lastError;
@@ -278,6 +279,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
                             transition.Operations.Sum(operation => operation.Repeat),
                             GetReplaySteps(transition.Operations, definition.Timing))))
                     .ToArray();
+            var timingTestRoutes = definition is null
+                ? []
+                : GetTimingTestRoutes(definition);
             var request = _menuRecorder.Request;
             var steps = _menuRecorder.Operations
                 .Select(operation => new MenuRecordedStepSummary(
@@ -296,6 +300,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 steps,
                 steps.Sum(step => step.Repeat),
                 definition?.Timing ?? new MenuTimingProfile(),
+                timingTestRoutes,
+                _menuTimingValidation?.TransitionId,
+                _menuTimingValidation?.Passes ?? 0,
+                MenuTimingValidationSession.RequiredPasses,
+                _menuTimingValidation?.AwaitingConfirmation ?? false,
+                _menuTimingValidation?.ExpectedTargetPath,
                 candidates,
                 _menuValidation?.Kind,
                 _menuValidation?.ItemId,
@@ -634,19 +644,193 @@ public sealed class SamsungControllerService : IAsyncDisposable
         EnsureNoMenuRecording("change system menu timing");
 
         MenuDefinition definition;
+        MenuValidationSession? previousDraftValidation;
+        MenuTimingValidationSession? previousTimingValidation;
         lock (_sync)
         {
             definition = _menuDefinition
                 ?? throw new InvalidOperationException("No menu definition is loaded.");
+            previousDraftValidation = _menuValidation;
+            previousTimingValidation = _menuTimingValidation;
         }
 
-        var updated = CopyMenuDefinition(definition, timing: timing);
+        var delaysChanged = !definition.Timing.HasSameDelays(timing);
+        var normalizedTiming = timing with
+        {
+            Verified = !delaysChanged && definition.Timing.Verified
+        };
+        var updated = CopyMenuDefinition(definition, timing: normalizedTiming);
         new MenuDefinitionValidator().ValidateAndThrow(updated);
         await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
         lock (_sync)
         {
-            _menuValidation = null;
-            _menuAuthoringStatus = "System timing saved to YAML · run a draft timing test to validate it visually";
+            _menuValidation = delaysChanged ? null : previousDraftValidation;
+            _menuTimingValidation = delaysChanged ? null : previousTimingValidation;
+            _menuAuthoringStatus = delaysChanged
+                ? "System timing saved to YAML · profile validation reset to 0/3"
+                : "System timing saved to YAML";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
+    }
+
+    public async Task RunMenuTimingProfileTestAsync(
+        string transitionId,
+        MenuTimingProfile timing,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(transitionId);
+        ArgumentNullException.ThrowIfNull(timing);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("test system menu timing");
+        EnsureNoMenuRecording("test system menu timing");
+
+        MenuDefinition definition;
+        MenuTimingValidationSession? previousSession;
+        MenuValidationSession? previousDraftValidation;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+            previousSession = _menuTimingValidation;
+            previousDraftValidation = _menuValidation;
+            if (previousSession?.AwaitingConfirmation == true)
+            {
+                throw new InvalidOperationException(
+                    "Confirm whether the previous system timing test passed before replaying it.");
+            }
+
+            if (previousDraftValidation?.AwaitingConfirmation == true)
+            {
+                throw new InvalidOperationException(
+                    "Confirm the pending draft replay before testing the system timing profile.");
+            }
+        }
+
+        var transition = definition.Transitions.TryGetValue(transitionId, out var candidate)
+            ? candidate
+            : throw new KeyNotFoundException($"Menu transition '{transitionId}' was not found.");
+        _ = FindValidationSetup(definition, transition.FromNodeId);
+
+        var delaysChanged = !definition.Timing.HasSameDelays(timing);
+        var normalizedTiming = timing with { Verified = false };
+        var updated = CopyMenuDefinition(definition, timing: normalizedTiming);
+        new MenuDefinitionValidator().ValidateAndThrow(updated);
+
+        var canContinue = !delaysChanged
+                          && previousSession is { AwaitingConfirmation: false }
+                          && previousSession.TransitionId.Equals(
+                              transitionId,
+                              StringComparison.OrdinalIgnoreCase)
+                          && previousSession.Timing.HasSameDelays(normalizedTiming)
+                          && previousSession.Passes < MenuTimingValidationSession.RequiredPasses;
+        var session = canContinue
+            ? previousSession! with { Timing = normalizedTiming }
+            : new MenuTimingValidationSession(
+                transition.Id,
+                normalizedTiming,
+                0,
+                false,
+                updated.GetPath(transition.ToNodeId));
+
+        await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+            _menuTimingValidation = session;
+            _menuValidation = delaysChanged ? null : previousDraftValidation;
+
+            _menuAuthoringStatus = canContinue
+                ? $"System timing test · pass {session.Passes + 1}/{MenuTimingValidationSession.RequiredPasses}"
+                : "System timing saved · starting visual validation at 0/3";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
+        await ExecuteMenuTimingProfileTestAsync(definition, session, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task ConfirmMenuTimingProfileTestAsync(
+        bool passed,
+        CancellationToken cancellationToken = default)
+    {
+        MenuTimingValidationSession session;
+        MenuDefinition definition;
+        lock (_sync)
+        {
+            session = _menuTimingValidation
+                ?? throw new InvalidOperationException("No system timing validation is active.");
+            if (!session.AwaitingConfirmation)
+            {
+                throw new InvalidOperationException(
+                    "Run the system timing test before confirming its result.");
+            }
+
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+        }
+
+        if (!definition.Timing.HasSameDelays(session.Timing))
+        {
+            throw new InvalidOperationException(
+                "The system timing values changed after this replay. Run the test again before confirming it.");
+        }
+
+        if (!passed)
+        {
+            lock (_sync)
+            {
+                _menuTimingValidation = session with
+                {
+                    Passes = 0,
+                    AwaitingConfirmation = false
+                };
+                _menuAuthoringStatus = "System timing test failed · profile validation reset to 0/3";
+                _menuAuthoringError = null;
+            }
+
+            _menuStateTracker?.MarkUnknown(
+                "The user reported that the system timing test did not reach its target.");
+            NotifyChanged();
+            return;
+        }
+
+        var passes = session.Passes + 1;
+        if (passes < MenuTimingValidationSession.RequiredPasses)
+        {
+            lock (_sync)
+            {
+                _menuTimingValidation = session with
+                {
+                    Passes = passes,
+                    AwaitingConfirmation = false
+                };
+                _menuAuthoringStatus =
+                    $"System timing test passed · {passes}/{MenuTimingValidationSession.RequiredPasses}";
+                _menuAuthoringError = null;
+            }
+
+            NotifyChanged();
+            return;
+        }
+
+        var verified = CopyMenuDefinition(
+            definition,
+            timing: session.Timing with { Verified = true });
+        await PersistActiveMenuDefinitionAsync(verified, cancellationToken).ConfigureAwait(false);
+        lock (_sync)
+        {
+            _menuTimingValidation = session with
+            {
+                Passes = MenuTimingValidationSession.RequiredPasses,
+                AwaitingConfirmation = false,
+                Timing = session.Timing with { Verified = true }
+            };
+            _menuAuthoringStatus =
+                $"System timing verified · {MenuTimingValidationSession.RequiredPasses}/{MenuTimingValidationSession.RequiredPasses} passes saved to YAML";
             _menuAuthoringError = null;
         }
 
@@ -669,11 +853,13 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
         MenuDefinition definition;
         IReadOnlyList<MenuOperation> operations;
+        MenuTimingValidationSession? previousTimingValidation;
         lock (_sync)
         {
             definition = _menuDefinition
                 ?? throw new InvalidOperationException("No menu definition is loaded.");
             operations = GetDraftOperations(definition, kind, itemId);
+            previousTimingValidation = _menuTimingValidation;
         }
 
         var expanded = ExpandOperations(operations);
@@ -719,17 +905,23 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 ? transition with { Operations = coalesced }
                 : transition)
             .ToArray();
+        var delaysChanged = !definition.Timing.HasSameDelays(timing);
+        var normalizedTiming = timing with
+        {
+            Verified = !delaysChanged && definition.Timing.Verified
+        };
         var updated = CopyMenuDefinition(
             definition,
             transitions,
             anchors,
-            timing);
+            normalizedTiming);
         new MenuDefinitionValidator().ValidateAndThrow(updated);
         await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
 
         var expectedTargetPath = GetAuthoringTargetPath(updated, kind, itemId);
         lock (_sync)
         {
+            _menuTimingValidation = delaysChanged ? null : previousTimingValidation;
             _menuValidation = new MenuValidationSession(
                 kind,
                 itemId.Trim(),
@@ -772,6 +964,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
             if (session.AwaitingConfirmation)
             {
                 throw new InvalidOperationException("Confirm whether the previous validation run passed before replaying it.");
+            }
+
+            if (_menuTimingValidation?.AwaitingConfirmation == true)
+            {
+                throw new InvalidOperationException(
+                    "Confirm the pending system timing test before replaying a draft.");
             }
 
             _menuValidation = session;
@@ -1687,6 +1885,136 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
     }
 
+    private async Task ExecuteMenuTimingProfileTestAsync(
+        MenuDefinition definition,
+        MenuTimingValidationSession session,
+        CancellationToken cancellationToken)
+    {
+        BeginAutomation(isNavigation: true);
+        using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        lock (_sync)
+        {
+            _navigationSource = linkedSource;
+            _navigationStatus = $"System timing test · {session.TransitionId}";
+            _navigationError = null;
+            _navigationProgress = null;
+            _menuAuthoringStatus = "Preparing the known starting point";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
+        try
+        {
+            MenuStateTracker tracker;
+            MenuNavigator navigator;
+            lock (_sync)
+            {
+                tracker = _menuStateTracker
+                    ?? throw new InvalidOperationException("No menu state tracker is available.");
+                navigator = _menuNavigator
+                    ?? throw new InvalidOperationException("No menu navigator is available.");
+            }
+
+            var transition = definition.Transitions.TryGetValue(session.TransitionId, out var candidate)
+                ? candidate
+                : throw new KeyNotFoundException(
+                    $"Menu transition '{session.TransitionId}' was not found.");
+            var setup = FindValidationSetup(definition, transition.FromNodeId);
+            await navigator.ExecuteAnchorAsync(setup.Anchor.Id, linkedSource.Token)
+                .ConfigureAwait(false);
+            if (setup.Plan.Transitions.Count > 0)
+            {
+                await navigator.ExecutePlanAsync(setup.Plan, linkedSource.Token)
+                    .ConfigureAwait(false);
+            }
+
+            var systemTimedOperations = transition.Operations
+                .Select(operation => operation with { DelayAfter = null })
+                .ToArray();
+            await ExecuteAuthoringOperationsAsync(
+                    $"Test system timing · {transition.Id}",
+                    definition.GetPath(transition.FromNodeId),
+                    definition.GetPath(transition.ToNodeId),
+                    systemTimedOperations,
+                    session.Timing,
+                    linkedSource.Token)
+                .ConfigureAwait(false);
+            tracker.ApplyTransition(transition);
+
+            lock (_sync)
+            {
+                _menuTimingValidation = session with { AwaitingConfirmation = true };
+                _navigationStatus =
+                    $"Awaiting system timing confirmation · {session.ExpectedTargetPath}";
+                _menuAuthoringStatus =
+                    $"Did the system timing test reach {session.ExpectedTargetPath}?";
+            }
+        }
+        catch (OperationCanceledException) when (linkedSource.IsCancellationRequested)
+        {
+            _menuStateTracker?.MarkUnknown("System timing validation was cancelled.");
+            lock (_sync)
+            {
+                _menuTimingValidation = session with { AwaitingConfirmation = false };
+                _menuAuthoringStatus = "System timing test cancelled";
+            }
+
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _menuStateTracker?.MarkUnknown("System timing validation did not complete.");
+            lock (_sync)
+            {
+                _menuTimingValidation = session with { AwaitingConfirmation = false };
+                _menuAuthoringStatus = "System timing test failed to run";
+                _menuAuthoringError = exception.Message;
+            }
+
+            throw;
+        }
+        finally
+        {
+            lock (_sync)
+            {
+                _navigationSource = null;
+            }
+
+            EndAutomation(isNavigation: true);
+            NotifyChanged();
+        }
+    }
+
+    private static IReadOnlyList<MenuTimingTestRouteSummary> GetTimingTestRoutes(
+        MenuDefinition definition) =>
+        definition.Transitions.Values
+            .Where(transition => transition.Operations.Count > 0)
+            .Where(transition => CanPrepareValidationSource(definition, transition.FromNodeId))
+            .OrderBy(transition => definition.GetPath(transition.FromNodeId), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(transition => definition.GetPath(transition.ToNodeId), StringComparer.OrdinalIgnoreCase)
+            .Select(transition => new MenuTimingTestRouteSummary(
+                transition.Id,
+                definition.GetPath(transition.FromNodeId),
+                definition.GetPath(transition.ToNodeId),
+                transition.Operations.Sum(operation => operation.Repeat),
+                transition.Operations.Any(operation => operation.DelayAfter is not null)))
+            .ToArray();
+
+    private static bool CanPrepareValidationSource(
+        MenuDefinition definition,
+        string sourceNodeId)
+    {
+        try
+        {
+            _ = FindValidationSetup(definition, sourceNodeId);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
     private static ValidationSetup FindValidationSetup(
         MenuDefinition definition,
         string sourceNodeId)
@@ -1875,6 +2203,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _navigationStatus = "Menu definition loaded";
             _navigationError = null;
             _menuValidation = null;
+            _menuTimingValidation = null;
             _menuAuthoringError = null;
         }
 
@@ -2110,6 +2439,16 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private sealed record MenuValidationSession(
         MenuAuthoringItemKind Kind,
         string ItemId,
+        int Passes,
+        bool AwaitingConfirmation,
+        string ExpectedTargetPath)
+    {
+        public const int RequiredPasses = 3;
+    }
+
+    private sealed record MenuTimingValidationSession(
+        string TransitionId,
+        MenuTimingProfile Timing,
         int Passes,
         bool AwaitingConfirmation,
         string ExpectedTargetPath)

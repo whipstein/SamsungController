@@ -12,8 +12,17 @@ public sealed record MenuDefinitionContext(
 public sealed record MenuTimingProfile(
     int DefaultDelayMilliseconds = 150,
     int ScreenChangeDelayMilliseconds = 500,
-    int ReturnDelayMilliseconds = 300)
+    int ReturnDelayMilliseconds = 300,
+    bool Verified = false)
 {
+    public bool HasSameDelays(MenuTimingProfile other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        return DefaultDelayMilliseconds == other.DefaultDelayMilliseconds
+               && ScreenChangeDelayMilliseconds == other.ScreenChangeDelayMilliseconds
+               && ReturnDelayMilliseconds == other.ReturnDelayMilliseconds;
+    }
+
     public TimeSpan GetDelay(string key)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);

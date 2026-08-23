@@ -26,6 +26,7 @@ public sealed class MenuDefinitionWriter
         AppendDuration(yaml, 2, "defaultDelay", definition.Timing.DefaultDelayMilliseconds);
         AppendDuration(yaml, 2, "screenChangeDelay", definition.Timing.ScreenChangeDelayMilliseconds);
         AppendDuration(yaml, 2, "returnDelay", definition.Timing.ReturnDelayMilliseconds);
+        AppendBoolean(yaml, 2, "verified", definition.Timing.Verified);
         yaml.AppendLine();
         yaml.AppendLine("nodes:");
         foreach (var node in definition.Nodes.Values)

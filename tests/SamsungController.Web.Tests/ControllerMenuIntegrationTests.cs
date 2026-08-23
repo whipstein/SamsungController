@@ -87,6 +87,11 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
 
         var before = controller.GetMenuAuthoringSnapshot();
         var candidate = Assert.Single(before.DraftCandidates);
+        var timingRoute = Assert.Single(before.TimingTestRoutes);
+        Assert.Equal("open-settings", timingRoute.Id);
+        Assert.Equal("Normal video", timingRoute.SourcePath);
+        Assert.Equal("Settings", timingRoute.TargetPath);
+        Assert.True(timingRoute.HasCustomDelays);
         Assert.Equal("open-settings", candidate.Id);
         Assert.Equal("normal-video", candidate.SourceNodeId);
         Assert.Equal("settings", candidate.TargetNodeId);
@@ -176,6 +181,30 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         var reparsed = await new MenuDefinitionParser().ParseFileAsync(definitionPath);
         Assert.Equal(new MenuTimingProfile(225, 750, 400), reparsed.Timing);
         Assert.Equal(TimeSpan.FromMilliseconds(700), reparsed.Transitions["open-settings"].Operations[1].DelayAfter);
+    }
+
+    [Fact]
+    public async Task ChangingSystemTimingInvalidatesItsPersistedVerification()
+    {
+        Directory.CreateDirectory(_directory);
+        var definitionPath = Path.Combine(_directory, "verified-timing.yaml");
+        var yaml = DraftMenuYaml.Replace(
+            "  returnDelay: 300ms",
+            "  returnDelay: 300ms\n  verified: true",
+            StringComparison.Ordinal);
+        await File.WriteAllTextAsync(definitionPath, yaml);
+        await WriteSettingsAsync(definitionPath);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+
+        await controller.UpdateMenuTimingProfileAsync(new MenuTimingProfile(125, 600, 300));
+        var unchanged = await new MenuDefinitionParser().ParseFileAsync(definitionPath);
+        Assert.True(unchanged.Timing.Verified);
+
+        await controller.UpdateMenuTimingProfileAsync(new MenuTimingProfile(225, 750, 400));
+        var changed = await new MenuDefinitionParser().ParseFileAsync(definitionPath);
+        Assert.False(changed.Timing.Verified);
+        Assert.Equal(0, controller.GetMenuAuthoringSnapshot().TimingValidationPasses);
     }
 
     private SamsungControllerService CreateController()

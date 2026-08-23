@@ -127,6 +127,13 @@ public sealed record MenuAuthoringCandidateSummary(
     int CommandCount,
     IReadOnlyList<MenuAuthoringReplayStepSummary> ReplaySteps);
 
+public sealed record MenuTimingTestRouteSummary(
+    string Id,
+    string SourcePath,
+    string TargetPath,
+    int CommandCount,
+    bool HasCustomDelays);
+
 public sealed record MenuAuthoringSnapshot(
     bool IsRecording,
     MenuAuthoringItemKind? RecordingKind,
@@ -137,6 +144,12 @@ public sealed record MenuAuthoringSnapshot(
     IReadOnlyList<MenuRecordedStepSummary> RecordedSteps,
     int RecordedCommandCount,
     MenuTimingProfile Timing,
+    IReadOnlyList<MenuTimingTestRouteSummary> TimingTestRoutes,
+    string? ActiveTimingTestRouteId,
+    int TimingValidationPasses,
+    int RequiredTimingValidationPasses,
+    bool AwaitingTimingValidationConfirmation,
+    string? TimingValidationExpectedTargetPath,
     IReadOnlyList<MenuAuthoringCandidateSummary> DraftCandidates,
     MenuAuthoringItemKind? ActiveValidationKind,
     string? ActiveValidationId,
