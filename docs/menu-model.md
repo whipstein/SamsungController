@@ -108,7 +108,9 @@ can be planned or sent.
    target node, and start live recording. For a transition, **Prepare source**
    uses a verified anchor and verified routes to position the TV first.
 5. Use the embedded remote. Every successfully sent button controls the TV and
-   is captured; failed sends are not recorded.
+   is captured; failed sends are not recorded. The selected D-pad delay controls
+   directional replay pacing. Screen-changing keys retain longer settling times
+   (at least 500 ms for Menu/OK/Home/Exit/Source and 300 ms for Return).
 6. Stop the recording. The UI atomically adds it to the active YAML as a draft.
 7. Under **Replay and validate drafts**, run the draft. Transition validation
    first executes a verified anchor and verified route to its source, then sends

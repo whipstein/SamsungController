@@ -264,7 +264,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         null,
                         definition.GetPath(anchor.TargetNodeId),
                         anchor.Operations.Sum(operation => operation.Repeat),
-                        GetFirstDelayMilliseconds(anchor.Operations)))
+                        GetDirectionalDelayMilliseconds(anchor.Operations)))
                     .Concat(definition.Transitions.Values
                         .Where(transition => !transition.Verified)
                         .Select(transition => new MenuAuthoringCandidateSummary(
@@ -276,7 +276,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                             definition.GetPath(transition.FromNodeId),
                             definition.GetPath(transition.ToNodeId),
                             transition.Operations.Sum(operation => operation.Repeat),
-                            GetFirstDelayMilliseconds(transition.Operations))))
+                            GetDirectionalDelayMilliseconds(transition.Operations))))
                     .ToArray();
             var request = _menuRecorder.Request;
             var steps = _menuRecorder.Operations
@@ -1102,9 +1102,16 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private static string NormalizeContextValue(string value) =>
         string.IsNullOrWhiteSpace(value) ? "any" : value.Trim();
 
-    private static int GetFirstDelayMilliseconds(IReadOnlyList<MenuOperation> operations) =>
+    private static int GetDirectionalDelayMilliseconds(IReadOnlyList<MenuOperation> operations) =>
         (int)Math.Clamp(
-            operations.FirstOrDefault()?.DelayAfter?.TotalMilliseconds ?? 500,
+            operations.FirstOrDefault(operation =>
+                    operation.Key.Equals("KEY_UP", StringComparison.OrdinalIgnoreCase)
+                    || operation.Key.Equals("KEY_DOWN", StringComparison.OrdinalIgnoreCase)
+                    || operation.Key.Equals("KEY_LEFT", StringComparison.OrdinalIgnoreCase)
+                    || operation.Key.Equals("KEY_RIGHT", StringComparison.OrdinalIgnoreCase))
+                ?.DelayAfter?.TotalMilliseconds
+            ?? operations.FirstOrDefault()?.DelayAfter?.TotalMilliseconds
+            ?? 150,
             50,
             30_000);
 

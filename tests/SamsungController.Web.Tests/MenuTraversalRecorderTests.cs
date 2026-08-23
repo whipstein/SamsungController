@@ -33,7 +33,37 @@ public sealed class MenuTraversalRecorderTests
                 Assert.Equal(2, operation.Repeat);
                 Assert.Equal(TimeSpan.FromMilliseconds(450), operation.DelayAfter);
             },
-            operation => Assert.Equal("KEY_ENTER", operation.Key));
+            operation =>
+            {
+                Assert.Equal("KEY_ENTER", operation.Key);
+                Assert.Equal(TimeSpan.FromMilliseconds(500), operation.DelayAfter);
+            });
+    }
+
+    [Fact]
+    public void UsesFastDirectionalPacingAndLongerScreenSettling()
+    {
+        var recorder = new MenuTraversalRecorder();
+        recorder.Start(new MenuRecordingRequest(
+            MenuAuthoringItemKind.Transition,
+            "open-picture",
+            "Open Picture",
+            "normal",
+            "picture",
+            null,
+            null));
+
+        recorder.Record("KEY_MENU", RemoteKeyAction.Click);
+        recorder.Record("KEY_DOWN", RemoteKeyAction.Click);
+        recorder.Record("KEY_ENTER", RemoteKeyAction.Click);
+        recorder.Record("KEY_RETURN", RemoteKeyAction.Click);
+
+        Assert.Collection(
+            recorder.Operations,
+            operation => Assert.Equal(TimeSpan.FromMilliseconds(500), operation.DelayAfter),
+            operation => Assert.Equal(TimeSpan.FromMilliseconds(150), operation.DelayAfter),
+            operation => Assert.Equal(TimeSpan.FromMilliseconds(500), operation.DelayAfter),
+            operation => Assert.Equal(TimeSpan.FromMilliseconds(300), operation.DelayAfter));
     }
 
     [Fact]

@@ -96,7 +96,7 @@ public sealed record MenuRecordingRequest(
     string TargetNodeId,
     string? NewTargetLabel,
     string? NewTargetParentId,
-    int ReplayDelayMilliseconds = 500);
+    int ReplayDelayMilliseconds = 150);
 
 public sealed record MenuRecordedStepSummary(
     string Key,

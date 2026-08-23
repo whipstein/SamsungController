@@ -5,6 +5,8 @@ namespace SamsungController.Web.Services;
 
 public sealed class MenuTraversalRecorder
 {
+    private const int ScreenChangeDelayMilliseconds = 500;
+    private const int ReturnDelayMilliseconds = 300;
     private readonly List<MenuOperation> _operations = [];
 
     public bool IsRecording { get; private set; }
@@ -37,7 +39,7 @@ public sealed class MenuTraversalRecorder
 
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         var normalizedKey = key.Trim();
-        var delay = TimeSpan.FromMilliseconds(Request!.ReplayDelayMilliseconds);
+        var delay = GetReplayDelay(normalizedKey, Request!.ReplayDelayMilliseconds);
         if (_operations.Count > 0)
         {
             var previous = _operations[^1];
@@ -52,6 +54,20 @@ public sealed class MenuTraversalRecorder
         }
 
         _operations.Add(new MenuOperation(normalizedKey, action, DelayAfter: delay));
+    }
+
+    private static TimeSpan GetReplayDelay(string key, int directionalDelayMilliseconds)
+    {
+        var minimumDelay = key.ToUpperInvariant() switch
+        {
+            "KEY_MENU" or "KEY_ENTER" or "KEY_HOME" or "KEY_EXIT" or "KEY_SOURCE" =>
+                ScreenChangeDelayMilliseconds,
+            "KEY_RETURN" => ReturnDelayMilliseconds,
+            _ => directionalDelayMilliseconds
+        };
+        return TimeSpan.FromMilliseconds(Math.Max(
+            directionalDelayMilliseconds,
+            minimumDelay));
     }
 
     public void UndoLastCommand()

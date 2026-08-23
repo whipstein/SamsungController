@@ -109,7 +109,7 @@
                         </label>
                     }
                     <label>
-                        <span>Replay delay per press</span>
+                        <span>D-pad replay delay</span>
                         <div class="number-with-unit"><input type="number" min="50" max="30000" step="50" @bind="ReplayDelayMilliseconds" disabled="@Authoring.IsRecording" /><b>ms</b></div>
                     </label>
                 </div>
@@ -125,7 +125,7 @@
                             Start live recording <span>●</span>
                         </button>
                     </div>
-                    <p class="field-note">Reusing the ID of an existing draft replaces it; verified items are protected.</p>
+                    <p class="field-note">D-pad keys use the selected pace. Menu, OK, Home, Exit, and Source wait at least 500ms for the screen; Return waits at least 300ms. Reusing a draft ID replaces it; verified items are protected.</p>
                 }
                 else
                 {
@@ -244,7 +244,7 @@
     private string NewTargetId { get; set; } = NewNodeDefaultId;
     private string NewTargetLabel { get; set; } = "New menu node";
     private string NewTargetParentId { get; set; } = string.Empty;
-    private int ReplayDelayMilliseconds { get; set; } = 500;
+    private int ReplayDelayMilliseconds { get; set; } = 150;
     private string CustomKey { get; set; } = "KEY_SOURCE";
     private RemoteKeyAction CustomAction { get; set; } = RemoteKeyAction.Click;
     private bool ShowDefinitionForm { get; set; }
