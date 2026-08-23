@@ -80,9 +80,10 @@ If the TV drops the WebSocket connection, the web interface immediately returns
 to its disconnected state and disables TV commands. Reconnection is an explicit
 action from the Connection page.
 
-Pairing tokens in the browser console are redacted by default. Revealing them is
-an explicit per-page choice; the complete NDJSON log can still contain tokens
-and must remain private.
+Pairing tokens, UUIDs, MAC addresses, and IP addresses in the browser console
+are redacted by default. Tokens and device identifiers have independent,
+explicit per-page reveal controls. The complete NDJSON log can still contain
+all of these values and must remain private.
 
 ## First pairing
 

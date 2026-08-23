@@ -69,6 +69,78 @@ public sealed class ProtocolMessageFormatterTests
         Assert.Contains("secret", revealed, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void RedactsDeviceIdentifiersAndAddressesByDefault()
+    {
+        var message = CreateMessage(
+            """
+            {
+              "device": {
+                "duid": "uuid:386c3ab5-5bf4-4d84-9e10-134876190ce9",
+                "ip": "192.168.7.50",
+                "ipv6": "fe80::1",
+                "developerIP": "0.0.0.0",
+                "wifiMac": "80:0d:3f:b9:d3:d5"
+              },
+              "uri": "https://192.168.7.50:8002/api/v2/"
+            }
+            """);
+
+        var formatted = ProtocolMessageFormatter.Format(
+            message,
+            revealSensitive: false,
+            revealDeviceIdentifiers: false);
+
+        Assert.DoesNotContain("386c3ab5", formatted, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("192.168.7.50", formatted, StringComparison.Ordinal);
+        Assert.DoesNotContain("fe80::1", formatted, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("0.0.0.0", formatted, StringComparison.Ordinal);
+        Assert.DoesNotContain("80:0d:3f", formatted, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("[redacted-uuid]", formatted, StringComparison.Ordinal);
+        Assert.Contains("[redacted-mac]", formatted, StringComparison.Ordinal);
+        Assert.Contains("[redacted-ip]", formatted, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DeviceIdentifierRevealDoesNotRevealToken()
+    {
+        var message = CreateMessage(
+            """
+            {
+              "token": "pairing-secret",
+              "duid": "uuid:386c3ab5-5bf4-4d84-9e10-134876190ce9",
+              "ip": "192.168.7.50",
+              "wifiMac": "80:0d:3f:b9:d3:d5"
+            }
+            """);
+
+        var formatted = ProtocolMessageFormatter.Format(
+            message,
+            revealSensitive: false,
+            revealDeviceIdentifiers: true);
+
+        Assert.DoesNotContain("pairing-secret", formatted, StringComparison.Ordinal);
+        Assert.Contains("386c3ab5", formatted, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("192.168.7.50", formatted, StringComparison.Ordinal);
+        Assert.Contains("80:0d:3f", formatted, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void RedactsIpAddressInProtocolChannelText()
+    {
+        const string endpoint = "https://192.168.7.50:8002/api/v2/";
+
+        var redacted = ProtocolMessageFormatter.FormatIdentifierText(
+            endpoint,
+            revealDeviceIdentifiers: false);
+        var revealed = ProtocolMessageFormatter.FormatIdentifierText(
+            endpoint,
+            revealDeviceIdentifiers: true);
+
+        Assert.Equal("https://[redacted-ip]:8002/api/v2/", redacted);
+        Assert.Equal(endpoint, revealed);
+    }
+
     private static SamsungMessage CreateMessage(string rawJson) => new(
         DateTimeOffset.UtcNow,
         SamsungMessageDirection.Rx,

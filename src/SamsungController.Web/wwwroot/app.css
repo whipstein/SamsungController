@@ -171,6 +171,8 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .protocol-toolbar { display: grid; grid-template-columns: minmax(180px, 1fr) 125px auto auto; gap: 8px; }
 .protocol-toolbar input, .protocol-toolbar select, .protocol-toolbar button { padding: 9px 10px; font-size: 11px; }
 .sensitive-row { display: flex; justify-content: space-between; gap: 20px; padding: 14px 0; color: var(--faint); font-size: 9px; border-bottom: 1px solid var(--line); }
+.privacy-toggles { display: flex; flex-wrap: wrap; gap: 10px 18px; }
+.privacy-toggles label { white-space: nowrap; }
 .sensitive-row label { color: var(--amber); }
 .sensitive-row input, .developer-toggle input { width: auto; margin-right: 7px; accent-color: var(--amber); }
 .sensitive-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -458,6 +460,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .timing-editor-actions .primary-action { width: 100%; }
     .sensitive-row { display: block; }
     .sensitive-row span { display: block; margin-top: 8px; }
+    .privacy-toggles { display: grid; }
     .device-observation-toolbar { display: block; }
     .device-observation-toolbar > div { margin-top: 12px; flex-wrap: wrap; }
     .device-observation-card header { grid-template-columns: 1fr auto; }

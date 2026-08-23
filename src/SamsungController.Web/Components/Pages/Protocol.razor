@@ -9,7 +9,7 @@
     <div>
         <span class="eyebrow">PROTOCOL CONSOLE</span>
         <h1>Every message, in the open.</h1>
-        <p>Inspect the live WebSocket exchange. Pairing tokens are redacted unless you explicitly reveal them.</p>
+        <p>Inspect the live exchange. Pairing tokens and device identifiers are redacted unless you explicitly reveal them.</p>
     </div>
     <div class="capture-count"><strong>@Messages.Count</strong><span>messages retained</span></div>
 </section>
@@ -33,7 +33,10 @@
         </div>
 
         <div class="sensitive-row">
-            <label><input type="checkbox" @bind="RevealSensitive" /> Reveal pairing tokens in this browser</label>
+            <div class="privacy-toggles">
+                <label><input type="checkbox" @bind="RevealSensitive" /> Reveal pairing tokens</label>
+                <label><input type="checkbox" @bind="RevealDeviceIdentifiers" /> Reveal UUID, MAC &amp; IP addresses</label>
+            </div>
             <span>Full capture: @Snapshot.ProtocolLogPath</span>
         </div>
 
@@ -54,8 +57,8 @@
                         <small>@message.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture)</small>
                         <button title="Copy formatted payload" @onclick="() => CopyAsync(message)">Copy</button>
                     </header>
-                    <div class="message-meta">@message.Channel · generation @message.ConnectionGeneration</div>
-                    <pre>@ProtocolMessageFormatter.Format(message, RevealSensitive)</pre>
+                    <div class="message-meta">@FormatIdentifierText(message.Channel) · generation @message.ConnectionGeneration</div>
+                    <pre>@ProtocolMessageFormatter.Format(message, RevealSensitive, RevealDeviceIdentifiers)</pre>
                     @if (!string.IsNullOrWhiteSpace(message.ParseError))
                     {
                         <div class="parse-error">@message.ParseError</div>
@@ -124,7 +127,7 @@
                         <span>@(observation.StatusCode is null ? "NO RESPONSE" : $"HTTP {observation.StatusCode}")</span>
                         <small>@observation.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture)</small>
                     </header>
-                    <div class="message-meta">@observation.Endpoint</div>
+                    <div class="message-meta">@FormatIdentifierText(observation.Endpoint)</div>
                     @if (!string.IsNullOrWhiteSpace(observation.Error))
                     {
                         <div class="device-observation-error">@observation.Error</div>
@@ -151,6 +154,7 @@
     private string Search { get; set; } = string.Empty;
     private string DirectionFilter { get; set; } = "All";
     private bool RevealSensitive { get; set; }
+    private bool RevealDeviceIdentifiers { get; set; }
     private bool DeveloperMode { get; set; }
     private bool IsSending { get; set; }
     private bool IsQuerying { get; set; }
@@ -172,7 +176,7 @@
         !Snapshot.MacroRunning && !Snapshot.NavigationRunning;
     private string DeviceInfoEndpoint => string.IsNullOrWhiteSpace(Snapshot.Host)
         ? "Configure a TV host first"
-        : $"{(Snapshot.Secure ? "https" : "http")}://{Snapshot.Host}:{Snapshot.Port ?? (Snapshot.Secure ? 8002 : 8001)}/api/v2/";
+        : FormatIdentifierText($"{(Snapshot.Secure ? "https" : "http")}://{Snapshot.Host}:{Snapshot.Port ?? (Snapshot.Secure ? 8002 : 8001)}/api/v2/");
 
     private IReadOnlyList<SamsungMessage> FilteredMessages => Messages
         .Where(message => DirectionFilter == "All" || message.Direction.ToString() == DirectionFilter)
@@ -191,16 +195,19 @@
     }
 
     private bool MatchesSearch(SamsungMessage message, string query) =>
-        message.Channel.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+        FormatIdentifierText(message.Channel).Contains(query, StringComparison.OrdinalIgnoreCase) ||
         (message.Event?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
-        ProtocolMessageFormatter.Format(message, RevealSensitive).Contains(query, StringComparison.OrdinalIgnoreCase);
+        ProtocolMessageFormatter.Format(message, RevealSensitive, RevealDeviceIdentifiers)
+            .Contains(query, StringComparison.OrdinalIgnoreCase);
 
     private async Task CopyAsync(SamsungMessage message)
     {
         ErrorMessage = null;
         try
         {
-            await JavaScript.InvokeVoidAsync("samsungController.copyText", ProtocolMessageFormatter.Format(message, RevealSensitive));
+            await JavaScript.InvokeVoidAsync(
+                "samsungController.copyText",
+                ProtocolMessageFormatter.Format(message, RevealSensitive, RevealDeviceIdentifiers));
         }
         catch (Exception exception)
         {
@@ -214,7 +221,7 @@
         try
         {
             var lines = FilteredMessages.Select(message =>
-                $"[{message.Timestamp:O}] {message.Direction} {message.Channel} {message.Event}\n{ProtocolMessageFormatter.Format(message, RevealSensitive)}");
+                $"[{message.Timestamp:O}] {message.Direction} {FormatIdentifierText(message.Channel)} {message.Event}\n{ProtocolMessageFormatter.Format(message, RevealSensitive, RevealDeviceIdentifiers)}");
             var capture = string.Join("\n\n", lines);
             var fileName = $"samsung-protocol-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.txt";
             await JavaScript.InvokeVoidAsync("samsungController.downloadText", fileName, capture);
@@ -296,7 +303,7 @@
                 {
                     observation.Timestamp,
                     observation.Label,
-                    observation.Endpoint,
+                    Endpoint = FormatIdentifierText(observation.Endpoint),
                     observation.StatusCode,
                     observation.IsSuccess,
                     Response = FormatDeviceInfo(observation.RawContent),
@@ -320,8 +327,14 @@
             return "(empty response)";
         }
 
-        return ProtocolMessageFormatter.FormatJson(content, RevealSensitive);
+        return ProtocolMessageFormatter.FormatJson(
+            content,
+            RevealSensitive,
+            RevealDeviceIdentifiers);
     }
+
+    private string FormatIdentifierText(string value) =>
+        ProtocolMessageFormatter.FormatIdentifierText(value, RevealDeviceIdentifiers);
 
     private void HandleControllerChanged()
     {

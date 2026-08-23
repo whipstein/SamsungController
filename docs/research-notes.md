@@ -31,8 +31,8 @@ Notes:
 - Record firmware, input, SDR/HDR, and picture mode before mapping each menu transition.
 - Verify the exact highlighted item after `KEY_MENU` opens the S95F settings surface.
 - Map one repeatable route from the settings surface to Picture, then Expert Settings.
-- Compare `/api/v2/` state in standby and while changing apps; the first three
-  powered-on menu-position captures were identical.
+- Compare `/api/v2/` state in standby; all six powered-on menu-position and
+  Home/Netflix/Hulu captures produced the same normalized payload.
 - Repeat `ed.edenApp.get` and `ed.installedApp.get` while changing app or power
   state; the first connected-session attempt produced no observable response.
 - Query/read before attempting any undocumented write.
@@ -135,6 +135,7 @@ Request:
 Response: HTTP 200 with a JSON device-information document for every request.
 Observed result:
   - All three normalized response payloads were identical.
+  - The payload also matched all three earlier powered-on menu-position captures.
   - device.PowerState was "on" in all three conditions.
   - The response identified Tizen, a 3840x2160 display, wired networking,
     TokenAuthSupport, EDEN availability, remote availability, and API version
@@ -145,5 +146,35 @@ Repeatability: One capture at each of three powered-on menu positions.
 Risk: Experimental (read/query only)
 Notes: Unique device identifiers, MAC address, and LAN address from the source
   capture are intentionally omitted. This result applies only to the three
-  observed menu positions; application changes and standby remain untested.
+  observed menu positions; application changes are recorded separately below,
+  and standby remains untested.
+```
+
+## 2026-08-23 — powered-on device information across applications
+
+```text
+Date/time (UTC): 2026-08-23 15:20:35–15:21:35
+TV model: Samsung S95F; API modelName QN65S95FAFXZA
+Firmware: 1296 (assumed unchanged from the previous observation; the API
+  reported firmwareVersion "Unknown")
+Input/source: Not reconfirmed
+SDR or HDR: Not reconfirmed
+Picture mode: Not reconfirmed
+API/channel: HTTPS GET /api/v2/ on port 8002
+Request:
+  - Label: Powered on - Home
+  - Label: Powered on - Netflix
+  - Label: Powered on - Hulu
+Response: HTTP 200 with a JSON device-information document for every request.
+Observed result:
+  - All three normalized response payloads were identical.
+  - device.PowerState was "on" in all three conditions.
+  - No field identified Home, Netflix, Hulu, or another current application.
+  - The isSupport string reported EDEN_available as "true", but this endpoint
+    did not expose an active-app field in the observed responses.
+Repeatability: One capture in each of three powered-on application conditions.
+Risk: Experimental (read/query only)
+Notes: Unique device identifiers, MAC address, and LAN address from the source
+  capture are intentionally omitted. This result does not establish that all
+  Samsung endpoints omit active-application state. Standby remains untested.
 ```

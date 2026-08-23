@@ -1,47 +1,96 @@
+using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using SamsungController.Core.Protocol;
 
 namespace SamsungController.Web.Services;
 
 public static class ProtocolMessageFormatter
 {
+    private static readonly Regex UuidPattern = new(
+        @"(?:uuid:)?\b[0-9a-f]{8}-[0-9a-f]{3,4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex MacAddressPattern = new(
+        @"\b(?:[0-9a-f]{2}:){5}[0-9a-f]{2}\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex Ipv4Pattern = new(
+        @"\b(?:\d{1,3}\.){3}\d{1,3}\b",
+        RegexOptions.CultureInvariant);
+    private static readonly Regex BracketedIpv6Pattern = new(
+        @"\[[0-9a-f:]+\]",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly JsonSerializerOptions PrettyJson = new()
     {
         WriteIndented = true
     };
 
-    public static string Format(SamsungMessage message, bool revealSensitive)
+    public static string Format(
+        SamsungMessage message,
+        bool revealSensitive,
+        bool revealDeviceIdentifiers = false)
     {
         ArgumentNullException.ThrowIfNull(message);
         if (message.ParsedPayload is null)
         {
-            return message.RawJson;
+            return FormatIdentifierText(message.RawJson, revealDeviceIdentifiers);
         }
 
-        return FormatPayload(message.ParsedPayload, revealSensitive);
+        return FormatPayload(message.ParsedPayload, revealSensitive, revealDeviceIdentifiers);
     }
 
-    public static string FormatJson(string rawJson, bool revealSensitive)
+    public static string FormatJson(
+        string rawJson,
+        bool revealSensitive,
+        bool revealDeviceIdentifiers = false)
     {
         ArgumentNullException.ThrowIfNull(rawJson);
         try
         {
             var payload = JsonNode.Parse(rawJson);
-            return payload is null ? rawJson : FormatPayload(payload, revealSensitive);
+            return payload is null
+                ? FormatIdentifierText(rawJson, revealDeviceIdentifiers)
+                : FormatPayload(payload, revealSensitive, revealDeviceIdentifiers);
         }
         catch (JsonException)
         {
-            return rawJson;
+            return FormatIdentifierText(rawJson, revealDeviceIdentifiers);
         }
     }
 
-    private static string FormatPayload(JsonNode parsedPayload, bool revealSensitive)
+    public static string FormatIdentifierText(string value, bool revealDeviceIdentifiers)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        if (revealDeviceIdentifiers)
+        {
+            return value;
+        }
+
+        if (IPAddress.TryParse(value.Trim('[', ']'), out _))
+        {
+            return "[redacted-ip]";
+        }
+
+        var redacted = UuidPattern.Replace(value, "[redacted-uuid]");
+        redacted = MacAddressPattern.Replace(redacted, "[redacted-mac]");
+        redacted = Ipv4Pattern.Replace(redacted, "[redacted-ip]");
+        return BracketedIpv6Pattern.Replace(redacted, "[redacted-ip]");
+    }
+
+    private static string FormatPayload(
+        JsonNode parsedPayload,
+        bool revealSensitive,
+        bool revealDeviceIdentifiers)
     {
         var payload = parsedPayload.DeepClone();
         if (!revealSensitive)
         {
             RedactTokens(payload);
+        }
+
+        if (!revealDeviceIdentifiers)
+        {
+            RedactDeviceIdentifiers(payload);
         }
 
         return payload.ToJsonString(PrettyJson);
@@ -70,6 +119,38 @@ public static class ProtocolMessageFormatter
                 foreach (var child in jsonArray)
                 {
                     RedactTokens(child);
+                }
+
+                break;
+        }
+    }
+
+    private static void RedactDeviceIdentifiers(JsonNode? node)
+    {
+        switch (node)
+        {
+            case JsonObject jsonObject:
+                foreach (var property in jsonObject.ToArray())
+                {
+                    if (property.Value is JsonValue value
+                        && value.TryGetValue<string>(out var text))
+                    {
+                        jsonObject[property.Key] = FormatIdentifierText(
+                            text,
+                            revealDeviceIdentifiers: false);
+                    }
+                    else
+                    {
+                        RedactDeviceIdentifiers(property.Value);
+                    }
+                }
+
+                break;
+
+            case JsonArray jsonArray:
+                foreach (var child in jsonArray)
+                {
+                    RedactDeviceIdentifiers(child);
                 }
 
                 break;

@@ -97,6 +97,11 @@ channel, event/method, parsed payload (when valid), exact raw JSON, parse error
 (when invalid), and connection generation. Tokens may appear in pairing RX
 messages, so session logs are sensitive and must not be committed.
 
+The Protocol page redacts pairing tokens separately from device UUIDs, MAC
+addresses, and IP addresses. Both categories are hidden by default in the live
+view, copies, and exports, and each has its own explicit reveal checkbox. The
+on-disk NDJSON capture remains exact and unredacted for research.
+
 ## Sources and licensing
 
 The endpoint and message assumptions were checked against the current
