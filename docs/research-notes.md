@@ -32,8 +32,8 @@ Notes:
 - Verify the exact highlighted item after `KEY_MENU` opens the S95F settings surface.
 - Map one repeatable route from the settings surface to Picture, then Expert Settings.
 - Compare `/api/v2/` state while powered on, in standby, and changing apps.
-- Send `ed.edenApp.get` and `ed.installedApp.get` from the Protocol page and
-  record the exact S95F response or absence of a response.
+- Repeat `ed.edenApp.get` and `ed.installedApp.get` while changing app or power
+  state; the first connected-session attempt produced no observable response.
 - Query/read before attempting any undocumented write.
 
 No service-menu or undocumented write is safe for automatic execution.
@@ -90,4 +90,28 @@ Repeatability: Anchor and Settings open/close passed 3 out of 3. The full route
 Risk: Normal
 Notes: Picture, Expert Settings, and the Expert Settings exit route are verified
   for the recorded firmware and viewing context.
+```
+
+## 2026-08-23 — application query response check
+
+```text
+Date/time (UTC): 2026-08-23 (exact time not recorded)
+TV model: Samsung S95F
+Firmware: 1296 (assumed unchanged from the previous observation; not reconfirmed)
+Input/source: Not reconfirmed
+SDR or HDR: Not reconfirmed
+Picture mode: Not reconfirmed
+API/channel: wss://TV:8002/api/v2/channels/samsung.remote.control
+Request:
+  - ms.channel.emit with event ed.edenApp.get, data "", to "host"
+  - ms.channel.emit with event ed.installedApp.get, data "", to "host"
+Response: No RX response was observed for either query in the Protocol capture.
+Observed result:
+  - Both TX requests were sent from the Protocol page.
+  - Neither produced an observable response during the user's observation window.
+Repeatability: One reported attempt per query.
+Risk: Experimental (read/query only)
+Notes: This establishes only that no response was observed in this session. It
+  does not establish that the events are unsupported in all S95F states,
+  firmware versions, channels, or request variants.
 ```
