@@ -170,11 +170,12 @@ can be planned or sent.
    **Alphabetical** when that view is more useful. Display names and parents remain
    editable; stable node IDs do not change after creation. Tree labels remain
    red until an anchor or traversal to that menu position has been verified.
-   Node creation shares the editor with updates: select a position and choose
-   **Add** to start a child (or change its parent before saving), while **Update**
-   changes the selected position. With focus in the tree, Up/Down select adjacent
-   visible positions, Left selects the parent, and Right selects the first child
-   without scrolling the page.
+   Node creation shares the editor with updates. **Add node** at the top opens a
+   blank form while retaining the displayed parent-menu choice; **Save** creates
+   it, **Cancel** restores the previously selected node, and **Update** changes an
+   existing node. With focus in the tree, Up/Down select adjacent visible
+   positions, Left selects the parent, and Right selects the first child without
+   scrolling the page.
 5. Choose **Anchor** or **Transition**, select two predefined nodes, and start
    live recording. For a transition, **Prepare source**
    uses a verified anchor and verified routes to position the TV first. The UI

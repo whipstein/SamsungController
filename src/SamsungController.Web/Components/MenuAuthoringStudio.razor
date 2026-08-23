@@ -102,9 +102,16 @@
                             }
                         </div>
                         <div class="menu-node-editor">
+                            <div class="menu-node-editor-start">
+                                <button class="secondary-action"
+                                        @onclick="BeginNewMenuNode"
+                                        disabled="@(!CanBeginMenuNodeAdd)">
+                                    + Add node
+                                </button>
+                            </div>
                             <header>
-                                <span>@(EditingNodeId is null ? "NEW TREE NODE" : "EDIT TREE NODE")</span>
-                                <strong>@(EditingNodeId is null ? "Add a named menu position" : NodeEditorLabel)</strong>
+                                <span>@(IsAddingMenuNode ? "NEW TREE NODE" : "EDIT TREE NODE")</span>
+                                <strong>@(IsAddingMenuNode ? "Add a named menu position" : NodeEditorLabel)</strong>
                             </header>
                             <div class="authoring-form-grid compact">
                                 <label>
@@ -113,7 +120,7 @@
                                 </label>
                                 <label>
                                     <span>Stable node ID</span>
-                                    <input @bind="NodeEditorId" placeholder="Generated from name" disabled="@(EditingNodeId is not null || IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
+                                    <input @bind="NodeEditorId" placeholder="Generated from name" disabled="@(!IsAddingMenuNode || IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
                                 </label>
                                 <label class="wide-field">
                                     <span>Parent menu position</span>
@@ -130,12 +137,12 @@
                                     <input @bind="NodeEditorDescription" placeholder="What is visible or selected in this state" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
                                 </label>
                             </div>
-                            @if (EditingNodeId is null && string.IsNullOrWhiteSpace(NodeEditorId) && !string.IsNullOrWhiteSpace(NodeEditorLabel))
+                            @if (IsAddingMenuNode && string.IsNullOrWhiteSpace(NodeEditorId) && !string.IsNullOrWhiteSpace(NodeEditorLabel))
                             {
                                 <p class="field-note">Will be saved as <code>@CreateMenuNodeId(NodeEditorLabel)</code>.</p>
                             }
                             <div class="menu-node-editor-actions">
-                                @if (EditingNodeId is not null)
+                                @if (!IsAddingMenuNode && EditingNodeId is not null)
                                 {
                                     @if (ConfirmMenuNodeDelete)
                                     {
@@ -147,16 +154,14 @@
                                         <button class="secondary-action danger-action" @onclick="RequestMenuNodeDelete" disabled="@(!CanDeleteMenuNode)">Delete</button>
                                     }
                                 }
-                                <button class="secondary-action menu-node-update"
-                                        @onclick="UpdateMenuNodeAsync"
-                                        disabled="@(!CanUpdateMenuNode)">
-                                    Update
-                                </button>
+                                @if (IsAddingMenuNode)
+                                {
+                                    <button class="secondary-action" @onclick="CancelMenuNodeAdd" disabled="@IsBusy">Cancel</button>
+                                }
                                 <button class="primary-action"
-                                        title="@(EditingNodeId is null ? "Create this menu position" : "Start a new child beneath this menu position")"
-                                        @onclick="AddMenuNodeAsync"
-                                        disabled="@(!CanAddMenuNode)">
-                                    Add <span>→</span>
+                                        @onclick="SaveOrUpdateMenuNodeAsync"
+                                        disabled="@(!CanSaveOrUpdateMenuNode)">
+                                    @(IsAddingMenuNode ? "Save" : "Update") <span>→</span>
                                 </button>
                             </div>
                         </div>
@@ -711,6 +716,8 @@
     private bool SystemTimingPreviouslyNeededValidation { get; set; }
     private int PreviousDraftValidationCount { get; set; }
     private ElementReference MenuTreeElement { get; set; }
+    private bool IsAddingMenuNode { get; set; }
+    private string? MenuNodeBeforeAddId { get; set; }
 
     private string DefinitionId { get; set; } = "samsung-menu";
     private string DefinitionName { get; set; } = "Samsung TV Menu";
@@ -763,15 +770,14 @@
     private bool CanEditMenuTree => !IsBusy && !Authoring.IsRecording
         && !Navigation.IsRunning && !Snapshot.MacroRunning
         && !ConfirmMenuNodeDelete;
-    private bool CanUpdateMenuNode => CanEditMenuTree
-        && EditingNodeId is not null
-        && !string.IsNullOrWhiteSpace(NodeEditorLabel);
-    private bool CanAddMenuNode => CanEditMenuTree
-        && (EditingNodeId is not null
-            || (!string.IsNullOrWhiteSpace(NodeEditorLabel)
-                && !Navigation.Nodes.Any(node => node.Id.Equals(
-                    GetNewMenuNodeId(),
-                    StringComparison.OrdinalIgnoreCase))));
+    private bool CanBeginMenuNodeAdd => CanEditMenuTree && !IsAddingMenuNode;
+    private bool CanSaveOrUpdateMenuNode => CanEditMenuTree
+        && !string.IsNullOrWhiteSpace(NodeEditorLabel)
+        && (IsAddingMenuNode
+            ? !Navigation.Nodes.Any(node => node.Id.Equals(
+                GetNewMenuNodeId(),
+                StringComparison.OrdinalIgnoreCase))
+            : EditingNodeId is not null);
     private bool CanDeleteMenuNode => EditingNodeId is not null && !IsBusy && !Authoring.IsRecording
         && !Navigation.IsRunning && !Snapshot.MacroRunning
         && Navigation.Nodes.FirstOrDefault(node => node.Id.Equals(EditingNodeId, StringComparison.OrdinalIgnoreCase))?.ParentId is not null;
@@ -901,23 +907,49 @@
         });
     }
 
-    private void BeginNewMenuNode(string? parentNodeId = null)
+    private void BeginNewMenuNode()
     {
+        MenuNodeBeforeAddId = EditingNodeId;
+        var retainedParentId = NodeEditorParentId;
+        IsAddingMenuNode = true;
         EditingNodeId = null;
         NodeEditorId = string.Empty;
         NodeEditorLabel = string.Empty;
         NodeEditorDescription = string.Empty;
-        NodeEditorParentId = parentNodeId
-            ?? Navigation.Nodes.FirstOrDefault(node =>
-                node.Id.Equals("tv-interface", StringComparison.OrdinalIgnoreCase))?.Id
-            ?? Navigation.Nodes.FirstOrDefault()?.Id
-            ?? string.Empty;
+        NodeEditorParentId = retainedParentId;
         ConfirmMenuNodeDelete = false;
         LocalError = null;
     }
 
+    private void CancelMenuNodeAdd()
+    {
+        var restored = MenuNodeBeforeAddId is null
+            ? null
+            : Navigation.Nodes.FirstOrDefault(node => node.Id.Equals(
+                MenuNodeBeforeAddId,
+                StringComparison.OrdinalIgnoreCase));
+        restored ??= Navigation.Nodes.FirstOrDefault();
+        if (restored is not null)
+        {
+            EditMenuNode(restored);
+        }
+        else
+        {
+            IsAddingMenuNode = false;
+            MenuNodeBeforeAddId = null;
+            EditingNodeId = null;
+            NodeEditorId = string.Empty;
+            NodeEditorLabel = string.Empty;
+            NodeEditorParentId = string.Empty;
+            NodeEditorDescription = string.Empty;
+            LocalError = null;
+        }
+    }
+
     private void EditMenuNode(MenuNodeSummary node)
     {
+        IsAddingMenuNode = false;
+        MenuNodeBeforeAddId = null;
         EditingNodeId = node.Id;
         NodeEditorId = node.Id;
         NodeEditorLabel = node.Label;
@@ -956,6 +988,11 @@
         Refresh();
     });
 
+    private Task SaveOrUpdateMenuNodeAsync() =>
+        IsAddingMenuNode
+            ? SaveNewMenuNodeAsync()
+            : UpdateMenuNodeAsync();
+
     private Task UpdateMenuNodeAsync()
     {
         var nodeId = EditingNodeId
@@ -977,31 +1014,22 @@
         });
     }
 
-    private Task AddMenuNodeAsync()
+    private Task SaveNewMenuNodeAsync() => RunBusyAsync(async () =>
     {
-        if (EditingNodeId is not null)
-        {
-            BeginNewMenuNode(EditingNodeId);
-            return Task.CompletedTask;
-        }
+        var nodeId = GetNewMenuNodeId();
+        var request = new MenuNodeEditRequest(
+            nodeId,
+            NodeEditorLabel,
+            NodeEditorParentId,
+            NodeEditorDescription);
+        await Controller.CreateMenuNodeAsync(request);
 
-        return RunBusyAsync(async () =>
-        {
-            var nodeId = GetNewMenuNodeId();
-            var request = new MenuNodeEditRequest(
-                nodeId,
-                NodeEditorLabel,
-                NodeEditorParentId,
-                NodeEditorDescription);
-            await Controller.CreateMenuNodeAsync(request);
-
-            Refresh();
-            var saved = Navigation.Nodes.First(node =>
-                node.Id.Equals(nodeId, StringComparison.OrdinalIgnoreCase));
-            EditMenuNode(saved);
-            InitializeNodeDefaults(force: true);
-        });
-    }
+        Refresh();
+        var saved = Navigation.Nodes.First(node =>
+            node.Id.Equals(nodeId, StringComparison.OrdinalIgnoreCase));
+        EditMenuNode(saved);
+        InitializeNodeDefaults(force: true);
+    });
 
     private string GetNewMenuNodeId() =>
         string.IsNullOrWhiteSpace(NodeEditorId)
@@ -1024,9 +1052,22 @@
     {
         var nodeId = EditingNodeId
             ?? throw new InvalidOperationException("Choose a menu-tree node to delete.");
+        var deleted = Navigation.Nodes.First(node => node.Id.Equals(
+            nodeId,
+            StringComparison.OrdinalIgnoreCase));
         await Controller.DeleteMenuNodeAsync(nodeId);
         Refresh();
-        BeginNewMenuNode();
+        var next = deleted.ParentId is null
+            ? null
+            : Navigation.Nodes.FirstOrDefault(node => node.Id.Equals(
+                deleted.ParentId,
+                StringComparison.OrdinalIgnoreCase));
+        next ??= Navigation.Nodes.FirstOrDefault();
+        if (next is not null)
+        {
+            EditMenuNode(next);
+        }
+
         InitializeNodeDefaults(force: true);
     });
 
@@ -1568,6 +1609,18 @@
             NodeEditorParentId = Navigation.Nodes.FirstOrDefault(node =>
                     node.Id.Equals("tv-interface", StringComparison.OrdinalIgnoreCase))?.Id
                 ?? Navigation.Nodes[0].Id;
+        }
+
+        if (!IsAddingMenuNode
+            && (EditingNodeId is null || Navigation.Nodes.All(node => !node.Id.Equals(
+                EditingNodeId,
+                StringComparison.OrdinalIgnoreCase))))
+        {
+            var initial = Navigation.Nodes.FirstOrDefault(node => node.Id.Equals(
+                    "normal-video",
+                    StringComparison.OrdinalIgnoreCase))
+                ?? Navigation.Nodes[0];
+            EditMenuNode(initial);
         }
     }
 

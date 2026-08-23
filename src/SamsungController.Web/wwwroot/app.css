@@ -395,14 +395,15 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .menu-tree-order-actions button:hover:not(:disabled) { border-color: rgba(124,231,220,.4); color: var(--cyan); }
 .menu-tree-order-actions button:disabled { opacity: .25; cursor: not-allowed; }
 .menu-node-editor { padding: 15px; border: 1px solid var(--line); border-radius: 7px; background: #08131b; }
+.menu-node-editor-start { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.menu-node-editor-start .secondary-action { padding: 8px 11px; }
 .menu-node-editor header { margin-bottom: 13px; }
 .menu-node-editor header span, .menu-node-editor header strong { display: block; }
 .menu-node-editor header span { color: var(--cyan); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .09em; }
 .menu-node-editor header strong { margin-top: 4px; font-size: 11px; }
 .menu-node-editor .field-note code { color: var(--cyan); }
 .menu-node-editor-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
-.menu-node-editor-actions .primary-action { width: auto; }
-.menu-node-editor-actions .menu-node-update { margin-left: auto; }
+.menu-node-editor-actions .primary-action { width: auto; margin-left: auto; }
 .authoring-section-title { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .authoring-section-title span { display: grid; width: 23px; height: 23px; place-items: center; border: 1px solid var(--line-strong); border-radius: 50%; color: var(--cyan); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .authoring-section-title strong { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
