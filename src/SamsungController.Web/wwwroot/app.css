@@ -431,7 +431,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .number-with-unit b { position: absolute; top: 50%; right: 11px; color: var(--faint); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; transform: translateY(-50%); }
 .authoring-workflow-grid { display: grid; grid-template-columns: 1.05fr .7fr .8fr; gap: 1px; margin-top: 18px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--line); }
 .authoring-config, .authoring-controller, .authoring-capture { min-width: 0; padding: 17px; background: #08131b; }
-.recording-actions { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; margin-top: 15px; }
+.recording-actions { display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; margin-top: 15px; }
 .authoring-remote { max-width: 280px; margin: 0 auto; }
 .authoring-remote-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
 .authoring-remote-row button, .authoring-return { border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface-2); color: var(--muted); padding: 10px 6px; font-size: 9px; cursor: pointer; }

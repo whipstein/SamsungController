@@ -292,6 +292,7 @@
                         <button class="primary-action" @onclick="StopAndSaveAsync" disabled="@(IsBusy || Authoring.RecordedCommandCount == 0)">Stop + save draft <span>■</span></button>
                         <button class="secondary-action" @onclick="Controller.UndoLastRecordedMenuCommand" disabled="@(Authoring.RecordedCommandCount == 0)">Undo last</button>
                         <button class="secondary-action danger-action" @onclick="Controller.ClearRecordedMenuCommands" disabled="@(Authoring.RecordedCommandCount == 0)">Clear</button>
+                        <button class="secondary-action danger-action" @onclick="CancelRecording" disabled="@(IsBusy || IsSendingKey)">Cancel recording</button>
                     </div>
                 }
             </div>
@@ -1011,6 +1012,19 @@
         RunBusyAsync(() => Controller.PrepareMenuRecordingSourceAsync(SourceNodeId));
 
     private Task StopAndSaveAsync() => RunBusyAsync(() => Controller.StopAndSaveMenuRecordingAsync());
+
+    private void CancelRecording()
+    {
+        LocalError = null;
+        try
+        {
+            Controller.CancelMenuRecording();
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+    }
 
     private Task SendCustomRecordedKeyAsync() => SendRecordedKeyAsync(CustomKey, CustomAction);
 

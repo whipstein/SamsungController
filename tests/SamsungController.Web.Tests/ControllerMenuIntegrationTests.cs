@@ -233,6 +233,37 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task EmptyMenuRecordingCanBeCancelledWithoutChangingYaml()
+    {
+        var (controller, transport) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            var definitionPath = controller.GetMenuNavigationSnapshot().DefinitionPath;
+            var yamlBefore = await File.ReadAllTextAsync(definitionPath);
+            controller.StartMenuRecording(new MenuRecordingRequest(
+                MenuAuthoringItemKind.Transition,
+                string.Empty,
+                "Picture",
+                "settings",
+                "picture",
+                null,
+                null));
+
+            Assert.True(controller.GetMenuAuthoringSnapshot().IsRecording);
+            Assert.Equal(0, controller.GetMenuAuthoringSnapshot().RecordedCommandCount);
+
+            controller.CancelMenuRecording();
+
+            var cancelled = controller.GetMenuAuthoringSnapshot();
+            Assert.False(cancelled.IsRecording);
+            Assert.Equal(0, cancelled.RecordedCommandCount);
+            Assert.Contains("cancelled", cancelled.Status, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(yamlBefore, await File.ReadAllTextAsync(definitionPath));
+            Assert.Empty(GetSentKeys(transport));
+        }
+    }
+
+    [Fact]
     public async Task SystemTimingAndPerButtonOverridesArePersistedToDraftYaml()
     {
         Directory.CreateDirectory(_directory);

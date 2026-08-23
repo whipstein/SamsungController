@@ -970,6 +970,23 @@ public sealed class SamsungControllerService : IAsyncDisposable
         NotifyChanged();
     }
 
+    public void CancelMenuRecording()
+    {
+        lock (_sync)
+        {
+            if (!_menuRecorder.IsRecording)
+            {
+                throw new InvalidOperationException("No menu traversal recording is active.");
+            }
+
+            _menuRecorder.Reset();
+            _menuAuthoringStatus = "Recording cancelled · no draft was saved";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
+    }
+
     public async Task StopAndSaveMenuRecordingAsync(
         CancellationToken cancellationToken = default)
     {
