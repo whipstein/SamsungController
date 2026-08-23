@@ -395,7 +395,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task NavigateBetweenVerifiedDestinationsUsesExplicitReturnLeg()
+    public async Task NavigateBetweenVerifiedDestinationsUsesCalculatedRelativeRoute()
     {
         var allVerifiedYaml = ExplicitValidationMenuYaml.Replace(
             "verified: false",
@@ -409,15 +409,15 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
 
             var plan = controller.CreateNavigationPlan("settings");
 
-            Assert.True(plan.UsesAnchor);
-            Assert.Equal("normal", plan.AnchorLeg?.AnchorId);
+            Assert.True(plan.UsesCalculatedRoute);
+            Assert.False(plan.UsesAnchor);
             Assert.Equal(
-                ["KEY_MENU", "KEY_RETURN"],
-                plan.AnchorLeg?.Operations.Select(operation => operation.Key));
+                ["KEY_RETURN", "KEY_UP"],
+                plan.CalculatedLeg?.Operations.Select(operation => operation.Key));
 
             await controller.ExecuteNavigationPlanAsync();
 
-            Assert.Equal(["KEY_MENU", "KEY_RETURN", "KEY_MENU"], GetSentKeys(transport));
+            Assert.Equal(["KEY_RETURN", "KEY_UP"], GetSentKeys(transport));
             var snapshot = controller.GetSnapshot();
             Assert.Equal("Settings", snapshot.MenuLabel);
             Assert.Equal(MenuStateConfidence.Probable, snapshot.MenuConfidence);

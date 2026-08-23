@@ -119,7 +119,7 @@ public sealed class MenuNavigatorTests
     }
 
     [Fact]
-    public async Task PlanUsesVerifiedAnchorWhenNoDirectRouteExists()
+    public async Task PlanCalculatesRelativeRouteWhenNoDirectTransitionExists()
     {
         var definition = CreateStateAwareReturnDefinition();
         var tracker = new MenuStateTracker(definition);
@@ -132,13 +132,14 @@ public sealed class MenuNavigatorTests
 
         var plan = navigator.Plan("settings", includeDraftTransitions: false);
 
-        Assert.True(plan.UsesAnchor);
-        Assert.Equal("normal", plan.AnchorLeg?.AnchorId);
-        Assert.Equal(3, plan.CommandCount);
+        Assert.True(plan.UsesCalculatedRoute);
+        Assert.False(plan.UsesAnchor);
+        Assert.Equal("KEY_UP", Assert.Single(plan.CalculatedLeg!.Operations).Key);
+        Assert.Equal(1, plan.CommandCount);
 
         await navigator.ExecutePlanAsync(plan);
 
-        Assert.Equal(["KEY_MENU", "KEY_RETURN", "KEY_MENU"], target.Keys);
+        Assert.Equal(["KEY_UP"], target.Keys);
         Assert.Equal("settings", tracker.Current.NodeId);
     }
 
@@ -161,11 +162,11 @@ public sealed class MenuNavigatorTests
 
         await navigator.ExecutePlanAsync(plan);
 
-        Assert.Equal(["KEY_RETURN"], target.Keys);
+        Assert.Equal(["KEY_UP"], target.Keys);
     }
 
     [Fact]
-    public async Task PlanPrefersShorterAnchorRouteOverLongDirectRoute()
+    public async Task PlanPrefersShorterCalculatedRouteOverLongDirectRoute()
     {
         var definition = CreateStateAwareReturnDefinition(directReturnRepeat: 4);
         var tracker = new MenuStateTracker(definition);
@@ -178,12 +179,62 @@ public sealed class MenuNavigatorTests
 
         var plan = navigator.Plan("settings", includeDraftTransitions: false);
 
-        Assert.True(plan.UsesAnchor);
-        Assert.Equal(3, plan.CommandCount);
+        Assert.True(plan.UsesCalculatedRoute);
+        Assert.False(plan.UsesAnchor);
+        Assert.Equal(1, plan.CommandCount);
 
         await navigator.ExecutePlanAsync(plan);
 
-        Assert.Equal(["KEY_MENU", "KEY_RETURN", "KEY_MENU"], target.Keys);
+        Assert.Equal(["KEY_UP"], target.Keys);
+    }
+
+    [Fact]
+    public async Task PlanCalculatesSingleStepMovesBetweenAbsoluteSiblingRoutes()
+    {
+        var definition = CreateAbsoluteSiblingDefinition();
+        var tracker = new MenuStateTracker(definition);
+        var target = new RecordingTarget();
+        var navigator = new MenuNavigator(definition, tracker, target);
+
+        await navigator.ExecuteAnchorAsync("normal");
+        await navigator.ExecutePlanAsync(navigator.Plan("brightness", includeDraftTransitions: false));
+        target.Keys.Clear();
+
+        var downPlan = navigator.Plan("contrast", includeDraftTransitions: false);
+        Assert.True(downPlan.UsesCalculatedRoute);
+        Assert.Equal("KEY_DOWN", Assert.Single(downPlan.CalculatedLeg!.Operations).Key);
+        await navigator.ExecutePlanAsync(downPlan);
+
+        target.Keys.Clear();
+        var upPlan = navigator.Plan("brightness", includeDraftTransitions: false);
+        Assert.True(upPlan.UsesCalculatedRoute);
+        Assert.Equal("KEY_UP", Assert.Single(upPlan.CalculatedLeg!.Operations).Key);
+        await navigator.ExecutePlanAsync(upPlan);
+
+        Assert.Equal(["KEY_UP"], target.Keys);
+        Assert.Equal("brightness", tracker.Current.NodeId);
+    }
+
+    [Fact]
+    public async Task PlanUsesVerifiedAnchorWhenSourcePathCannotBeSafelyInverted()
+    {
+        var definition = CreateNonInvertibleRouteDefinition();
+        var tracker = new MenuStateTracker(definition);
+        var target = new RecordingTarget();
+        var navigator = new MenuNavigator(definition, tracker, target);
+
+        await navigator.ExecuteAnchorAsync("normal");
+        await navigator.ExecutePlanAsync(navigator.Plan("source", includeDraftTransitions: false));
+        target.Keys.Clear();
+
+        var plan = navigator.Plan("target", includeDraftTransitions: false);
+
+        Assert.True(plan.UsesAnchor);
+        Assert.False(plan.UsesCalculatedRoute);
+        await navigator.ExecutePlanAsync(plan);
+
+        Assert.Equal(["KEY_EXIT", "KEY_MENU"], target.Keys);
+        Assert.Equal("target", tracker.Current.NodeId);
     }
 
     [Fact]
@@ -332,12 +383,92 @@ public sealed class MenuNavigatorTests
                 "close-picture",
                 "picture",
                 "settings",
-                [new MenuOperation("KEY_RETURN", Repeat: repeat)],
+                [new MenuOperation("KEY_UP", Repeat: repeat)],
                 true));
         }
 
         return transitions;
     }
+
+    private static MenuDefinition CreateAbsoluteSiblingDefinition() => new(
+        "absolute-siblings",
+        "Absolute siblings",
+        "TV",
+        new MenuDefinitionContext(),
+        [
+            new MenuNode("normal", "Normal video"),
+            new MenuNode("expert", "Expert Settings"),
+            new MenuNode("brightness", "Brightness", "expert"),
+            new MenuNode("contrast", "Contrast", "expert")
+        ],
+        [
+            new MenuTransition(
+                "to-brightness",
+                "normal",
+                "brightness",
+                [
+                    new MenuOperation("KEY_MENU"),
+                    new MenuOperation("KEY_DOWN"),
+                    new MenuOperation("KEY_ENTER"),
+                    new MenuOperation("KEY_DOWN", Repeat: 4),
+                    new MenuOperation("KEY_ENTER")
+                ],
+                true),
+            new MenuTransition(
+                "to-contrast",
+                "normal",
+                "contrast",
+                [
+                    new MenuOperation("KEY_MENU"),
+                    new MenuOperation("KEY_DOWN"),
+                    new MenuOperation("KEY_ENTER"),
+                    new MenuOperation("KEY_DOWN", Repeat: 4),
+                    new MenuOperation("KEY_ENTER"),
+                    new MenuOperation("KEY_DOWN")
+                ],
+                true)
+        ],
+        [
+            new MenuAnchor(
+                "normal",
+                "Return to normal video",
+                "normal",
+                [new MenuOperation("KEY_MENU", Repeat: 2)],
+                true)
+        ]);
+
+    private static MenuDefinition CreateNonInvertibleRouteDefinition() => new(
+        "non-invertible",
+        "Non-invertible",
+        "TV",
+        new MenuDefinitionContext(),
+        [
+            new MenuNode("normal", "Normal video"),
+            new MenuNode("source", "Source"),
+            new MenuNode("target", "Target")
+        ],
+        [
+            new MenuTransition(
+                "to-source",
+                "normal",
+                "source",
+                [new MenuOperation("KEY_SOURCE")],
+                true),
+            new MenuTransition(
+                "to-target",
+                "normal",
+                "target",
+                [new MenuOperation("KEY_MENU")],
+                true)
+        ],
+        [
+            new MenuAnchor(
+                "normal",
+                "Return to normal video",
+                "normal",
+                [new MenuOperation("KEY_EXIT")],
+                true)
+        ]);
 
     private sealed class RecordingTarget : IMenuCommandTarget
     {

@@ -92,10 +92,21 @@
             @if (SelectedPlan is { } plan)
             {
                 <div class="plan-summary verified">
-                    <strong>@(plan.UsesAnchor ? "Verified composite route" : "Verified route")</strong>
+                    <strong>@(plan.UsesCalculatedRoute ? "Calculated route from verified paths" : plan.UsesAnchor ? "Verified composite route" : "Verified route")</strong>
                     <span>@plan.CommandCount commands · @plan.EstimatedDelay.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture)s delay</span>
                 </div>
                 <div class="transition-list">
+                    @if (plan.CalculatedLeg is { } calculatedLeg)
+                    {
+                        <div class="transition-card calculated-leg-card">
+                            <header><span>@calculatedLeg.SourcePath → @calculatedLeg.TargetPath</span><b>Calculated leg</b></header>
+                            <small>@calculatedLeg.Basis</small>
+                            @foreach (var operation in calculatedLeg.Operations)
+                            {
+                                <code>@operation.Key × @operation.Repeat @operation.Action</code>
+                            }
+                        </div>
+                    }
                     @if (plan.AnchorLeg is { } anchorLeg)
                     {
                         <div class="transition-card anchor-leg-card">

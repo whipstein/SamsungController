@@ -10,6 +10,16 @@ public sealed record NavigationAnchorLeg(
     IReadOnlyList<MenuOperation> Operations,
     bool Verified);
 
+public sealed record NavigationCalculatedLeg(
+    string Label,
+    string SourceNodeId,
+    string SourcePath,
+    string TargetNodeId,
+    string TargetPath,
+    IReadOnlyList<MenuOperation> Operations,
+    string Basis,
+    bool BasedOnVerifiedRoutes);
+
 public sealed record NavigationPlan(
     string DefinitionId,
     string SourceNodeId,
@@ -18,20 +28,30 @@ public sealed record NavigationPlan(
     string TargetPath,
     IReadOnlyList<MenuTransition> Transitions,
     MenuTimingProfile Timing,
-    NavigationAnchorLeg? AnchorLeg = null)
+    NavigationAnchorLeg? AnchorLeg = null,
+    NavigationCalculatedLeg? CalculatedLeg = null)
 {
     public bool UsesDraftTransitions => Transitions.Any(transition => !transition.Verified);
 
     public bool UsesAnchor => AnchorLeg is not null;
 
-    public bool IsExecutable => !UsesDraftTransitions && AnchorLeg?.Verified != false;
+    public bool UsesCalculatedRoute => CalculatedLeg is not null;
+
+    public bool IsExecutable => !UsesDraftTransitions
+        && AnchorLeg?.Verified != false
+        && CalculatedLeg?.BasedOnVerifiedRoutes != false
+        && !(UsesAnchor && UsesCalculatedRoute);
 
     public int CommandCount => (AnchorLeg?.Operations.Sum(operation => operation.Repeat) ?? 0)
+        + (CalculatedLeg?.Operations.Sum(operation => operation.Repeat) ?? 0)
         + Transitions.Sum(transition =>
             transition.Operations.Sum(operation => operation.Repeat));
 
     public TimeSpan EstimatedDelay => TimeSpan.FromTicks(
         (AnchorLeg?.Operations.Sum(operation =>
+             (operation.DelayAfter ?? Timing.GetDelay(operation.Key)).Ticks
+             * operation.Repeat) ?? 0)
+        + (CalculatedLeg?.Operations.Sum(operation =>
              (operation.DelayAfter ?? Timing.GetDelay(operation.Key)).Ticks
              * operation.Repeat) ?? 0)
         + Transitions.Sum(transition =>

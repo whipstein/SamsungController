@@ -1663,9 +1663,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
             {
                 _navigationPlan = plan;
                 _navigationError = null;
-                _navigationStatus = plan.UsesAnchor
-                    ? $"Verified composite plan ready · {plan.CommandCount} commands"
-                    : $"Verified plan ready · {plan.CommandCount} commands";
+                _navigationStatus = plan.UsesCalculatedRoute
+                    ? $"Calculated plan ready from verified paths · {plan.CommandCount} commands"
+                    : plan.UsesAnchor
+                        ? $"Verified composite plan ready · {plan.CommandCount} commands"
+                        : $"Verified plan ready · {plan.CommandCount} commands";
                 _navigationProgress = null;
             }
 

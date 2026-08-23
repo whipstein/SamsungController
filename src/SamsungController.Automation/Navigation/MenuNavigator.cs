@@ -96,6 +96,17 @@ public sealed class MenuNavigator
                          state.NodeId,
                          StringComparison.OrdinalIgnoreCase)))
         {
+            if (TryCreateCalculatedPlan(
+                    planner,
+                    anchor,
+                    state,
+                    targetNodeId,
+                    includeDraftTransitions,
+                    out var calculatedPlan))
+            {
+                candidates.Add(calculatedPlan);
+            }
+
             NavigationPlan routeFromAnchor;
             try
             {
@@ -212,7 +223,7 @@ public sealed class MenuNavigator
         if (!plan.IsExecutable)
         {
             throw new InvalidOperationException(
-                "The navigation plan contains draft transitions and cannot be executed.");
+                "The navigation plan contains draft, unverified, or incompatible legs and cannot be executed.");
         }
 
         if (!string.Equals(
@@ -249,6 +260,36 @@ public sealed class MenuNavigator
                         cancellationToken)
                     .ConfigureAwait(false);
                 _stateTracker.ApplyAnchor(anchor);
+            }
+
+            if (plan.CalculatedLeg is { } calculatedLeg)
+            {
+                if (!calculatedLeg.BasedOnVerifiedRoutes
+                    || !calculatedLeg.SourceNodeId.Equals(
+                        plan.SourceNodeId,
+                        StringComparison.OrdinalIgnoreCase)
+                    || !calculatedLeg.TargetNodeId.Equals(
+                        plan.TargetNodeId,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        "The navigation plan contains an invalid calculated route leg.");
+                }
+
+                await ExecuteOperationsAsync(
+                        $"Calculated · {calculatedLeg.Label}",
+                        calculatedLeg.SourcePath,
+                        calculatedLeg.TargetPath,
+                        calculatedLeg.Operations,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                _stateTracker.ApplyTransition(new MenuTransition(
+                    $"calculated-{calculatedLeg.SourceNodeId}-to-{calculatedLeg.TargetNodeId}",
+                    calculatedLeg.SourceNodeId,
+                    calculatedLeg.TargetNodeId,
+                    calculatedLeg.Operations,
+                    Verified: true,
+                    Description: calculatedLeg.Basis));
             }
 
             foreach (var transition in plan.Transitions)
@@ -323,9 +364,187 @@ public sealed class MenuNavigator
         var anchorCost = plan.AnchorLeg is null
             ? 0
             : GetOperationsCost(plan.AnchorLeg.Operations);
-        return anchorCost + plan.Transitions.Sum(transition =>
+        var calculatedCost = plan.CalculatedLeg is null
+            ? 0
+            : GetOperationsCost(plan.CalculatedLeg.Operations);
+        return anchorCost + calculatedCost + plan.Transitions.Sum(transition =>
             GetOperationsCost(transition.Operations)
             + (transition.Verified ? 0 : draftPenalty));
+    }
+
+    private bool TryCreateCalculatedPlan(
+        NavigationPlanner planner,
+        MenuAnchor anchor,
+        MenuState state,
+        string targetNodeId,
+        bool includeDraftTransitions,
+        out NavigationPlan plan)
+    {
+        plan = null!;
+        NavigationPlan sourceRoute;
+        NavigationPlan targetRoute;
+        try
+        {
+            sourceRoute = planner.Plan(
+                _definition,
+                anchor.TargetNodeId,
+                state.NodeId!,
+                includeDraftTransitions);
+            targetRoute = planner.Plan(
+                _definition,
+                anchor.TargetNodeId,
+                targetNodeId,
+                includeDraftTransitions);
+        }
+        catch (NavigationPlanningException)
+        {
+            return false;
+        }
+
+        if (!sourceRoute.IsExecutable || !targetRoute.IsExecutable)
+        {
+            return false;
+        }
+
+        var sourcePresses = ExpandOperations(sourceRoute.Transitions);
+        var targetPresses = ExpandOperations(targetRoute.Transitions);
+        var commonPressCount = 0;
+        while (commonPressCount < sourcePresses.Count
+               && commonPressCount < targetPresses.Count
+               && HasSameCommand(
+                   sourcePresses[commonPressCount],
+                   targetPresses[commonPressCount]))
+        {
+            commonPressCount++;
+        }
+
+        var relativePresses = new List<MenuOperation>();
+        for (var index = sourcePresses.Count - 1; index >= commonPressCount; index--)
+        {
+            if (!TryInvert(sourcePresses[index], out var inverse))
+            {
+                return false;
+            }
+
+            AddAndCancelDirectionalOpposites(relativePresses, inverse);
+        }
+
+        for (var index = commonPressCount; index < targetPresses.Count; index++)
+        {
+            AddAndCancelDirectionalOpposites(relativePresses, targetPresses[index]);
+        }
+
+        var operations = CollapseRepeats(relativePresses);
+        if (operations.Count == 0)
+        {
+            return false;
+        }
+
+        var sourcePath = state.Path ?? _definition.GetPath(state.NodeId!);
+        var targetPath = _definition.GetPath(targetNodeId);
+        plan = new NavigationPlan(
+            _definition.Id,
+            state.NodeId!,
+            sourcePath,
+            targetNodeId,
+            targetPath,
+            [],
+            _definition.Timing,
+            CalculatedLeg: new NavigationCalculatedLeg(
+                $"{sourcePath} → {targetPath}",
+                state.NodeId!,
+                sourcePath,
+                targetNodeId,
+                targetPath,
+                operations,
+                $"Calculated by subtracting two verified routes from {anchor.Label}; {commonPressCount} shared commands.",
+                BasedOnVerifiedRoutes: true));
+        return true;
+    }
+
+    private static IReadOnlyList<MenuOperation> ExpandOperations(
+        IReadOnlyList<MenuTransition> transitions) => transitions
+        .SelectMany(transition => transition.Operations)
+        .SelectMany(operation => Enumerable.Range(0, operation.Repeat)
+            .Select(_ => operation with { Repeat = 1 }))
+        .ToArray();
+
+    private static bool HasSameCommand(MenuOperation left, MenuOperation right) =>
+        left.Key.Equals(right.Key, StringComparison.OrdinalIgnoreCase)
+        && left.Action == right.Action;
+
+    private static bool TryInvert(MenuOperation operation, out MenuOperation inverse)
+    {
+        var inverseKey = operation.Action == RemoteKeyAction.Click
+            ? operation.Key.Trim().ToUpperInvariant() switch
+            {
+                "KEY_UP" => "KEY_DOWN",
+                "KEY_DOWN" => "KEY_UP",
+                "KEY_LEFT" => "KEY_RIGHT",
+                "KEY_RIGHT" => "KEY_LEFT",
+                "KEY_ENTER" => "KEY_RETURN",
+                _ => null
+            }
+            : null;
+        inverse = new MenuOperation(
+            inverseKey ?? operation.Key,
+            RemoteKeyAction.Click);
+        return inverseKey is not null;
+    }
+
+    private static void AddAndCancelDirectionalOpposites(
+        List<MenuOperation> operations,
+        MenuOperation operation)
+    {
+        if (operations.Count > 0
+            && AreOppositeDirectionalCommands(operations[^1], operation))
+        {
+            operations.RemoveAt(operations.Count - 1);
+            return;
+        }
+
+        operations.Add(operation);
+    }
+
+    private static bool AreOppositeDirectionalCommands(
+        MenuOperation left,
+        MenuOperation right)
+    {
+        if (left.Action != RemoteKeyAction.Click || right.Action != RemoteKeyAction.Click)
+        {
+            return false;
+        }
+
+        var leftKey = left.Key.Trim().ToUpperInvariant();
+        var rightKey = right.Key.Trim().ToUpperInvariant();
+        return (leftKey, rightKey) is
+            ("KEY_UP", "KEY_DOWN") or
+            ("KEY_DOWN", "KEY_UP") or
+            ("KEY_LEFT", "KEY_RIGHT") or
+            ("KEY_RIGHT", "KEY_LEFT");
+    }
+
+    private static IReadOnlyList<MenuOperation> CollapseRepeats(
+        IReadOnlyList<MenuOperation> presses)
+    {
+        var operations = new List<MenuOperation>();
+        foreach (var press in presses)
+        {
+            if (operations.Count > 0
+                && HasSameCommand(operations[^1], press)
+                && operations[^1].DelayAfter == press.DelayAfter)
+            {
+                operations[^1] = operations[^1] with
+                {
+                    Repeat = operations[^1].Repeat + 1
+                };
+                continue;
+            }
+
+            operations.Add(press);
+        }
+
+        return operations;
     }
 
     private long GetOperationsCost(IReadOnlyList<MenuOperation> operations)
