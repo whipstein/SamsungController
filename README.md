@@ -21,6 +21,7 @@ validated; see the [verification checklist](docs/architecture.md#s95f-verificati
 - Connection state and bounded automatic reconnect
 - Hierarchical YAML macros with variables, repeats, delays, cancellation, and execution progress
 - Localhost-only Blazor control surface for connection, remote keys, macros, menu navigation, and protocol inspection
+- Persistent quick-access controls for favorite remote commands and validated macros, with Return to video pinned by default
 - Data-driven menu definitions, live UI route recording, state-aware return-to-video scripts, system-wide timing calibration with per-button overrides, automatic draft YAML persistence, three-pass verification, deterministic anchors, and explicit prediction confidence
 - CLI commands: `connect`, `key`, `macro`, `console`, `listen`, `status`, and `forget`
 - Cross-platform console line editing with persistent, privacy-filtered history
@@ -60,6 +61,14 @@ open it. Keep that boundary in place: the interface can send arbitrary TV keys
 and, after a separate developer-mode opt-in, raw JSON.
 
 The five views share one live TV session:
+
+The header remains visible on every view. It provides saved quick-access buttons
+and the application's expected position in the TV menu tree. **Return to video**
+is pinned by default. Use **+ Add** in the header to pin any Samsung key or
+validated macro, or use the corresponding quick-access control on the Remote
+and Macros pages. Additions, labels, and removals persist in `settings.json`.
+The displayed menu position is a prediction with an explicit confidence level;
+Samsung's remote-control channel does not report the actual on-screen cursor.
 
 - **Connection** pairs or reconnects using the same saved host, token, and
   settings as the CLI.

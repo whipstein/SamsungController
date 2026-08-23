@@ -32,6 +32,20 @@ public sealed record ControllerSnapshot(
     string? MenuPath,
     MenuStateConfidence MenuConfidence);
 
+public enum QuickAccessActionKind
+{
+    RemoteKey,
+    Macro,
+    MenuAnchor
+}
+
+public sealed record QuickAccessAction(
+    string Id,
+    string Label,
+    QuickAccessActionKind Kind,
+    string Target,
+    RemoteKeyAction Action = RemoteKeyAction.Click);
+
 public sealed record DeviceInfoObservation(
     DateTimeOffset Timestamp,
     string Label,

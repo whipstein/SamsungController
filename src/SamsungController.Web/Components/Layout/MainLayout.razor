@@ -29,8 +29,122 @@
 
     <main class="main-stage">
         <header class="topbar">
-            <div><span class="eyebrow">S95F CONTROL PLANE</span></div>
-            <div class="connection-pill @StateClass"><span></span>@Snapshot.ConnectionState</div>
+            <div class="topbar-primary">
+                <div><span class="eyebrow">S95F CONTROL PLANE</span></div>
+                <div class="connection-pill @StateClass"><span></span>@Snapshot.ConnectionState</div>
+            </div>
+
+            <div class="persistent-control-bar">
+                <div class="quick-access-region">
+                    <span class="topbar-label">QUICK ACCESS</span>
+                    <div class="quick-access-actions">
+                        @foreach (var action in QuickActions)
+                        {
+                            <button class="quick-access-button"
+                                    title="@GetQuickActionTitle(action)"
+                                    @onclick="() => RunQuickActionAsync(action.Id)"
+                                    disabled="@QuickControlsDisabled">
+                                <b>@GetQuickActionGlyph(action)</b>
+                                <span>@action.Label</span>
+                            </button>
+                        }
+                        <button class="quick-access-manage @(ShowQuickEditor ? "active" : "")"
+                                title="Add or remove quick-access actions"
+                                @onclick="ToggleQuickEditorAsync"
+                                disabled="@QuickEditorBusy">
+                            @(ShowQuickEditor ? "Close" : "+ Add")
+                        </button>
+                    </div>
+                </div>
+
+                <div class="persistent-menu-state @MenuConfidenceClass" title="This is the application's predicted TV menu position, not a value reported by the TV.">
+                    <span>EXPECTED TV MENU</span>
+                    <strong>@(Snapshot.MenuPath ?? "Unknown — run an anchor")</strong>
+                    <small>@Snapshot.MenuConfidence confidence</small>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(QuickAccessError))
+            {
+                <div class="topbar-feedback danger" role="alert">@QuickAccessError</div>
+            }
+            else if (!string.IsNullOrWhiteSpace(QuickAccessStatus))
+            {
+                <div class="topbar-feedback" role="status">@QuickAccessStatus</div>
+            }
+
+            @if (ShowQuickEditor)
+            {
+                <div class="quick-access-editor">
+                    <div class="quick-editor-heading">
+                        <div>
+                            <span class="topbar-label">CUSTOMIZE QUICK ACCESS</span>
+                            <strong>Pin a remote command or validated macro.</strong>
+                        </div>
+                        <small>@QuickActions.Count / 12 used</small>
+                    </div>
+                    <div class="quick-editor-fields">
+                        <label>
+                            <span>Type</span>
+                            <select @bind="QuickEditorKind" disabled="@QuickEditorBusy">
+                                <option value="@QuickAccessActionKind.RemoteKey">Remote command</option>
+                                <option value="@QuickAccessActionKind.Macro">Macro</option>
+                            </select>
+                        </label>
+                        @if (QuickEditorKind == QuickAccessActionKind.RemoteKey)
+                        {
+                            <label>
+                                <span>Samsung key</span>
+                                <input @bind="QuickKey" placeholder="KEY_HOME" disabled="@QuickEditorBusy" />
+                            </label>
+                            <label>
+                                <span>Action</span>
+                                <select @bind="QuickRemoteAction" disabled="@QuickEditorBusy">
+                                    @foreach (var action in Enum.GetValues<RemoteKeyAction>())
+                                    {
+                                        <option value="@action">@action</option>
+                                    }
+                                </select>
+                            </label>
+                        }
+                        else
+                        {
+                            <label class="quick-macro-field">
+                                <span>Validated macro</span>
+                                <select @bind="QuickMacro" disabled="@(QuickEditorBusy || QuickMacros.Count == 0)">
+                                    @if (QuickMacros.Count == 0)
+                                    {
+                                        <option value="">No macro catalog available</option>
+                                    }
+                                    @foreach (var macro in QuickMacros)
+                                    {
+                                        <option value="@macro.Name">@macro.Name</option>
+                                    }
+                                </select>
+                            </label>
+                        }
+                        <label>
+                            <span>Button label <small>optional</small></span>
+                            <input @bind="QuickLabel" placeholder="Use command or macro name" disabled="@QuickEditorBusy" />
+                        </label>
+                        <button class="primary-action quick-editor-add" @onclick="AddQuickActionAsync" disabled="@(!CanAddQuickAction)">
+                            Add button <span>＋</span>
+                        </button>
+                    </div>
+                    @if (QuickActions.Count > 0)
+                    {
+                        <div class="quick-editor-current">
+                            @foreach (var action in QuickActions)
+                            {
+                                <div>
+                                    <span><b>@action.Label</b><small>@GetQuickActionTitle(action)</small></span>
+                                    <button title="Remove @action.Label" @onclick="() => RemoveQuickActionAsync(action.Id)" disabled="@QuickEditorBusy">Remove</button>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
         </header>
         <article class="page-content">
             @Body
@@ -40,6 +154,27 @@
 
 @code {
     private ControllerSnapshot Snapshot { get; set; } = null!;
+    private MenuAuthoringSnapshot Authoring { get; set; } = null!;
+    private IReadOnlyList<QuickAccessAction> QuickActions { get; set; } = [];
+    private IReadOnlyList<MacroSummary> QuickMacros { get; set; } = [];
+    private QuickAccessActionKind QuickEditorKind { get; set; } = QuickAccessActionKind.RemoteKey;
+    private RemoteKeyAction QuickRemoteAction { get; set; } = RemoteKeyAction.Click;
+    private string QuickKey { get; set; } = "KEY_HOME";
+    private string QuickMacro { get; set; } = string.Empty;
+    private string QuickLabel { get; set; } = string.Empty;
+    private bool ShowQuickEditor { get; set; }
+    private bool QuickEditorBusy { get; set; }
+    private bool QuickActionBusy { get; set; }
+    private string? QuickAccessError { get; set; }
+    private string? QuickAccessStatus { get; set; }
+
+    private bool QuickControlsDisabled => Snapshot.ConnectionState != SamsungConnectionState.Connected ||
+        Snapshot.MacroRunning || Snapshot.NavigationRunning || Authoring.IsRecording || QuickActionBusy;
+    private bool CanAddQuickAction => !QuickEditorBusy && QuickActions.Count < 12 &&
+        (QuickEditorKind == QuickAccessActionKind.RemoteKey
+            ? !string.IsNullOrWhiteSpace(QuickKey)
+            : !string.IsNullOrWhiteSpace(QuickMacro));
+    private string MenuConfidenceClass => Snapshot.MenuConfidence.ToString().ToLowerInvariant();
 
     private string StateClass => Snapshot.ConnectionState switch
     {
@@ -53,15 +188,146 @@
     protected override async Task OnInitializedAsync()
     {
         Snapshot = Controller.GetSnapshot();
+        Authoring = Controller.GetMenuAuthoringSnapshot();
+        QuickActions = Controller.GetQuickAccessActions();
         Controller.Changed += HandleControllerChanged;
         await Controller.InitializeAsync();
-        Snapshot = Controller.GetSnapshot();
+        Refresh();
     }
+
+    private async Task ToggleQuickEditorAsync()
+    {
+        ShowQuickEditor = !ShowQuickEditor;
+        QuickAccessError = null;
+        QuickAccessStatus = null;
+        if (!ShowQuickEditor)
+        {
+            return;
+        }
+
+        QuickEditorBusy = true;
+        try
+        {
+            QuickMacros = await Controller.LoadMacrosAsync();
+            QuickMacro = QuickMacros.Any(macro => macro.Name == QuickMacro)
+                ? QuickMacro
+                : QuickMacros.FirstOrDefault()?.Name ?? string.Empty;
+        }
+        catch (Exception exception)
+        {
+            QuickMacros = [];
+            QuickMacro = string.Empty;
+            QuickAccessError = $"Remote commands can still be added. Macro catalog: {exception.Message}";
+        }
+        finally
+        {
+            QuickEditorBusy = false;
+        }
+    }
+
+    private async Task AddQuickActionAsync()
+    {
+        QuickEditorBusy = true;
+        QuickAccessError = null;
+        QuickAccessStatus = null;
+        try
+        {
+            if (QuickEditorKind == QuickAccessActionKind.RemoteKey)
+            {
+                await Controller.AddQuickAccessRemoteKeyAsync(
+                    QuickLabel,
+                    QuickKey,
+                    QuickRemoteAction);
+            }
+            else
+            {
+                await Controller.AddQuickAccessMacroAsync(QuickMacro, QuickLabel);
+            }
+
+            QuickLabel = string.Empty;
+            QuickAccessStatus = "Quick-access button saved.";
+        }
+        catch (Exception exception)
+        {
+            QuickAccessError = exception.Message;
+        }
+        finally
+        {
+            QuickEditorBusy = false;
+            Refresh();
+        }
+    }
+
+    private async Task RemoveQuickActionAsync(string actionId)
+    {
+        QuickEditorBusy = true;
+        QuickAccessError = null;
+        QuickAccessStatus = null;
+        try
+        {
+            await Controller.RemoveQuickAccessActionAsync(actionId);
+            QuickAccessStatus = "Quick-access button removed.";
+        }
+        catch (Exception exception)
+        {
+            QuickAccessError = exception.Message;
+        }
+        finally
+        {
+            QuickEditorBusy = false;
+            Refresh();
+        }
+    }
+
+    private async Task RunQuickActionAsync(string actionId)
+    {
+        QuickActionBusy = true;
+        QuickAccessError = null;
+        QuickAccessStatus = null;
+        try
+        {
+            await Controller.RunQuickAccessActionAsync(actionId);
+        }
+        catch (OperationCanceledException)
+        {
+            QuickAccessStatus = "Quick-access action cancelled.";
+        }
+        catch (Exception exception)
+        {
+            QuickAccessError = exception.Message;
+        }
+        finally
+        {
+            QuickActionBusy = false;
+            Refresh();
+        }
+    }
+
+    private static string GetQuickActionGlyph(QuickAccessAction action) => action.Kind switch
+    {
+        QuickAccessActionKind.MenuAnchor => "↩",
+        QuickAccessActionKind.Macro => "M",
+        _ => "K"
+    };
+
+    private static string GetQuickActionTitle(QuickAccessAction action) => action.Kind switch
+    {
+        QuickAccessActionKind.MenuAnchor => $"Menu anchor · {action.Target}",
+        QuickAccessActionKind.Macro => $"Macro · {action.Target}",
+        _ => $"{action.Target} · {action.Action}"
+    };
 
     private void HandleControllerChanged()
     {
-        Snapshot = Controller.GetSnapshot();
+        Refresh();
         _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void Refresh()
+    {
+        Snapshot = Controller.GetSnapshot();
+        Authoring = Controller.GetMenuAuthoringSnapshot();
+        QuickActions = Controller.GetQuickAccessActions();
     }
 
     public void Dispose()

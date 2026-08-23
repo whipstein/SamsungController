@@ -42,8 +42,9 @@ SamsungController.Web
   lifetime. The core library does not depend on the CLI.
 - `SamsungController.Web` is an ASP.NET Core/Blazor Server presentation layer.
   One process-wide controller service owns the active TV connection, macro run,
-  500-message protocol ring buffer, and session logger. Razor components call
-  that service and contain no Samsung protocol construction logic.
+  500-message protocol ring buffer, session logger, and persisted quick-access
+  actions. Razor components call that service and contain no Samsung protocol
+  construction logic.
 
 The macro automation, web interface, and first data-driven menu-navigation slice
 were introduced after pairing, token reuse, and remote keys were verified
@@ -78,6 +79,14 @@ view holds only the latest 500 messages in memory and recursively redacts JSON
 properties named `token` unless the user explicitly reveals sensitive values.
 The on-disk capture remains complete for research and therefore must be kept
 private. Raw JSON sending is gated behind a developer-mode control in the UI.
+
+The shared layout displays connection status, saved quick-access actions, and
+the predicted menu path on every page. Quick-access metadata is normalized and
+persisted in `settings.json`; execution still flows through the same controller
+methods as the Remote, Macros, and Menu views, so connection, automation, and
+menu-recording guards remain centralized. A missing quick-access setting gets a
+default `normal-video` anchor action. An explicitly saved empty list remains
+empty, allowing the default to be removed intentionally.
 
 ## WebSocket handshake
 

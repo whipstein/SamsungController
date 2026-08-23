@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace SamsungController.Web.Services;
 
@@ -6,7 +7,8 @@ internal sealed record SamsungWebSettings
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
-        WriteIndented = true
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() }
     };
 
     public string? Host { get; init; }
@@ -24,6 +26,8 @@ internal sealed record SamsungWebSettings
     public string? MacroFilePath { get; init; }
 
     public string? MenuDefinitionPath { get; init; }
+
+    public IReadOnlyList<QuickAccessAction>? QuickAccess { get; init; }
 
     public static async Task<SamsungWebSettings> LoadAsync(
         string path,

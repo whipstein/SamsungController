@@ -66,6 +66,13 @@
             {
                 <button class="primary-action" @onclick="RunMacroAsync" disabled="@(!CanRun)">Run macro <span>▶</span></button>
             }
+            @if (SelectedMacro is not null)
+            {
+                <button class="secondary-action quick-pin-action" @onclick="ToggleSelectedMacroQuickAccessAsync" disabled="@(!CanManageQuickAccess)">
+                    @(SelectedQuickAction is null ? "Add to quick access" : "Remove from quick access")
+                    <span>@(SelectedQuickAction is null ? "＋" : "×")</span>
+                </button>
+            }
             <p class="field-note">Run is available only while the TV is connected.</p>
         </div>
 
@@ -90,6 +97,7 @@
     private ControllerSnapshot Snapshot { get; set; } = null!;
     private MacroRunSnapshot Run { get; set; } = new(false, null, null, []);
     private IReadOnlyList<MacroSummary> CatalogMacros { get; set; } = [];
+    private IReadOnlyList<QuickAccessAction> QuickActions { get; set; } = [];
     private string MacroPath { get; set; } = string.Empty;
     private string? SelectedMacro { get; set; }
     private string? ErrorMessage { get; set; }
@@ -97,11 +105,17 @@
 
     private bool CanRun => Snapshot.ConnectionState == SamsungConnectionState.Connected &&
         !Run.IsRunning && !Snapshot.NavigationRunning && !string.IsNullOrWhiteSpace(SelectedMacro);
+    private bool CanManageQuickAccess => !Run.IsRunning && !Snapshot.NavigationRunning &&
+        !string.IsNullOrWhiteSpace(SelectedMacro);
+    private QuickAccessAction? SelectedQuickAction => QuickActions.FirstOrDefault(action =>
+        action.Kind == QuickAccessActionKind.Macro &&
+        action.Target.Equals(SelectedMacro, StringComparison.OrdinalIgnoreCase));
 
     protected override async Task OnInitializedAsync()
     {
         Snapshot = Controller.GetSnapshot();
         Run = Controller.GetMacroRunSnapshot();
+        QuickActions = Controller.GetQuickAccessActions();
         Controller.Changed += HandleControllerChanged;
         await Controller.InitializeAsync();
         Snapshot = Controller.GetSnapshot();
@@ -163,10 +177,36 @@
 
     private void CancelMacro() => Controller.CancelMacro();
 
+    private async Task ToggleSelectedMacroQuickAccessAsync()
+    {
+        if (SelectedMacro is null)
+        {
+            return;
+        }
+
+        ErrorMessage = null;
+        try
+        {
+            if (SelectedQuickAction is { } existing)
+            {
+                await Controller.RemoveQuickAccessActionAsync(existing.Id);
+            }
+            else
+            {
+                await Controller.AddQuickAccessMacroAsync(SelectedMacro);
+            }
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = exception.Message;
+        }
+    }
+
     private void HandleControllerChanged()
     {
         Snapshot = Controller.GetSnapshot();
         Run = Controller.GetMacroRunSnapshot();
+        QuickActions = Controller.GetQuickAccessActions();
         _ = InvokeAsync(StateHasChanged);
     }
 

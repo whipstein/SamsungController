@@ -34,6 +34,12 @@ marks state unknown. Volume and other keys that do not normally affect menu
 position preserve the prediction. Manual keys and macro steps pass through the
 same tracker as the Menu Navigator.
 
+The web header exposes this predicted path and confidence on every page. It is
+a statement of where SamsungController expects the TV menu to be, not visual or
+protocol feedback from the TV. The default **Return to video** quick-access
+button runs the verified `normal-video` anchor and, on success, restores a
+Synchronized prediction.
+
 ## Version 1 YAML
 
 The initial S95F definition is

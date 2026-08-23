@@ -321,6 +321,88 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task QuickAccessDefaultsToReturnToVideo()
+    {
+        Directory.CreateDirectory(_directory);
+        await using var controller = CreateController();
+
+        await controller.InitializeAsync();
+
+        var action = Assert.Single(controller.GetQuickAccessActions());
+        Assert.Equal("Return to video", action.Label);
+        Assert.Equal(QuickAccessActionKind.MenuAnchor, action.Kind);
+        Assert.Equal("normal-video", action.Target);
+    }
+
+    [Fact]
+    public async Task RemovingDefaultQuickAccessActionPersistsAnEmptyList()
+    {
+        Directory.CreateDirectory(_directory);
+        await using (var controller = CreateController())
+        {
+            await controller.InitializeAsync();
+            var action = Assert.Single(controller.GetQuickAccessActions());
+
+            await controller.RemoveQuickAccessActionAsync(action.Id);
+
+            Assert.Empty(controller.GetQuickAccessActions());
+        }
+
+        await using var reloaded = CreateController();
+        await reloaded.InitializeAsync();
+        Assert.Empty(reloaded.GetQuickAccessActions());
+    }
+
+    [Fact]
+    public async Task QuickAccessRemoteCommandCanBeSavedAndRun()
+    {
+        var (controller, transport) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            await controller.AddQuickAccessRemoteKeyAsync(
+                "Source",
+                "KEY_SOURCE",
+                RemoteKeyAction.Click);
+            var action = controller.GetQuickAccessActions().Single(candidate =>
+                candidate.Kind == QuickAccessActionKind.RemoteKey);
+
+            await controller.RunQuickAccessActionAsync(action.Id);
+
+            Assert.Equal(["KEY_SOURCE"], GetSentKeys(transport));
+            var settingsJson = await File.ReadAllTextAsync(
+                Path.Combine(_directory, "settings.json"));
+            Assert.Contains("Source", settingsJson, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task QuickAccessMacroMustBeValidAndCanBeRun()
+    {
+        var (controller, transport) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            var macroPath = Path.Combine(_directory, "macros.yaml");
+            await File.WriteAllTextAsync(
+                macroPath,
+                """
+                version: 1
+                macros:
+                  MovieNight:
+                    - key: KEY_HOME
+                """);
+            await controller.SetMacroFileAsync(macroPath);
+            await controller.AddQuickAccessMacroAsync("MovieNight", "Movie night");
+            var action = controller.GetQuickAccessActions().Single(candidate =>
+                candidate.Kind == QuickAccessActionKind.Macro);
+
+            await controller.RunQuickAccessActionAsync(action.Id);
+
+            Assert.Equal(["KEY_HOME"], GetSentKeys(transport));
+            Assert.Equal("Movie night", action.Label);
+        }
+    }
+
+    [Fact]
     public async Task ReadOnlyResearchQueriesSendKnownApplicationEvents()
     {
         var (controller, transport) = await CreateConnectedControllerAsync();

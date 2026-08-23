@@ -14,6 +14,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private const int MessageCapacity = 500;
     private const int MacroProgressCapacity = 500;
     private const int DeviceInfoObservationCapacity = 20;
+    private const int QuickAccessCapacity = 12;
+    private static readonly QuickAccessAction DefaultReturnToVideoAction = new(
+        "menuanchor:normal-video",
+        "Return to video",
+        QuickAccessActionKind.MenuAnchor,
+        "normal-video");
 
     private readonly object _sync = new();
     private readonly SemaphoreSlim _initializationGate = new(1, 1);
@@ -205,6 +211,14 @@ public sealed class SamsungControllerService : IAsyncDisposable
             return new DeviceInfoSnapshot(
                 Volatile.Read(ref _deviceInfoQuerying) == 1,
                 _deviceInfoObservations.ToArray());
+        }
+    }
+
+    public IReadOnlyList<QuickAccessAction> GetQuickAccessActions()
+    {
+        lock (_sync)
+        {
+            return NormalizeQuickAccess(_settings.QuickAccess).ToArray();
         }
     }
 
@@ -1649,6 +1663,97 @@ public sealed class SamsungControllerService : IAsyncDisposable
             .ToArray();
     }
 
+    public async Task AddQuickAccessRemoteKeyAsync(
+        string? label,
+        string key,
+        RemoteKeyAction action = RemoteKeyAction.Click,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        var target = key.Trim();
+        var item = new QuickAccessAction(
+            CreateQuickAccessId(QuickAccessActionKind.RemoteKey, target, action),
+            NormalizeQuickAccessLabel(label, target),
+            QuickAccessActionKind.RemoteKey,
+            target,
+            action);
+        await AddOrUpdateQuickAccessAsync(item, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task AddQuickAccessMacroAsync(
+        string macroName,
+        string? label = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(macroName);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        var target = macroName.Trim();
+        var catalog = await LoadValidatedCatalogAsync(cancellationToken).ConfigureAwait(false);
+        catalog.GetRequiredMacro(target);
+        var item = new QuickAccessAction(
+            CreateQuickAccessId(
+                QuickAccessActionKind.Macro,
+                target,
+                RemoteKeyAction.Click),
+            NormalizeQuickAccessLabel(label, target),
+            QuickAccessActionKind.Macro,
+            target);
+        await AddOrUpdateQuickAccessAsync(item, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task RemoveQuickAccessActionAsync(
+        string actionId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(actionId);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        var existing = GetQuickAccessActions();
+        var updated = existing
+            .Where(action => !action.Id.Equals(actionId, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (updated.Length == existing.Count)
+        {
+            return;
+        }
+
+        await UpdateSettingsAsync(
+                current => current with { QuickAccess = updated },
+                cancellationToken)
+            .ConfigureAwait(false);
+        NotifyChanged();
+    }
+
+    public async Task RunQuickAccessActionAsync(
+        string actionId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(actionId);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        var action = GetQuickAccessActions().FirstOrDefault(candidate =>
+            candidate.Id.Equals(actionId, StringComparison.OrdinalIgnoreCase))
+            ?? throw new KeyNotFoundException($"Quick-access action '{actionId}' was not found.");
+        EnsureNoMenuRecording("run a quick-access action");
+        switch (action.Kind)
+        {
+            case QuickAccessActionKind.RemoteKey:
+                await SendKeyAsync(action.Target, action.Action, cancellationToken)
+                    .ConfigureAwait(false);
+                break;
+
+            case QuickAccessActionKind.Macro:
+                await RunMacroAsync(action.Target, cancellationToken).ConfigureAwait(false);
+                break;
+
+            case QuickAccessActionKind.MenuAnchor:
+                await RunMenuAnchorAsync(action.Target, cancellationToken).ConfigureAwait(false);
+                break;
+
+            default:
+                throw new InvalidOperationException(
+                    $"Quick-access action kind '{action.Kind}' is not supported.");
+        }
+    }
+
     public async Task RunMacroAsync(
         string macroName,
         CancellationToken cancellationToken = default)
@@ -2862,6 +2967,96 @@ public sealed class SamsungControllerService : IAsyncDisposable
         var path = GetSnapshot().MacroFilePath;
         return await LoadValidatedCatalogAsync(path, cancellationToken).ConfigureAwait(false);
     }
+
+    private async Task AddOrUpdateQuickAccessAsync(
+        QuickAccessAction action,
+        CancellationToken cancellationToken)
+    {
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        var current = GetQuickAccessActions().ToList();
+        var existingIndex = current.FindIndex(candidate =>
+            candidate.Id.Equals(action.Id, StringComparison.OrdinalIgnoreCase));
+        if (existingIndex >= 0)
+        {
+            current[existingIndex] = action;
+        }
+        else
+        {
+            if (current.Count >= QuickAccessCapacity)
+            {
+                throw new InvalidOperationException(
+                    $"Quick access supports at most {QuickAccessCapacity} actions. Remove one before adding another.");
+            }
+
+            current.Add(action);
+        }
+
+        await UpdateSettingsAsync(
+                settings => settings with { QuickAccess = current },
+                cancellationToken)
+            .ConfigureAwait(false);
+        NotifyChanged();
+    }
+
+    private static IReadOnlyList<QuickAccessAction> NormalizeQuickAccess(
+        IReadOnlyList<QuickAccessAction>? actions)
+    {
+        if (actions is null)
+        {
+            return [DefaultReturnToVideoAction];
+        }
+
+        var normalized = new List<QuickAccessAction>();
+        var identifiers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var action in actions)
+        {
+            if (action is null
+                || !Enum.IsDefined(action.Kind)
+                || string.IsNullOrWhiteSpace(action.Target))
+            {
+                continue;
+            }
+
+            if (action.Kind == QuickAccessActionKind.RemoteKey
+                && !Enum.IsDefined(action.Action))
+            {
+                continue;
+            }
+
+            var target = action.Target.Trim();
+            var remoteAction = action.Kind == QuickAccessActionKind.RemoteKey
+                ? action.Action
+                : RemoteKeyAction.Click;
+            var id = CreateQuickAccessId(action.Kind, target, remoteAction);
+            if (!identifiers.Add(id))
+            {
+                continue;
+            }
+
+            normalized.Add(new QuickAccessAction(
+                id,
+                NormalizeQuickAccessLabel(action.Label, target),
+                action.Kind,
+                target,
+                remoteAction));
+            if (normalized.Count == QuickAccessCapacity)
+            {
+                break;
+            }
+        }
+
+        return normalized;
+    }
+
+    private static string CreateQuickAccessId(
+        QuickAccessActionKind kind,
+        string target,
+        RemoteKeyAction action) => kind == QuickAccessActionKind.RemoteKey
+        ? $"remotekey:{action}:{target}".ToLowerInvariant()
+        : $"{kind}:{target}".ToLowerInvariant();
+
+    private static string NormalizeQuickAccessLabel(string? label, string fallback) =>
+        string.IsNullOrWhiteSpace(label) ? fallback : label.Trim();
 
     private static async Task<MacroCatalog> LoadValidatedCatalogAsync(
         string path,

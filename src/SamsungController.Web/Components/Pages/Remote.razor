@@ -58,18 +58,26 @@
             <div class="panel-label"><span>CUSTOM COMMAND</span><span>ADVANCED</span></div>
             <label>
                 <span>Samsung key name</span>
-                <input @bind="CustomKey" placeholder="KEY_SOURCE" disabled="@ControlsDisabled" />
+                <input @bind="CustomKey" placeholder="KEY_SOURCE" disabled="@EditorDisabled" />
             </label>
             <label>
                 <span>Action</span>
-                <select @bind="CustomAction" disabled="@ControlsDisabled">
+                <select @bind="CustomAction" disabled="@EditorDisabled">
                     @foreach (var action in Enum.GetValues<RemoteKeyAction>())
                     {
                         <option value="@action">@action</option>
                     }
                 </select>
             </label>
+            <label>
+                <span>Quick-access label <small>optional</small></span>
+                <input @bind="QuickAccessLabel" placeholder="Use Samsung key name" disabled="@EditorDisabled" />
+            </label>
             <button class="primary-action" @onclick="SendCustomKeyAsync" disabled="@(ControlsDisabled || string.IsNullOrWhiteSpace(CustomKey))">Send key <span>→</span></button>
+            <button class="secondary-action quick-pin-action" @onclick="ToggleCustomQuickAccessAsync" disabled="@(EditorDisabled || string.IsNullOrWhiteSpace(CustomKey))">
+                @(PinnedCustomAction is null ? "Add to quick access" : "Remove from quick access")
+                <span>@(PinnedCustomAction is null ? "＋" : "×")</span>
+            </button>
         </div>
 
         <div class="panel command-status-panel">
@@ -83,8 +91,10 @@
 @code {
     private ControllerSnapshot Snapshot { get; set; } = null!;
     private MenuAuthoringSnapshot Authoring { get; set; } = null!;
+    private IReadOnlyList<QuickAccessAction> QuickActions { get; set; } = [];
     private string CustomKey { get; set; } = "KEY_SOURCE";
     private RemoteKeyAction CustomAction { get; set; } = RemoteKeyAction.Click;
+    private string QuickAccessLabel { get; set; } = string.Empty;
     private bool IsBusy { get; set; }
     private string? ErrorMessage { get; set; }
     private string? LastCommand { get; set; }
@@ -92,16 +102,23 @@
 
     private bool IsConnected => Snapshot.ConnectionState == SamsungConnectionState.Connected;
     private bool ControlsDisabled => !IsConnected || IsBusy || Snapshot.MacroRunning || Snapshot.NavigationRunning;
+    private bool EditorDisabled => IsBusy || Snapshot.MacroRunning || Snapshot.NavigationRunning;
+    private QuickAccessAction? PinnedCustomAction => QuickActions.FirstOrDefault(action =>
+        action.Kind == QuickAccessActionKind.RemoteKey &&
+        action.Target.Equals(CustomKey.Trim(), StringComparison.OrdinalIgnoreCase) &&
+        action.Action == CustomAction);
     private string ConnectionClass => IsConnected ? "connected" : Snapshot.ConnectionState == SamsungConnectionState.Faulted ? "faulted" : "disconnected";
 
     protected override async Task OnInitializedAsync()
     {
         Snapshot = Controller.GetSnapshot();
         Authoring = Controller.GetMenuAuthoringSnapshot();
+        QuickActions = Controller.GetQuickAccessActions();
         Controller.Changed += HandleControllerChanged;
         await Controller.InitializeAsync();
         Snapshot = Controller.GetSnapshot();
         Authoring = Controller.GetMenuAuthoringSnapshot();
+        QuickActions = Controller.GetQuickAccessActions();
     }
 
     private Task SendCustomKeyAsync() => SendKeyAsync(CustomKey, CustomAction);
@@ -126,10 +143,40 @@
         }
     }
 
+    private async Task ToggleCustomQuickAccessAsync()
+    {
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            if (PinnedCustomAction is { } existing)
+            {
+                await Controller.RemoveQuickAccessActionAsync(existing.Id);
+            }
+            else
+            {
+                await Controller.AddQuickAccessRemoteKeyAsync(
+                    QuickAccessLabel,
+                    CustomKey,
+                    CustomAction);
+                QuickAccessLabel = string.Empty;
+            }
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = exception.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     private void HandleControllerChanged()
     {
         Snapshot = Controller.GetSnapshot();
         Authoring = Controller.GetMenuAuthoringSnapshot();
+        QuickActions = Controller.GetQuickAccessActions();
         _ = InvokeAsync(StateHasChanged);
     }
 
