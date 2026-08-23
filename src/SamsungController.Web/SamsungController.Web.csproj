@@ -2,6 +2,12 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <!-- Work around dotnet-watch's mixed path separators on POSIX in .NET SDK 10. -->
+    <BaseOutputPath Condition="'$(OS)' != 'Windows_NT'">bin/</BaseOutputPath>
+    <BaseIntermediateOutputPath Condition="'$(OS)' != 'Windows_NT'">obj/</BaseIntermediateOutputPath>
+    <AppendTargetFrameworkToOutputPath Condition="'$(OS)' != 'Windows_NT'">false</AppendTargetFrameworkToOutputPath>
+    <OutputPath Condition="'$(OS)' != 'Windows_NT'">$(BaseOutputPath)$(Configuration)/$(TargetFramework)/</OutputPath>
+    <IntermediateOutputPath Condition="'$(OS)' != 'Windows_NT'">$(BaseIntermediateOutputPath)$(Configuration)/$(TargetFramework)/</IntermediateOutputPath>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../SamsungController.Automation/SamsungController.Automation.csproj" />
