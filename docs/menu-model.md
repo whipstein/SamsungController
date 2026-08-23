@@ -167,6 +167,9 @@ can be planned or sent.
    uses a verified anchor and verified routes to position the TV first. The UI
    derives the transition's internal YAML identifier from its target control;
    selecting the same source and target again automatically replaces that draft.
+   To replace the default return command, check **Redefine return to normal
+   video** and choose the state from which its validation should begin. This
+   records a separate replacement draft and leaves the verified default active.
 6. Use the embedded remote. Every successfully sent button controls the TV and
    is captured; failed sends are not recorded. The system timing profile supplies
    waits unless a button has a custom override in the timing lab.
@@ -184,12 +187,17 @@ can be planned or sent.
    Three successful runs mark each script verified in the YAML.
 10. Open the draft's **Timing lab**, enable custom waits only for exceptional
    button presses, then choose **Save + replay**.
-   First place the TV at the source displayed on the draft card. Validation
-   sends only the recorded buttons; no anchor or route-to-source commands are
-   added implicitly.
+   Use **Prepare source** when desired, or place the TV at the displayed source
+   manually. While a default return replacement is pending, Prepare source sends
+   that draft first and then follows any verified route to the selected start
+   state; if the preparation is wrong or incomplete, adjust the TV manually.
+   **Replay test** itself still sends only the draft under validation, with no
+   anchor or route-to-source commands added implicitly.
 11. Visually confirm the target after every run. Three confirmed passes update
    the same YAML entry to `verified: true`; a failed confirmation resets the
-   count to zero.
+   count to zero. On the third pass, a default return replacement is promoted
+   into the original anchor so quick access and connection synchronization keep
+   the same stable target.
 
 Draft cards can be replayed, re-recorded under the same identifier, or deleted
 entirely in the UI. Verified items are protected from this draft workflow.

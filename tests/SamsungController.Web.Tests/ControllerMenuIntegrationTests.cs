@@ -368,6 +368,91 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task ReturnReplacementDraftPreparesItsValidationSourceAndPromotesAfterThreePasses()
+    {
+        var (controller, transport) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            controller.StartMenuRecording(new MenuRecordingRequest(
+                MenuAuthoringItemKind.Anchor,
+                SamsungControllerService.ReturnToVideoReplacementAnchorId,
+                "Return to normal video (replacement)",
+                "settings",
+                "normal-video",
+                null,
+                null));
+            await controller.SendKeyAsync("KEY_HOME");
+            await controller.StopAndSaveMenuRecordingAsync();
+
+            var draft = Assert.Single(
+                controller.GetMenuAuthoringSnapshot().DraftCandidates,
+                item => item.Id == SamsungControllerService.ReturnToVideoReplacementAnchorId);
+            Assert.Equal("settings", draft.SourceNodeId);
+            Assert.Equal("normal-video", draft.TargetNodeId);
+
+            var beforeValidation = await new MenuDefinitionParser().ParseFileAsync(
+                controller.GetMenuNavigationSnapshot().DefinitionPath);
+            Assert.Equal(2, Assert.Single(beforeValidation.Anchors["normal"].Operations).Repeat);
+            Assert.Equal(
+                "settings",
+                beforeValidation.Anchors[SamsungControllerService.ReturnToVideoReplacementAnchorId]
+                    .ValidationSourceNodeId);
+
+            transport.SentMessages.Clear();
+            await controller.PrepareMenuRecordingSourceAsync("settings");
+            Assert.Equal(["KEY_HOME", "KEY_MENU"], GetSentKeys(transport));
+
+            for (var pass = 1; pass <= 3; pass++)
+            {
+                transport.SentMessages.Clear();
+                await controller.RunMenuAuthoringValidationAsync(
+                    MenuAuthoringItemKind.Anchor,
+                    SamsungControllerService.ReturnToVideoReplacementAnchorId);
+                Assert.Equal(["KEY_HOME"], GetSentKeys(transport));
+                await controller.ConfirmMenuAuthoringValidationAsync(passed: true);
+            }
+
+            var promoted = await new MenuDefinitionParser().ParseFileAsync(
+                controller.GetMenuNavigationSnapshot().DefinitionPath);
+            Assert.DoesNotContain(
+                SamsungControllerService.ReturnToVideoReplacementAnchorId,
+                promoted.Anchors.Keys);
+            var original = promoted.Anchors["normal"];
+            Assert.True(original.Verified);
+            Assert.Equal("KEY_HOME", Assert.Single(original.Operations).Key);
+            Assert.NotNull(original.ReturnStrategy);
+        }
+    }
+
+    [Fact]
+    public async Task ReturnReplacementPrepareAllowsManualPositioningWhenNoVerifiedRouteExists()
+    {
+        var (controller, transport) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            controller.StartMenuRecording(new MenuRecordingRequest(
+                MenuAuthoringItemKind.Anchor,
+                SamsungControllerService.ReturnToVideoReplacementAnchorId,
+                "Return to normal video (replacement)",
+                "picture",
+                "normal-video",
+                null,
+                null));
+            await controller.SendKeyAsync("KEY_HOME");
+            await controller.StopAndSaveMenuRecordingAsync();
+
+            transport.SentMessages.Clear();
+            await controller.PrepareMenuRecordingSourceAsync("picture");
+
+            Assert.Equal(["KEY_HOME"], GetSentKeys(transport));
+            Assert.Contains(
+                "manually position",
+                controller.GetMenuAuthoringSnapshot().Status,
+                StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task SystemTimingTestSendsOnlyTheSelectedTraversal()
     {
         var (controller, transport) = await CreateConnectedControllerAsync();

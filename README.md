@@ -82,9 +82,10 @@ Samsung's remote-control channel does not report the actual on-screen cursor.
 - **Build & Verify** owns new-interface setup, an editable menu tree that can be
   named and arranged before recording, custom TV-matching or alphabetical tree
   display, persistent sibling move controls, live traversal capture, default and
-  state-specific return-to-video scripts, system-wide and per-button wait
-  calibration, draft management, guarded removal of incorrect verified settings,
-  and the required three-pass visual tests. Independent sections can be minimized;
+  state-specific return-to-video scripts, staged replacement of the default
+  return command, system-wide and per-button wait calibration, draft management,
+  guarded removal of incorrect verified settings, and the required three-pass
+  visual tests. Independent sections can be minimized;
   a collapsed section reopens when its verified state newly needs validation.
 - **Protocol** keeps the latest 500 RX/TX messages searchable in memory, offers
   copy/export and one-click read-only application research queries, captures

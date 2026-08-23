@@ -77,6 +77,14 @@ public sealed class MenuDefinitionValidator
                     $"Target node '{anchor.TargetNodeId}' does not exist."));
             }
 
+            if (!string.IsNullOrWhiteSpace(anchor.ValidationSourceNodeId)
+                && !definition.Nodes.ContainsKey(anchor.ValidationSourceNodeId))
+            {
+                errors.Add(new MenuDefinitionValidationError(
+                    location,
+                    $"Validation source node '{anchor.ValidationSourceNodeId}' does not exist."));
+            }
+
             ValidateOperations(location, anchor.Operations, errors);
             ValidateReturnStrategy(definition, anchor, location, errors);
         }

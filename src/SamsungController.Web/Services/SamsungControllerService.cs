@@ -11,6 +11,8 @@ namespace SamsungController.Web.Services;
 
 public sealed class SamsungControllerService : IAsyncDisposable
 {
+    public const string ReturnToVideoReplacementAnchorId = "return-to-video-replacement";
+
     private const int MessageCapacity = 500;
     private const int MacroProgressCapacity = 500;
     private const int DeviceInfoObservationCapacity = 20;
@@ -278,6 +280,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 : definition.Anchors.Values.Select(anchor => new MenuAnchorSummary(
                         anchor.Id,
                         anchor.Label,
+                        anchor.TargetNodeId,
                         definition.GetPath(anchor.TargetNodeId),
                         anchor.Description,
                         anchor.Verified,
@@ -317,9 +320,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         MenuAuthoringItemKind.Anchor,
                         anchor.Id,
                         anchor.Label,
-                        null,
+                        anchor.ValidationSourceNodeId,
                         anchor.TargetNodeId,
-                        null,
+                        anchor.ValidationSourceNodeId is null
+                            ? null
+                            : definition.GetPath(anchor.ValidationSourceNodeId),
                         definition.GetPath(anchor.TargetNodeId),
                         anchor.Operations.Sum(operation => operation.Repeat),
                         GetReplaySteps(anchor.Operations, definition.Timing)))
@@ -1766,6 +1771,76 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
 
         definition.GetRequiredNode(sourceNodeId);
+        if (definition.Anchors.TryGetValue(
+                ReturnToVideoReplacementAnchorId,
+                out var replacement)
+            && !replacement.Verified)
+        {
+            NavigationPlan? plan = null;
+            try
+            {
+                plan = new NavigationPlanner().Plan(
+                    definition,
+                    replacement.TargetNodeId,
+                    sourceNodeId);
+            }
+            catch (NavigationPlanningException)
+            {
+                // The draft reset is still useful on its own. The user can finish
+                // positioning the TV manually before replaying the validation.
+            }
+
+            await RunNavigationAsync(
+                    $"Prepare recording source with draft return · {definition.GetPath(sourceNodeId)}",
+                    async (navigator, token) =>
+                    {
+                        MenuStateTracker tracker;
+                        lock (_sync)
+                        {
+                            tracker = _menuStateTracker
+                                ?? throw new InvalidOperationException(
+                                    "No menu state tracker is available.");
+                        }
+
+                        try
+                        {
+                            await ExecuteAuthoringOperationsAsync(
+                                    $"Draft return-to-video prepare · {replacement.Label}",
+                                    tracker.Current.Path ?? "Unknown",
+                                    definition.GetPath(replacement.TargetNodeId),
+                                    replacement.Operations,
+                                    definition.Timing,
+                                    token)
+                                .ConfigureAwait(false);
+                            tracker.ApplyAnchor(replacement);
+                            if (plan is { Transitions.Count: > 0 })
+                            {
+                                await navigator.ExecutePlanAsync(plan, token)
+                                    .ConfigureAwait(false);
+                            }
+                        }
+                        catch
+                        {
+                            tracker.MarkUnknown(
+                                "Draft return-to-video preparation did not complete.");
+                            throw;
+                        }
+                    },
+                    clearPlanOnSuccess: true,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            lock (_sync)
+            {
+                _menuAuthoringStatus = plan is null
+                    ? $"Draft return-to-video prepare sent · manually position the TV at {definition.GetPath(sourceNodeId)} before replaying"
+                    : $"Source ready using the draft return-to-video sequence · {definition.GetPath(sourceNodeId)}";
+                _menuAuthoringError = null;
+            }
+
+            NotifyChanged();
+            return;
+        }
+
         var setup = FindValidationSetup(definition, sourceNodeId);
         await RunNavigationAsync(
                 $"Prepare recording source · {definition.GetPath(sourceNodeId)}",
@@ -1983,7 +2058,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
             return;
         }
 
-        var verified = SetAuthoringItemVerified(definition, session.Kind, session.ItemId);
+        var isReturnReplacement = IsReturnToVideoReplacement(session.Kind, session.ItemId);
+        var verified = isReturnReplacement
+            ? PromoteReturnToVideoReplacement(definition, session.ItemId)
+            : SetAuthoringItemVerified(definition, session.Kind, session.ItemId);
         await PersistActiveMenuDefinitionAsync(verified, cancellationToken).ConfigureAwait(false);
         lock (_sync)
         {
@@ -1992,7 +2070,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 Passes = MenuValidationSession.RequiredPasses,
                 AwaitingConfirmation = false
             };
-            _menuAuthoringStatus = $"Verified · {session.ItemId} passed {MenuValidationSession.RequiredPasses}/{MenuValidationSession.RequiredPasses} and YAML was updated";
+            _menuAuthoringStatus = isReturnReplacement
+                ? $"Return-to-video sequence replaced · passed {MenuValidationSession.RequiredPasses}/{MenuValidationSession.RequiredPasses} and saved to YAML"
+                : $"Verified · {session.ItemId} passed {MenuValidationSession.RequiredPasses}/{MenuValidationSession.RequiredPasses} and YAML was updated";
             _menuAuthoringError = null;
         }
 
@@ -2844,7 +2924,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 request.ItemId,
                 request.Label,
                 request.TargetNodeId,
-                [placeholder]));
+                [placeholder],
+                ValidationSourceNodeId: request.SourceNodeId));
         }
         else
         {
@@ -2905,7 +2986,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 request.TargetNodeId,
                 operations,
                 false,
-                description));
+                description,
+                ValidationSourceNodeId: request.SourceNodeId));
         }
         else
         {
@@ -3023,6 +3105,45 @@ public sealed class SamsungControllerService : IAsyncDisposable
             transitions,
             anchors,
             definition.Timing);
+    }
+
+    private static bool IsReturnToVideoReplacement(
+        MenuAuthoringItemKind kind,
+        string itemId) =>
+        kind == MenuAuthoringItemKind.Anchor
+        && itemId.Equals(
+            ReturnToVideoReplacementAnchorId,
+            StringComparison.OrdinalIgnoreCase);
+
+    private static MenuDefinition PromoteReturnToVideoReplacement(
+        MenuDefinition definition,
+        string replacementId)
+    {
+        var replacement = definition.GetRequiredAnchor(replacementId);
+        var original = FindReturnToVideoAnchor(definition, replacementId)
+            ?? throw new InvalidOperationException(
+                "The original return-to-video anchor no longer exists. Restore it before validating this replacement.");
+        if (!replacement.TargetNodeId.Equals(
+                original.TargetNodeId,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "The return-to-video replacement no longer targets the same normal-video node.");
+        }
+
+        var anchors = definition.Anchors.Values
+            .Where(anchor => !anchor.Id.Equals(replacement.Id, StringComparison.OrdinalIgnoreCase))
+            .Select(anchor => anchor.Id.Equals(original.Id, StringComparison.OrdinalIgnoreCase)
+                ? anchor with
+                {
+                    Operations = replacement.Operations,
+                    Verified = true,
+                    Description =
+                        "Return-to-video sequence recorded in Build & Verify and confirmed by three visual validation passes."
+                }
+                : anchor)
+            .ToArray();
+        return CopyMenuDefinition(definition, anchors: anchors);
     }
 
     private async Task ExecuteMenuAuthoringValidationAsync(
@@ -3365,10 +3486,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private static ReturnStrategyContext? TryGetReturnStrategyContext(
         MenuDefinition definition)
     {
-        var anchor = definition.Anchors.TryGetValue("normal-video", out var namedAnchor)
-            ? namedAnchor
-            : definition.Anchors.Values.FirstOrDefault(candidate =>
-                candidate.TargetNodeId.Equals("normal-video", StringComparison.OrdinalIgnoreCase));
+        var anchor = FindReturnToVideoAnchor(definition);
         if (anchor is null)
         {
             return null;
@@ -3399,6 +3517,27 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 new MenuReturnScript(returnTransition.Operations, returnTransition.Verified),
                 new MenuReturnScript(
                     [new MenuOperation("KEY_MENU"), new MenuOperation("KEY_RETURN")])));
+    }
+
+    private static MenuAnchor? FindReturnToVideoAnchor(
+        MenuDefinition definition,
+        string? excludedAnchorId = null)
+    {
+        if (definition.Anchors.TryGetValue("normal-video", out var namedAnchor)
+            && !namedAnchor.Id.Equals(excludedAnchorId, StringComparison.OrdinalIgnoreCase))
+        {
+            return namedAnchor;
+        }
+
+        return definition.Anchors.Values
+            .Where(candidate => !candidate.Id.Equals(
+                excludedAnchorId,
+                StringComparison.OrdinalIgnoreCase))
+            .Where(candidate => candidate.TargetNodeId.Equals(
+                "normal-video",
+                StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(candidate => candidate.Verified)
+            .FirstOrDefault();
     }
 
     private static IReadOnlyList<MenuReturnTestNodeSummary> GetDeepReturnTestNodes(

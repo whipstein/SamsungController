@@ -50,7 +50,8 @@ public sealed class MenuDefinitionWriterTests : IDisposable
                             new MenuReturnOverride(
                                 "settings",
                                 new MenuReturnScript([new MenuOperation("KEY_EXIT")], true))
-                        ]))
+                        ]),
+                    ValidationSourceNodeId: "settings")
             ],
             new MenuTimingProfile(175, 650, 325, true));
         var path = Path.Combine(_directory, "menu.yaml");
@@ -65,6 +66,7 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Assert.Contains("  verified: true", await File.ReadAllTextAsync(path), StringComparison.Ordinal);
         Assert.Equal("Owner's settings", reparsed.Nodes["settings"].Description);
         Assert.True(reparsed.Anchors["normal"].Verified);
+        Assert.Equal("settings", reparsed.Anchors["normal"].ValidationSourceNodeId);
         var returnStrategy = Assert.IsType<MenuReturnStrategy>(
             reparsed.Anchors["normal"].ReturnStrategy);
         Assert.Equal("settings", returnStrategy.MenuRootNodeId);

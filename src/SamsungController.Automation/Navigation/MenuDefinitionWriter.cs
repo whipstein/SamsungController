@@ -46,6 +46,7 @@ public sealed class MenuDefinitionWriter
             AppendScalar(yaml, 4, "target", anchor.TargetNodeId);
             AppendBoolean(yaml, 4, "verified", anchor.Verified);
             AppendOptionalScalar(yaml, 4, "description", anchor.Description);
+            AppendOptionalScalar(yaml, 4, "validationSource", anchor.ValidationSourceNodeId);
             AppendReturnStrategy(yaml, anchor.ReturnStrategy);
             AppendOperations(yaml, anchor.Operations);
         }

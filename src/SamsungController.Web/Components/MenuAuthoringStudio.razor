@@ -195,45 +195,75 @@
         <div class="authoring-workflow-grid">
             <div class="authoring-config">
                 <div class="authoring-section-title"><span>01</span><strong>Describe the recording</strong></div>
-                <div class="authoring-form-grid compact">
-                    <label>
-                        <span>Record as</span>
-                        <select @bind="RecordingKind" disabled="@Authoring.IsRecording">
-                            <option value="@MenuAuthoringItemKind.Transition">Transition</option>
-                            <option value="@MenuAuthoringItemKind.Anchor">Anchor</option>
-                        </select>
+                @if (ReturnToVideoAnchor is not null)
+                {
+                    <label class="return-recording-toggle">
+                        <input type="checkbox" @bind="RedefineReturnToVideo" disabled="@Authoring.IsRecording" />
+                        <span>
+                            <strong>Redefine return to normal video</strong>
+                            <small>Record a replacement for the current default without changing it until the replacement passes 3/3.</small>
+                        </span>
                     </label>
-                    @if (RecordingKind == MenuAuthoringItemKind.Anchor)
+                }
+                <div class="authoring-form-grid compact">
+                    @if (RedefineReturnToVideo && ReturnToVideoAnchor is { } returnAnchor)
                     {
-                        <label><span>Anchor ID</span><input @bind="RecordingId" disabled="@Authoring.IsRecording" /></label>
-                        <label class="wide-field"><span>Label / intent</span><input @bind="RecordingLabel" disabled="@Authoring.IsRecording" /></label>
+                        <div class="auto-route-identity wide-field return-recording-intent">
+                            <span>FIXED RECORDING INTENT</span>
+                            <strong>@returnAnchor.Label</strong>
+                            <small>Target: @returnAnchor.TargetPath · the replacement is saved as a separate draft.</small>
+                        </div>
+                        <label class="wide-field">
+                            <span>Verification start state</span>
+                            <select @bind="ReturnVerificationSourceNodeId" disabled="@Authoring.IsRecording">
+                                @foreach (var node in ReturnVerificationSources)
+                                {
+                                    <option value="@node.Id">@node.Path</option>
+                                }
+                            </select>
+                        </label>
                     }
                     else
                     {
                         <label>
-                            <span>Source control</span>
-                            <select @bind="SourceNodeId" disabled="@Authoring.IsRecording">
+                            <span>Record as</span>
+                            <select @bind="RecordingKind" disabled="@Authoring.IsRecording">
+                                <option value="@MenuAuthoringItemKind.Transition">Transition</option>
+                                <option value="@MenuAuthoringItemKind.Anchor">Anchor</option>
+                            </select>
+                        </label>
+                        @if (RecordingKind == MenuAuthoringItemKind.Anchor)
+                        {
+                            <label><span>Anchor ID</span><input @bind="RecordingId" disabled="@Authoring.IsRecording" /></label>
+                            <label class="wide-field"><span>Label / intent</span><input @bind="RecordingLabel" disabled="@Authoring.IsRecording" /></label>
+                        }
+                        else
+                        {
+                            <label>
+                                <span>Source control</span>
+                                <select @bind="SourceNodeId" disabled="@Authoring.IsRecording">
+                                    @foreach (var node in Navigation.Nodes)
+                                    {
+                                        <option value="@node.Id">@node.Path</option>
+                                    }
+                                </select>
+                            </label>
+                            <div class="auto-route-identity wide-field">
+                                <span>AUTOMATIC TRAVERSAL</span>
+                                <strong>Identified by source and target</strong>
+                                <small>An existing draft for the same route is replaced automatically.</small>
+                            </div>
+                        }
+                        <label class="wide-field">
+                            <span>Target node</span>
+                            <select @bind="ExistingTargetId" disabled="@Authoring.IsRecording">
                                 @foreach (var node in Navigation.Nodes)
                                 {
                                     <option value="@node.Id">@node.Path</option>
                                 }
                             </select>
                         </label>
-                        <div class="auto-route-identity wide-field">
-                            <span>AUTOMATIC TRAVERSAL</span>
-                            <strong>Identified by source and target</strong>
-                            <small>An existing draft for the same route is replaced automatically.</small>
-                        </div>
                     }
-                    <label class="wide-field">
-                        <span>Target node</span>
-                        <select @bind="ExistingTargetId" disabled="@Authoring.IsRecording">
-                            @foreach (var node in Navigation.Nodes)
-                            {
-                                <option value="@node.Id">@node.Path</option>
-                            }
-                        </select>
-                    </label>
                 </div>
 
                 @if (!Authoring.IsRecording)
@@ -247,7 +277,14 @@
                             Start live recording <span>●</span>
                         </button>
                     </div>
-                    <p class="field-note">Add and name menu positions in the tree above, then choose them here. New recordings inherit the system-wide timing profile; traversals are matched to source and target automatically.</p>
+                    @if (RedefineReturnToVideo)
+                    {
+                        <p class="field-note">During validation, Prepare source sends this replacement draft first, then follows a verified route to the selected start state. If that preparation is wrong, manually position the TV before Replay test.</p>
+                    }
+                    else
+                    {
+                        <p class="field-note">Add and name menu positions in the tree above, then choose them here. New recordings inherit the system-wide timing profile; traversals are matched to source and target automatically.</p>
+                    }
                 }
                 else
                 {
@@ -519,7 +556,7 @@
             @if (DraftValidationExpanded)
             {
                 <div class="authoring-section-body">
-                    <p class="field-note">Before replaying, place the TV at the source shown on the draft card. Replay sends only the recorded commands; it never resets or traverses to the source automatically.</p>
+                    <p class="field-note">Prepare source uses the pending return-to-video replacement when one exists, then follows verified routes toward the source shown. If preparation is incomplete, position the TV manually. Replay test still sends only the draft being validated.</p>
             @if (Authoring.DraftCandidates.Count == 0)
             {
                 <div class="capture-empty compact">No draft anchors or transitions are waiting for validation.</div>
@@ -543,7 +580,7 @@
                                 }
                                 @if (candidate.SourceNodeId is not null)
                                 {
-                                    <button class="secondary-action" @onclick="() => PrepareValidationSourceAsync(candidate)" disabled="@(!CanPrepareValidationSource(candidate))">Prepare source</button>
+                                    <button class="secondary-action" @onclick="() => PrepareValidationSourceAsync(candidate)" disabled="@(!CanPrepareValidationSource(candidate))">@(IsReturnToVideoReplacement(candidate) ? "Prepare with draft" : "Prepare source")</button>
                                 }
                                 <button class="secondary-action" @onclick="() => PrepareRerecord(candidate)" disabled="@(Authoring.IsRecording || Navigation.IsRunning)">Re-record</button>
                                 <button class="secondary-action" @onclick="() => ToggleTimingEditor(candidate)" disabled="@(Authoring.IsRecording || Navigation.IsRunning)">@(IsTimingEditorOpen(candidate) ? "Close timing" : "Timing lab")</button>
@@ -617,6 +654,8 @@
     private string RecordingLabel { get; set; } = "Return to known state";
     private string SourceNodeId { get; set; } = string.Empty;
     private string ExistingTargetId { get; set; } = string.Empty;
+    private bool RedefineReturnToVideo { get; set; }
+    private string ReturnVerificationSourceNodeId { get; set; } = string.Empty;
     private string? EditingNodeId { get; set; }
     private string NodeEditorId { get; set; } = string.Empty;
     private string NodeEditorLabel { get; set; } = string.Empty;
@@ -670,12 +709,29 @@
     private IReadOnlyList<MenuNodeSummary> VerifiedSettings => Navigation.Nodes
         .Where(node => node.HasVerifiedRoute)
         .ToArray();
+    private MenuAnchorSummary? ReturnToVideoAnchor => Navigation.Anchors
+        .Where(anchor => !anchor.Id.Equals(
+            SamsungControllerService.ReturnToVideoReplacementAnchorId,
+            StringComparison.OrdinalIgnoreCase))
+        .Where(anchor => anchor.Id.Equals("normal-video", StringComparison.OrdinalIgnoreCase)
+            || anchor.TargetNodeId.Equals("normal-video", StringComparison.OrdinalIgnoreCase))
+        .OrderByDescending(anchor => anchor.Id.Equals("normal-video", StringComparison.OrdinalIgnoreCase))
+        .ThenByDescending(anchor => anchor.Verified)
+        .FirstOrDefault();
+    private IReadOnlyList<MenuNodeSummary> ReturnVerificationSources => ReturnToVideoAnchor is not { } anchor
+        ? []
+        : Navigation.Nodes
+            .Where(node => !node.Id.Equals(anchor.TargetNodeId, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
     private bool IsConnected => Snapshot.ConnectionState == SamsungConnectionState.Connected;
     private bool CanStartRecording => IsConnected && !IsBusy && !Snapshot.MacroRunning && !Navigation.IsRunning &&
-        !string.IsNullOrWhiteSpace(ExistingTargetId) &&
-        (RecordingKind == MenuAuthoringItemKind.Transition
-            ? !string.IsNullOrWhiteSpace(SourceNodeId)
-            : !string.IsNullOrWhiteSpace(RecordingId) && !string.IsNullOrWhiteSpace(RecordingLabel));
+        (RedefineReturnToVideo
+            ? ReturnToVideoAnchor is not null
+              && !string.IsNullOrWhiteSpace(ReturnVerificationSourceNodeId)
+            : !string.IsNullOrWhiteSpace(ExistingTargetId)
+              && (RecordingKind == MenuAuthoringItemKind.Transition
+                  ? !string.IsNullOrWhiteSpace(SourceNodeId)
+                  : !string.IsNullOrWhiteSpace(RecordingId) && !string.IsNullOrWhiteSpace(RecordingLabel)));
     private IReadOnlyList<MenuNodeSummary> AvailableParentNodes
     {
         get
@@ -919,14 +975,31 @@
         LocalError = null;
         try
         {
-            Controller.StartMenuRecording(new MenuRecordingRequest(
-                RecordingKind,
-                RecordingKind == MenuAuthoringItemKind.Anchor ? RecordingId : string.Empty,
-                RecordingKind == MenuAuthoringItemKind.Anchor ? RecordingLabel : GetTargetLabel(ExistingTargetId),
-                RecordingKind == MenuAuthoringItemKind.Transition ? SourceNodeId : null,
-                ExistingTargetId,
-                null,
-                null));
+            if (RedefineReturnToVideo)
+            {
+                var anchor = ReturnToVideoAnchor
+                    ?? throw new InvalidOperationException(
+                        "No existing return-to-video command is available to replace.");
+                Controller.StartMenuRecording(new MenuRecordingRequest(
+                    MenuAuthoringItemKind.Anchor,
+                    SamsungControllerService.ReturnToVideoReplacementAnchorId,
+                    $"{anchor.Label} (replacement)",
+                    ReturnVerificationSourceNodeId,
+                    anchor.TargetNodeId,
+                    null,
+                    null));
+            }
+            else
+            {
+                Controller.StartMenuRecording(new MenuRecordingRequest(
+                    RecordingKind,
+                    RecordingKind == MenuAuthoringItemKind.Anchor ? RecordingId : string.Empty,
+                    RecordingKind == MenuAuthoringItemKind.Anchor ? RecordingLabel : GetTargetLabel(ExistingTargetId),
+                    RecordingKind == MenuAuthoringItemKind.Transition ? SourceNodeId : null,
+                    ExistingTargetId,
+                    null,
+                    null));
+            }
         }
         catch (Exception exception)
         {
@@ -1056,6 +1129,7 @@
     private void PrepareRerecord(MenuAuthoringCandidateSummary candidate)
     {
         LocalError = null;
+        RedefineReturnToVideo = IsReturnToVideoReplacement(candidate);
         RecordingKind = candidate.Kind;
         if (candidate.Kind == MenuAuthoringItemKind.Anchor)
         {
@@ -1064,8 +1138,20 @@
         }
 
         SourceNodeId = candidate.SourceNodeId ?? SourceNodeId;
+        if (RedefineReturnToVideo)
+        {
+            ReturnVerificationSourceNodeId = candidate.SourceNodeId
+                ?? ReturnVerificationSourceNodeId;
+        }
+
         ExistingTargetId = candidate.TargetNodeId;
     }
+
+    private static bool IsReturnToVideoReplacement(MenuAuthoringCandidateSummary candidate) =>
+        candidate.Kind == MenuAuthoringItemKind.Anchor
+        && candidate.Id.Equals(
+            SamsungControllerService.ReturnToVideoReplacementAnchorId,
+            StringComparison.OrdinalIgnoreCase);
 
     private Task DeleteDraftAsync(MenuAuthoringCandidateSummary candidate) =>
         RunBusyAsync(() => Controller.DeleteMenuAuthoringDraftAsync(candidate.Kind, candidate.Id));
@@ -1265,6 +1351,12 @@
 
         LastObservedTiming = authoring.Timing;
         Authoring = authoring;
+        if (ReturnToVideoAnchor is null)
+        {
+            RedefineReturnToVideo = false;
+            ReturnVerificationSourceNodeId = string.Empty;
+        }
+
         if (Authoring.ReturnStrategy is { } returnStrategy)
         {
             if (!ReturnScriptsInitialized || !ReturnScriptsDirty)
@@ -1409,6 +1501,27 @@
         {
             ExistingTargetId = Navigation.Nodes.FirstOrDefault(node => node.Id != SourceNodeId)?.Id
                 ?? Navigation.Nodes[0].Id;
+        }
+
+        if (ReturnToVideoAnchor is { } returnAnchor
+            && (force
+                || string.IsNullOrWhiteSpace(ReturnVerificationSourceNodeId)
+                || ReturnVerificationSources.All(node => !node.Id.Equals(
+                    ReturnVerificationSourceNodeId,
+                    StringComparison.OrdinalIgnoreCase))))
+        {
+            ReturnVerificationSourceNodeId = Navigation.State.NodeId is { } currentNodeId
+                && !currentNodeId.Equals(returnAnchor.TargetNodeId, StringComparison.OrdinalIgnoreCase)
+                && ReturnVerificationSources.Any(node => node.Id.Equals(
+                    currentNodeId,
+                    StringComparison.OrdinalIgnoreCase))
+                    ? currentNodeId
+                    : ReturnVerificationSources.FirstOrDefault(node =>
+                            node.Id.Contains("setting", StringComparison.OrdinalIgnoreCase)
+                            || node.Label.Contains("setting", StringComparison.OrdinalIgnoreCase))?.Id
+                      ?? ReturnVerificationSources.FirstOrDefault(node => node.HasVerifiedRoute)?.Id
+                      ?? ReturnVerificationSources.FirstOrDefault()?.Id
+                      ?? string.Empty;
         }
 
         if (force && EditingNodeId is null && string.IsNullOrWhiteSpace(NodeEditorParentId))

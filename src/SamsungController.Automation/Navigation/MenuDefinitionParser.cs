@@ -16,7 +16,7 @@ public sealed class MenuDefinitionParser
     private static readonly HashSet<string> NodeFields =
         new(["id", "label", "parent", "description"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> AnchorFields =
-        new(["id", "label", "target", "verified", "description", "returnStrategy", "steps"], StringComparer.OrdinalIgnoreCase);
+        new(["id", "label", "target", "verified", "description", "validationSource", "returnStrategy", "steps"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ReturnStrategyFields =
         new(["menuRoot", "atMenuRoot", "belowMenuRoot", "overrides"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ReturnOverrideFields =
@@ -176,7 +176,8 @@ public sealed class MenuDefinitionParser
                 OptionalScalar(fields, "description"),
                 fields.TryGetValue("returnStrategy", out var strategyNode)
                     ? ParseReturnStrategy(strategyNode, context)
-                    : null));
+                    : null,
+                OptionalScalar(fields, "validationSource")));
         }
 
         return anchors;

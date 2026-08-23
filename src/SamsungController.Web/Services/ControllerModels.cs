@@ -85,6 +85,7 @@ public sealed record MenuNodeSummary(
 public sealed record MenuAnchorSummary(
     string Id,
     string Label,
+    string TargetNodeId,
     string TargetPath,
     string? Description,
     bool Verified,

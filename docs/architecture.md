@@ -115,9 +115,14 @@ synchronization always retains a known-state foundation.
 Build & Verify tracks the attention state of its collapsible return-script,
 system-timing, and draft-validation sections. Return-script resolution gives a
 verified exact-node override priority, then falls through to the verified
-menu-root/deeper scripts and the anchor's default operations. A user may keep a section minimized
-while its state is unchanged; a transition from verified to needing validation,
-or from no drafts to pending drafts, automatically expands the affected section.
+menu-root/deeper scripts and the anchor's default operations. Re-recording the
+default return command creates a separate draft anchor with its validation start
+node. Explicit **Prepare source** actions use that draft reset while it is under
+test, but the original anchor remains the production default until the draft
+passes all three confirmations and is promoted atomically. A user may keep a
+section minimized while its state is unchanged; a transition from verified to
+needing validation, or from no drafts to pending drafts, automatically expands
+the affected section.
 
 ## WebSocket handshake
 

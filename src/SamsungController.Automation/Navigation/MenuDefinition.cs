@@ -78,7 +78,8 @@ public sealed record MenuAnchor(
     IReadOnlyList<MenuOperation> Operations,
     bool Verified = false,
     string? Description = null,
-    MenuReturnStrategy? ReturnStrategy = null);
+    MenuReturnStrategy? ReturnStrategy = null,
+    string? ValidationSourceNodeId = null);
 
 public sealed class MenuDefinition
 {
