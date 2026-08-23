@@ -65,9 +65,9 @@ anchors:
     target: normal-video
     verified: true
     steps:
-      - key: KEY_RETURN
-        repeat: 3
-        delay: 150ms
+      - key: KEY_MENU
+        repeat: 2
+        delay: 500ms
 
 transitions:
   - id: open-settings-overlay
@@ -112,7 +112,9 @@ can be planned or sent.
 6. Stop the recording. The UI atomically adds it to the active YAML as a draft.
 7. Under **Replay and validate drafts**, run the draft. Transition validation
    first executes a verified anchor and verified route to its source, then sends
-   the recorded buttons.
+   the recorded buttons. That reset happens before every validation attempt, so
+   replay never depends on the menu position left behind by recording or by the
+   previous attempt.
 8. Visually confirm the target after every run. Three confirmed passes update
    the same YAML entry to `verified: true`; a failed confirmation resets the
    count to zero.

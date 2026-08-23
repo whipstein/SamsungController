@@ -62,6 +62,12 @@ public sealed class MenuDefinitionParserTests
         Assert.Equal("Filmmaker Mode", definition.Context.PictureMode);
         Assert.Equal("Home Theater System", definition.Context.Input);
 
+        var normalVideo = definition.GetRequiredAnchor("normal-video");
+        Assert.True(normalVideo.Verified);
+        var reset = Assert.Single(normalVideo.Operations);
+        Assert.Equal("KEY_MENU", reset.Key);
+        Assert.Equal(2, reset.Repeat);
+
         var picture = definition.Transitions["open-picture"];
         Assert.True(picture.Verified);
         Assert.Equal("settings-overlay", picture.FromNodeId);

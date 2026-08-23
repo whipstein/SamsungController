@@ -83,11 +83,11 @@ anchors:
     label: Return to normal video
     target: normal-video
     verified: true
-    description: KEY_RETURN repeated three times was verified during the initial macro test.
+    description: Two KEY_MENU clicks returned to normal video from the menu system three out of three times on firmware 1296.
     steps:
-      - key: KEY_RETURN
-        repeat: 3
-        delay: 150ms
+      - key: KEY_MENU
+        repeat: 2
+        delay: 500ms
 
 transitions:
   - id: open-settings-overlay
