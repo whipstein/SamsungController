@@ -60,7 +60,7 @@ public sealed class DeviceInfoIntegrationTests : IDisposable
                 Assert.Equal("Living Room", message.ParsedPayload?["device"]?["name"]?.GetValue<string>());
             });
 
-        var captureLines = await File.ReadAllLinesAsync(controller.ProtocolLogPath);
+        var captureLines = await ReadAllLinesWhileWriterIsOpenAsync(controller.ProtocolLogPath);
         Assert.Equal(2, captureLines.Length);
     }
 
@@ -100,6 +100,25 @@ public sealed class DeviceInfoIntegrationTests : IDisposable
             new IdleSamsungTransport(),
             SystemMenuDelay.Instance,
             deviceInfoClient);
+    }
+
+    private static async Task<string[]> ReadAllLinesWhileWriterIsOpenAsync(string path)
+    {
+        await using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite,
+            bufferSize: 4096,
+            FileOptions.Asynchronous);
+        using var reader = new StreamReader(stream);
+        var lines = new List<string>();
+        while (await reader.ReadLineAsync() is { } line)
+        {
+            lines.Add(line);
+        }
+
+        return lines.ToArray();
     }
 
     public void Dispose()
