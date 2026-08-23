@@ -728,7 +728,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 $"A menu-tree node with ID '{node.Id}' already exists. Choose a different stable ID.");
         }
 
-        var nodes = definition.Nodes.Values.Append(node).ToArray();
+        var nodes = FlattenMenuNodes(definition.Nodes.Values.Append(node).ToArray());
         var updated = CopyMenuDefinition(definition, nodes: nodes);
         new MenuDefinitionValidator().ValidateAndThrow(updated);
         await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
@@ -768,17 +768,86 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
 
         node = node with { Id = existing.Id };
-        var nodes = definition.Nodes.Values
-            .Select(candidate => candidate.Id.Equals(existing.Id, StringComparison.OrdinalIgnoreCase)
-                ? node
-                : candidate)
-            .ToArray();
-        var updated = CopyMenuDefinition(definition, nodes: nodes);
+        var parentChanged = !string.Equals(
+            existing.ParentId,
+            node.ParentId,
+            StringComparison.OrdinalIgnoreCase);
+        var nodes = parentChanged
+            ? definition.Nodes.Values
+                .Where(candidate => !candidate.Id.Equals(existing.Id, StringComparison.OrdinalIgnoreCase))
+                .Append(node)
+                .ToArray()
+            : definition.Nodes.Values
+                .Select(candidate => candidate.Id.Equals(existing.Id, StringComparison.OrdinalIgnoreCase)
+                    ? node
+                    : candidate)
+                .ToArray();
+        var updated = CopyMenuDefinition(definition, nodes: FlattenMenuNodes(nodes));
         new MenuDefinitionValidator().ValidateAndThrow(updated);
         await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
         lock (_sync)
         {
             _menuAuthoringStatus = $"Menu-tree node updated · {updated.GetPath(existing.Id)}";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
+    }
+
+    public async Task MoveMenuNodeAsync(
+        string nodeId,
+        int direction,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(nodeId);
+        if (direction is not (-1 or 1))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(direction),
+                "Menu nodes can only move one position up (-1) or down (1).");
+        }
+
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("reorder the menu tree");
+        EnsureNoMenuRecording("reorder the menu tree");
+
+        MenuDefinition definition;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+        }
+
+        var node = definition.GetRequiredNode(nodeId.Trim());
+        var nodes = definition.Nodes.Values.ToList();
+        var siblings = nodes
+            .Where(candidate => HaveSameParent(candidate, node))
+            .ToList();
+        var siblingIndex = siblings.FindIndex(candidate =>
+            candidate.Id.Equals(node.Id, StringComparison.OrdinalIgnoreCase));
+        var destinationIndex = siblingIndex + direction;
+        if (destinationIndex < 0 || destinationIndex >= siblings.Count)
+        {
+            throw new InvalidOperationException(
+                $"'{definition.GetPath(node.Id)}' is already at the {(direction < 0 ? "top" : "bottom")} of this menu level.");
+        }
+
+        var destination = siblings[destinationIndex];
+        var nodeIndex = nodes.FindIndex(candidate =>
+            candidate.Id.Equals(node.Id, StringComparison.OrdinalIgnoreCase));
+        var destinationNodeIndex = nodes.FindIndex(candidate =>
+            candidate.Id.Equals(destination.Id, StringComparison.OrdinalIgnoreCase));
+        (nodes[nodeIndex], nodes[destinationNodeIndex]) =
+            (nodes[destinationNodeIndex], nodes[nodeIndex]);
+
+        var orderedNodes = FlattenMenuNodes(nodes);
+        var updated = CopyMenuDefinition(definition, nodes: orderedNodes);
+        new MenuDefinitionValidator().ValidateAndThrow(updated);
+        await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
+        lock (_sync)
+        {
+            _menuAuthoringStatus =
+                $"Menu-tree order updated · {updated.GetPath(node.Id)} moved {(direction < 0 ? "up" : "down")}";
             _menuAuthoringError = null;
         }
 
@@ -827,7 +896,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
         var removedPath = definition.GetPath(normalizedNodeId);
         var updated = CopyMenuDefinition(
             definition,
-            nodes: definition.Nodes.Values.Where(candidate => !removedNodeIds.Contains(candidate.Id)));
+            nodes: FlattenMenuNodes(definition.Nodes.Values
+                .Where(candidate => !removedNodeIds.Contains(candidate.Id))
+                .ToArray()));
         new MenuDefinitionValidator().ValidateAndThrow(updated);
         await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
         lock (_sync)
@@ -2643,6 +2714,43 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     changed = true;
                 }
             }
+        }
+
+        return result;
+    }
+
+    private static bool HaveSameParent(MenuNode left, MenuNode right) =>
+        string.Equals(left.ParentId, right.ParentId, StringComparison.OrdinalIgnoreCase);
+
+    private static IReadOnlyList<MenuNode> FlattenMenuNodes(
+        IReadOnlyList<MenuNode> nodes)
+    {
+        var result = new List<MenuNode>(nodes.Count);
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void AppendBranch(MenuNode node)
+        {
+            if (!visited.Add(node.Id))
+            {
+                return;
+            }
+
+            result.Add(node);
+            foreach (var child in nodes.Where(candidate =>
+                         string.Equals(candidate.ParentId, node.Id, StringComparison.OrdinalIgnoreCase)))
+            {
+                AppendBranch(child);
+            }
+        }
+
+        foreach (var root in nodes.Where(node => string.IsNullOrWhiteSpace(node.ParentId)))
+        {
+            AppendBranch(root);
+        }
+
+        foreach (var node in nodes)
+        {
+            AppendBranch(node);
         }
 
         return result;

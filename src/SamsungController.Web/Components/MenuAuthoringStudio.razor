@@ -59,16 +59,34 @@
             @if (MenuTreeExpanded)
             {
                 <div class="authoring-section-body">
-                    <p class="menu-tree-intro">Name and arrange the complete on-screen hierarchy first. Node IDs stay stable after creation; display names and parents can be changed before or after recording traversals.</p>
+                    <div class="menu-tree-toolbar">
+                        <p class="menu-tree-intro">Name and arrange the complete on-screen hierarchy first. Custom order is saved to YAML and can mirror the TV; alphabetical order is a temporary viewing aid.</p>
+                        <label>
+                            <span>TREE ORDER</span>
+                            <select @bind="TreeOrdering">
+                                <option value="@MenuTreeSortMode.Custom">Custom · TV order</option>
+                                <option value="@MenuTreeSortMode.Alphabetical">Alphabetical</option>
+                            </select>
+                        </label>
+                    </div>
                     <div class="menu-tree-layout">
                         <div class="menu-tree-list">
                             <button class="secondary-action menu-tree-new" @onclick="BeginNewMenuNode" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">+ New node</button>
-                            @foreach (var node in Navigation.Nodes.OrderBy(node => node.Path, StringComparer.OrdinalIgnoreCase))
+                            @foreach (var node in OrderedTreeNodes)
                             {
-                                <button type="button" class="menu-tree-node @(EditingNodeId?.Equals(node.Id, StringComparison.OrdinalIgnoreCase) == true ? "active" : "")" @onclick="() => EditMenuNode(node)">
-                                    <span style="--tree-depth: @node.Depth">@node.Label</span>
-                                    <small>@node.Id</small>
-                                </button>
+                                <div class="menu-tree-node @(EditingNodeId?.Equals(node.Id, StringComparison.OrdinalIgnoreCase) == true ? "active" : "")">
+                                    <button type="button" class="menu-tree-node-select" @onclick="() => EditMenuNode(node)">
+                                        <span style="--tree-depth: @node.Depth">@node.Label</span>
+                                        <small>@node.Id</small>
+                                    </button>
+                                    @if (TreeOrdering == MenuTreeSortMode.Custom)
+                                    {
+                                        <div class="menu-tree-order-actions">
+                                            <button type="button" title="Move up within this menu level" aria-label="Move @node.Label up" @onclick="() => MoveMenuNodeAsync(node.Id, -1)" disabled="@(!CanMoveMenuNode(node, -1))">↑</button>
+                                            <button type="button" title="Move down within this menu level" aria-label="Move @node.Label down" @onclick="() => MoveMenuNodeAsync(node.Id, 1)" disabled="@(!CanMoveMenuNode(node, 1))">↓</button>
+                                        </div>
+                                    }
+                                </div>
                             }
                         </div>
                         <div class="menu-node-editor">
@@ -585,6 +603,12 @@
 </section>
 
 @code {
+    private enum MenuTreeSortMode
+    {
+        Custom,
+        Alphabetical
+    }
+
     private ControllerSnapshot Snapshot { get; set; } = null!;
     private MenuNavigationSnapshot Navigation { get; set; } = null!;
     private MenuAuthoringSnapshot Authoring { get; set; } = null!;
@@ -625,6 +649,7 @@
     private string? PendingVerifiedSettingRemovalId { get; set; }
     private bool ManageVerifiedSettingsExpanded { get; set; }
     private bool MenuTreeExpanded { get; set; } = true;
+    private MenuTreeSortMode TreeOrdering { get; set; } = MenuTreeSortMode.Custom;
     private bool ReturnScriptsExpanded { get; set; }
     private bool SystemTimingExpanded { get; set; }
     private bool DraftValidationExpanded { get; set; }
@@ -667,6 +692,10 @@
                 .ToArray();
         }
     }
+    private IReadOnlyList<MenuNodeSummary> OrderedTreeNodes =>
+        FlattenTreeNodes(
+            Navigation.Nodes,
+            TreeOrdering == MenuTreeSortMode.Alphabetical);
     private bool CanSaveMenuNode => !IsBusy && !Authoring.IsRecording && !Navigation.IsRunning
         && !Snapshot.MacroRunning && !string.IsNullOrWhiteSpace(NodeEditorLabel)
         && (EditingNodeId is not null
@@ -806,6 +835,35 @@
         ConfirmMenuNodeDelete = false;
         LocalError = null;
     }
+
+    private bool CanMoveMenuNode(MenuNodeSummary node, int direction)
+    {
+        if (TreeOrdering != MenuTreeSortMode.Custom
+            || IsBusy
+            || Authoring.IsRecording
+            || Navigation.IsRunning
+            || Snapshot.MacroRunning)
+        {
+            return false;
+        }
+
+        var siblings = Navigation.Nodes
+            .Where(candidate => string.Equals(
+                candidate.ParentId,
+                node.ParentId,
+                StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        var index = Array.FindIndex(siblings, candidate =>
+            candidate.Id.Equals(node.Id, StringComparison.OrdinalIgnoreCase));
+        var destination = index + direction;
+        return index >= 0 && destination >= 0 && destination < siblings.Length;
+    }
+
+    private Task MoveMenuNodeAsync(string nodeId, int direction) => RunBusyAsync(async () =>
+    {
+        await Controller.MoveMenuNodeAsync(nodeId, direction);
+        Refresh();
+    });
 
     private Task SaveMenuNodeAsync() => RunBusyAsync(async () =>
     {
@@ -1386,6 +1444,50 @@
         return char.IsLetter(normalized[0]) || normalized[0] == '_'
             ? normalized
             : $"node-{normalized}";
+    }
+
+    private static IReadOnlyList<MenuNodeSummary> FlattenTreeNodes(
+        IReadOnlyList<MenuNodeSummary> nodes,
+        bool alphabetical)
+    {
+        var result = new List<MenuNodeSummary>(nodes.Count);
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        IEnumerable<MenuNodeSummary> Order(IEnumerable<MenuNodeSummary> candidates) =>
+            alphabetical
+                ? candidates
+                    .OrderBy(candidate => candidate.Label, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(candidate => candidate.Id, StringComparer.OrdinalIgnoreCase)
+                : candidates;
+
+        void AppendBranch(MenuNodeSummary node)
+        {
+            if (!visited.Add(node.Id))
+            {
+                return;
+            }
+
+            result.Add(node);
+            foreach (var child in Order(nodes.Where(candidate => string.Equals(
+                         candidate.ParentId,
+                         node.Id,
+                         StringComparison.OrdinalIgnoreCase))))
+            {
+                AppendBranch(child);
+            }
+        }
+
+        foreach (var root in Order(nodes.Where(node => string.IsNullOrWhiteSpace(node.ParentId))))
+        {
+            AppendBranch(root);
+        }
+
+        foreach (var node in Order(nodes))
+        {
+            AppendBranch(node);
+        }
+
+        return result;
     }
 
     public void Dispose()

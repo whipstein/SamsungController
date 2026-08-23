@@ -374,15 +374,24 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .menu-tree-builder { margin-top: 18px; padding: 18px; border: 1px solid rgba(145,178,255,.2); border-radius: 8px; background: rgba(145,178,255,.035); }
 .tree-node-count { margin-left: auto; color: var(--muted); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; }
 .authoring-section-toggle > .tree-node-count + i { margin-left: 0; }
-.menu-tree-intro { margin: -4px 0 14px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.menu-tree-toolbar { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin: -4px 0 14px; }
+.menu-tree-intro { max-width: 760px; margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.menu-tree-toolbar label { flex: 0 0 175px; }
+.menu-tree-toolbar label > span { display: block; margin-bottom: 5px; color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .09em; }
+.menu-tree-toolbar select { width: 100%; padding: 8px 9px; font-size: 9px; }
 .menu-tree-layout { display: grid; grid-template-columns: minmax(220px, .65fr) minmax(360px, 1.35fr); gap: 12px; }
 .menu-tree-list { max-height: 390px; overflow: auto; padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: #08131b; }
 .menu-tree-new { width: 100%; margin-bottom: 8px; }
-.menu-tree-node { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+.menu-tree-node { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px; align-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--ink); }
 .menu-tree-node:hover, .menu-tree-node.active { background: var(--cyan-soft); }
 .menu-tree-node.active { color: var(--cyan); }
-.menu-tree-node span { min-width: 0; padding-left: calc(var(--tree-depth) * 13px); overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.menu-tree-node small { color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.menu-tree-node-select { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 6px 9px 10px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.menu-tree-node-select span { min-width: 0; padding-left: calc(var(--tree-depth) * 13px); overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.menu-tree-node-select small { color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.menu-tree-order-actions { display: flex; gap: 3px; padding-right: 5px; }
+.menu-tree-order-actions button { width: 25px; height: 25px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: #0b1821; color: var(--muted); font-size: 11px; cursor: pointer; }
+.menu-tree-order-actions button:hover:not(:disabled) { border-color: rgba(124,231,220,.4); color: var(--cyan); }
+.menu-tree-order-actions button:disabled { opacity: .25; cursor: not-allowed; }
 .menu-node-editor { padding: 15px; border: 1px solid var(--line); border-radius: 7px; background: #08131b; }
 .menu-node-editor header { margin-bottom: 13px; }
 .menu-node-editor header span, .menu-node-editor header strong { display: block; }
@@ -542,6 +551,8 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .page-content { padding-top: 36px; }
     .remote-layout, .macro-layout, .protocol-layout { grid-template-columns: 1fr; }
     .navigator-layout { grid-template-columns: 1fr; }
+    .menu-tree-toolbar { align-items: stretch; flex-direction: column; }
+    .menu-tree-toolbar label { flex-basis: auto; }
     .menu-tree-layout { grid-template-columns: 1fr; }
     .authoring-workflow-grid { grid-template-columns: 1fr; }
     .return-script-grid { grid-template-columns: 1fr; }

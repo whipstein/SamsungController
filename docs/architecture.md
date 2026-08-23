@@ -100,8 +100,11 @@ saved empty list remains empty, allowing the default to be removed intentionally
 
 Build & Verify persists menu-tree nodes before route recording, allowing display
 names and parents to be edited while keeping stable node IDs for route references.
-Unreferenced draft branches can be deleted; referenced branches must first have
-their traversal, anchor, or return definition removed.
+The YAML node sequence stores custom sibling order; moving a sibling rewrites the
+tree in depth-first order while preserving its descendants, and alphabetical
+display does not mutate the definition. Unreferenced draft branches can be deleted;
+referenced branches must first have their traversal, anchor, or return definition
+removed.
 
 Build & Verify may delete an incorrect verified setting after a two-step UI
 confirmation. Deletion removes the setting's full descendant subtree and every

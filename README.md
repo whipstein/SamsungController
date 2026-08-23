@@ -80,7 +80,8 @@ Samsung's remote-control channel does not report the actual on-screen cursor.
   verification. Clicking a verified destination immediately plans and executes
   its proven route; the route-preview controls remain available for inspection.
 - **Build & Verify** owns new-interface setup, an editable menu tree that can be
-  named and arranged before recording, live traversal capture, default and
+  named and arranged before recording, custom TV-matching or alphabetical tree
+  display, persistent sibling move controls, live traversal capture, default and
   state-specific return-to-video scripts, system-wide and per-button wait
   calibration, draft management, guarded removal of incorrect verified settings,
   and the required three-pass visual tests. Independent sections can be minimized;

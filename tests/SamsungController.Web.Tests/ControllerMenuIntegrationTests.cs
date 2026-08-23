@@ -105,6 +105,16 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             "Picture",
             "settings",
             null));
+        await controller.CreateMenuNodeAsync(new MenuNodeEditRequest(
+            "expert",
+            "Expert Settings",
+            "picture",
+            null));
+        await controller.CreateMenuNodeAsync(new MenuNodeEditRequest(
+            "sound",
+            "Sound",
+            "settings",
+            null));
         await controller.UpdateMenuNodeAsync(
             "picture",
             new MenuNodeEditRequest(
@@ -119,11 +129,27 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         Assert.Equal("settings", picture.ParentId);
         Assert.Equal("TV interface / Settings / Picture controls", picture.Path);
 
+        await controller.MoveMenuNodeAsync("sound", -1);
+
+        snapshot = controller.GetMenuNavigationSnapshot();
+        Assert.Equal(
+            ["sound", "picture"],
+            snapshot.Nodes
+                .Where(node => node.ParentId == "settings")
+                .Select(node => node.Id));
+        Assert.Equal(
+            ["tv-interface", "normal-video", "settings", "sound", "picture", "expert"],
+            snapshot.Nodes.Select(node => node.Id));
+
         await controller.DeleteMenuNodeAsync("picture");
 
         var reparsed = await new MenuDefinitionParser().ParseFileAsync(snapshot.DefinitionPath);
         Assert.DoesNotContain("picture", reparsed.Nodes.Keys);
+        Assert.DoesNotContain("expert", reparsed.Nodes.Keys);
         Assert.Contains("settings", reparsed.Nodes.Keys);
+        Assert.Equal(
+            ["tv-interface", "normal-video", "settings", "sound"],
+            reparsed.Nodes.Values.Select(node => node.Id));
     }
 
     [Fact]

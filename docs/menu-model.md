@@ -112,8 +112,12 @@ transitions:
       - key: KEY_MENU
 ```
 
-Parent relationships on nodes control tree presentation only. They do not imply
-that navigation is possible. The planner uses only explicit directed
+Parent relationships on nodes control tree presentation only. Within each parent,
+the YAML node sequence is the persistent custom order used to mirror the TV.
+Build & Verify can move siblings up or down and can temporarily display every
+branch alphabetically without changing that saved custom order. Tree order does
+not imply that navigation is possible; the verified Menu page follows the saved
+custom order. The planner uses only explicit directed
 transitions, adds a strong penalty to draft edges during preview, and normally
 prefers a longer verified route over a short draft route.
 
@@ -154,8 +158,10 @@ can be planned or sent.
    definition exists; the generated YAML is stored in the per-user configuration
    directory and loaded automatically.
 4. In **Define the overall menu tree**, add and name the expected menu positions,
-   assign their parents, and save the hierarchy to YAML. Display names and parents
-   remain editable; stable node IDs do not change after creation.
+   assign their parents, and save the hierarchy to YAML. Choose **Custom · TV
+   order** and move siblings up or down to match the on-screen menu; switch to
+   **Alphabetical** when that view is more useful. Display names and parents remain
+   editable; stable node IDs do not change after creation.
 5. Choose **Anchor** or **Transition**, select two predefined nodes, and start
    live recording. For a transition, **Prepare source**
    uses a verified anchor and verified routes to position the TV first. The UI
