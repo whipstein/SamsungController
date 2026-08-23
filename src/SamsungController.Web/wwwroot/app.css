@@ -381,11 +381,12 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .menu-tree-toolbar select { width: 100%; padding: 8px 9px; font-size: 9px; }
 .menu-tree-layout { display: grid; grid-template-columns: minmax(220px, .65fr) minmax(360px, 1.35fr); gap: 12px; }
 .menu-tree-list { max-height: 390px; overflow: auto; padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: #08131b; }
-.menu-tree-new { width: 100%; margin-bottom: 8px; }
+.menu-tree-list:focus { outline: 1px solid rgba(124,231,220,.42); outline-offset: 2px; }
 .menu-tree-node { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px; align-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--ink); }
 .menu-tree-node:hover, .menu-tree-node.active { background: var(--cyan-soft); }
 .menu-tree-node.active { color: var(--cyan); }
 .menu-tree-node-select { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 6px 9px 10px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.menu-tree-node-select:focus-visible { outline: 1px solid rgba(124,231,220,.5); outline-offset: -2px; }
 .menu-tree-node-select span { min-width: 0; padding-left: calc(var(--tree-depth) * 13px); overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .menu-tree-node.unverified .menu-tree-node-select span { color: var(--danger); }
 .menu-tree-node-select small { color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; }
@@ -400,7 +401,8 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .menu-node-editor header strong { margin-top: 4px; font-size: 11px; }
 .menu-node-editor .field-note code { color: var(--cyan); }
 .menu-node-editor-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
-.menu-node-editor-actions .primary-action { width: auto; margin-left: auto; }
+.menu-node-editor-actions .primary-action { width: auto; }
+.menu-node-editor-actions .menu-node-update { margin-left: auto; }
 .authoring-section-title { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .authoring-section-title span { display: grid; width: 23px; height: 23px; place-items: center; border: 1px solid var(--line-strong); border-radius: 50%; color: var(--cyan); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .authoring-section-title strong { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }

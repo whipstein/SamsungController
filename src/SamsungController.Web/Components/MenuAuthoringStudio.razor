@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject SamsungControllerService Controller
+@inject IJSRuntime JavaScript
 
 <section class="panel authoring-studio">
     <div class="panel-label">
@@ -70,13 +71,21 @@
                         </label>
                     </div>
                     <div class="menu-tree-layout">
-                        <div class="menu-tree-list">
-                            <button class="secondary-action menu-tree-new" @onclick="BeginNewMenuNode" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">+ New node</button>
+                        <div class="menu-tree-list"
+                             role="tree"
+                             aria-label="Defined menu positions"
+                             tabindex="0"
+                             @ref="MenuTreeElement">
                             @foreach (var node in OrderedTreeNodes)
                             {
                                 <div class="menu-tree-node @(node.HasVerifiedRoute ? "" : "unverified") @(EditingNodeId?.Equals(node.Id, StringComparison.OrdinalIgnoreCase) == true ? "active" : "")">
                                     <button type="button"
                                             class="menu-tree-node-select"
+                                            role="treeitem"
+                                            aria-level="@(node.Depth + 1)"
+                                            aria-selected="@(EditingNodeId?.Equals(node.Id, StringComparison.OrdinalIgnoreCase) == true ? "true" : "false")"
+                                            data-node-id="@node.Id"
+                                            data-parent-id="@(node.ParentId ?? string.Empty)"
                                             title="@(node.HasVerifiedRoute ? "Verified menu position" : "Menu position needs validation")"
                                             @onclick="() => EditMenuNode(node)">
                                         <span style="--tree-depth: @node.Depth">@node.Label</span>
@@ -138,7 +147,17 @@
                                         <button class="secondary-action danger-action" @onclick="RequestMenuNodeDelete" disabled="@(!CanDeleteMenuNode)">Delete</button>
                                     }
                                 }
-                                <button class="primary-action" @onclick="SaveMenuNodeAsync" disabled="@(!CanSaveMenuNode)">@(EditingNodeId is null ? "Add to tree" : "Save node") <span>→</span></button>
+                                <button class="secondary-action menu-node-update"
+                                        @onclick="UpdateMenuNodeAsync"
+                                        disabled="@(!CanUpdateMenuNode)">
+                                    Update
+                                </button>
+                                <button class="primary-action"
+                                        title="@(EditingNodeId is null ? "Create this menu position" : "Start a new child beneath this menu position")"
+                                        @onclick="AddMenuNodeAsync"
+                                        disabled="@(!CanAddMenuNode)">
+                                    Add <span>→</span>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -691,6 +710,7 @@
     private bool ReturnScriptsPreviouslyNeededValidation { get; set; }
     private bool SystemTimingPreviouslyNeededValidation { get; set; }
     private int PreviousDraftValidationCount { get; set; }
+    private ElementReference MenuTreeElement { get; set; }
 
     private string DefinitionId { get; set; } = "samsung-menu";
     private string DefinitionName { get; set; } = "Samsung TV Menu";
@@ -740,11 +760,18 @@
         FlattenTreeNodes(
             Navigation.Nodes,
             TreeOrdering == MenuTreeSortMode.Alphabetical);
-    private bool CanSaveMenuNode => !IsBusy && !Authoring.IsRecording && !Navigation.IsRunning
-        && !Snapshot.MacroRunning && !string.IsNullOrWhiteSpace(NodeEditorLabel)
+    private bool CanEditMenuTree => !IsBusy && !Authoring.IsRecording
+        && !Navigation.IsRunning && !Snapshot.MacroRunning
+        && !ConfirmMenuNodeDelete;
+    private bool CanUpdateMenuNode => CanEditMenuTree
+        && EditingNodeId is not null
+        && !string.IsNullOrWhiteSpace(NodeEditorLabel);
+    private bool CanAddMenuNode => CanEditMenuTree
         && (EditingNodeId is not null
-            || !string.IsNullOrWhiteSpace(NodeEditorId)
-            || !string.IsNullOrWhiteSpace(CreateMenuNodeId(NodeEditorLabel)));
+            || (!string.IsNullOrWhiteSpace(NodeEditorLabel)
+                && !Navigation.Nodes.Any(node => node.Id.Equals(
+                    GetNewMenuNodeId(),
+                    StringComparison.OrdinalIgnoreCase))));
     private bool CanDeleteMenuNode => EditingNodeId is not null && !IsBusy && !Authoring.IsRecording
         && !Navigation.IsRunning && !Snapshot.MacroRunning
         && Navigation.Nodes.FirstOrDefault(node => node.Id.Equals(EditingNodeId, StringComparison.OrdinalIgnoreCase))?.ParentId is not null;
@@ -820,6 +847,25 @@
         InitializeNodeDefaults();
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!MenuTreeExpanded || Navigation.DefinitionName is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await JavaScript.InvokeVoidAsync(
+                "samsungController.bindMenuTree",
+                MenuTreeElement);
+        }
+        catch (JSDisconnectedException)
+        {
+            // The browser can disconnect while dotnet watch replaces the circuit.
+        }
+    }
+
     private void ToggleDefinitionForm()
     {
         ShowDefinitionForm = !ShowDefinitionForm;
@@ -855,13 +901,14 @@
         });
     }
 
-    private void BeginNewMenuNode()
+    private void BeginNewMenuNode(string? parentNodeId = null)
     {
         EditingNodeId = null;
         NodeEditorId = string.Empty;
         NodeEditorLabel = string.Empty;
         NodeEditorDescription = string.Empty;
-        NodeEditorParentId = Navigation.Nodes.FirstOrDefault(node =>
+        NodeEditorParentId = parentNodeId
+            ?? Navigation.Nodes.FirstOrDefault(node =>
                 node.Id.Equals("tv-interface", StringComparison.OrdinalIgnoreCase))?.Id
             ?? Navigation.Nodes.FirstOrDefault()?.Id
             ?? string.Empty;
@@ -909,32 +956,57 @@
         Refresh();
     });
 
-    private Task SaveMenuNodeAsync() => RunBusyAsync(async () =>
+    private Task UpdateMenuNodeAsync()
     {
         var nodeId = EditingNodeId
-            ?? (string.IsNullOrWhiteSpace(NodeEditorId)
-                ? CreateMenuNodeId(NodeEditorLabel)
-                : NodeEditorId.Trim());
-        var request = new MenuNodeEditRequest(
-            nodeId,
-            NodeEditorLabel,
-            NodeEditorParentId,
-            NodeEditorDescription);
-        if (EditingNodeId is null)
+            ?? throw new InvalidOperationException("Choose a menu-tree node to update.");
+        return RunBusyAsync(async () =>
         {
-            await Controller.CreateMenuNodeAsync(request);
-        }
-        else
+            var request = new MenuNodeEditRequest(
+                nodeId,
+                NodeEditorLabel,
+                NodeEditorParentId,
+                NodeEditorDescription);
+            await Controller.UpdateMenuNodeAsync(nodeId, request);
+
+            Refresh();
+            var saved = Navigation.Nodes.First(node =>
+                node.Id.Equals(nodeId, StringComparison.OrdinalIgnoreCase));
+            EditMenuNode(saved);
+            InitializeNodeDefaults(force: true);
+        });
+    }
+
+    private Task AddMenuNodeAsync()
+    {
+        if (EditingNodeId is not null)
         {
-            await Controller.UpdateMenuNodeAsync(EditingNodeId, request);
+            BeginNewMenuNode(EditingNodeId);
+            return Task.CompletedTask;
         }
 
-        Refresh();
-        var saved = Navigation.Nodes.First(node =>
-            node.Id.Equals(nodeId, StringComparison.OrdinalIgnoreCase));
-        EditMenuNode(saved);
-        InitializeNodeDefaults(force: true);
-    });
+        return RunBusyAsync(async () =>
+        {
+            var nodeId = GetNewMenuNodeId();
+            var request = new MenuNodeEditRequest(
+                nodeId,
+                NodeEditorLabel,
+                NodeEditorParentId,
+                NodeEditorDescription);
+            await Controller.CreateMenuNodeAsync(request);
+
+            Refresh();
+            var saved = Navigation.Nodes.First(node =>
+                node.Id.Equals(nodeId, StringComparison.OrdinalIgnoreCase));
+            EditMenuNode(saved);
+            InitializeNodeDefaults(force: true);
+        });
+    }
+
+    private string GetNewMenuNodeId() =>
+        string.IsNullOrWhiteSpace(NodeEditorId)
+            ? CreateMenuNodeId(NodeEditorLabel)
+            : NodeEditorId.Trim();
 
     private void RequestMenuNodeDelete()
     {
@@ -1491,7 +1563,7 @@
                 ?? Navigation.Nodes[0].Id;
         }
 
-        if (force && EditingNodeId is null && string.IsNullOrWhiteSpace(NodeEditorParentId))
+        if (EditingNodeId is null && string.IsNullOrWhiteSpace(NodeEditorParentId))
         {
             NodeEditorParentId = Navigation.Nodes.FirstOrDefault(node =>
                     node.Id.Equals("tv-interface", StringComparison.OrdinalIgnoreCase))?.Id
