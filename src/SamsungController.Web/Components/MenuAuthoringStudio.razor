@@ -385,7 +385,7 @@
             }
         </div>
 
-        <div class="validation-studio collapsible-authoring-section @(DraftValidationExpanded ? "" : "collapsed")">
+        <div id="draft-validation" class="validation-studio collapsible-authoring-section @(DraftValidationExpanded ? "" : "collapsed")">
             <button type="button" class="authoring-section-title authoring-section-toggle" @onclick="ToggleDraftValidation" aria-expanded="@(DraftValidationExpanded ? "true" : "false")">
                 <span>06</span><strong>Timing lab and visual validation</strong>
                 @if (DraftValidationNeedsAttention)
@@ -418,6 +418,10 @@
                                 @if (isActive)
                                 {
                                     <b>@Authoring.ValidationPasses/@Authoring.RequiredValidationPasses passed</b>
+                                }
+                                @if (candidate.SourceNodeId is not null)
+                                {
+                                    <button class="secondary-action" @onclick="() => PrepareValidationSourceAsync(candidate)" disabled="@(!CanPrepareValidationSource(candidate))">Prepare source</button>
                                 }
                                 <button class="secondary-action" @onclick="() => PrepareRerecord(candidate)" disabled="@(Authoring.IsRecording || Navigation.IsRunning)">Re-record</button>
                                 <button class="secondary-action" @onclick="() => ToggleTimingEditor(candidate)" disabled="@(Authoring.IsRecording || Navigation.IsRunning)">@(IsTimingEditorOpen(candidate) ? "Close timing" : "Timing lab")</button>
@@ -677,6 +681,17 @@
 
     private Task RunValidationAsync(MenuAuthoringCandidateSummary candidate) =>
         RunBusyAsync(() => Controller.RunMenuAuthoringValidationAsync(candidate.Kind, candidate.Id));
+
+    private bool CanPrepareValidationSource(MenuAuthoringCandidateSummary candidate) =>
+        candidate.SourceNodeId is not null
+        && IsConnected
+        && !IsBusy
+        && !Authoring.IsRecording
+        && !Navigation.IsRunning
+        && !Snapshot.MacroRunning;
+
+    private Task PrepareValidationSourceAsync(MenuAuthoringCandidateSummary candidate) =>
+        RunBusyAsync(() => Controller.PrepareMenuRecordingSourceAsync(candidate.SourceNodeId!));
 
     private Task SaveSystemTimingAsync() => RunBusyAsync(async () =>
     {

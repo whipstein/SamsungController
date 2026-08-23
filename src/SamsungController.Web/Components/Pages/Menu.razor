@@ -1,6 +1,7 @@
 @page "/menu"
 @implements IDisposable
 @inject SamsungControllerService Controller
+@inject NavigationManager NavigationManager
 
 <PageTitle>Verified Menus · SamsungController</PageTitle>
 
@@ -25,8 +26,20 @@
 }
 
 <section class="menu-current-state @ConfidenceClass" title="@CurrentStateTitle">
-    <span>CURRENT MENU</span>
-    <strong>@CurrentMenuLabel</strong>
+    <div>
+        <span>CURRENT MENU</span>
+        <strong>@CurrentMenuLabel</strong>
+    </div>
+    @if (LastCompletedPlan is { CommandCount: > 0 })
+    {
+        <button type="button"
+                class="secondary-action danger-action traversal-failed-action"
+                title="Capture the traversal keys for validation and return the TV to normal video"
+                @onclick="ReportTraversalFailureAsync"
+                disabled="@(!CanReportTraversalFailure)">
+            @(ReportingTraversalFailure ? "Resetting…" : "Traversal failed")
+        </button>
+    }
 </section>
 
 <section class="navigator-layout">
@@ -164,6 +177,8 @@
     private MenuNavigationSnapshot Navigation { get; set; } = null!;
     private string? SelectedTarget { get; set; }
     private string? LocalError { get; set; }
+    private NavigationPlan? LastCompletedPlan { get; set; }
+    private bool ReportingTraversalFailure { get; set; }
 
     private string? ErrorMessage => LocalError ?? Navigation.Error;
     private IReadOnlyList<MenuNodeSummary> VerifiedNodes => Navigation.Nodes
@@ -180,6 +195,9 @@
     private bool CanAutomate => Snapshot.ConnectionState == SamsungConnectionState.Connected &&
         !Snapshot.MacroRunning && !Navigation.IsRunning;
     private bool CanExecutePlan => CanAutomate && SelectedPlan?.IsExecutable == true;
+    private bool CanReportTraversalFailure => CanAutomate
+        && !ReportingTraversalFailure
+        && LastCompletedPlan?.CommandCount > 0;
     private string SelectedTargetPath => Navigation.Nodes.FirstOrDefault(node => node.Id == SelectedTarget)?.Path ?? "—";
     private string CurrentMenuLabel => Navigation.Nodes.FirstOrDefault(node =>
         node.Id.Equals(Navigation.State.NodeId, StringComparison.OrdinalIgnoreCase))?.Label ?? "Unknown";
@@ -202,9 +220,12 @@
     {
         SelectedTarget = nodeId;
         LocalError = null;
+        LastCompletedPlan = null;
         try
         {
-            await Controller.NavigateToMenuNodeAsync(nodeId);
+            var plan = Controller.CreateNavigationPlan(nodeId);
+            await Controller.ExecuteNavigationPlanAsync();
+            LastCompletedPlan = plan;
         }
         catch (OperationCanceledException)
         {
@@ -252,6 +273,7 @@
         try
         {
             await Controller.RunMenuAnchorAsync(anchorId);
+            LastCompletedPlan = null;
         }
         catch (OperationCanceledException)
         {
@@ -266,9 +288,12 @@
     private async Task ExecutePlanAsync()
     {
         LocalError = null;
+        var plan = SelectedPlan;
+        LastCompletedPlan = null;
         try
         {
             await Controller.ExecuteNavigationPlanAsync();
+            LastCompletedPlan = plan;
         }
         catch (OperationCanceledException)
         {
@@ -277,6 +302,31 @@
         catch (Exception exception)
         {
             LocalError = exception.Message;
+        }
+    }
+
+    private async Task ReportTraversalFailureAsync()
+    {
+        if (LastCompletedPlan is not { } failedPlan)
+        {
+            return;
+        }
+
+        ReportingTraversalFailure = true;
+        LocalError = null;
+        try
+        {
+            await Controller.ReportMenuTraversalFailureAsync(failedPlan);
+            LastCompletedPlan = null;
+            NavigationManager.NavigateTo("menu/build#draft-validation");
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            ReportingTraversalFailure = false;
         }
     }
 

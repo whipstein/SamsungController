@@ -15,6 +15,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private const int MacroProgressCapacity = 500;
     private const int DeviceInfoObservationCapacity = 20;
     private const int QuickAccessCapacity = 12;
+    private const string TraversalFailureDescription =
+        "Traversal reported failed from the verified menu UI; captured keys and waits require timing or definition validation.";
     private static readonly QuickAccessAction DefaultReturnToVideoAction = new(
         "menuanchor:normal-video",
         "Return to video",
@@ -1727,6 +1729,137 @@ public sealed class SamsungControllerService : IAsyncDisposable
             cancellationToken);
     }
 
+    public async Task<MenuTraversalFailureReport> ReportMenuTraversalFailureAsync(
+        NavigationPlan failedPlan,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(failedPlan);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("report a failed menu traversal");
+        EnsureNoMenuRecording("report a failed menu traversal");
+        if (_client.State != SamsungConnectionState.Connected)
+        {
+            throw new InvalidOperationException(
+                "Connect to the TV before reporting a failed traversal so the app can restore normal video.");
+        }
+
+        MenuDefinition definition;
+        MenuAnchor knownStateAnchor;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+            if (!failedPlan.DefinitionId.Equals(
+                    definition.Id,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "The failed traversal belongs to a different menu definition.");
+            }
+
+            definition.GetRequiredNode(failedPlan.SourceNodeId);
+            definition.GetRequiredNode(failedPlan.TargetNodeId);
+            knownStateAnchor = FindPreferredKnownStateAnchor(definition)
+                ?? throw new InvalidOperationException(
+                    "No verified known-state anchor is available to restore normal video.");
+        }
+
+        var operations = GetNavigationPlanOperations(failedPlan);
+        if (operations.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "The traversal did not contain any keys to validate.");
+        }
+
+        var transitions = definition.Transitions.Values.ToList();
+        var directTransition = failedPlan.AnchorLeg is null
+                               && failedPlan.CalculatedLeg is null
+                               && failedPlan.Transitions.Count == 1
+            ? failedPlan.Transitions[0]
+            : null;
+        var existingDirect = directTransition is not null
+                             && directTransition.FromNodeId.Equals(
+                                 failedPlan.SourceNodeId,
+                                 StringComparison.OrdinalIgnoreCase)
+                             && directTransition.ToNodeId.Equals(
+                                 failedPlan.TargetNodeId,
+                                 StringComparison.OrdinalIgnoreCase)
+                             && definition.Transitions.TryGetValue(
+                                 directTransition.Id,
+                                 out var storedDirect)
+            ? storedDirect
+            : null;
+
+        string draftId;
+        if (existingDirect is not null)
+        {
+            draftId = existingDirect.Id;
+            transitions.RemoveAll(transition => transition.Id.Equals(
+                draftId,
+                StringComparison.OrdinalIgnoreCase));
+        }
+        else
+        {
+            var matchingDrafts = transitions.Where(transition =>
+                    !transition.Verified
+                    && transition.FromNodeId.Equals(
+                        failedPlan.SourceNodeId,
+                        StringComparison.OrdinalIgnoreCase)
+                    && transition.ToNodeId.Equals(
+                        failedPlan.TargetNodeId,
+                        StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            if (matchingDrafts.Length > 1)
+            {
+                throw new InvalidOperationException(
+                    "More than one diagnostic draft already exists for this traversal. Remove the duplicates in Build & Verify first.");
+            }
+
+            draftId = matchingDrafts.FirstOrDefault()?.Id
+                ?? CreateTraversalFailureDraftId(
+                    definition,
+                    failedPlan.SourceNodeId,
+                    failedPlan.TargetNodeId);
+            transitions.RemoveAll(transition => transition.Id.Equals(
+                draftId,
+                StringComparison.OrdinalIgnoreCase));
+        }
+
+        transitions.Add(new MenuTransition(
+            draftId,
+            failedPlan.SourceNodeId,
+            failedPlan.TargetNodeId,
+            operations,
+            Verified: false,
+            Description: TraversalFailureDescription));
+        var updated = CopyMenuDefinition(definition, transitions: transitions);
+        new MenuDefinitionValidator().ValidateAndThrow(updated);
+        await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
+        lock (_sync)
+        {
+            _menuValidation = new MenuValidationSession(
+                MenuAuthoringItemKind.Transition,
+                draftId,
+                0,
+                false,
+                updated.GetPath(failedPlan.TargetNodeId));
+            _menuAuthoringStatus =
+                $"Failed traversal captured · {updated.GetPath(failedPlan.SourceNodeId)} → {updated.GetPath(failedPlan.TargetNodeId)} · inspect keys and timing below";
+            _menuAuthoringError = null;
+            _navigationPlan = null;
+        }
+
+        NotifyChanged();
+        await RunMenuAnchorAsync(knownStateAnchor.Id, cancellationToken)
+            .ConfigureAwait(false);
+        return new MenuTraversalFailureReport(
+            draftId,
+            updated.GetPath(failedPlan.SourceNodeId),
+            updated.GetPath(failedPlan.TargetNodeId),
+            knownStateAnchor.Label,
+            updated.GetPath(knownStateAnchor.TargetNodeId));
+    }
+
     public void CancelNavigation()
     {
         lock (_sync)
@@ -2130,6 +2263,58 @@ public sealed class SamsungControllerService : IAsyncDisposable
             .SelectMany(operation => Enumerable.Range(0, operation.Repeat)
                 .Select(_ => operation with { Repeat = 1 }))
             .ToArray();
+
+    private static IReadOnlyList<MenuOperation> GetNavigationPlanOperations(
+        NavigationPlan plan)
+    {
+        var operations = new List<MenuOperation>();
+        if (plan.AnchorLeg is { } anchorLeg)
+        {
+            operations.AddRange(anchorLeg.Operations);
+        }
+
+        if (plan.CalculatedLeg is { } calculatedLeg)
+        {
+            operations.AddRange(calculatedLeg.Operations);
+        }
+
+        operations.AddRange(plan.Transitions.SelectMany(transition => transition.Operations));
+        return CoalesceOperations(ExpandOperations(operations));
+    }
+
+    private static MenuAnchor? FindPreferredKnownStateAnchor(
+        MenuDefinition definition) => definition.Anchors.Values
+        .Where(anchor => anchor.Verified)
+        .OrderBy(anchor =>
+            anchor.Id.Equals("normal-video", StringComparison.OrdinalIgnoreCase)
+            || anchor.TargetNodeId.Equals("normal-video", StringComparison.OrdinalIgnoreCase)
+                ? 0
+                : 1)
+        .ThenBy(anchor => anchor.Label, StringComparer.OrdinalIgnoreCase)
+        .FirstOrDefault();
+
+    private static string CreateTraversalFailureDraftId(
+        MenuDefinition definition,
+        string sourceNodeId,
+        string targetNodeId)
+    {
+        var baseId = $"debug-{sourceNodeId}-to-{targetNodeId}";
+        if (!definition.Transitions.ContainsKey(baseId)
+            && !definition.Anchors.ContainsKey(baseId))
+        {
+            return baseId;
+        }
+
+        for (var suffix = 2; ; suffix++)
+        {
+            var candidate = $"{baseId}-{suffix}";
+            if (!definition.Transitions.ContainsKey(candidate)
+                && !definition.Anchors.ContainsKey(candidate))
+            {
+                return candidate;
+            }
+        }
+    }
 
     private static IReadOnlyList<MenuOperation> CoalesceOperations(
         IReadOnlyList<MenuOperation> operations)

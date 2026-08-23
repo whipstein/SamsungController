@@ -425,6 +425,44 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task ReportingFailedTraversalCapturesDraftAndRestoresKnownState()
+    {
+        var allVerifiedYaml = ExplicitValidationMenuYaml.Replace(
+            "verified: false",
+            "verified: true",
+            StringComparison.Ordinal);
+        var (controller, transport) = await CreateConnectedControllerAsync(allVerifiedYaml);
+        await using (controller)
+        {
+            await controller.NavigateToMenuNodeAsync("picture");
+            var failedPlan = controller.CreateNavigationPlan("settings");
+            await controller.ExecuteNavigationPlanAsync();
+            transport.SentMessages.Clear();
+
+            var report = await controller.ReportMenuTraversalFailureAsync(failedPlan);
+
+            Assert.Equal("debug-picture-to-settings", report.DraftTransitionId);
+            Assert.Equal("Settings / Picture", report.SourcePath);
+            Assert.Equal("Settings", report.TargetPath);
+            Assert.Equal("Normal video", report.KnownStatePath);
+            Assert.Equal(["KEY_EXIT", "KEY_EXIT"], GetSentKeys(transport));
+
+            var candidate = Assert.Single(
+                controller.GetMenuAuthoringSnapshot().DraftCandidates,
+                item => item.Id == report.DraftTransitionId);
+            Assert.Equal("picture", candidate.SourceNodeId);
+            Assert.Equal("settings", candidate.TargetNodeId);
+            var step = Assert.Single(candidate.ReplaySteps);
+            Assert.Equal("KEY_RETURN", step.Key);
+            Assert.True(step.HasCustomDelay);
+
+            var navigation = controller.GetMenuNavigationSnapshot();
+            Assert.Equal("normal-video", navigation.State.NodeId);
+            Assert.Equal(MenuStateConfidence.Synchronized, navigation.State.Confidence);
+        }
+    }
+
+    [Fact]
     public async Task SuccessfulConnectionAutomaticallyRunsThePreferredVerifiedAnchor()
     {
         var (controller, transport) = await CreateConnectedControllerAsync(

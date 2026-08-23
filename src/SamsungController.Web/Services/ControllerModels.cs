@@ -103,6 +103,13 @@ public sealed record MenuNavigationSnapshot(
     NavigationProgress? Progress,
     string? Error);
 
+public sealed record MenuTraversalFailureReport(
+    string DraftTransitionId,
+    string SourcePath,
+    string TargetPath,
+    string KnownStateAnchorLabel,
+    string KnownStatePath);
+
 public enum MenuAuthoringItemKind
 {
     Anchor,
