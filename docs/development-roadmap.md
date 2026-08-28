@@ -147,8 +147,8 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 
 ### Packaging and remote access
 
-- [ ] Produce versioned release artifacts for macOS, Windows, and Linux so end users do not need a source checkout.
-- [ ] Decide whether releases should be framework-dependent, self-contained, or both.
+- [x] Produce versioned release artifacts for macOS, Windows, and Linux so end users do not need a source checkout.
+- [x] Publish self-contained x64 and Arm64 packages with a platform launcher and optional CLI.
 - [ ] Add upgrade and configuration-migration handling before distributing installers or packaged services.
 - [ ] Design an explicit opt-in LAN mode for tablets or other computers.
 - [ ] Add authentication, request forgery protection, TLS guidance, network binding controls, and threat documentation before enabling LAN access.

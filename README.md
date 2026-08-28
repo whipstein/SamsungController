@@ -14,76 +14,88 @@ The web interface is the recommended way to use the application. A command-line 
 - Persistent quick-access buttons and an expected-current-menu indicator
 - Searchable RX/TX protocol messages, redacted browser views, and NDJSON session logs
 - Interactive terminal console with persistent command history
-- macOS, Windows, and Linux source builds tested by continuous integration
+- Self-contained macOS, Windows, and Linux downloads for x64 and Arm64 computers
 
 The Samsung S95F is the primary real-TV test target. Basic pairing and remote keys may work with other recent Samsung/Tizen TVs, but menu layouts, key behavior, available queries, and authorization details vary by model and firmware.
 
 ## Before you install
 
-You need:
+Both installation methods require:
 
 1. A computer and Samsung TV on the same trusted local network.
 2. The TV's IPv4 address. SamsungController does not currently discover TVs automatically. A DHCP reservation is recommended so the address does not change.
-3. The [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0), not only the .NET runtime.
-4. [Git](https://git-scm.com/downloads), unless you download and extract the repository as a ZIP file.
-5. A current web browser for the web interface.
+3. A current web browser for the local web interface.
 
-Confirm the SDK after installation:
+The downloadable release is recommended for most users. It is self-contained and does not require Git, a repository clone, the .NET SDK, or a separate .NET runtime. Building from source remains available for contributors and users who want to modify the code.
+
+## Install a downloadable release
+
+1. Open the [latest SamsungController release](https://github.com/whipstein/SamsungController/releases/latest).
+2. Download the archive matching both the operating system and processor.
+3. Extract the complete archive. Do not move individual binaries out of the extracted `SamsungController` folder.
+4. Run the included platform launcher. It starts the local server, waits for it to become ready, and opens [http://127.0.0.1:5050](http://127.0.0.1:5050).
+
+Each release also provides `SHA256SUMS.txt` for optional download-integrity verification.
+
+| Computer | Download name |
+| --- | --- |
+| Apple silicon Mac | `SamsungController-*-macos-arm64.tar.gz` |
+| Intel Mac | `SamsungController-*-macos-x64.tar.gz` |
+| Intel/AMD Windows PC | `SamsungController-*-windows-x64.zip` |
+| Windows on Arm | `SamsungController-*-windows-arm64.zip` |
+| Intel/AMD Linux PC | `SamsungController-*-linux-x64.tar.gz` |
+| Arm64/aarch64 Linux | `SamsungController-*-linux-arm64.tar.gz` |
+
+### Start the macOS package
+
+1. Double-click the `.tar.gz` download to extract it.
+2. Open the extracted `SamsungController` folder.
+3. Control-click **Start SamsungController.command**, choose **Open**, and confirm **Open**. Keep the Terminal window open while using SamsungController.
+
+The initial packages are not signed or notarized. If macOS blocks the application, open **System Settings > Privacy & Security** and choose **Open Anyway** for SamsungController. If it continues to block an embedded file, the terminal fallback is:
+
+```bash
+xattr -dr com.apple.quarantine /path/to/SamsungController
+```
+
+Only use that override for an archive downloaded from the official GitHub release.
+
+### Start the Windows package
+
+1. Right-click the `.zip` download and select **Extract All**. Do not run the launcher inside the ZIP preview.
+2. Open the extracted `SamsungController` folder.
+3. Double-click **Start SamsungController.cmd** and keep its command window open.
+
+The initial packages are unsigned. If Microsoft Defender SmartScreen appears, choose **More info > Run anyway** only after confirming the archive came from the official GitHub release.
+
+### Start the Linux package
+
+1. Extract the `.tar.gz` download and open the resulting `SamsungController` folder.
+2. Double-click **start-samsungcontroller.sh** and choose **Run**.
+3. If the file manager does not offer Run, open **Properties > Permissions** and enable execution. The terminal fallback is `./start-samsungcontroller.sh`.
+
+Linux automatic browser opening uses `xdg-open` or `gio`. If neither is installed, paste `http://127.0.0.1:5050` into a browser on the same computer.
+
+### Stop or update a packaged release
+
+Keep the launcher window or process running while using the site. Close that window or press Ctrl+C to stop the server. If the browser opens before the server is ready, wait briefly and refresh.
+
+To update, download and extract the newer release into a new folder, then use its launcher. Saved TV settings, pairing tokens, macros, menu definitions, and logs remain in the per-user configuration directory and are not stored in the release folder.
+
+The package also retains the command-line interface. See [Use the command-line interface](#use-the-command-line-interface) for packaged and source commands.
+
+## Build from source
+
+Source builds require the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) and [Git](https://git-scm.com/downloads). Confirm both are installed:
 
 ```text
 dotnet --version
-```
-
-The result must start with `10.`. The repository's `global.json` selects the .NET 10 SDK.
-
-## Platform setup
-
-### macOS
-
-Install the .NET 10 SDK package for the Mac's processor: Arm64 for Apple silicon or x64 for an Intel Mac. Microsoft's [macOS installation guide](https://learn.microsoft.com/en-us/dotnet/core/install/macos) covers both architectures.
-
-Open Terminal and confirm both tools are available:
-
-```bash
-dotnet --version
 git --version
 ```
 
-If `git` is missing, macOS normally offers to install the Xcode Command Line Tools when `git --version` is run. You can also install Git by another method and then continue with the common installation steps below.
+The .NET version must start with `10.`. Microsoft provides platform-specific setup instructions for [macOS](https://learn.microsoft.com/en-us/dotnet/core/install/macos), [Windows](https://learn.microsoft.com/en-us/dotnet/core/install/windows), and [Linux](https://learn.microsoft.com/en-us/dotnet/core/install/linux). On macOS, choose Arm64 for Apple silicon or x64 for Intel. Linux package names and repositories vary by distribution.
 
-### Windows
-
-Install the .NET 10 SDK with the official installer or Windows Package Manager. Microsoft's [Windows installation guide](https://learn.microsoft.com/en-us/dotnet/core/install/windows) documents both methods. With WinGet, the SDK command is:
-
-```powershell
-winget install Microsoft.DotNet.SDK.10
-```
-
-Install Git for Windows, open a new PowerShell window, and verify:
-
-```powershell
-dotnet --version
-git --version
-```
-
-Use PowerShell or Windows Terminal for the commands in this guide. Forward-slash project paths work with the `dotnet` commands shown below.
-
-### Linux
-
-Install the .NET 10 SDK using the instructions for your distribution in Microsoft's [Linux installation guide](https://learn.microsoft.com/en-us/dotnet/core/install/linux). Package names and repositories vary by distribution; installing the SDK also supplies the ASP.NET Core runtime required by the web interface.
-
-Install Git with the distribution's package manager, then verify in a terminal:
-
-```bash
-dotnet --version
-git --version
-```
-
-SamsungController does not require a desktop environment on Linux. The server and CLI can run in a terminal, but a browser is needed to use the web interface.
-
-## Download, build, and test
-
-These commands are the same in macOS Terminal, Windows PowerShell, and a Linux shell:
+Clone, build, and test from macOS Terminal, Windows PowerShell, or a Linux shell:
 
 ```bash
 git clone https://github.com/whipstein/SamsungController.git
@@ -106,7 +118,7 @@ dotnet test SamsungController.sln --configuration Release --no-build
 
 If a pull reports local changes, preserve or commit your configuration work before resolving it. Normal user configuration is stored outside the repository, but manually edited files inside `samples/` belong to the checkout.
 
-## Start the web interface
+### Start the web interface from source
 
 From the repository root, run:
 
@@ -207,13 +219,20 @@ The browser's redaction does not sanitize the complete NDJSON session log. Treat
 
 ## Use the command-line interface
 
-Run the CLI from source with this prefix:
+The downloadable package includes the full CLI. Open a terminal in the extracted `SamsungController` folder and use one of these prefixes:
+
+```text
+./samsungctl                 # macOS or Linux
+.\samsungctl.exe             # Windows PowerShell
+```
+
+When running from source, use:
 
 ```text
 dotnet run --project src/SamsungController.Cli --
 ```
 
-The examples below show the complete command so they work from a fresh checkout.
+The examples below show the complete source command. Package users can replace `dotnet run --project src/SamsungController.Cli --` with the appropriate packaged executable above. Both forms use the same saved settings and tokens as the web interface.
 
 ### Pair and inspect status
 

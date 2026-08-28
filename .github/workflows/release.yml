@@ -1,0 +1,151 @@
+name: Release packages
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build-packages:
+    name: Package ${{ matrix.package }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            rid: osx-arm64
+            package: macos-arm64
+            archive: tar.gz
+          - os: macos-latest
+            rid: osx-x64
+            package: macos-x64
+            archive: tar.gz
+          - os: windows-latest
+            rid: win-x64
+            package: windows-x64
+            archive: zip
+          - os: windows-latest
+            rid: win-arm64
+            package: windows-arm64
+            archive: zip
+          - os: ubuntu-latest
+            rid: linux-x64
+            package: linux-x64
+            archive: tar.gz
+          - os: ubuntu-latest
+            rid: linux-arm64
+            package: linux-arm64
+            archive: tar.gz
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish web interface
+        shell: bash
+        run: >-
+          dotnet publish src/SamsungController.Web
+          --configuration Release
+          --runtime ${{ matrix.rid }}
+          --self-contained true
+          -p:DebugSymbols=false
+          -p:DebugType=None
+          --output staging/SamsungController
+
+      - name: Publish command-line interface
+        shell: bash
+        run: >-
+          dotnet publish src/SamsungController.Cli
+          --configuration Release
+          --runtime ${{ matrix.rid }}
+          --self-contained true
+          -p:DebugSymbols=false
+          -p:DebugType=None
+          --output staging/SamsungController
+
+      - name: Add documentation and launcher
+        shell: bash
+        run: |
+          cp README.md staging/SamsungController/README.md
+          cp packaging/PACKAGE-README.md staging/SamsungController/START-HERE.md
+          cp LICENSE staging/SamsungController/LICENSE
+          cp -R docs staging/SamsungController/docs
+          cp -R samples staging/SamsungController/samples
+          printf '%s\n' '${{ github.ref_name }}' > staging/SamsungController/VERSION.txt
+
+          case '${{ runner.os }}' in
+            macOS)
+              cp 'packaging/macos/Start SamsungController.command' 'staging/SamsungController/Start SamsungController.command'
+              chmod +x 'staging/SamsungController/Start SamsungController.command'
+              ;;
+            Windows)
+              cp 'packaging/windows/Start SamsungController.cmd' 'staging/SamsungController/Start SamsungController.cmd'
+              ;;
+            Linux)
+              cp packaging/linux/start-samsungcontroller.sh staging/SamsungController/start-samsungcontroller.sh
+              chmod +x staging/SamsungController/start-samsungcontroller.sh
+              ;;
+          esac
+
+      - name: Archive macOS or Linux package
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          mkdir -p dist
+          tar -C staging -czf 'dist/SamsungController-${{ github.ref_name }}-${{ matrix.package }}.tar.gz' SamsungController
+
+      - name: Archive Windows package
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive `
+            -Path staging/SamsungController `
+            -DestinationPath 'dist/SamsungController-${{ github.ref_name }}-${{ matrix.package }}.zip'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SamsungController-${{ matrix.package }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create checksums
+        working-directory: dist
+        run: sha256sum SamsungController-* > SHA256SUMS.txt
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view '${{ github.ref_name }}' >/dev/null 2>&1; then
+            gh release upload '${{ github.ref_name }}' dist/* --clobber
+          else
+            gh release create '${{ github.ref_name }}' dist/* \
+              --verify-tag \
+              --title 'SamsungController ${{ github.ref_name }}' \
+              --notes-file packaging/RELEASE-NOTES.md
+          fi
