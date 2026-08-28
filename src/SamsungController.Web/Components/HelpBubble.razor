@@ -1,0 +1,71 @@
+<div class="help-bubble @Class @(IsOpen ? "open" : null)" @onkeydown="HandleKeyDown">
+    <button type="button"
+            class="help-bubble-trigger"
+            title="@TriggerTitle"
+            aria-label="@TriggerTitle"
+            aria-haspopup="dialog"
+            aria-expanded="@(IsOpen ? "true" : "false")"
+            aria-controls="@PanelId"
+            @onclick="Toggle">
+        <span class="help-bubble-icon" aria-hidden="true">?</span>
+        @if (!string.IsNullOrWhiteSpace(ButtonText))
+        {
+            <span>@ButtonText</span>
+        }
+    </button>
+
+    @if (IsOpen)
+    {
+        <section id="@PanelId"
+                 class="help-bubble-panel"
+                 role="dialog"
+                 aria-modal="false"
+                 aria-labelledby="@TitleId">
+            <header>
+                <div>
+                    <span>GUIDANCE</span>
+                    <strong id="@TitleId">@Title</strong>
+                </div>
+                <button type="button" title="Close help" aria-label="Close help" @onclick="Close">×</button>
+            </header>
+            <div class="help-bubble-content">
+                @ChildContent
+            </div>
+        </section>
+    }
+</div>
+
+@code {
+    private readonly string _instanceId = $"help-{Guid.NewGuid():N}";
+    private bool IsOpen { get; set; }
+
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? ButtonText { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    private string PanelId => $"{_instanceId}-panel";
+    private string TitleId => $"{_instanceId}-title";
+    private string TriggerTitle => string.IsNullOrWhiteSpace(ButtonText)
+        ? $"Help: {Title}"
+        : ButtonText;
+
+    private void Toggle() => IsOpen = !IsOpen;
+
+    private void Close() => IsOpen = false;
+
+    private void HandleKeyDown(KeyboardEventArgs eventArgs)
+    {
+        if (eventArgs.Key == "Escape")
+        {
+            Close();
+        }
+    }
+}

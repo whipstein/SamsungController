@@ -11,7 +11,19 @@
         <h1>Every message, in the open.</h1>
         <p>Inspect the live exchange. Pairing tokens and device identifiers are redacted unless you explicitly reveal them.</p>
     </div>
-    <div class="capture-count"><strong>@Messages.Count</strong><span>messages retained</span></div>
+    <div class="page-heading-actions">
+        <HelpBubble Title="Inspect and capture protocol activity" ButtonText="Page help">
+            <ul>
+                <li>Search and direction filters affect the visible list and <strong>Export view</strong>.</li>
+                <li>Pairing tokens and device identifiers are independently redacted until you reveal them.</li>
+                <li>Application queries are read-only experiments; some firmware sends no response.</li>
+                <li>A labeled device-information snapshot can be captured even when the WebSocket is disconnected.</li>
+            </ul>
+            <p class="help-callout">The complete NDJSON session log is not sanitized by the browser's reveal controls. Keep logs and exports private.</p>
+            <p>Enable the raw sender only for JSON you understand. Unknown write requests can change TV state or configuration.</p>
+        </HelpBubble>
+        <div class="capture-count"><strong>@Messages.Count</strong><span>messages retained</span></div>
+    </div>
 </section>
 
 @if (!string.IsNullOrWhiteSpace(ErrorMessage))

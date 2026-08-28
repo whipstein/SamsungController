@@ -12,6 +12,16 @@
         <p>Click a verified destination to execute its proven route immediately. Only commands that passed visual verification on this TV are sent.</p>
     </div>
     <div class="menu-heading-aside">
+        <HelpBubble Title="Navigate the verified menu map" ButtonText="Page help">
+            <ul>
+                <li>Clicking a verified destination plans and sends its route immediately.</li>
+                <li><strong>Current menu</strong> and confidence describe SamsungController's prediction. The TV does not report its highlighted menu item.</li>
+                <li>When the position is unknown or visibly wrong, run a verified anchor under <strong>Resynchronize</strong>.</li>
+                <li>Use <strong>Calculate route</strong> after a run when you want to inspect the exact keys and waits.</li>
+            </ul>
+            <p class="help-callout safe">Only three-pass verified destinations appear here. Draft and unrecorded work stays in Build &amp; Verify.</p>
+            <p>If the last route failed visually, select <strong>Traversal failed</strong>. Its operations become a diagnostic draft and the TV is returned to a known state.</p>
+        </HelpBubble>
         <div class="confidence-orb @ConfidenceClass">
             <strong>@Navigation.State.Confidence</strong>
             <span>prediction confidence</span>

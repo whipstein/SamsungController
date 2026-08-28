@@ -10,10 +10,22 @@
         <h1>Your display, one quiet connection away.</h1>
         <p>Pair once, retain the local token, and keep the control channel open while you work.</p>
     </div>
-    <div class="state-orb @StateClass" aria-label="@Snapshot.ConnectionState">
-        <span></span>
-        <strong>@StateLabel</strong>
-        <small>@StateDetail</small>
+    <div class="page-heading-actions">
+        <HelpBubble Title="Connect SamsungController to your TV" ButtonText="Page help">
+            <ol>
+                <li>Enter a friendly display name and the TV's current IPv4 address.</li>
+                <li>Keep <strong>Secure WebSocket</strong> and <strong>Accept TV certificate</strong> enabled for the usual port 8002 connection.</li>
+                <li>Select <strong>Connect to display</strong>, then choose <strong>Allow</strong> on the TV when prompted.</li>
+                <li>After the first approval, the saved host and token are reused by the web UI and CLI.</li>
+            </ol>
+            <p class="help-callout safe">A successful connection may run the preferred verified anchor to establish a known menu position. This can send visible menu keys immediately after pairing.</p>
+            <p>If no approval prompt appears, check the TV's Device Connect Manager and remove any denied or stale SamsungController entry before trying again.</p>
+        </HelpBubble>
+        <div class="state-orb @StateClass" aria-label="@Snapshot.ConnectionState">
+            <span></span>
+            <strong>@StateLabel</strong>
+            <small>@StateDetail</small>
+        </div>
     </div>
 </section>
 

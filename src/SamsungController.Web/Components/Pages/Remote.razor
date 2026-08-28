@@ -10,7 +10,19 @@
         <h1>Direct control, without the couch.</h1>
         <p>Send standard Samsung remote commands or enter any protocol key exposed by your display.</p>
     </div>
-    <div class="page-state @ConnectionClass"><span></span>@Snapshot.ConnectionState</div>
+    <div class="page-heading-actions">
+        <HelpBubble Title="Use the on-screen remote" ButtonText="Page help">
+            <ul>
+                <li>Remote buttons send their command immediately when the TV is connected.</li>
+                <li>Use <strong>Click</strong> for a normal press. Use <strong>Press</strong> and a matching <strong>Release</strong> only when a held button is required.</li>
+                <li>The custom command accepts Samsung key names such as <code>KEY_SOURCE</code>. Unknown keys are not blocked.</li>
+                <li>Pin frequently used keys to quick access so they remain available on every page.</li>
+            </ul>
+            <p class="help-callout">Avoid undocumented service-menu keys. They can alter settings that are difficult to recover.</p>
+            <p>When menu recording is active, every successfully sent key on this page is also added to the current recording.</p>
+        </HelpBubble>
+        <div class="page-state @ConnectionClass"><span></span>@Snapshot.ConnectionState</div>
+    </div>
 </section>
 
 @if (!IsConnected)

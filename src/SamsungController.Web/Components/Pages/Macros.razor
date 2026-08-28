@@ -10,7 +10,18 @@
         <h1>Repeat the sequence. Keep the result.</h1>
         <p>Load a validated YAML catalog, choose a macro, and watch each operation as it reaches the TV.</p>
     </div>
-    <div class="page-state @(Snapshot.MacroRunning ? "working" : "")"><span></span>@(Snapshot.MacroRunning ? "Running" : "Ready")</div>
+    <div class="page-heading-actions">
+        <HelpBubble Title="Load and run a macro" ButtonText="Page help">
+            <ol>
+                <li>Enter the path to a YAML macro catalog and select <strong>Load &amp; validate</strong>.</li>
+                <li>Choose a macro card to inspect its description and expanded step count.</li>
+                <li>Connect to the TV, then select <strong>Run macro</strong>. Execution progress appears on the right.</li>
+                <li>Use <strong>Cancel macro</strong> to stop between operations, or pin a trusted macro to quick access.</li>
+            </ol>
+            <p class="help-callout">Catalog validation checks structure and limits; it cannot prove that the keys are safe or correct for the current TV menu. Review a new macro before running it.</p>
+        </HelpBubble>
+        <div class="page-state @(Snapshot.MacroRunning ? "working" : "")"><span></span>@(Snapshot.MacroRunning ? "Running" : "Ready")</div>
+    </div>
 </section>
 
 @if (!string.IsNullOrWhiteSpace(ErrorMessage))

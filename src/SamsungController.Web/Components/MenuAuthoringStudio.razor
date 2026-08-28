@@ -15,9 +15,21 @@
             <strong>Build routes without editing files.</strong>
             <p>Record buttons while they control the TV, save the sequence as draft YAML, then replay it three times before it becomes verified.</p>
         </div>
-        <button class="secondary-action" @onclick="ToggleDefinitionForm" disabled="@(Authoring.IsRecording || Navigation.IsRunning)">
-            @(ShowDefinitionForm ? "Close setup" : "New TV interface")
-        </button>
+        <div class="authoring-intro-actions">
+            <HelpBubble Title="Menu-authoring workflow" ButtonText="Workflow help">
+                <ol>
+                    <li><strong>Tree:</strong> name and arrange the TV's visible menu positions before recording.</li>
+                    <li><strong>Record:</strong> select a source and target, then use the embedded remote. Successful buttons control the TV and enter the draft.</li>
+                    <li><strong>Timing:</strong> test common waits system-wide, then override only the steps that need special pacing.</li>
+                    <li><strong>Verify:</strong> prepare the source, replay the draft, and confirm three separate visual passes.</li>
+                </ol>
+                <p class="help-callout safe">The source/target pair identifies a transition automatically. Recording the same pair replaces its existing draft instead of creating a duplicate ID.</p>
+                <p>Use <strong>Also record return to normal video</strong> when that target needs a specific return sequence. Forward and return keys then share one verification count.</p>
+            </HelpBubble>
+            <button class="secondary-action" @onclick="ToggleDefinitionForm" disabled="@(Authoring.IsRecording || Navigation.IsRunning)">
+                @(ShowDefinitionForm ? "Close setup" : "New TV interface")
+            </button>
+        </div>
     </div>
 
     @if (!string.IsNullOrWhiteSpace(ErrorMessage))

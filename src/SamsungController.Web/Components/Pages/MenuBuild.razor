@@ -10,7 +10,19 @@
         <h1>Build the map. Prove every route.</h1>
         <p>Create controls, record live traversals, tune timing, and complete three visual passes before a destination appears in the verified Menu page.</p>
     </div>
-    <a class="secondary-action menu-authoring-link" href="menu">View verified menus <span>→</span></a>
+    <div class="page-heading-actions">
+        <HelpBubble Title="Build a TV menu interface" ButtonText="Page help">
+            <ol>
+                <li>Create or load a definition for the exact model, firmware, signal, picture mode, and input context being tested.</li>
+                <li>Define the visible menu tree, then record live keys between named source and target positions.</li>
+                <li>Tune system-wide timing first; use per-button overrides only for exceptional steps.</li>
+                <li>Prepare the source, replay the draft, and accept only a visually correct result. Three passes promote it to the verified Menu page.</li>
+            </ol>
+            <p class="help-callout">Red tree nodes have no recorded command. Yellow nodes are recorded but still need validation. Normal-color nodes are verified.</p>
+            <p>Do not approve a failed pass. Manually restore the TV if needed, adjust the route or waits, and replay it.</p>
+        </HelpBubble>
+        <a class="secondary-action menu-authoring-link" href="menu">View verified menus <span>→</span></a>
+    </div>
 </section>
 
 @if (!string.IsNullOrWhiteSpace(ErrorMessage))
