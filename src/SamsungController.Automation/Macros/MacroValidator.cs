@@ -96,6 +96,14 @@ public sealed class MacroValidator
                 "Verification passes must be from 0 through 3."));
         }
 
+        if (macro.StartingNodeId is not null && string.IsNullOrWhiteSpace(macro.StartingNodeId))
+        {
+            errors.Add(new MacroValidationError(
+                macro.Name,
+                null,
+                "The starting menu state cannot be empty."));
+        }
+
         for (var index = 0; index < macro.Steps.Count; index++)
         {
             var stepNumber = index + 1;

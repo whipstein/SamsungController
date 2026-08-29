@@ -2474,6 +2474,28 @@ public sealed class SamsungControllerService : IAsyncDisposable
             .ToArray();
     }
 
+    public async Task PrepareMacroRecordingStartAsync(
+        string startingNodeId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(startingNodeId);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoMenuRecording("prepare a macro starting state");
+        ValidateMacroStartState(startingNodeId);
+        string targetPath;
+        lock (_sync)
+        {
+            targetPath = _menuDefinition!.GetPath(startingNodeId.Trim());
+        }
+
+        await RunNavigationAsync(
+                $"Prepare macro start · {targetPath}",
+                (navigator, token) => navigator.PrepareStateAsync(startingNodeId.Trim(), token),
+                clearPlanOnSuccess: true,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<IReadOnlyList<MacroSummary>> SetMacroFileAsync(
         string path,
         CancellationToken cancellationToken = default)
@@ -2539,13 +2561,22 @@ public sealed class SamsungControllerService : IAsyncDisposable
             }
 
             var steps = request.Steps.ToArray();
-            var behaviorUnchanged = existing is not null && existing.Steps.SequenceEqual(steps);
+            var startingNodeId = string.IsNullOrWhiteSpace(request.StartingNodeId)
+                ? null
+                : request.StartingNodeId.Trim();
+            var behaviorUnchanged = existing is not null
+                && existing.Steps.SequenceEqual(steps)
+                && string.Equals(
+                    existing.StartingNodeId,
+                    startingNodeId,
+                    StringComparison.OrdinalIgnoreCase);
             var updated = new MacroDefinition(
                 normalizedName,
                 steps,
                 string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
                 verified: behaviorUnchanged && existing!.Verified,
-                verificationPasses: behaviorUnchanged ? existing!.VerificationPasses : 0);
+                verificationPasses: behaviorUnchanged ? existing!.VerificationPasses : 0,
+                startingNodeId: startingNodeId);
 
             var definitions = new List<MacroDefinition>(catalog.Macros.Count + (existing is null ? 1 : 0));
             foreach (var macro in catalog.Macros.Values)
@@ -2670,7 +2701,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 existing.Steps,
                 existing.Description,
                 verified: passes >= 3,
-                verificationPasses: passes);
+                verificationPasses: passes,
+                startingNodeId: existing.StartingNodeId);
             var definitions = catalog.Macros.Values
                 .Select(macro => macro.Name.Equals(existing.Name, StringComparison.OrdinalIgnoreCase)
                     ? updated
@@ -3081,6 +3113,62 @@ public sealed class SamsungControllerService : IAsyncDisposable
             {
                 _navigationPlan = null;
                 _navigationStatus = $"Failed macro menu call · {targetNodeId}";
+                _navigationError = exception.Message;
+            }
+
+            throw;
+        }
+        finally
+        {
+            NotifyChanged();
+        }
+    }
+
+    private async Task PrepareMenuStartStateWithinMacroAsync(
+        string startingNodeId,
+        CancellationToken cancellationToken)
+    {
+        ValidateMacroStartState(startingNodeId);
+        MenuNavigator navigator;
+        string targetPath;
+        lock (_sync)
+        {
+            navigator = _menuNavigator
+                ?? throw new InvalidOperationException(
+                    _navigationError ?? "No valid menu definition is loaded.");
+            targetPath = _menuDefinition!.GetPath(startingNodeId.Trim());
+            _navigationStatus = $"Macro start · preparing {targetPath}";
+            _navigationError = null;
+            _navigationProgress = null;
+        }
+
+        NotifyChanged();
+        try
+        {
+            await navigator.PrepareStateAsync(startingNodeId.Trim(), cancellationToken)
+                .ConfigureAwait(false);
+            lock (_sync)
+            {
+                _navigationPlan = null;
+                _navigationStatus = $"Macro start ready · {targetPath}";
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            lock (_sync)
+            {
+                _navigationPlan = null;
+                _navigationStatus = $"Cancelled macro start preparation · {targetPath}";
+            }
+
+            throw;
+        }
+        catch (Exception exception)
+        {
+            lock (_sync)
+            {
+                _navigationPlan = null;
+                _navigationStatus = $"Failed macro start preparation · {targetPath}";
                 _navigationError = exception.Message;
             }
 
@@ -4557,7 +4645,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             macro.Description,
             macro.Steps.Count,
             macro.Verified,
-            macro.VerificationPasses);
+            macro.VerificationPasses,
+            macro.StartingNodeId);
 
     private static MacroDetails CreateMacroDetails(MacroDefinition macro) =>
         new(
@@ -4565,10 +4654,20 @@ public sealed class SamsungControllerService : IAsyncDisposable
             macro.Description,
             macro.Steps.ToArray(),
             macro.Verified,
-            macro.VerificationPasses);
+            macro.VerificationPasses,
+            macro.StartingNodeId);
 
     private void ValidateMacroMenuDestinations(MacroCatalog catalog)
     {
+        foreach (var startingNodeId in catalog.Macros.Values
+                     .Select(macro => macro.StartingNodeId)
+                     .Where(nodeId => !string.IsNullOrWhiteSpace(nodeId))
+                     .Cast<string>()
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            ValidateMacroStartState(startingNodeId);
+        }
+
         foreach (var targetNodeId in catalog.Macros.Values
                      .SelectMany(macro => macro.Steps)
                      .OfType<MenuStep>()
@@ -4576,6 +4675,38 @@ public sealed class SamsungControllerService : IAsyncDisposable
                      .Distinct(StringComparer.OrdinalIgnoreCase))
         {
             ValidateMacroMenuDestination(targetNodeId);
+        }
+    }
+
+    private void ValidateMacroStartState(string startingNodeId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(startingNodeId);
+        lock (_sync)
+        {
+            var navigator = _menuNavigator
+                ?? throw new InvalidOperationException(
+                    _navigationError ?? "Load a menu definition before assigning a macro starting state.");
+            try
+            {
+                navigator.ValidateStateCanBePrepared(startingNodeId.Trim());
+            }
+            catch (KeyNotFoundException)
+            {
+                throw new InvalidOperationException(
+                    $"Macro starting state '{startingNodeId}' does not exist in the active menu definition.");
+            }
+        }
+    }
+
+    private void ValidateCurrentMacroMenuState()
+    {
+        lock (_sync)
+        {
+            if (_menuStateTracker?.Current.NodeId is null)
+            {
+                throw new InvalidOperationException(
+                    "The expected menu state is unknown, so a macro menu destination cannot be planned before a declared starting state. Run a verified anchor or assign the macro a starting state.");
+            }
         }
     }
 
@@ -4638,7 +4769,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 steps,
                 macro.Description,
                 macro.Verified,
-                macro.VerificationPasses)
+                macro.VerificationPasses,
+                macro.StartingNodeId)
             : macro;
     }
 
@@ -4948,7 +5080,18 @@ public sealed class SamsungControllerService : IAsyncDisposable
             controller.SendTrackedKeyAsync(key, action, cancellationToken);
 
         public void ValidateMenuDestination(string targetNodeId) =>
-            controller.ValidateMacroMenuDestination(targetNodeId, requireKnownState: true);
+            controller.ValidateMacroMenuDestination(targetNodeId);
+
+        public void ValidateMenuStartState(string startingNodeId) =>
+            controller.ValidateMacroStartState(startingNodeId);
+
+        public void ValidateCurrentMenuState() =>
+            controller.ValidateCurrentMacroMenuState();
+
+        public Task PrepareMenuStartStateAsync(
+            string startingNodeId,
+            CancellationToken cancellationToken = default) =>
+            controller.PrepareMenuStartStateWithinMacroAsync(startingNodeId, cancellationToken);
 
         public Task NavigateToMenuDestinationAsync(
             string targetNodeId,

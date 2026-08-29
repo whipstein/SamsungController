@@ -56,6 +56,7 @@ macros:
 
   MoveAndSelect:
     description: Demonstrates variables, nesting, and an explicit delay
+    start: normal-video
     verified: false
     verificationPasses: 1
     steps:
@@ -80,6 +81,12 @@ Supported steps are:
 performed after every send, including the final repetition. This makes the
 pause before the next step explicit and predictable.
 
+`start` declares the verified menu node where a detailed macro begins. It is
+optional for backward compatibility with hand-authored and CLI-only catalogs,
+but the browser editor requires it for new or edited macros. The value is a
+stable node ID from the active menu definition, including states such as
+`normal-video`.
+
 Root variables are scalar values and can reference other variables with
 `${name}`. They are resolved before actions, repeat counts, and durations are
 typed. Missing variables and variable cycles are errors.
@@ -88,7 +95,10 @@ typed. Missing variables and variable cycles are errors.
 
 The web **Macros** page can create, duplicate, edit, delete, load, and download
 catalogs without hand-editing YAML. Its compact remote sends keys to the TV and
-appends a key step only after a successful send. A configurable captured-key
+appends a key step only after a successful send. **Prepare selected start** moves
+the TV to the declared start through verified navigation before live capture;
+those preparation keys are not appended because replay derives them from the
+saved `start`. A configurable captured-key
 wait is stored as that key's explicit `delay`; undo and clear controls edit the
 draft without sending compensating commands. The editor accepts key, delay,
 nested call, and verified menu-destination steps and rewrites the complete
@@ -97,21 +107,26 @@ catalog passes the same parser and validator used by the CLI. A failed save
 leaves the previous file intact. Renaming a macro updates calls to that macro.
 Deletion is rejected while another macro still calls the target.
 
-The detailed definition also accepts these optional fields:
+The detailed definition also accepts these fields:
 
+- `start`: the verified starting menu-state node ID.
 - `verificationPasses`: an integer from `0` through `3`.
 - `verified`: `true` after three accepted visual runs; `false` otherwise.
 
-Select **Replay test** to execute the exact saved macro, then visually inspect
-the TV. **Count pass** increments only that macro's stored count. **Failed**
-resets only that macro to `0/3`. The service accepts a confirmation only after a
-successful replay of the same macro. It does not silently send an anchor,
-return-to-video sequence, or other preparation command. At `3/3`, the macro can
-be pinned to quick access.
+Select **Replay test** to execute the saved macro, then visually inspect the TV.
+The declared `start` is operation 1 in the visible execution log, not a hidden
+reset. It asks the verified menu planner to reach that node from the expected
+current state. If the state is unknown, a verified anchor establishes it first;
+if it already matches, no preparation key is sent. **Count pass** increments
+only that macro's stored count. **Failed** resets only that macro to `0/3`. The
+service accepts a confirmation only after a successful replay of the same
+macro. At `3/3`, the macro can be pinned to quick access.
 
 Changing a description or name preserves behavioral verification when the
-operations are identical. Changing a key, action, repeat, delay, wait, or nested
-call resets the macro to `0/3` and removes its quick-access entry. The visual
+starting state and operations are identical. Changing the start, a key, action,
+repeat, delay, wait, or nested call resets the macro to `0/3` and removes its
+quick-access entry. Each called macro prepares its own declared start before its
+steps, including on repeated calls. The visual
 editor presents resolved values; saving a catalog that used `${variables}`
 normalizes the steps to their concrete values while retaining the root variable
 mapping for compatibility.
@@ -126,19 +141,20 @@ plans and executes the same shortest verified route from the expected current
 menu state. The call may therefore use a verified composite or anchor route when
 the planner selects one; it does not copy a fixed traversal into the macro.
 
-If the expected state is already unknown, preflight rejects the run before its
-first key. If an earlier explicit operation makes the expected state unknown,
-the menu call fails at that point and later macro operations are not sent. The
-terminal CLI has no menu-definition or predicted-state context, so it
-rejects a macro containing `menu` before sending any key; run those macros from
-the web interface.
+If the expected state is already unknown and no declared start occurs before a
+menu call, preflight rejects the run before its first key. A declared start can
+recover through a verified anchor. If a later explicit operation makes the
+expected state unknown, a menu call fails at that point unless another declared
+nested-macro start reestablishes it. The terminal CLI has no menu-definition or
+predicted-state context, so it rejects a macro containing `start` or `menu`
+before sending any key; run those macros from the web interface.
 
 ## Validation and execution
 
 The complete catalog is validated before any key is sent. Validation rejects:
 
 - missing nested macros and recursive call cycles;
-- empty definitions, keys, menu destinations, and macro names;
+- empty definitions, keys, starting states, menu destinations, and macro names;
 - repeat counts outside 1 through 1,000;
 - non-positive delays or delays over 24 hours; and
 - expanded plans over 10,000 key, delay, or menu operations.

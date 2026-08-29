@@ -74,19 +74,22 @@ public sealed record MacroSummary(
     string? Description,
     int StepCount,
     bool Verified,
-    int VerificationPasses);
+    int VerificationPasses,
+    string? StartingNodeId);
 
 public sealed record MacroDetails(
     string Name,
     string? Description,
     IReadOnlyList<MacroStep> Steps,
     bool Verified,
-    int VerificationPasses);
+    int VerificationPasses,
+    string? StartingNodeId);
 
 public sealed record MacroEditRequest(
     string Name,
     string? Description,
-    IReadOnlyList<MacroStep> Steps);
+    IReadOnlyList<MacroStep> Steps,
+    string? StartingNodeId = null);
 
 public sealed record MacroRunSnapshot(
     bool IsRunning,

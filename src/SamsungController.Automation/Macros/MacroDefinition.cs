@@ -9,7 +9,8 @@ public sealed record MacroDefinition
         IEnumerable<MacroStep> steps,
         string? description = null,
         bool verified = false,
-        int verificationPasses = 0)
+        int verificationPasses = 0,
+        string? startingNodeId = null)
     {
         Name = name;
         Steps = Array.AsReadOnly(
@@ -17,6 +18,7 @@ public sealed record MacroDefinition
         Description = description;
         VerificationPasses = verified ? Math.Max(3, verificationPasses) : verificationPasses;
         Verified = verified || VerificationPasses >= 3;
+        StartingNodeId = startingNodeId;
     }
 
     public string Name { get; }
@@ -28,6 +30,8 @@ public sealed record MacroDefinition
     public bool Verified { get; }
 
     public int VerificationPasses { get; }
+
+    public string? StartingNodeId { get; }
 }
 
 public sealed class MacroCatalog

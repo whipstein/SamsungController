@@ -11,7 +11,7 @@ public sealed class MacroParser
     private static readonly HashSet<string> RootFields =
         new(["version", "variables", "macros"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> DefinitionFields =
-        new(["description", "verified", "verificationPasses", "steps"], StringComparer.OrdinalIgnoreCase);
+        new(["description", "start", "verified", "verificationPasses", "steps"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> KeyFields =
         new(["key", "action", "repeat", "delay"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> CallFields =
@@ -131,6 +131,14 @@ public sealed class MacroParser
         var description = fields.TryGetValue("description", out var descriptionNode)
             ? resolver.ResolveText(RequireScalar(descriptionNode, $"description for macro '{name}'"))
             : null;
+        var startingNodeId = fields.TryGetValue("start", out var startNode)
+            ? resolver.ResolveText(RequireScalar(startNode, $"start for macro '{name}'")).Trim()
+            : null;
+        if (startingNodeId is not null && startingNodeId.Length == 0)
+        {
+            throw new MacroParseException($"Starting menu state for macro '{name}' cannot be empty.");
+        }
+
         var verified = fields.TryGetValue("verified", out var verifiedNode)
             && ParseBoolean(
                 resolver.ResolveText(RequireScalar(verifiedNode, $"verified for macro '{name}'")),
@@ -145,7 +153,8 @@ public sealed class MacroParser
             ParseSteps(name, RequireSequence(stepsNode, $"steps for macro '{name}'"), resolver),
             description,
             verified,
-            verificationPasses);
+            verificationPasses,
+            startingNodeId);
     }
 
     private static IReadOnlyList<MacroStep> ParseSteps(

@@ -33,6 +33,11 @@ public sealed class MacroCatalogWriter
                 AppendScalar(yaml, 4, "description", macro.Description);
             }
 
+            if (!string.IsNullOrWhiteSpace(macro.StartingNodeId))
+            {
+                AppendScalar(yaml, 4, "start", macro.StartingNodeId);
+            }
+
             AppendBoolean(yaml, 4, "verified", macro.Verified);
             AppendInteger(yaml, 4, "verificationPasses", macro.VerificationPasses);
             yaml.AppendLine("    steps:");

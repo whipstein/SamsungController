@@ -168,6 +168,40 @@ public sealed class MacroExecutorTests
         Assert.Equal(3, result.OperationCount);
         Assert.Equal(2, result.KeysSent);
         Assert.Equal(MacroOperationKind.Menu, progress[1].Kind);
+        Assert.True(target.CurrentStateValidated);
+    }
+
+    [Fact]
+    public async Task RootAndNestedMacrosPrepareTheirDeclaredStartingStatesInOrder()
+    {
+        var catalog = new MacroCatalog(
+        [
+            new MacroDefinition(
+                "Child",
+                [new KeyStep("KEY_ENTER")],
+                startingNodeId: "settings"),
+            new MacroDefinition(
+                "Parent",
+                [new KeyStep("KEY_HOME"), new CallMacroStep("Child")],
+                startingNodeId: "normal-video")
+        ]);
+        var target = new RecordingMenuTarget();
+        var progress = new List<MacroExecutionProgress>();
+        var executor = new MacroExecutor(target, new RecordingDelay());
+        executor.ProgressChanged += (_, eventArgs) => progress.Add(eventArgs.Progress);
+
+        var result = await executor.ExecuteAsync(catalog, "Parent");
+
+        Assert.Equal(
+            ["start:normal-video", "key:KEY_HOME", "start:settings", "key:KEY_ENTER"],
+            target.Operations);
+        Assert.Equal(["normal-video", "settings"], target.ValidatedStarts);
+        Assert.Equal(4, result.OperationCount);
+        Assert.Equal(
+            [MacroOperationKind.StartState, MacroOperationKind.Key, MacroOperationKind.StartState, MacroOperationKind.Key],
+            progress.Select(item => item.Kind));
+        Assert.Null(progress[0].SourceStepNumber);
+        Assert.Null(progress[2].SourceStepNumber);
     }
 
     private sealed class RecordingTarget : IMacroCommandTarget
@@ -191,8 +225,26 @@ public sealed class MacroExecutorTests
 
         public List<string> ValidatedDestinations { get; } = [];
 
+        public List<string> ValidatedStarts { get; } = [];
+
+        public bool CurrentStateValidated { get; private set; }
+
         public void ValidateMenuDestination(string targetNodeId) =>
             ValidatedDestinations.Add(targetNodeId);
+
+        public void ValidateMenuStartState(string startingNodeId) =>
+            ValidatedStarts.Add(startingNodeId);
+
+        public void ValidateCurrentMenuState() => CurrentStateValidated = true;
+
+        public Task PrepareMenuStartStateAsync(
+            string startingNodeId,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Operations.Add($"start:{startingNodeId}");
+            return Task.CompletedTask;
+        }
 
         public Task NavigateToMenuDestinationAsync(
             string targetNodeId,

@@ -238,12 +238,17 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .macro-card strong, .macro-card small { display: block; }
 .macro-card strong { font-size: 13px; }
 .macro-card small { color: var(--muted); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.macro-card small.macro-start-state { color: var(--faint); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .macro-card b { color: var(--faint); font: 9px ui-monospace, "SFMono-Regular", Consolas, monospace; font-weight: 400; white-space: nowrap; }
 .macro-card .macro-card-meta { flex: 0 0 auto; text-align: right; }
 .macro-card .macro-card-meta em { display: block; margin-top: 5px; color: var(--amber); font: normal 8px ui-monospace, "SFMono-Regular", Consolas, monospace; white-space: nowrap; }
 .macro-card.verified .macro-card-meta em { color: var(--cyan); }
 .selected-label { display: block; color: var(--faint); font: 9px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .12em; }
 .selected-macro { display: block; margin: 10px 0 25px; font-size: 24px; letter-spacing: -.03em; }
+.macro-start-summary { margin: -11px 0 18px; padding: 10px 12px; border-left: 2px solid var(--cyan); background: var(--cyan-soft); }
+.macro-start-summary span, .macro-start-summary strong { display: block; }
+.macro-start-summary span { color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .11em; }
+.macro-start-summary strong { margin-top: 5px; color: var(--cyan); font-size: 11px; }
 .run-panel .secondary-action { width: 100%; display: flex; justify-content: space-between; }
 .macro-verification-state { margin: -8px 0 18px; padding: 11px 12px; border: 1px solid rgba(242,181,107,.25); border-radius: 7px; background: rgba(242,181,107,.055); }
 .macro-verification-state strong, .macro-verification-state > span { display: block; }
@@ -267,12 +272,13 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .macro-editor-empty { min-height: 145px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 2px 5px; }
 .macro-editor-empty strong { font-size: 18px; }
 .macro-editor-empty > span { max-width: 100%; margin-top: 9px; color: var(--muted); font: 10px/1.7 ui-monospace, "SFMono-Regular", Consolas, monospace; overflow-wrap: anywhere; }
-.macro-editor-heading { display: grid; grid-template-columns: minmax(190px,.7fr) minmax(300px,1.3fr); gap: 12px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
-.macro-editor-heading input { padding: 10px 11px; }
+.macro-editor-heading { display: grid; grid-template-columns: minmax(180px,.65fr) minmax(260px,1.1fr) minmax(220px,.9fr); gap: 12px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.macro-editor-heading input, .macro-editor-heading select { min-height: 39px; padding: 10px 11px; }
 .macro-live-builder { display: grid; grid-template-columns: minmax(240px,.7fr) minmax(320px,1.3fr); gap: 24px; margin: 18px 0 2px; padding: 18px; border: 1px solid rgba(124,231,220,.2); border-radius: 9px; background: rgba(124,231,220,.025); }
 .macro-live-builder-copy { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; }
 .macro-live-builder-copy > strong { margin-top: 8px; font-size: 17px; line-height: 1.25; }
 .macro-live-builder-copy > p { margin: 8px 0 14px; color: var(--muted); font-size: 10px; line-height: 1.55; }
+.macro-live-builder-copy .macro-prepare-start { width: 100%; display: flex; justify-content: space-between; margin-bottom: 13px; }
 .macro-live-builder-copy > label { width: 100%; }
 .macro-live-builder-copy > label span { font-size: 9px; }
 .macro-live-builder-copy > label input { padding: 9px 10px; font-size: 9px; }

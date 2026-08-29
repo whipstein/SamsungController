@@ -65,6 +65,44 @@ public sealed class MenuNavigator
 
     public event EventHandler<NavigationProgressEventArgs>? ProgressChanged;
 
+    public async Task PrepareStateAsync(
+        string targetNodeId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetNodeId);
+        _definition.GetRequiredNode(targetNodeId);
+        var state = _stateTracker.Current;
+        if (state.NodeId is not null)
+        {
+            if (state.NodeId.Equals(targetNodeId, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            await ExecutePlanAsync(
+                    Plan(targetNodeId, includeDraftTransitions: false),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        var preparation = FindUnknownStatePreparation(targetNodeId);
+        await ExecuteAnchorAsync(preparation.Anchor.Id, cancellationToken).ConfigureAwait(false);
+        if (!preparation.Anchor.TargetNodeId.Equals(
+                targetNodeId,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            await ExecutePlanAsync(preparation.Route, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    public void ValidateStateCanBePrepared(string targetNodeId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetNodeId);
+        _definition.GetRequiredNode(targetNodeId);
+        _ = FindUnknownStatePreparation(targetNodeId);
+    }
+
     public NavigationPlan Plan(string targetNodeId, bool includeDraftTransitions = true)
     {
         var state = _stateTracker.Current;
@@ -178,6 +216,37 @@ public sealed class MenuNavigator
             _stateTracker.MarkUnknown($"Anchor '{anchor.Label}' did not complete.");
             throw;
         }
+    }
+
+    private UnknownStatePreparation FindUnknownStatePreparation(string targetNodeId)
+    {
+        var planner = new NavigationPlanner();
+        var candidates = new List<UnknownStatePreparation>();
+        foreach (var anchor in _definition.Anchors.Values.Where(anchor => anchor.Verified))
+        {
+            try
+            {
+                var route = planner.Plan(
+                    _definition,
+                    anchor.TargetNodeId,
+                    targetNodeId,
+                    includeDraftTransitions: false);
+                candidates.Add(new UnknownStatePreparation(anchor, route));
+            }
+            catch (NavigationPlanningException)
+            {
+                // This anchor cannot establish the requested state through verified routes.
+            }
+        }
+
+        return candidates
+            .OrderBy(candidate =>
+                GetOperationsCost(candidate.Anchor.Operations)
+                + GetPlanCost(candidate.Route))
+            .ThenBy(candidate => candidate.Anchor.Label, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault()
+            ?? throw new NavigationPlanningException(
+                $"No verified anchor can prepare starting state '{_definition.GetPath(targetNodeId)}'.");
     }
 
     private ResolvedAnchorScript ResolveAnchorScript(MenuAnchor anchor)
@@ -646,4 +715,8 @@ public sealed class MenuNavigator
     private sealed record ResolvedAnchorScript(
         string Label,
         IReadOnlyList<MenuOperation> Operations);
+
+    private sealed record UnknownStatePreparation(
+        MenuAnchor Anchor,
+        NavigationPlan Route);
 }

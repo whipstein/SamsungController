@@ -25,6 +25,37 @@ public sealed class MenuNavigatorTests
     }
 
     [Fact]
+    public async Task PrepareStateUsesVerifiedAnchorWhenCurrentStateIsUnknown()
+    {
+        var definition = CreateDefinition();
+        var tracker = new MenuStateTracker(definition);
+        var target = new RecordingTarget();
+        var delay = new RecordingDelay();
+        var navigator = new MenuNavigator(definition, tracker, target, delay);
+
+        navigator.ValidateStateCanBePrepared("settings");
+        await navigator.PrepareStateAsync("settings");
+
+        Assert.Equal(["KEY_RETURN", "KEY_RETURN", "KEY_MENU"], target.Keys);
+        Assert.Equal("settings", tracker.Current.NodeId);
+    }
+
+    [Fact]
+    public async Task PrepareStateSendsNothingWhenPredictionAlreadyMatches()
+    {
+        var definition = CreateDefinition();
+        var tracker = new MenuStateTracker(definition);
+        var target = new RecordingTarget();
+        var navigator = new MenuNavigator(definition, tracker, target);
+        tracker.ConfirmNode("settings", "Visible state confirmed.");
+
+        await navigator.PrepareStateAsync("settings");
+
+        Assert.Empty(target.Keys);
+        Assert.Equal("settings", tracker.Current.NodeId);
+    }
+
+    [Fact]
     public async Task DraftPlansAreNeverExecuted()
     {
         var definition = CreateDefinition();

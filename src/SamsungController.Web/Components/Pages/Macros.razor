@@ -15,13 +15,14 @@
         <HelpBubble Title="Build and verify a macro" ButtonText="Page help">
             <ol>
                 <li>Load an existing YAML catalog, or select <strong>New macro</strong> to create the missing default catalog.</li>
+                <li>Select the verified TV state where the macro begins, then use <strong>Prepare selected start</strong> before capturing. Replay visibly prepares that state before the first saved button.</li>
                 <li>While editing, use the compact remote to send buttons live and append every successful send. Set the captured-key wait to control replay timing.</li>
                 <li>Add or edit key, wait, nested-macro, and verified menu-destination steps. Reorder them to match the exact sequence you expect.</li>
                 <li>Save before testing. Any behavioral edit resets only that macro's verification count.</li>
                 <li>Connect to the TV and select <strong>Replay test</strong>. If the observed result is correct, select <strong>Count pass</strong>.</li>
                 <li>Three accepted runs mark the macro verified in YAML. A failed run resets that macro to 0/3.</li>
             </ol>
-            <p class="help-callout">Replay sends only saved operations. A menu-item call is an explicit high-level operation that uses the same verified current-state planner as clicking that item on the Menu page; it fails when the expected menu state is unknown.</p>
+            <p class="help-callout">The declared starting state is an explicit planned operation shown in replay progress. It uses verified routes and may run a verified anchor when the current state is unknown. A menu-item call uses the same planner later in the macro.</p>
         </HelpBubble>
         <div class="page-state @(Snapshot.MacroRunning ? "working" : "")"><span></span>@(Snapshot.MacroRunning ? "Running" : "Ready")</div>
     </div>
@@ -70,6 +71,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
                         <span>
                             <strong>@macro.Name</strong>
                             <small>@(string.IsNullOrWhiteSpace(macro.Description) ? "No description" : macro.Description)</small>
+                            <small class="macro-start-state">Starts at @GetMenuPath(macro.StartingNodeId)</small>
                         </span>
                         <span class="macro-card-meta">
                             <b>@macro.StepCount steps</b>
@@ -86,6 +88,14 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
             <div class="panel-label"><span>REPLAY + VERIFY</span><span>@Snapshot.ConnectionState</span></div>
             <span class="selected-label">SAVED MACRO</span>
             <strong class="selected-macro">@(SelectedMacro ?? "—")</strong>
+
+            @if (SelectedSummary is { } selected)
+            {
+                <div class="macro-start-summary">
+                    <span>STARTING TV STATE</span>
+                    <strong>@GetMenuPath(selected.StartingNodeId)</strong>
+                </div>
+            }
 
             @if (SelectedSummary is { } summary)
             {
@@ -133,7 +143,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
                     <div class="progress-entry">
                         <span>@progress.OperationNumber/@progress.OperationCount</span>
                         <strong>@progress.Description</strong>
-                        <small>@progress.SourceMacroName · step @progress.SourceStepNumber</small>
+                        <small>@progress.SourceMacroName · @(progress.SourceStepNumber is null ? "starting state" : $"step {progress.SourceStepNumber}")</small>
                     </div>
                 }
             </div>
@@ -149,6 +159,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
             <strong>@(SelectedDetails is null ? "Choose a macro or create a new one" : SelectedDetails.Name)</strong>
             @if (SelectedDetails is not null)
             {
+                <span>Starts at @GetMenuPath(SelectedDetails.StartingNodeId)</span>
                 <span>@DescribeSteps(SelectedDetails.Steps)</span>
                 <button class="primary-action inline-action" @onclick="StartEditSelected" disabled="@IsLocked">Edit macro <span>✎</span></button>
             }
@@ -169,13 +180,24 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
                 <span>Description</span>
                 <input @bind="EditorDescription" placeholder="What should this sequence accomplish?" disabled="@IsBusy" />
             </label>
+            <label>
+                <span>Starting TV state</span>
+                <select @bind="EditorStartingNodeId" disabled="@IsBusy">
+                    <option value="">Select a verified starting state</option>
+                    @foreach (var menuItem in VerifiedMenuItems)
+                    {
+                        <option value="@menuItem.Id">@menuItem.Path</option>
+                    }
+                </select>
+            </label>
         </div>
 
         <div class="macro-live-builder">
             <div class="macro-live-builder-copy">
                 <span class="eyebrow">LIVE BUTTON BUILDER</span>
                 <strong>Send it now and append it on success.</strong>
-                <p>Use the compact remote while watching the TV. Every successful send becomes the next key operation in this draft.</p>
+                <p>Choose the TV's state before the first button, then use the compact remote while watching the TV. Every successful send becomes the next key operation in this draft.</p>
+                <button class="secondary-action macro-prepare-start" @onclick="PrepareEditorStartAsync" disabled="@(!CanPrepareEditorStart)">Prepare selected start <span>◎</span></button>
                 <label>
                     <span>Wait after each captured key (ms)</span>
                     <input type="number" min="1" max="86400000" @bind="CaptureWaitMilliseconds" disabled="@IsSendingCapturedKey" />
@@ -185,6 +207,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
                     <button class="secondary-action danger-action" @onclick="ClearEditorSteps" disabled="@(IsBusy || IsSendingCapturedKey || EditorSteps.Count == 0)">Clear steps</button>
                 </div>
                 <small>@(CanCaptureKey ? "Ready · buttons are sent live and captured." : "Connect to the TV to enable live capture. You can still edit steps manually.")</small>
+                <small>Preparing the start moves the TV through verified navigation but does not append those preparation keys to the draft.</small>
                 <small>Undo and clear change the draft only; they do not reverse buttons already sent to the TV. Clear the wait field to capture without an automatic pause.</small>
             </div>
             <div class="macro-live-remote">
@@ -338,7 +361,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
                 }
             }
         </div>
-        <p class="field-note">Changing the name or description alone preserves visual passes. Changing any key, wait, repeat, action, nested call, or menu destination resets this macro to 0/3.</p>
+        <p class="field-note">Changing the name or description alone preserves visual passes. Changing the starting state, key, wait, repeat, action, nested call, or menu destination resets this macro to 0/3.</p>
     }
 </section>
 
@@ -361,6 +384,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
     private string? OriginalName { get; set; }
     private string EditorName { get; set; } = string.Empty;
     private string EditorDescription { get; set; } = string.Empty;
+    private string EditorStartingNodeId { get; set; } = string.Empty;
     private List<MacroStepDraft> EditorSteps { get; } = [];
     private bool IsSendingCapturedKey { get; set; }
     private string CaptureCustomKey { get; set; } = string.Empty;
@@ -375,6 +399,10 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
     private bool CanCaptureKey => IsEditing
         && Snapshot.ConnectionState == SamsungConnectionState.Connected
         && !IsBusy && !IsSendingCapturedKey && !Run.IsRunning && !Snapshot.NavigationRunning;
+    private bool CanPrepareEditorStart => IsEditing
+        && Snapshot.ConnectionState == SamsungConnectionState.Connected
+        && !IsBusy && !IsSendingCapturedKey && !Run.IsRunning && !Snapshot.NavigationRunning
+        && !string.IsNullOrWhiteSpace(EditorStartingNodeId);
     private MacroSummary? SelectedSummary => CatalogMacros.FirstOrDefault(macro =>
         macro.Name.Equals(SelectedMacro, StringComparison.OrdinalIgnoreCase));
     private QuickAccessAction? SelectedQuickAction => QuickActions.FirstOrDefault(action =>
@@ -460,6 +488,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
         OriginalName = null;
         EditorName = string.Empty;
         EditorDescription = string.Empty;
+        EditorStartingNodeId = GetPreferredStartingNodeId();
         EditorSteps.Clear();
         DeleteConfirmation = false;
         IsEditing = true;
@@ -478,6 +507,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
         OriginalName = SelectedDetails.Name;
         EditorName = SelectedDetails.Name;
         EditorDescription = SelectedDetails.Description ?? string.Empty;
+        EditorStartingNodeId = SelectedDetails.StartingNodeId ?? GetPreferredStartingNodeId();
         EditorSteps.Clear();
         EditorSteps.AddRange(SelectedDetails.Steps.Select(MacroStepDraft.FromStep));
         DeleteConfirmation = false;
@@ -497,6 +527,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
         OriginalName = null;
         EditorName = CreateCopyName(SelectedDetails.Name);
         EditorDescription = SelectedDetails.Description ?? string.Empty;
+        EditorStartingNodeId = SelectedDetails.StartingNodeId ?? GetPreferredStartingNodeId();
         EditorSteps.Clear();
         EditorSteps.AddRange(SelectedDetails.Steps.Select(MacroStepDraft.FromStep));
         DeleteConfirmation = false;
@@ -531,6 +562,12 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
 
     private Task SendAndCaptureCustomKeyAsync() =>
         SendAndCaptureKeyAsync(CaptureCustomKey, CaptureCustomAction);
+
+    private Task PrepareEditorStartAsync() => RunBusyAsync(async () =>
+    {
+        await Controller.PrepareMacroRecordingStartAsync(EditorStartingNodeId);
+        StatusMessage = $"Starting TV state prepared: {GetMenuPath(EditorStartingNodeId)}. Capture the first macro button when ready.";
+    });
 
     private async Task SendAndCaptureKeyAsync(
         string key,
@@ -631,10 +668,17 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
             throw new InvalidOperationException("Add at least one macro operation.");
         }
 
+        if (string.IsNullOrWhiteSpace(EditorStartingNodeId))
+        {
+            throw new InvalidOperationException(
+                "Select a verified starting TV state. Define and verify at least one menu state first if this list is empty.");
+        }
+
         return new MacroEditRequest(
             EditorName,
             EditorDescription,
-            EditorSteps.Select((step, index) => step.ToStep(index + 1)).ToArray());
+            EditorSteps.Select((step, index) => step.ToStep(index + 1)).ToArray(),
+            EditorStartingNodeId);
     }
 
     private void CancelEdit()
@@ -644,6 +688,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
         OriginalName = null;
         EditorName = string.Empty;
         EditorDescription = string.Empty;
+        EditorStartingNodeId = string.Empty;
         EditorSteps.Clear();
     }
 
@@ -714,7 +759,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
             StatusMessage = passed
                 ? updated.Verified
                     ? $"{updated.Name} is verified after 3/3 visual passes."
-                    : $"Pass counted for {updated.Name}: {updated.VerificationPasses}/3. Replay it again from the intended starting state."
+                    : $"Pass counted for {updated.Name}: {updated.VerificationPasses}/3. Replay will prepare its declared starting state again."
                 : $"{updated.Name} failed visual verification; its count is reset to 0/3.";
         });
     }
@@ -784,6 +829,34 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
         MenuStep menu => $"menu {menu.TargetNodeId}",
         _ => step.GetType().Name
     };
+
+    private string GetPreferredStartingNodeId()
+    {
+        if (Navigation.State.NodeId is { } currentNodeId
+            && VerifiedMenuItems.Any(node => node.Id.Equals(
+                currentNodeId,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            return currentNodeId;
+        }
+
+        return Navigation.Anchors
+                   .Where(anchor => anchor.Verified)
+                   .Select(anchor => anchor.TargetNodeId)
+                   .FirstOrDefault(nodeId => VerifiedMenuItems.Any(node => node.Id.Equals(
+                       nodeId,
+                       StringComparison.OrdinalIgnoreCase)))
+               ?? VerifiedMenuItems.FirstOrDefault()?.Id
+               ?? string.Empty;
+    }
+
+    private string GetMenuPath(string? nodeId) =>
+        string.IsNullOrWhiteSpace(nodeId)
+            ? "Not declared (legacy)"
+            : Navigation.Nodes.FirstOrDefault(node => node.Id.Equals(
+                nodeId,
+                StringComparison.OrdinalIgnoreCase))?.Path
+              ?? nodeId;
 
     private void HandleControllerChanged()
     {

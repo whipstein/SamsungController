@@ -1180,6 +1180,107 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task MacroDeclaredStartRecoversUnknownStateBeforeSavedKeys()
+    {
+        var (controller, transport) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            var macroPath = Path.Combine(_directory, "starting-state-macros.yaml");
+            await controller.SetMacroFileAsync(macroPath);
+            await controller.SaveMacroAsync(
+                null,
+                new MacroEditRequest(
+                    "OpenSettings",
+                    null,
+                    [new KeyStep("KEY_MENU")],
+                    "normal-video"));
+            await controller.SendKeyAsync("KEY_ENTER");
+            Assert.Equal(
+                MenuStateConfidence.Unknown,
+                controller.GetMenuNavigationSnapshot().State.Confidence);
+            transport.SentMessages.Clear();
+
+            await controller.RunMacroAsync("OpenSettings");
+
+            Assert.Equal(["KEY_EXIT", "KEY_EXIT", "KEY_MENU"], GetSentKeys(transport));
+            Assert.Equal("settings", controller.GetMenuNavigationSnapshot().State.NodeId);
+        }
+    }
+
+    [Fact]
+    public async Task MacroRecorderCanPrepareSelectedStartWithoutRecordingMacroSteps()
+    {
+        var (controller, transport) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            await controller.PrepareMacroRecordingStartAsync("settings");
+            await controller.PrepareMacroRecordingStartAsync("settings");
+
+            Assert.Equal(["KEY_MENU"], GetSentKeys(transport));
+            Assert.Equal("settings", controller.GetMenuNavigationSnapshot().State.NodeId);
+        }
+    }
+
+    [Fact]
+    public async Task ChangingMacroStartingStateResetsBehavioralVerification()
+    {
+        var (controller, _) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            var macroPath = Path.Combine(_directory, "starting-state-verification.yaml");
+            await controller.SetMacroFileAsync(macroPath);
+            await controller.SaveMacroAsync(
+                null,
+                new MacroEditRequest(
+                    "VolumeCheck",
+                    null,
+                    [new KeyStep("KEY_VOLUP")],
+                    "normal-video"));
+            for (var pass = 0; pass < 3; pass++)
+            {
+                await controller.RunMacroAsync("VolumeCheck");
+                await controller.ConfirmMacroValidationAsync("VolumeCheck", true);
+            }
+
+            var updated = await controller.SaveMacroAsync(
+                "VolumeCheck",
+                new MacroEditRequest(
+                    "VolumeCheck",
+                    null,
+                    [new KeyStep("KEY_VOLUP")],
+                    "settings"));
+
+            Assert.False(updated.Verified);
+            Assert.Equal(0, updated.VerificationPasses);
+            Assert.Equal(
+                "settings",
+                (await controller.LoadMacroDetailsAsync("VolumeCheck")).StartingNodeId);
+        }
+    }
+
+    [Fact]
+    public async Task MacroEditorRejectsStartingStateWithoutVerifiedPreparationRoute()
+    {
+        var (controller, _) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            var macroPath = Path.Combine(_directory, "invalid-starting-state.yaml");
+            await controller.SetMacroFileAsync(macroPath);
+
+            var exception = await Assert.ThrowsAsync<NavigationPlanningException>(() =>
+                controller.SaveMacroAsync(
+                    null,
+                    new MacroEditRequest(
+                        "DraftPicture",
+                        null,
+                        [new KeyStep("KEY_ENTER")],
+                        "picture")));
+
+            Assert.Contains("verified anchor", exception.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task MacroRejectsUnverifiedMenuDestinationBeforeSendingEarlierKeys()
     {
         var (controller, transport) = await CreateConnectedControllerAsync();

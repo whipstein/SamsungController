@@ -81,6 +81,23 @@ public sealed class MacroParserTests
     }
 
     [Fact]
+    public void ParsesDeclaredStartingMenuState()
+    {
+        const string yaml =
+            """
+            macros:
+              Picture:
+                start: normal-video
+                steps:
+                  - key: KEY_MENU
+            """;
+
+        var macro = new MacroParser().Parse(yaml).GetRequiredMacro("Picture");
+
+        Assert.Equal("normal-video", macro.StartingNodeId);
+    }
+
+    [Fact]
     public void UndefinedVariableProducesActionableParseError()
     {
         const string yaml =

@@ -15,6 +15,14 @@ public interface IMacroMenuCommandTarget : IMacroCommandTarget
 {
     void ValidateMenuDestination(string targetNodeId);
 
+    void ValidateMenuStartState(string startingNodeId);
+
+    void ValidateCurrentMenuState();
+
+    Task PrepareMenuStartStateAsync(
+        string startingNodeId,
+        CancellationToken cancellationToken = default);
+
     Task NavigateToMenuDestinationAsync(
         string targetNodeId,
         CancellationToken cancellationToken = default);
@@ -41,6 +49,7 @@ public sealed class SystemMacroDelay : IMacroDelay
 
 public enum MacroOperationKind
 {
+    StartState,
     Key,
     Delay,
     Menu
@@ -51,7 +60,7 @@ public sealed record MacroExecutionProgress(
     DateTimeOffset Timestamp,
     string RootMacroName,
     string SourceMacroName,
-    int SourceStepNumber,
+    int? SourceStepNumber,
     int NestingDepth,
     int OperationNumber,
     int OperationCount,
@@ -162,6 +171,13 @@ public sealed class MacroExecutor
                                 cancellationToken)
                             .ConfigureAwait(false);
                         break;
+
+                    case StartStateOperation start:
+                        await menuTarget!.PrepareMenuStartStateAsync(
+                                start.StartingNodeId,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                        break;
                 }
             }
 
@@ -214,6 +230,14 @@ public sealed class MacroExecutor
 
         void Expand(MacroDefinition macro, int nestingDepth)
         {
+            if (!string.IsNullOrWhiteSpace(macro.StartingNodeId))
+            {
+                operations.Add(new StartStateOperation(
+                    macro.Name,
+                    nestingDepth,
+                    macro.StartingNodeId.Trim()));
+            }
+
             for (var stepIndex = 0; stepIndex < macro.Steps.Count; stepIndex++)
             {
                 var stepNumber = stepIndex + 1;
@@ -272,8 +296,9 @@ public sealed class MacroExecutor
     private IMacroMenuCommandTarget? PrepareMenuTarget(
         IReadOnlyList<MacroOperation> operations)
     {
+        var startOperations = operations.OfType<StartStateOperation>().ToArray();
         var menuOperations = operations.OfType<MenuOperation>().ToArray();
-        if (menuOperations.Length == 0)
+        if (startOperations.Length == 0 && menuOperations.Length == 0)
         {
             return null;
         }
@@ -281,7 +306,14 @@ public sealed class MacroExecutor
         if (_target is not IMacroMenuCommandTarget menuTarget)
         {
             throw new InvalidOperationException(
-                "This macro calls a verified menu destination, but the current command target has no menu-navigation context. Run it from the SamsungController web interface.");
+                "This macro declares a starting menu state or calls a verified menu destination, but the current command target has no menu-navigation context. Run it from the SamsungController web interface.");
+        }
+
+        foreach (var startingNodeId in startOperations
+                     .Select(operation => operation.StartingNodeId)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            menuTarget.ValidateMenuStartState(startingNodeId);
         }
 
         foreach (var targetNodeId in menuOperations
@@ -289,6 +321,20 @@ public sealed class MacroExecutor
                      .Distinct(StringComparer.OrdinalIgnoreCase))
         {
             menuTarget.ValidateMenuDestination(targetNodeId);
+        }
+
+        var startHasEstablishedState = false;
+        foreach (var operation in operations)
+        {
+            if (operation is StartStateOperation)
+            {
+                startHasEstablishedState = true;
+            }
+            else if (operation is MenuOperation && !startHasEstablishedState)
+            {
+                menuTarget.ValidateCurrentMenuState();
+                break;
+            }
         }
 
         return menuTarget;
@@ -308,14 +354,14 @@ public sealed class MacroExecutor
 
     private abstract record MacroOperation(
         string SourceMacroName,
-        int SourceStepNumber,
+        int? SourceStepNumber,
         int NestingDepth,
         MacroOperationKind Kind,
         string Description);
 
     private sealed record KeyOperation(
         string SourceMacroName,
-        int SourceStepNumber,
+        int? SourceStepNumber,
         int NestingDepth,
         string Key,
         RemoteKeyAction Action) : MacroOperation(
@@ -327,7 +373,7 @@ public sealed class MacroExecutor
 
     private sealed record DelayOperation(
         string SourceMacroName,
-        int SourceStepNumber,
+        int? SourceStepNumber,
         int NestingDepth,
         TimeSpan Duration) : MacroOperation(
             SourceMacroName,
@@ -338,7 +384,7 @@ public sealed class MacroExecutor
 
     private sealed record MenuOperation(
         string SourceMacroName,
-        int SourceStepNumber,
+        int? SourceStepNumber,
         int NestingDepth,
         string TargetNodeId) : MacroOperation(
             SourceMacroName,
@@ -346,6 +392,16 @@ public sealed class MacroExecutor
             NestingDepth,
             MacroOperationKind.Menu,
             $"Navigate to verified menu destination {TargetNodeId}");
+
+    private sealed record StartStateOperation(
+        string SourceMacroName,
+        int NestingDepth,
+        string StartingNodeId) : MacroOperation(
+            SourceMacroName,
+            null,
+            NestingDepth,
+            MacroOperationKind.StartState,
+            $"Prepare starting state {StartingNodeId}");
 
     private static string FormatDuration(TimeSpan duration) =>
         duration.TotalMilliseconds < 1000
