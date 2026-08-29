@@ -177,12 +177,13 @@ Key names are intentionally not restricted. Review unfamiliar keys before sendin
 The **Macros** page is a complete browser-based editor and visual verifier:
 
 1. Enter a YAML catalog path and select **Load & validate**. You can also select **New macro** when the default or chosen file does not exist; the first save creates it.
-2. Create, duplicate, or edit a macro. Build its ordered operations from Samsung keys, explicit waits, and calls to other saved macros. Every key supports action, repeat count, and an optional wait after each send.
-3. Move operations with the up/down controls, remove incorrect operations, then save. Catalog structure, nested calls, cycles, durations, repeats, and expanded size are validated before the file is replaced.
-4. Connect to the TV and select **Replay test**. Replay sends only the explicit saved macro; it does not add a menu reset or starting-state preparation.
-5. Inspect the TV. Select **Count pass** when the result is correct, or **Failed** to reset that macro to 0/3. Counts are stored independently in YAML, so you can alternate between macros without losing progress.
-6. Three accepted replays mark the macro verified. Only verified macros can be pinned to the always-visible quick-access bar.
-7. Use **Download YAML** to export the validated catalog. Loading another path provides the import workflow, and the remembered path is shared with the CLI and interactive console.
+2. Create, duplicate, or edit a macro. The compact editor remote sends buttons to the connected TV and appends each successful send to the draft. Set **Wait after each captured key** to preserve reliable replay timing. Undo or clear captured steps when needed.
+3. Build the remaining ordered operations from Samsung keys, explicit waits, calls to other saved macros, and calls to verified menu destinations. A menu call uses the same current-state-aware shortest-route planner as clicking that destination on the Menu page.
+4. Move operations with the up/down controls, remove incorrect operations, then save. Catalog structure, nested calls, menu targets, cycles, durations, repeats, and expanded size are validated before the file is replaced.
+5. Connect to the TV and select **Replay test**. Ordinary key and wait steps are exact. A saved menu call intentionally delegates to the verified planner and fails without sending later operations if the expected menu state is unknown.
+6. Inspect the TV. Select **Count pass** when the result is correct, or **Failed** to reset that macro to 0/3. Counts are stored independently in YAML, so you can alternate between macros without losing progress.
+7. Three accepted replays mark the macro verified. Only verified macros can be pinned to the always-visible quick-access bar.
+8. Use **Download YAML** to export the validated catalog. Loading another path provides the import workflow, and the remembered path is shared with the CLI and interactive console.
 
 Changing only a macro's name or description preserves its passes; renaming also updates nested calls and a pinned quick-access entry. Any operation change resets that macro's behavioral verification and removes it from quick access. When the visual editor saves a hand-authored variable-based catalog, it writes normalized concrete step values while retaining the root variables.
 

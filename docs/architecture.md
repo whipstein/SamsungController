@@ -108,6 +108,14 @@ the count and remove the macro from quick access. Description-only edits and
 renames preserve verification, with renames updating nested calls and pinned
 targets.
 
+Macro steps may also contain a verified menu node ID. The executor expands menu
+calls as first-class operations and requires an `IMacroMenuCommandTarget`; this
+capability check and all destination checks happen before the first macro key is
+sent. The web target validates the node against the active verified menu map and
+executes a plan through the existing `MenuNavigator` while the macro retains
+exclusive ownership of automation. CLI targets intentionally lack that menu
+context and reject such macros before execution begins.
+
 Build & Verify persists menu-tree nodes before route recording, allowing display
 names and parents to be edited while keeping stable node IDs for route references.
 The YAML node sequence stores custom sibling order; moving a sibling rewrites the

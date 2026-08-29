@@ -269,6 +269,19 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .macro-editor-empty > span { max-width: 100%; margin-top: 9px; color: var(--muted); font: 10px/1.7 ui-monospace, "SFMono-Regular", Consolas, monospace; overflow-wrap: anywhere; }
 .macro-editor-heading { display: grid; grid-template-columns: minmax(190px,.7fr) minmax(300px,1.3fr); gap: 12px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
 .macro-editor-heading input { padding: 10px 11px; }
+.macro-live-builder { display: grid; grid-template-columns: minmax(240px,.7fr) minmax(320px,1.3fr); gap: 24px; margin: 18px 0 2px; padding: 18px; border: 1px solid rgba(124,231,220,.2); border-radius: 9px; background: rgba(124,231,220,.025); }
+.macro-live-builder-copy { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; }
+.macro-live-builder-copy > strong { margin-top: 8px; font-size: 17px; line-height: 1.25; }
+.macro-live-builder-copy > p { margin: 8px 0 14px; color: var(--muted); font-size: 10px; line-height: 1.55; }
+.macro-live-builder-copy > label { width: 100%; }
+.macro-live-builder-copy > label span { font-size: 9px; }
+.macro-live-builder-copy > label input { padding: 9px 10px; font-size: 9px; }
+.macro-live-builder-copy > small { margin-top: 11px; color: var(--faint); font-size: 8px; line-height: 1.45; }
+.macro-capture-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.macro-capture-actions .secondary-action { padding: 8px 10px; font-size: 8px; }
+.macro-live-remote { min-width: 0; padding: 2px 0; }
+.macro-live-remote .authoring-remote { max-width: 300px; }
+.macro-custom-record-key { max-width: 480px; margin: 12px auto 0; }
 .macro-step-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 15px 0; }
 .macro-step-toolbar > span { margin-right: auto; color: var(--faint); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; letter-spacing: .12em; }
 .macro-step-toolbar .secondary-action { padding: 8px 11px; font-size: 9px; }
@@ -649,6 +662,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .quick-editor-add { width: 100%; }
     .page-content { padding-top: 36px; }
     .remote-layout, .macro-layout, .protocol-layout { grid-template-columns: 1fr; }
+    .macro-live-builder { grid-template-columns: 1fr; }
     .navigator-layout { grid-template-columns: 1fr; }
     .menu-tree-toolbar { align-items: stretch; flex-direction: column; }
     .menu-tree-toolbar label { flex-basis: auto; }
@@ -685,6 +699,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .remote-layout, .macro-layout { display: block; }
     .remote-side-stack, .macro-side-stack { margin-top: 18px; }
     .macro-editor-heading { grid-template-columns: 1fr; }
+    .macro-custom-record-key { grid-template-columns: 1fr; }
     .macro-step-row { grid-template-columns: 28px repeat(2, minmax(0, 1fr)); }
     .macro-step-number { grid-row: 1 / 4; }
     .macro-step-kind { grid-column: 2; }

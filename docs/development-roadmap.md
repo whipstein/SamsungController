@@ -50,6 +50,8 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 - [x] Remember the selected macro catalog and allow behaviorally verified macros in persistent quick access.
 - [x] Create, duplicate, edit, delete, import, and export macro catalogs from the browser.
 - [x] Persist independent three-pass visual verification and revoke it after behavioral edits or failed replays.
+- [x] Capture successfully sent remote buttons directly into a macro draft with configurable replay waits.
+- [x] Call verified menu destinations from macros through the current-state-aware navigation planner.
 
 ### Local web control surface
 

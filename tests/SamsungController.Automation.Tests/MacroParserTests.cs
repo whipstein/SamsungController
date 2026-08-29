@@ -63,6 +63,24 @@ public sealed class MacroParserTests
     }
 
     [Fact]
+    public void ParsesVerifiedMenuDestinationStep()
+    {
+        const string yaml =
+            """
+            macros:
+              Picture:
+                steps:
+                  - menu: picture-brightness
+            """;
+
+        var catalog = new MacroParser().Parse(yaml);
+
+        Assert.Equal(
+            new MenuStep("picture-brightness"),
+            Assert.Single(catalog.GetRequiredMacro("Picture").Steps));
+    }
+
+    [Fact]
     public void UndefinedVariableProducesActionableParseError()
     {
         const string yaml =

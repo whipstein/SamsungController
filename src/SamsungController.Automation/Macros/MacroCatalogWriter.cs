@@ -72,6 +72,10 @@ public sealed class MacroCatalogWriter
 
                         break;
 
+                    case MenuStep menu:
+                        AppendListScalar(yaml, 6, "menu", menu.TargetNodeId);
+                        break;
+
                     default:
                         throw new InvalidOperationException(
                             $"Macro step type '{step.GetType().Name}' is not supported.");

@@ -2569,6 +2569,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             }
 
             var savedCatalog = new MacroCatalog(definitions, catalog.Variables);
+            ValidateMacroMenuDestinations(savedCatalog);
             await new MacroCatalogWriter().WriteFileAsync(path, savedCatalog, cancellationToken)
                 .ConfigureAwait(false);
             if (existing is not null && !updated.Verified)
@@ -3027,6 +3028,66 @@ public sealed class SamsungControllerService : IAsyncDisposable
             }
 
             EndAutomation(isNavigation: true);
+            NotifyChanged();
+        }
+    }
+
+    private async Task ExecuteMenuDestinationWithinMacroAsync(
+        string targetNodeId,
+        CancellationToken cancellationToken)
+    {
+        ValidateMacroMenuDestination(targetNodeId, requireKnownState: true);
+        MenuNavigator navigator;
+        lock (_sync)
+        {
+            navigator = _menuNavigator
+                ?? throw new InvalidOperationException(
+                    _navigationError ?? "No valid menu definition is loaded.");
+        }
+
+        NavigationPlan plan;
+        try
+        {
+            plan = navigator.Plan(targetNodeId, includeDraftTransitions: false);
+            lock (_sync)
+            {
+                _navigationPlan = plan;
+                _navigationStatus = $"Macro menu call · {plan.TargetPath}";
+                _navigationError = null;
+                _navigationProgress = null;
+            }
+
+            NotifyChanged();
+            await navigator.ExecutePlanAsync(plan, cancellationToken).ConfigureAwait(false);
+            lock (_sync)
+            {
+                _navigationPlan = null;
+                _navigationStatus = $"Completed macro menu call · {plan.TargetPath}";
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            lock (_sync)
+            {
+                _navigationPlan = null;
+                _navigationStatus = $"Cancelled macro menu call · {targetNodeId}";
+            }
+
+            throw;
+        }
+        catch (Exception exception)
+        {
+            lock (_sync)
+            {
+                _navigationPlan = null;
+                _navigationStatus = $"Failed macro menu call · {targetNodeId}";
+                _navigationError = exception.Message;
+            }
+
+            throw;
+        }
+        finally
+        {
             NotifyChanged();
         }
     }
@@ -4506,6 +4567,54 @@ public sealed class SamsungControllerService : IAsyncDisposable
             macro.Verified,
             macro.VerificationPasses);
 
+    private void ValidateMacroMenuDestinations(MacroCatalog catalog)
+    {
+        foreach (var targetNodeId in catalog.Macros.Values
+                     .SelectMany(macro => macro.Steps)
+                     .OfType<MenuStep>()
+                     .Select(step => step.TargetNodeId)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            ValidateMacroMenuDestination(targetNodeId);
+        }
+    }
+
+    private void ValidateMacroMenuDestination(
+        string targetNodeId,
+        bool requireKnownState = false)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetNodeId);
+        lock (_sync)
+        {
+            var definition = _menuDefinition
+                ?? throw new InvalidOperationException(
+                    "Load a menu definition before using menu destinations in a macro.");
+            if (!definition.Nodes.TryGetValue(targetNodeId.Trim(), out var node))
+            {
+                throw new InvalidOperationException(
+                    $"Menu destination '{targetNodeId}' does not exist in '{definition.Name}'.");
+            }
+
+            var verified = definition.Transitions.Values.Any(transition =>
+                    transition.Verified
+                    && transition.ToNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase))
+                || definition.Anchors.Values.Any(anchor =>
+                    anchor.Verified
+                    && anchor.TargetNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase));
+            if (!verified)
+            {
+                throw new InvalidOperationException(
+                    $"Menu destination '{definition.GetPath(node.Id)}' is not verified and cannot be called by a macro.");
+            }
+
+            if (requireKnownState && _menuStateTracker?.Current.NodeId is null)
+            {
+                throw new InvalidOperationException(
+                    $"The expected menu state is unknown, so macro destination '{definition.GetPath(node.Id)}' cannot be planned. Run a verified anchor first.");
+            }
+        }
+    }
+
     private static MacroDefinition RenameMacroCalls(
         MacroDefinition macro,
         string oldName,
@@ -4830,13 +4939,21 @@ public sealed class SamsungControllerService : IAsyncDisposable
         _macroCatalogGate.Dispose();
     }
 
-    private sealed class WebMacroCommandTarget(SamsungControllerService controller) : IMacroCommandTarget
+    private sealed class WebMacroCommandTarget(SamsungControllerService controller) : IMacroMenuCommandTarget
     {
         public Task SendKeyAsync(
             string key,
             RemoteKeyAction action,
             CancellationToken cancellationToken = default) =>
             controller.SendTrackedKeyAsync(key, action, cancellationToken);
+
+        public void ValidateMenuDestination(string targetNodeId) =>
+            controller.ValidateMacroMenuDestination(targetNodeId, requireKnownState: true);
+
+        public Task NavigateToMenuDestinationAsync(
+            string targetNodeId,
+            CancellationToken cancellationToken = default) =>
+            controller.ExecuteMenuDestinationWithinMacroAsync(targetNodeId, cancellationToken);
     }
 
     private sealed class WebMenuCommandTarget(SamsungTvClient client) : IMenuCommandTarget

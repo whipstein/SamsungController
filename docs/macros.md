@@ -66,6 +66,7 @@ macros:
       - delay: 500ms
       - key: KEY_ENTER
         action: Click
+      - menu: picture-brightness
 ```
 
 Supported steps are:
@@ -73,6 +74,7 @@ Supported steps are:
 - `key`: any Samsung key string, with optional `action`, `repeat`, and `delay`.
 - `delay`: an explicit pause such as `150ms`, `2s`, or `00:00:02`.
 - `call`: invoke another macro, optionally with `repeat`.
+- `menu`: navigate to a verified menu node ID through the web application's current-state planner.
 
 `action` can be `Click`, `Press`, or `Release`. A delay attached to a key is
 performed after every send, including the final repetition. This makes the
@@ -85,8 +87,12 @@ typed. Missing variables and variable cycles are errors.
 ## Browser editing and behavioral verification
 
 The web **Macros** page can create, duplicate, edit, delete, load, and download
-catalogs without hand-editing YAML. The editor accepts key, delay, and nested
-call steps and rewrites the complete catalog atomically only after the resulting
+catalogs without hand-editing YAML. Its compact remote sends keys to the TV and
+appends a key step only after a successful send. A configurable captured-key
+wait is stored as that key's explicit `delay`; undo and clear controls edit the
+draft without sending compensating commands. The editor accepts key, delay,
+nested call, and verified menu-destination steps and rewrites the complete
+catalog atomically only after the resulting
 catalog passes the same parser and validator used by the CLI. A failed save
 leaves the previous file intact. Renaming a macro updates calls to that macro.
 Deletion is rejected while another macro still calls the target.
@@ -110,17 +116,34 @@ editor presents resolved values; saving a catalog that used `${variables}`
 normalizes the steps to their concrete values while retaining the root variable
 mapping for compatibility.
 
+### Menu destination calls
+
+`menu: <node-id>` is an explicit high-level operation. The web executor
+preflights every referenced node before sending the macro's first key. The node
+must exist in the active menu definition and be exposed as a verified
+destination on the ordinary **Menu** page. At that operation, SamsungController
+plans and executes the same shortest verified route from the expected current
+menu state. The call may therefore use a verified composite or anchor route when
+the planner selects one; it does not copy a fixed traversal into the macro.
+
+If the expected state is already unknown, preflight rejects the run before its
+first key. If an earlier explicit operation makes the expected state unknown,
+the menu call fails at that point and later macro operations are not sent. The
+terminal CLI has no menu-definition or predicted-state context, so it
+rejects a macro containing `menu` before sending any key; run those macros from
+the web interface.
+
 ## Validation and execution
 
 The complete catalog is validated before any key is sent. Validation rejects:
 
 - missing nested macros and recursive call cycles;
-- empty definitions, keys, and macro names;
+- empty definitions, keys, menu destinations, and macro names;
 - repeat counts outside 1 through 1,000;
 - non-positive delays or delays over 24 hours; and
-- expanded plans over 10,000 key/delay operations.
+- expanded plans over 10,000 key, delay, or menu operations.
 
-Every expanded key and delay is printed with its operation number, source macro,
+Every expanded operation is printed with its operation number, source macro,
 and source step. Key transmissions are also captured by the normal protocol
 NDJSON logger. Cancellation is checked before and during every operation. If a
 macro is cancelled or fails after a `Press`, the executor makes a short,

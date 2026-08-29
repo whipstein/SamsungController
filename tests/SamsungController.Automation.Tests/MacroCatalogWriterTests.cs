@@ -21,7 +21,8 @@ public sealed class MacroCatalogWriterTests
                 [
                     new CallMacroStep("BackToVideo"),
                     new DelayStep(TimeSpan.FromMilliseconds(500)),
-                    new KeyStep("KEY_MENU", RemoteKeyAction.Press)
+                    new KeyStep("KEY_MENU", RemoteKeyAction.Press),
+                    new MenuStep("picture-brightness")
                 ],
                 "Open settings",
                 verificationPasses: 2)

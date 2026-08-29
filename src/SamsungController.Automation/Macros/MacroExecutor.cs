@@ -11,6 +11,15 @@ public interface IMacroCommandTarget
         CancellationToken cancellationToken = default);
 }
 
+public interface IMacroMenuCommandTarget : IMacroCommandTarget
+{
+    void ValidateMenuDestination(string targetNodeId);
+
+    Task NavigateToMenuDestinationAsync(
+        string targetNodeId,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IMacroDelay
 {
     Task DelayAsync(TimeSpan duration, CancellationToken cancellationToken = default);
@@ -33,7 +42,8 @@ public sealed class SystemMacroDelay : IMacroDelay
 public enum MacroOperationKind
 {
     Key,
-    Delay
+    Delay,
+    Menu
 }
 
 public sealed record MacroExecutionProgress(
@@ -93,6 +103,7 @@ public sealed class MacroExecutor
 
         var root = catalog.GetRequiredMacro(macroName);
         var operations = BuildPlan(catalog, root);
+        var menuTarget = PrepareMenuTarget(operations);
         var executionId = Guid.NewGuid();
         var stopwatch = Stopwatch.StartNew();
         var keysSent = 0;
@@ -142,6 +153,13 @@ public sealed class MacroExecutor
 
                     case DelayOperation delay:
                         await _delay.DelayAsync(delay.Duration, cancellationToken)
+                            .ConfigureAwait(false);
+                        break;
+
+                    case MenuOperation menu:
+                        await menuTarget!.NavigateToMenuDestinationAsync(
+                                menu.TargetNodeId,
+                                cancellationToken)
                             .ConfigureAwait(false);
                         break;
                 }
@@ -238,9 +256,42 @@ public sealed class MacroExecutor
                         }
 
                         break;
+
+                    case MenuStep menu:
+                        operations.Add(new MenuOperation(
+                            macro.Name,
+                            stepNumber,
+                            nestingDepth,
+                            menu.TargetNodeId.Trim()));
+                        break;
                 }
             }
         }
+    }
+
+    private IMacroMenuCommandTarget? PrepareMenuTarget(
+        IReadOnlyList<MacroOperation> operations)
+    {
+        var menuOperations = operations.OfType<MenuOperation>().ToArray();
+        if (menuOperations.Length == 0)
+        {
+            return null;
+        }
+
+        if (_target is not IMacroMenuCommandTarget menuTarget)
+        {
+            throw new InvalidOperationException(
+                "This macro calls a verified menu destination, but the current command target has no menu-navigation context. Run it from the SamsungController web interface.");
+        }
+
+        foreach (var targetNodeId in menuOperations
+                     .Select(operation => operation.TargetNodeId)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            menuTarget.ValidateMenuDestination(targetNodeId);
+        }
+
+        return menuTarget;
     }
 
     private void PublishProgress(MacroExecutionProgress progress)
@@ -284,6 +335,17 @@ public sealed class MacroExecutor
             NestingDepth,
             MacroOperationKind.Delay,
             $"Delay {FormatDuration(Duration)}");
+
+    private sealed record MenuOperation(
+        string SourceMacroName,
+        int SourceStepNumber,
+        int NestingDepth,
+        string TargetNodeId) : MacroOperation(
+            SourceMacroName,
+            SourceStepNumber,
+            NestingDepth,
+            MacroOperationKind.Menu,
+            $"Navigate to verified menu destination {TargetNodeId}");
 
     private static string FormatDuration(TimeSpan duration) =>
         duration.TotalMilliseconds < 1000

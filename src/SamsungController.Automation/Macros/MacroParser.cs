@@ -18,6 +18,8 @@ public sealed class MacroParser
         new(["call", "repeat"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> DelayFields =
         new(["delay"], StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> MenuFields =
+        new(["menu"], StringComparer.OrdinalIgnoreCase);
 
     public MacroCatalog Parse(
         string yaml,
@@ -201,8 +203,17 @@ public sealed class MacroParser
                 continue;
             }
 
+            if (fields.ContainsKey("menu"))
+            {
+                EnsureAllowedFields(fields, MenuFields, context);
+                var targetNodeId = resolver.ResolveText(
+                    RequireScalar(fields["menu"], $"menu destination in {context}")).Trim();
+                steps.Add(new MenuStep(targetNodeId));
+                continue;
+            }
+
             throw new MacroParseException(
-                $"{context} must contain exactly one of 'key', 'call', or 'delay'.");
+                $"{context} must contain exactly one of 'key', 'call', 'delay', or 'menu'.");
         }
 
         return steps;

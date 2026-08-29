@@ -122,6 +122,54 @@ public sealed class MacroExecutorTests
             target.Commands);
     }
 
+    [Fact]
+    public async Task MenuDestinationsArePreflightedBeforeAnyKeyIsSent()
+    {
+        var catalog = new MacroCatalog(
+        [
+            new MacroDefinition(
+                "WebOnly",
+                [new KeyStep("KEY_HOME"), new MenuStep("settings")])
+        ]);
+        var target = new RecordingTarget();
+        var executor = new MacroExecutor(target, new RecordingDelay());
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            executor.ExecuteAsync(catalog, "WebOnly"));
+
+        Assert.Contains("web interface", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(target.Commands);
+    }
+
+    [Fact]
+    public async Task ExecutesMenuDestinationInMacroOperationOrder()
+    {
+        var catalog = new MacroCatalog(
+        [
+            new MacroDefinition(
+                "Picture",
+                [
+                    new KeyStep("KEY_HOME"),
+                    new MenuStep("picture-brightness"),
+                    new KeyStep("KEY_ENTER")
+                ])
+        ]);
+        var target = new RecordingMenuTarget();
+        var progress = new List<MacroExecutionProgress>();
+        var executor = new MacroExecutor(target, new RecordingDelay());
+        executor.ProgressChanged += (_, eventArgs) => progress.Add(eventArgs.Progress);
+
+        var result = await executor.ExecuteAsync(catalog, "Picture");
+
+        Assert.Equal(
+            ["key:KEY_HOME", "menu:picture-brightness", "key:KEY_ENTER"],
+            target.Operations);
+        Assert.Equal(["picture-brightness"], target.ValidatedDestinations);
+        Assert.Equal(3, result.OperationCount);
+        Assert.Equal(2, result.KeysSent);
+        Assert.Equal(MacroOperationKind.Menu, progress[1].Kind);
+    }
+
     private sealed class RecordingTarget : IMacroCommandTarget
     {
         public List<(string Key, RemoteKeyAction Action)> Commands { get; } = [];
@@ -133,6 +181,35 @@ public sealed class MacroExecutorTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             Commands.Add((key, action));
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class RecordingMenuTarget : IMacroMenuCommandTarget
+    {
+        public List<string> Operations { get; } = [];
+
+        public List<string> ValidatedDestinations { get; } = [];
+
+        public void ValidateMenuDestination(string targetNodeId) =>
+            ValidatedDestinations.Add(targetNodeId);
+
+        public Task NavigateToMenuDestinationAsync(
+            string targetNodeId,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Operations.Add($"menu:{targetNodeId}");
+            return Task.CompletedTask;
+        }
+
+        public Task SendKeyAsync(
+            string key,
+            RemoteKeyAction action,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Operations.Add($"key:{key}");
             return Task.CompletedTask;
         }
     }

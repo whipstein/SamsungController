@@ -1156,6 +1156,82 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task MacroCanCallVerifiedMenuDestinationThroughCurrentStatePlanner()
+    {
+        var (controller, transport) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            var macroPath = Path.Combine(_directory, "menu-call-macros.yaml");
+            await controller.SetMacroFileAsync(macroPath);
+            await controller.SaveMacroAsync(
+                null,
+                new MacroEditRequest(
+                    "OpenSettingsAndSelect",
+                    null,
+                    [new MenuStep("settings"), new KeyStep("KEY_ENTER")]));
+
+            await controller.RunMacroAsync("OpenSettingsAndSelect");
+
+            Assert.Equal(["KEY_MENU", "KEY_ENTER"], GetSentKeys(transport));
+            Assert.Equal(
+                MenuStateConfidence.Unknown,
+                controller.GetMenuNavigationSnapshot().State.Confidence);
+        }
+    }
+
+    [Fact]
+    public async Task MacroRejectsUnverifiedMenuDestinationBeforeSendingEarlierKeys()
+    {
+        var (controller, transport) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            var macroPath = Path.Combine(_directory, "invalid-menu-call-macros.yaml");
+            await File.WriteAllTextAsync(
+                macroPath,
+                """
+                version: 1
+                macros:
+                  Unsafe:
+                    steps:
+                      - key: KEY_HOME
+                      - menu: picture
+                """);
+            await controller.SetMacroFileAsync(macroPath);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                controller.RunMacroAsync("Unsafe"));
+
+            Assert.Contains("not verified", exception.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Empty(GetSentKeys(transport));
+        }
+    }
+
+    [Fact]
+    public async Task MacroRejectsMenuCallFromUnknownStateBeforeSendingEarlierKeys()
+    {
+        var (controller, transport) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            await controller.SendKeyAsync("KEY_ENTER");
+            transport.SentMessages.Clear();
+            var macroPath = Path.Combine(_directory, "unknown-state-menu-call.yaml");
+            await controller.SetMacroFileAsync(macroPath);
+            await controller.SaveMacroAsync(
+                null,
+                new MacroEditRequest(
+                    "NeedsKnownState",
+                    null,
+                    [new KeyStep("KEY_HOME"), new MenuStep("settings")]));
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                controller.RunMacroAsync("NeedsKnownState"));
+
+            Assert.Contains("state is unknown", exception.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Empty(GetSentKeys(transport));
+        }
+    }
+
+    [Fact]
     public async Task ReadOnlyResearchQueriesSendKnownApplicationEvents()
     {
         var (controller, transport) = await CreateConnectedControllerAsync();

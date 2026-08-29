@@ -15,3 +15,5 @@ public sealed record DelayStep(TimeSpan Duration) : MacroStep;
 public sealed record CallMacroStep(
     string MacroName,
     int Repeat = 1) : MacroStep;
+
+public sealed record MenuStep(string TargetNodeId) : MacroStep;

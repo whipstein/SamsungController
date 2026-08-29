@@ -149,6 +149,17 @@ public sealed class MacroValidator
 
                     break;
 
+                case MenuStep menu:
+                    if (string.IsNullOrWhiteSpace(menu.TargetNodeId))
+                    {
+                        errors.Add(new MacroValidationError(
+                            macro.Name,
+                            stepNumber,
+                            "The menu destination cannot be empty."));
+                    }
+
+                    break;
+
                 default:
                     errors.Add(new MacroValidationError(
                         macro.Name,
@@ -273,6 +284,7 @@ public sealed class MacroValidator
                     DelayStep => 1,
                     CallMacroStep call when catalog.TryGetMacro(call.MacroName, out var called)
                         && called is not null => (long)call.Repeat * Count(called),
+                    MenuStep => 1,
                     _ => 0
                 };
                 count = Math.Min(MaximumExpandedOperations + 1L, count + increment);
