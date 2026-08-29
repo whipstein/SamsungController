@@ -287,7 +287,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
                             && transition.ToNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase))
                         || definition.ApplicableAnchors.Any(anchor =>
                             !anchor.Verified
-                            && anchor.TargetNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase))))
+                            && anchor.TargetNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase)),
+                        node.ControlType,
+                        node.DefaultValue,
+                        node.DisabledWhen ?? [],
+                        IsMenuNodeDisabledByDefault(definition, node)))
                     .ToArray();
             var anchors = definition is null
                 ? []
@@ -3727,12 +3731,28 @@ public sealed class SamsungControllerService : IAsyncDisposable
             request.Name.Trim(),
             string.IsNullOrWhiteSpace(request.Conditions) ? null : request.Conditions.Trim());
 
+    private static bool IsMenuNodeDisabledByDefault(
+        MenuDefinition definition,
+        MenuNode node) => (node.DisabledWhen ?? []).Any(condition =>
+        definition.Nodes.TryGetValue(condition.SettingNodeId, out var setting)
+        && setting.DefaultValue?.Equals(
+            condition.EqualsValue,
+            StringComparison.OrdinalIgnoreCase) == true);
+
     private static MenuNode NormalizeMenuNodeRequest(MenuNodeEditRequest request) =>
         new(
             request.Id.Trim(),
             request.Label.Trim(),
             string.IsNullOrWhiteSpace(request.ParentId) ? null : request.ParentId.Trim(),
-            string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim());
+            string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
+            request.ControlType,
+            string.IsNullOrWhiteSpace(request.DefaultValue) ? null : request.DefaultValue.Trim(),
+            request.DisabledWhen?
+                .Where(condition => condition is not null)
+                .Select(condition => new MenuNodeDisabledCondition(
+                    condition.SettingNodeId.Trim(),
+                    condition.EqualsValue.Trim()))
+                .ToArray() ?? []);
 
     private static MenuRecordingRequest NormalizeRecordingRequest(MenuRecordingRequest request) =>
         request with

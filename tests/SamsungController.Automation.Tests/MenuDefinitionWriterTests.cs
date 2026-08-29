@@ -19,7 +19,20 @@ public sealed class MenuDefinitionWriterTests : IDisposable
             new MenuDefinitionContext("example-fw", "SDR", "Movie", "HDMI 1"),
             [
                 new MenuNode("normal-video", "Normal video"),
-                new MenuNode("settings", "Settings", "normal-video", "Owner's settings")
+                new MenuNode("settings", "Settings", "normal-video", "Owner's settings"),
+                new MenuNode(
+                    "adaptive-picture",
+                    "Adaptive Picture",
+                    "settings",
+                    ControlType: MenuControlType.Switch,
+                    DefaultValue: "off"),
+                new MenuNode(
+                    "brightness",
+                    "Brightness",
+                    "settings",
+                    ControlType: MenuControlType.Slider,
+                    DefaultValue: "50",
+                    DisabledWhen: [new MenuNodeDisabledCondition("adaptive-picture", "on")])
             ],
             [
                 new MenuTransition(
@@ -75,6 +88,13 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Assert.Equal("Game Mode = Off", configuration.Conditions);
         Assert.Contains("  verified: true", await File.ReadAllTextAsync(path), StringComparison.Ordinal);
         Assert.Equal("Owner's settings", reparsed.Nodes["settings"].Description);
+        Assert.Equal(MenuControlType.Switch, reparsed.Nodes["adaptive-picture"].ControlType);
+        Assert.Equal("off", reparsed.Nodes["adaptive-picture"].DefaultValue);
+        Assert.Equal(MenuControlType.Slider, reparsed.Nodes["brightness"].ControlType);
+        Assert.Equal("50", reparsed.Nodes["brightness"].DefaultValue);
+        var disabledCondition = Assert.Single(reparsed.Nodes["brightness"].DisabledWhen!);
+        Assert.Equal("adaptive-picture", disabledCondition.SettingNodeId);
+        Assert.Equal("on", disabledCondition.EqualsValue);
         Assert.True(reparsed.Anchors["normal"].Verified);
         Assert.Equal("standard", reparsed.Anchors["normal"].ConfigurationId);
         Assert.Equal("settings", reparsed.Anchors["normal"].ValidationSourceNodeId);

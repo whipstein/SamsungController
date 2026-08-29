@@ -42,11 +42,26 @@ public sealed record MenuTimingProfile(
     }
 }
 
+public enum MenuControlType
+{
+    Submenu,
+    Slider,
+    Selection,
+    Switch
+}
+
+public sealed record MenuNodeDisabledCondition(
+    string SettingNodeId,
+    string EqualsValue);
+
 public sealed record MenuNode(
     string Id,
     string Label,
     string? ParentId = null,
-    string? Description = null);
+    string? Description = null,
+    MenuControlType ControlType = MenuControlType.Submenu,
+    string? DefaultValue = null,
+    IReadOnlyList<MenuNodeDisabledCondition>? DisabledWhen = null);
 
 public sealed record MenuOperation(
     string Key,

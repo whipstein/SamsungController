@@ -131,10 +131,16 @@ display does not mutate the definition. Unreferenced draft branches can be delet
 referenced branches must first have their traversal, anchor, or return definition
 removed.
 
+Nodes also carry interaction metadata: submenu, slider, selection, or switch,
+plus a required declared default for value-bearing controls. Conditional
+`disabledWhen` rules reference another value-bearing node and retain gray rows in
+their ordered topology. Default-value evaluation is descriptive UI state rather
+than telemetry; it does not alter the planner's explicit recorded operations.
+
 An indented-outline planner can add or synchronize an entire branch in one
 atomic write. It reuses matching stable IDs, previews additions, updates,
-reordering, and removals, and refuses to remove nodes referenced by recorded
-behavior.
+reordering, removals, interaction types, defaults, and disabled rules, and
+refuses to remove nodes referenced by recorded behavior.
 
 Named menu configurations describe settings-dependent visible layouts inside a
 single model YAML. Routes and anchors may be configuration-scoped; planning,

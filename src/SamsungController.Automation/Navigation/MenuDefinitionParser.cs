@@ -16,7 +16,9 @@ public sealed class MenuDefinitionParser
     private static readonly HashSet<string> ConfigurationFields =
         new(["id", "name", "conditions"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> NodeFields =
-        new(["id", "label", "parent", "description"], StringComparer.OrdinalIgnoreCase);
+        new(["id", "label", "parent", "description", "controlType", "defaultValue", "disabledWhen"], StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> DisabledConditionFields =
+        new(["setting", "equals"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> AnchorFields =
         new(["id", "label", "target", "configuration", "verified", "description", "validationSource", "returnStrategy", "steps"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ReturnStrategyFields =
@@ -176,10 +178,51 @@ public sealed class MenuDefinitionParser
                 RequiredScalar(fields, "id", context),
                 RequiredScalar(fields, "label", context),
                 OptionalScalar(fields, "parent"),
-                OptionalScalar(fields, "description")));
+                OptionalScalar(fields, "description"),
+                ParseControlType(OptionalScalar(fields, "controlType"), context),
+                OptionalScalar(fields, "defaultValue"),
+                fields.TryGetValue("disabledWhen", out var disabledWhenNode)
+                    ? ParseDisabledConditions(
+                        RequireSequence(disabledWhenNode, $"disabledWhen in {context}"),
+                        context)
+                    : []));
         }
 
         return nodes;
+    }
+
+    private static MenuControlType ParseControlType(string? value, string context)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return MenuControlType.Submenu;
+        }
+
+        var normalized = value.Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal);
+        return Enum.TryParse<MenuControlType>(normalized, ignoreCase: true, out var result)
+               && Enum.IsDefined(result)
+            ? result
+            : throw new MenuDefinitionParseException(
+                $"'controlType' in {context} must be submenu, slider, selection, or switch.");
+    }
+
+    private static IReadOnlyList<MenuNodeDisabledCondition> ParseDisabledConditions(
+        YamlSequenceNode sequence,
+        string nodeContext)
+    {
+        var conditions = new List<MenuNodeDisabledCondition>(sequence.Children.Count);
+        for (var index = 0; index < sequence.Children.Count; index++)
+        {
+            var context = $"{nodeContext} disabled condition {index + 1}";
+            var fields = ReadFields(RequireMapping(sequence.Children[index], context), context);
+            EnsureAllowedFields(fields, DisabledConditionFields, context);
+            conditions.Add(new MenuNodeDisabledCondition(
+                RequiredScalar(fields, "setting", context),
+                RequiredScalar(fields, "equals", context)));
+        }
+
+        return conditions;
     }
 
     private static IReadOnlyList<MenuAnchor> ParseAnchors(YamlSequenceNode sequence)

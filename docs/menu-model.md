@@ -82,9 +82,26 @@ timing:
 nodes:
   - id: normal-video
     label: Normal video
+    controlType: submenu
 
   - id: settings
     label: Settings
+    controlType: submenu
+
+  - id: adaptive-picture
+    label: Adaptive Picture
+    parent: settings
+    controlType: switch
+    defaultValue: off
+
+  - id: brightness
+    label: Brightness
+    parent: settings
+    controlType: slider
+    defaultValue: 50
+    disabledWhen:
+      - setting: adaptive-picture
+        equals: on
 
 anchors:
   - id: normal-video
@@ -129,6 +146,23 @@ be used in every layout, so omit it only for behavior that has genuinely been
 verified as layout-independent. New UI recordings are automatically tagged with
 the active configuration. A verified route from another configuration never
 contributes to direct or calculated navigation.
+
+Each node also describes how the highlighted row behaves. `controlType` is
+`submenu`, `slider`, `selection`, or `switch`; older definitions that omit it
+continue to load as `submenu`. Sliders and selections require a human-readable
+`defaultValue`, and switches require `on` or `off`. A submenu has no value.
+These defaults document the expected initial TV setup; SamsungController cannot
+read the live value from the TV.
+
+`disabledWhen` documents rows that remain visible and occupy their normal place
+in the menu but become unavailable or gray. Each condition names another
+value-bearing node and the value that disables this node. Multiple conditions
+use OR behavior: any matching condition disables the row. The declared defaults
+let the UI mark a row as disabled by default; changing a value on the TV does not
+automatically update that prediction. Disabled metadata never removes a node or
+rewrites its recorded key sequence, so traversal order continues to include a
+gray row unless a separately selected menu configuration describes a topology
+where that row is actually absent.
 
 Parent relationships on nodes control tree presentation only. Within each parent,
 the YAML node sequence is the persistent custom order used to mirror the TV.
@@ -188,7 +222,13 @@ can be planned or sent.
    indented outline, add the expected menu positions with two spaces
    per level, preview the changes, and apply them to the same YAML. Matching
    labels under the same parent reuse their stable IDs; append `[stable-id]` to a
-   line when identity must be explicit. The safe default preserves unlisted
+   line when identity must be explicit. Add behavior metadata in braces before
+   the stable ID, for example `Brightness {slider; default=50}`, `Picture Mode
+   {selection; default=Filmmaker Mode}`, or `Adaptive Picture {switch;
+   default=off}`. A dependent gray row can be written as `Brightness {slider;
+   default=50; disabledWhen=adaptive-picture=on}`; separate multiple disabling
+   conditions with `|`. The fine-adjustment editor exposes the same fields as
+   form controls. The safe default preserves unlisted
    items. Disable it only to synchronize the complete selected branch; recorded
    references are protected from removal. Applying the outline advances to
    **Record route**. Open **Fine adjustments for individual menu items** only for

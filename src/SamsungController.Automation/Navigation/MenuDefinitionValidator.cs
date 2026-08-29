@@ -76,6 +76,8 @@ public sealed class MenuDefinitionValidator
                     $"node '{node.Id}'",
                     "A node cannot be its own parent."));
             }
+
+            ValidateMenuNodeBehavior(definition, node, errors);
         }
 
         DetectParentCycles(definition, errors);
@@ -141,6 +143,85 @@ public sealed class MenuDefinitionValidator
         }
 
         return errors;
+    }
+
+    private static void ValidateMenuNodeBehavior(
+        MenuDefinition definition,
+        MenuNode node,
+        ICollection<MenuDefinitionValidationError> errors)
+    {
+        var location = $"node '{node.Id}'";
+        if (!Enum.IsDefined(node.ControlType))
+        {
+            errors.Add(new MenuDefinitionValidationError(
+                location,
+                "Control type must be Submenu, Slider, Selection, or Switch."));
+        }
+
+        var hasDefaultValue = !string.IsNullOrWhiteSpace(node.DefaultValue);
+        if (node.ControlType == MenuControlType.Submenu && hasDefaultValue)
+        {
+            errors.Add(new MenuDefinitionValidationError(
+                location,
+                "A submenu cannot have a default value."));
+        }
+        else if (node.ControlType != MenuControlType.Submenu && !hasDefaultValue)
+        {
+            errors.Add(new MenuDefinitionValidationError(
+                location,
+                $"A {node.ControlType.ToString().ToLowerInvariant()} must define its default value."));
+        }
+
+        if (node.ControlType == MenuControlType.Switch
+            && hasDefaultValue
+            && !node.DefaultValue!.Equals("on", StringComparison.OrdinalIgnoreCase)
+            && !node.DefaultValue.Equals("off", StringComparison.OrdinalIgnoreCase))
+        {
+            errors.Add(new MenuDefinitionValidationError(
+                location,
+                "A switch default value must be 'on' or 'off'."));
+        }
+
+        var conditions = node.DisabledWhen ?? [];
+        if (conditions.Count > 20)
+        {
+            errors.Add(new MenuDefinitionValidationError(
+                location,
+                "A menu item can define at most 20 disabled conditions."));
+        }
+
+        var uniqueConditions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var condition in conditions)
+        {
+            var conditionLocation = $"{location} disabledWhen";
+            ValidateIdentifier(conditionLocation, condition.SettingNodeId, errors);
+            ValidateRequired(conditionLocation, "equals", condition.EqualsValue, errors);
+            if (!uniqueConditions.Add($"{condition.SettingNodeId}\u001f{condition.EqualsValue}"))
+            {
+                errors.Add(new MenuDefinitionValidationError(
+                    conditionLocation,
+                    $"Condition '{condition.SettingNodeId} = {condition.EqualsValue}' is duplicated."));
+            }
+
+            if (!definition.Nodes.TryGetValue(condition.SettingNodeId, out var setting))
+            {
+                errors.Add(new MenuDefinitionValidationError(
+                    conditionLocation,
+                    $"Setting node '{condition.SettingNodeId}' does not exist."));
+            }
+            else if (setting.Id.Equals(node.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                errors.Add(new MenuDefinitionValidationError(
+                    conditionLocation,
+                    "A menu item cannot disable itself based on its own value."));
+            }
+            else if (setting.ControlType == MenuControlType.Submenu)
+            {
+                errors.Add(new MenuDefinitionValidationError(
+                    conditionLocation,
+                    $"Setting node '{condition.SettingNodeId}' must be a slider, selection, or switch."));
+            }
+        }
     }
 
     private static void ValidateConfigurationReference(

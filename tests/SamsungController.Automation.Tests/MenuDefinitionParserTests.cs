@@ -14,6 +14,11 @@ public sealed class MenuDefinitionParserTests
         Assert.Equal("Test TV", definition.Model);
         Assert.Equal("1234.5", definition.Context.Firmware);
         Assert.Equal("Menu / Picture", definition.GetPath("picture"));
+        Assert.Equal(MenuControlType.Selection, definition.Nodes["picture"].ControlType);
+        Assert.Equal("Movie", definition.Nodes["picture"].DefaultValue);
+        var disabledCondition = Assert.Single(definition.Nodes["picture"].DisabledWhen!);
+        Assert.Equal("auto-picture", disabledCondition.SettingNodeId);
+        Assert.Equal("on", disabledCondition.EqualsValue);
         var anchor = definition.GetRequiredAnchor("normal");
         Assert.True(anchor.Verified);
         Assert.Equal(3, Assert.Single(anchor.Operations).Repeat);
@@ -124,9 +129,19 @@ public sealed class MenuDefinitionParserTests
             label: Normal video
           - id: menu
             label: Menu
+          - id: auto-picture
+            label: Auto Picture
+            parent: menu
+            controlType: switch
+            defaultValue: off
           - id: picture
             label: Picture
             parent: menu
+            controlType: selection
+            defaultValue: Movie
+            disabledWhen:
+              - setting: auto-picture
+                equals: on
         anchors:
           - id: normal
             label: Back to video

@@ -441,6 +441,10 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .menu-node strong, .menu-node small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu-node strong { font-size: 11px; font-weight: 500; }
 .menu-node small { margin-top: 4px; color: var(--faint); font-size: 8px; }
+.menu-node .menu-node-behavior { color: var(--muted); }
+.menu-node.disabled-default { opacity: .58; background: rgba(145,155,165,.045); }
+.menu-node.disabled-default strong { color: #8b989d; }
+.menu-node.conditionally-disabled { box-shadow: inset 2px 0 rgba(255,196,110,.35); }
 .node-badge { border: 1px solid var(--line); border-radius: 999px; padding: 4px 6px; color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; font-weight: 400; text-transform: uppercase; }
 .node-badge.current, .node-badge.verified { color: var(--cyan); border-color: rgba(124,231,220,.25); }
 .node-badge.draft { color: var(--amber); border-color: rgba(242,181,107,.25); }
@@ -601,7 +605,10 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .menu-tree-node-select span { min-width: 0; padding-left: calc(var(--tree-depth) * 13px); overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .menu-tree-node.unverified .menu-tree-node-select span { color: var(--amber); }
 .menu-tree-node.unrecorded .menu-tree-node-select span { color: var(--danger); }
+.menu-tree-node.disabled-default .menu-tree-node-select span { color: #7f8b90; text-decoration: line-through; text-decoration-thickness: 1px; }
+.menu-tree-node.conditionally-disabled:not(.disabled-default) .menu-tree-node-select span::after { content: " ◇"; color: var(--amber); }
 .menu-tree-node-select small { color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.menu-tree-node-select small b { color: var(--muted); font-weight: 500; }
 .menu-tree-order-actions { display: flex; gap: 3px; padding-right: 5px; }
 .menu-tree-order-actions button { width: 25px; height: 25px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: #0b1821; color: var(--muted); font-size: 11px; cursor: pointer; }
 .menu-tree-order-actions button:hover:not(:disabled) { border-color: rgba(124,231,220,.4); color: var(--cyan); }
@@ -614,6 +621,17 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .menu-node-editor header span { color: var(--cyan); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .09em; }
 .menu-node-editor header strong { margin-top: 4px; font-size: 11px; }
 .menu-node-editor .field-note code { color: var(--cyan); }
+.node-disabled-rule-editor { margin-top: 13px; padding: 11px; border: 1px solid var(--line); border-radius: 7px; background: #09151e; }
+.node-disabled-rule-editor > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 9px; }
+.node-disabled-rule-editor > header span, .node-disabled-rule-editor > header b, .node-disabled-rule-editor > header small { display: block; }
+.node-disabled-rule-editor > header b { color: var(--amber); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; }
+.node-disabled-rule-editor > header small { margin-top: 3px; color: var(--faint); font-size: 8px; line-height: 1.4; }
+.node-disabled-rule-editor > header .secondary-action { flex: 0 0 auto; padding: 7px 9px; font-size: 8px; }
+.node-disabled-rule-editor > p { margin: 0; color: var(--faint); font-size: 8px; }
+.node-disabled-rule-row { display: grid; grid-template-columns: auto minmax(120px, 1fr) auto minmax(90px, .55fr) auto; align-items: center; gap: 7px; margin-top: 7px; }
+.node-disabled-rule-row > span { color: var(--faint); font-size: 8px; }
+.node-disabled-rule-row select, .node-disabled-rule-row input { min-width: 0; padding: 8px; font-size: 8px; }
+.node-disabled-rule-row .recorded-step-delete { width: 27px; height: 27px; min-width: 27px; }
 .menu-node-editor-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .menu-node-editor-actions .primary-action { width: auto; margin-left: auto; }
 .authoring-section-title { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
@@ -652,6 +670,12 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .recording-configuration-badge span { color: var(--amber); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; }
 .recording-configuration-badge strong { margin-top: 4px; font-size: 10px; }
 .recording-configuration-badge small { margin-top: 3px; color: var(--muted); font-size: 8px; line-height: 1.4; }
+.recording-target-behavior { padding: 10px; border: 1px solid rgba(124,231,220,.2); border-radius: 6px; background: rgba(124,231,220,.025); }
+.recording-target-behavior span, .recording-target-behavior strong, .recording-target-behavior small { display: block; }
+.recording-target-behavior span { color: var(--cyan); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.recording-target-behavior strong { margin-top: 4px; font-size: 9px; line-height: 1.45; }
+.recording-target-behavior small { margin-top: 4px; color: var(--amber); font-size: 8px; line-height: 1.4; }
+.recording-target-behavior.disabled-default { border-color: rgba(145,155,165,.28); background: rgba(145,155,165,.045); }
 .recording-actions { display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; margin-top: 15px; }
 .recording-phase-note { margin: 14px 0 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
 .recording-phase-note strong { color: var(--cyan); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
@@ -861,6 +885,8 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .authoring-intro-actions { justify-content: flex-start; flex-wrap: wrap; margin-top: 13px; }
     .authoring-form-grid, .authoring-form-grid.compact { grid-template-columns: 1fr; }
     .authoring-form-grid .wide-field { grid-column: auto; }
+    .node-disabled-rule-row { grid-template-columns: 1fr; }
+    .node-disabled-rule-row > span { padding-left: 2px; }
     .verified-setting-list { grid-template-columns: 1fr; }
     .verified-setting-row { align-items: start; }
     .recording-actions, .authoring-start-actions, .validation-confirmation, .validation-card { grid-template-columns: 1fr; }

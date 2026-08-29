@@ -47,6 +47,17 @@ public sealed class MenuDefinitionWriter
             AppendScalar(yaml, 4, "label", node.Label);
             AppendOptionalScalar(yaml, 4, "parent", node.ParentId);
             AppendOptionalScalar(yaml, 4, "description", node.Description);
+            AppendScalar(yaml, 4, "controlType", FormatControlType(node.ControlType));
+            AppendOptionalScalar(yaml, 4, "defaultValue", node.DefaultValue);
+            if (node.DisabledWhen is { Count: > 0 })
+            {
+                yaml.AppendLine("    disabledWhen:");
+                foreach (var condition in node.DisabledWhen)
+                {
+                    AppendListScalar(yaml, 6, "setting", condition.SettingNodeId);
+                    AppendScalar(yaml, 8, "equals", condition.EqualsValue);
+                }
+            }
         }
 
         yaml.AppendLine();
@@ -84,6 +95,15 @@ public sealed class MenuDefinitionWriter
 
         return yaml.ToString();
     }
+
+    private static string FormatControlType(MenuControlType controlType) => controlType switch
+    {
+        MenuControlType.Submenu => "submenu",
+        MenuControlType.Slider => "slider",
+        MenuControlType.Selection => "selection",
+        MenuControlType.Switch => "switch",
+        _ => throw new ArgumentOutOfRangeException(nameof(controlType), controlType, null)
+    };
 
     public async Task WriteFileAsync(
         string path,

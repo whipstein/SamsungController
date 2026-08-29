@@ -191,13 +191,17 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 "picture",
                 "Picture controls",
                 "settings",
-                "The Picture menu is visible"));
+                "The Picture menu is visible",
+                MenuControlType.Selection,
+                "Filmmaker Mode"));
 
         var snapshot = controller.GetMenuNavigationSnapshot();
         var picture = Assert.Single(snapshot.Nodes, node => node.Id == "picture");
         Assert.Equal("Picture controls", picture.Label);
         Assert.Equal("settings", picture.ParentId);
         Assert.Equal("TV interface / Settings / Picture controls", picture.Path);
+        Assert.Equal(MenuControlType.Selection, picture.ControlType);
+        Assert.Equal("Filmmaker Mode", picture.DefaultValue);
 
         await controller.MoveMenuNodeAsync("sound", -1);
 
@@ -243,15 +247,16 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             Settings [settings]
               Picture
                 Expert Settings
-                  Brightness
+                  Adaptive Picture {switch; default=on}
+                  Brightness {slider; default=50; disabledWhen=adaptive-picture=on}
                   Contrast
               Sound
             """;
         var request = new MenuTopologyOutlineRequest("tv-interface", outline);
         var preview = controller.PreviewMenuTopologyOutline(request);
 
-        Assert.Equal(7, preview.OutlineNodeCount);
-        Assert.Equal(6, preview.AddedNodeCount);
+        Assert.Equal(8, preview.OutlineNodeCount);
+        Assert.Equal(7, preview.AddedNodeCount);
         Assert.Equal(0, preview.RemovedNodeCount);
         await controller.ApplyMenuTopologyOutlineAsync(request);
 
@@ -259,10 +264,18 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         Assert.Equal(
             [
                 "tv-interface", "normal-video", "settings", "picture",
-                "expert-settings", "brightness", "contrast", "sound"
+                "expert-settings", "adaptive-picture", "brightness", "contrast", "sound"
             ],
             snapshot.Nodes.Select(node => node.Id));
         Assert.Equal("expert-settings", snapshot.Nodes.Single(node => node.Id == "brightness").ParentId);
+        var adaptivePicture = snapshot.Nodes.Single(node => node.Id == "adaptive-picture");
+        Assert.Equal(MenuControlType.Switch, adaptivePicture.ControlType);
+        Assert.Equal("on", adaptivePicture.DefaultValue);
+        var brightness = snapshot.Nodes.Single(node => node.Id == "brightness");
+        Assert.Equal(MenuControlType.Slider, brightness.ControlType);
+        Assert.Equal("50", brightness.DefaultValue);
+        Assert.True(brightness.IsDisabledByDefault);
+        Assert.Equal("adaptive-picture", Assert.Single(brightness.DisabledWhen).SettingNodeId);
         Assert.All(snapshot.Nodes.Where(node => node.Id != "tv-interface"), node =>
             Assert.False(node.HasVerifiedRoute));
 

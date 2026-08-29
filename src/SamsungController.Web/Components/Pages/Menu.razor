@@ -69,7 +69,7 @@
             <div class="menu-tree" role="tree" aria-label="Verified Samsung menu destinations">
                 @foreach (var node in VerifiedNodes)
                 {
-                    <button class="menu-node @(SelectedTarget == node.Id ? "selected" : "") @(Navigation.State.NodeId == node.Id ? "current" : "")"
+                    <button class="menu-node @(SelectedTarget == node.Id ? "selected" : "") @(Navigation.State.NodeId == node.Id ? "current" : "") @(node.IsDisabledByDefault ? "disabled-default" : node.DisabledWhen.Count > 0 ? "conditionally-disabled" : "")"
                             style="@($"padding-left: {14 + node.Depth * 18}px")"
                             role="treeitem"
                             aria-label="Run verified route to @node.Path"
@@ -79,6 +79,7 @@
                         <span>
                             <strong>@node.Label</strong>
                             <small>@(node.Description ?? node.Path)</small>
+                            <small class="menu-node-behavior">@FormatNodeBehavior(node)</small>
                         </span>
                         <b class="node-badge @(Navigation.State.NodeId == node.Id ? "current" : "verified")">
                             @(Navigation.State.NodeId == node.Id ? "Current" : "Run")
@@ -215,6 +216,34 @@
         ? "Expected menu state is unknown. Run a verified anchor to synchronize it."
         : $"Expected menu path: {Navigation.State.Path}. {Navigation.State.Reason}";
     private string ConfidenceClass => Navigation.State.Confidence.ToString().ToLowerInvariant();
+
+    private string FormatNodeBehavior(MenuNodeSummary node)
+    {
+        var control = node.ControlType switch
+        {
+            MenuControlType.Submenu => "Sub-menu",
+            MenuControlType.Slider => "Slider",
+            MenuControlType.Selection => "Selection",
+            MenuControlType.Switch => "Switch",
+            _ => node.ControlType.ToString()
+        };
+        var defaultValue = node.DefaultValue is null ? string.Empty : $" · default {node.DefaultValue}";
+        if (node.DisabledWhen.Count == 0)
+        {
+            return control + defaultValue;
+        }
+
+        var rules = node.DisabledWhen.Select(condition =>
+        {
+            var setting = Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
+                condition.SettingNodeId,
+                StringComparison.OrdinalIgnoreCase));
+            return $"{setting?.Label ?? condition.SettingNodeId} = {condition.EqualsValue}";
+        });
+        return control + defaultValue
+               + (node.IsDisabledByDefault ? " · disabled by default when " : " · disabled when ")
+               + string.Join(" or ", rules);
+    }
 
     protected override async Task OnInitializedAsync()
     {

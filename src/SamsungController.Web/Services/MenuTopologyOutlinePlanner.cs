@@ -60,11 +60,23 @@ internal static class MenuTopologyOutlinePlanner
             }
 
             usedIds.Add(nodeId);
+            var controlType = entry.ControlType ?? existing?.ControlType ?? MenuControlType.Submenu;
+            var defaultValue = entry.DefaultValueSpecified
+                ? entry.DefaultValue
+                : entry.ControlType == MenuControlType.Submenu
+                    ? null
+                    : existing?.DefaultValue;
+            var disabledWhen = entry.DisabledWhenSpecified
+                ? entry.DisabledWhen
+                : existing?.DisabledWhen ?? [];
             var node = new MenuNode(
                 nodeId,
                 entry.Label,
                 resolvedParentId,
-                existing?.Description);
+                existing?.Description,
+                controlType,
+                defaultValue,
+                disabledWhen);
             nodesById[node.Id] = node;
             if (!plannedChildren.TryGetValue(resolvedParentId, out var children))
             {
@@ -85,7 +97,10 @@ internal static class MenuTopologyOutlinePlanner
                 changes.Add($"Add {BuildPath(nodesById, node.Id)} [{node.Id}]");
             }
             else if (!existing.Label.Equals(node.Label, StringComparison.Ordinal)
-                     || !string.Equals(existing.ParentId, node.ParentId, StringComparison.OrdinalIgnoreCase))
+                     || !string.Equals(existing.ParentId, node.ParentId, StringComparison.OrdinalIgnoreCase)
+                     || existing.ControlType != node.ControlType
+                     || !string.Equals(existing.DefaultValue, node.DefaultValue, StringComparison.Ordinal)
+                     || !ConditionsEqual(existing.DisabledWhen, node.DisabledWhen))
             {
                 updatedCount++;
                 changes.Add($"Update {BuildPath(nodesById, node.Id)} [{node.Id}]");
@@ -194,8 +209,7 @@ internal static class MenuTopologyOutlinePlanner
                 content = content[2..].Trim();
             }
 
-            var (label, explicitId) = ParseLabelAndId(content, index + 1);
-            result.Add(new OutlineEntry(index + 1, depth, label, explicitId));
+            result.Add(ParseOutlineEntry(content, index + 1, depth));
             if (result.Count > MaximumOutlineNodes)
             {
                 throw new InvalidOperationException(
@@ -206,9 +220,10 @@ internal static class MenuTopologyOutlinePlanner
         return result;
     }
 
-    private static (string Label, string? ExplicitId) ParseLabelAndId(
+    private static OutlineEntry ParseOutlineEntry(
         string content,
-        int lineNumber)
+        int lineNumber,
+        int depth)
     {
         string? explicitId = null;
         var label = content;
@@ -227,6 +242,52 @@ internal static class MenuTopologyOutlinePlanner
             }
         }
 
+        MenuControlType? controlType = null;
+        var defaultValueSpecified = false;
+        string? defaultValue = null;
+        var disabledWhenSpecified = false;
+        IReadOnlyList<MenuNodeDisabledCondition> disabledWhen = [];
+        if (label.EndsWith('}'))
+        {
+            var openingBrace = label.LastIndexOf(" {", StringComparison.Ordinal);
+            if (openingBrace < 0)
+            {
+                throw new InvalidOperationException(
+                    $"Outline line {lineNumber} has control details without a preceding space.");
+            }
+
+            var metadata = label[(openingBrace + 2)..^1];
+            label = label[..openingBrace].Trim();
+            foreach (var rawPart in metadata.Split(';', StringSplitOptions.TrimEntries))
+            {
+                if (string.IsNullOrWhiteSpace(rawPart))
+                {
+                    continue;
+                }
+
+                if (rawPart.StartsWith("default=", StringComparison.OrdinalIgnoreCase))
+                {
+                    defaultValueSpecified = true;
+                    defaultValue = rawPart["default=".Length..].Trim();
+                    continue;
+                }
+
+                if (rawPart.StartsWith("disabledWhen=", StringComparison.OrdinalIgnoreCase))
+                {
+                    disabledWhenSpecified = true;
+                    disabledWhen = ParseDisabledConditions(
+                        rawPart["disabledWhen=".Length..],
+                        lineNumber);
+                    continue;
+                }
+
+                var typeValue = rawPart.StartsWith("type=", StringComparison.OrdinalIgnoreCase)
+                    ? rawPart["type=".Length..]
+                    : rawPart;
+                controlType = ParseControlType(typeValue, lineNumber);
+            }
+        }
+
         if (string.IsNullOrWhiteSpace(label))
         {
             throw new InvalidOperationException(
@@ -239,7 +300,55 @@ internal static class MenuTopologyOutlinePlanner
                 $"Outline line {lineNumber} exceeds the {MaximumLabelLength}-character menu-item limit.");
         }
 
-        return (label, explicitId);
+        return new OutlineEntry(
+            lineNumber,
+            depth,
+            label,
+            explicitId,
+            controlType,
+            defaultValueSpecified,
+            string.IsNullOrWhiteSpace(defaultValue) ? null : defaultValue,
+            disabledWhenSpecified,
+            disabledWhen);
+    }
+
+    private static MenuControlType ParseControlType(string value, int lineNumber)
+    {
+        var normalized = value.Trim()
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal);
+        return Enum.TryParse<MenuControlType>(normalized, ignoreCase: true, out var result)
+               && Enum.IsDefined(result)
+            ? result
+            : throw new InvalidOperationException(
+                $"Outline line {lineNumber} control type must be submenu, slider, selection, or switch.");
+    }
+
+    private static IReadOnlyList<MenuNodeDisabledCondition> ParseDisabledConditions(
+        string value,
+        int lineNumber)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return [];
+        }
+
+        var result = new List<MenuNodeDisabledCondition>();
+        foreach (var rawCondition in value.Split('|', StringSplitOptions.TrimEntries))
+        {
+            var equals = rawCondition.IndexOf('=');
+            if (equals <= 0 || equals == rawCondition.Length - 1)
+            {
+                throw new InvalidOperationException(
+                    $"Outline line {lineNumber} disabledWhen entries must use setting-id=value.");
+            }
+
+            result.Add(new MenuNodeDisabledCondition(
+                rawCondition[..equals].Trim(),
+                rawCondition[(equals + 1)..].Trim()));
+        }
+
+        return result;
     }
 
     private static MenuNode? ResolveExistingNode(
@@ -516,9 +625,30 @@ internal static class MenuTopologyOutlinePlanner
         return string.Join(" / ", labels);
     }
 
+    private static bool ConditionsEqual(
+        IReadOnlyList<MenuNodeDisabledCondition>? left,
+        IReadOnlyList<MenuNodeDisabledCondition>? right)
+    {
+        var leftItems = left ?? [];
+        var rightItems = right ?? [];
+        return leftItems.Count == rightItems.Count
+               && leftItems.Zip(rightItems).All(pair =>
+                   pair.First.SettingNodeId.Equals(
+                       pair.Second.SettingNodeId,
+                       StringComparison.OrdinalIgnoreCase)
+                   && pair.First.EqualsValue.Equals(
+                       pair.Second.EqualsValue,
+                       StringComparison.Ordinal));
+    }
+
     private sealed record OutlineEntry(
         int LineNumber,
         int Depth,
         string Label,
-        string? ExplicitId);
+        string? ExplicitId,
+        MenuControlType? ControlType,
+        bool DefaultValueSpecified,
+        string? DefaultValue,
+        bool DisabledWhenSpecified,
+        IReadOnlyList<MenuNodeDisabledCondition> DisabledWhen);
 }

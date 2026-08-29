@@ -108,7 +108,11 @@ public sealed record MenuNodeSummary(
     string? Description,
     string? ParentId,
     bool HasVerifiedRoute,
-    bool HasDraftRoute);
+    bool HasDraftRoute,
+    MenuControlType ControlType,
+    string? DefaultValue,
+    IReadOnlyList<MenuNodeDisabledCondition> DisabledWhen,
+    bool IsDisabledByDefault);
 
 public sealed record MenuAnchorSummary(
     string Id,
@@ -172,7 +176,10 @@ public sealed record MenuNodeEditRequest(
     string Id,
     string Label,
     string? ParentId,
-    string? Description);
+    string? Description,
+    MenuControlType ControlType = MenuControlType.Submenu,
+    string? DefaultValue = null,
+    IReadOnlyList<MenuNodeDisabledCondition>? DisabledWhen = null);
 
 public sealed record MenuTopologyOutlineRequest(
     string ParentNodeId,
