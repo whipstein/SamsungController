@@ -198,24 +198,32 @@
                                     <textarea value="@TopologyOutline"
                                               @oninput="HandleTopologyOutlineChanged"
                                               @ref="TopologyOutlineElement"
+                                              aria-describedby="menu-outline-guidance menu-outline-error"
                                               rows="11"
                                               spellcheck="false"
                                               placeholder="Settings {submenu}&#10;  Picture {submenu}&#10;    Expert Settings {submenu}&#10;      Brightness {slider; default=50; min=0; max=100}&#10;      Color Tone {selection; default=Warm2; options=Standard|Warm1|Warm2}&#10;      Adaptive Picture {switch; default=off}&#10;      Reset Picture {confirmation; default=Cancel; options=Reset|Cancel}"
                                               disabled="@(!CanEditMenuTree)"></textarea>
                                 </label>
-                                <small class="bulk-topology-indent-note">Enter starts the next line with the same indentation as the current line.</small>
+                                <small id="menu-outline-guidance" class="bulk-topology-indent-note">Enter starts the next line with the same indentation as the current line.</small>
+                                @if (!string.IsNullOrWhiteSpace(TopologyOutlineError))
+                                {
+                                    <div id="menu-outline-error" class="bulk-topology-error" role="alert">
+                                        <strong>Outline could not be validated</strong>
+                                        <span>@TopologyOutlineError</span>
+                                    </div>
+                                }
                                 <label class="bulk-topology-keep">
                                     <input type="checkbox" checked="@KeepUnlistedTopologyNodes" @onchange="HandleKeepUnlistedChanged" disabled="@(!CanEditMenuTree)" />
                                     <span>
-                                        <strong>Keep menu items not listed</strong>
-                                        <small>Recommended. Turn this off only to synchronize the entire selected branch; items used by recordings are protected from removal.</small>
+                                        <strong>This is a partial outline · keep omitted menu items</strong>
+                                        <small>Leave this off for normal editing so deleting a line removes that item from YAML. Enable it only when the text intentionally describes part of the selected branch. Items used by recordings remain protected.</small>
                                     </span>
                                 </label>
                                 <div class="bulk-topology-actions">
                                     <button class="secondary-action" @onclick="PreviewTopologyOutline" disabled="@(!CanPreviewTopology)">Preview changes</button>
                                     <button class="primary-action" @onclick="ApplyTopologyOutlineAsync" disabled="@(!CanApplyTopology)">Save outline to YAML <span>→</span></button>
                                 </div>
-                                <small class="bulk-topology-save-note">Saving is two-step: preview the current text, then choose <strong>Save outline to YAML</strong>. Editing the text requires a new preview.</small>
+                                <small class="bulk-topology-save-note">Saving is two-step: preview the current text, then choose <strong>Save outline to YAML</strong>. Editing the text requires a new preview. Deleted lines appear as removals in the preview.</small>
                                 @if (TopologyPreview is not null)
                                 {
                                     <div class="bulk-topology-preview @(TopologyPreview.HasChanges ? "" : "no-changes")">
@@ -1093,7 +1101,8 @@
     private string TopologyOutline { get; set; } = string.Empty;
     private bool TopologyOutlineDirty { get; set; }
     private string? TopologyOutlineDefinitionPath { get; set; }
-    private bool KeepUnlistedTopologyNodes { get; set; } = true;
+    private bool KeepUnlistedTopologyNodes { get; set; }
+    private string? TopologyOutlineError { get; set; }
     private MenuTopologyOutlinePreview? TopologyPreview { get; set; }
     private bool ShowMenuConfigurationEditor { get; set; }
     private bool IsAddingMenuConfiguration { get; set; }
@@ -1707,6 +1716,7 @@
         TopologyOutline = args.Value?.ToString() ?? string.Empty;
         TopologyOutlineDirty = true;
         TopologyPreview = null;
+        TopologyOutlineError = null;
         LocalError = null;
     }
 
@@ -1714,6 +1724,7 @@
     {
         KeepUnlistedTopologyNodes = args.Value is true;
         TopologyPreview = null;
+        TopologyOutlineError = null;
         LocalError = null;
     }
 
@@ -1744,12 +1755,14 @@
         TopologyOutlineDirty = false;
         TopologyOutlineDefinitionPath = Navigation.DefinitionPath;
         TopologyPreview = null;
+        TopologyOutlineError = null;
         LocalError = null;
     }
 
     private void PreviewTopologyOutline()
     {
         LocalError = null;
+        TopologyOutlineError = null;
         try
         {
             TopologyPreview = Controller.PreviewMenuTopologyOutline(CreateTopologyOutlineRequest());
@@ -1757,19 +1770,38 @@
         catch (Exception exception)
         {
             TopologyPreview = null;
-            LocalError = exception.Message;
+            TopologyOutlineError = exception.Message;
         }
     }
 
-    private Task ApplyTopologyOutlineAsync() => RunBusyAsync(async () =>
+    private async Task ApplyTopologyOutlineAsync()
     {
-        await Controller.ApplyMenuTopologyOutlineAsync(CreateTopologyOutlineRequest());
-        Refresh();
-        LoadCurrentTopologyOutline();
-        InitializeNodeDefaults(force: true);
-        MenuTreeExpanded = false;
-        PendingSetupScroll = MenuSetupStep.Record;
-    });
+        IsBusy = true;
+        LocalError = null;
+        TopologyOutlineError = null;
+        try
+        {
+            await Controller.ApplyMenuTopologyOutlineAsync(CreateTopologyOutlineRequest());
+            Refresh();
+            LoadCurrentTopologyOutline();
+            InitializeNodeDefaults(force: true);
+            MenuTreeExpanded = false;
+            PendingSetupScroll = MenuSetupStep.Record;
+        }
+        catch (OperationCanceledException)
+        {
+            // Service state reports cancellation.
+        }
+        catch (Exception exception)
+        {
+            TopologyPreview = null;
+            TopologyOutlineError = exception.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 
     private MenuTopologyOutlineRequest CreateTopologyOutlineRequest() => new(
         TopologyParentId,

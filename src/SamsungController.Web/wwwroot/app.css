@@ -512,6 +512,8 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .menu-setup-next .secondary-action { padding: 7px 9px; font-size: 8px; white-space: nowrap; }
 .authoring-message { margin-top: 14px; padding: 10px 12px; border: 1px solid rgba(124,231,220,.2); border-radius: 6px; background: var(--cyan-soft); color: var(--cyan); font-size: 10px; }
 .authoring-message.error { border-color: rgba(255,119,119,.28); background: rgba(255,119,119,.07); color: var(--danger); }
+.bulk-topology-error { display: grid; gap: 4px; margin-top: 8px; padding: 10px 12px; border: 1px solid rgba(255,119,119,.32); border-radius: 6px; background: rgba(255,119,119,.07); color: var(--danger); font-size: 9px; line-height: 1.45; }
+.bulk-topology-error strong { color: var(--ink); font-size: 10px; }
 .verified-setting-manager { padding: 18px 0; border-bottom: 1px solid var(--line); }
 .verified-setting-manager .authoring-section-body > p { margin: -5px 0 13px; color: var(--muted); font-size: 10px; line-height: 1.55; }
 .verified-setting-manager .authoring-section-body > .field-note { margin: 11px 0 0; color: var(--faint); }

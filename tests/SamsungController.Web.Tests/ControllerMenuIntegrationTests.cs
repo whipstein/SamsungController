@@ -337,6 +337,49 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         Assert.Equal("Outline TV", reparsed.Name);
         Assert.Single(reparsed.Configurations);
         Assert.Equal("default", reparsed.Configurations.Values.Single().Id);
+
+        var outlineWithoutContrast = string.Join(
+            '\n',
+            outline.Split('\n').Where(line => !line.Trim().Equals(
+                "Contrast",
+                StringComparison.Ordinal)));
+        var removalRequest = new MenuTopologyOutlineRequest(
+            "tv-interface",
+            outlineWithoutContrast);
+        var removalPreview = controller.PreviewMenuTopologyOutline(removalRequest);
+
+        Assert.Equal(1, removalPreview.RemovedNodeCount);
+        Assert.Contains(
+            removalPreview.Changes,
+            change => change.Contains("Contrast", StringComparison.Ordinal));
+
+        await controller.ApplyMenuTopologyOutlineAsync(removalRequest);
+        var afterRemoval = controller.GetMenuNavigationSnapshot();
+        Assert.DoesNotContain(afterRemoval.Nodes, node => node.Id == "contrast");
+    }
+
+    [Fact]
+    public async Task MenuTopologyOutlineFormattingErrorIdentifiesTheLineAndCorrection()
+    {
+        Directory.CreateDirectory(_directory);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+        await controller.CreateMenuDefinitionAsync(new MenuDefinitionCreationRequest(
+            "format-error-tv",
+            "Format Error TV",
+            "Samsung Test TV",
+            "1000",
+            "SDR",
+            "Movie",
+            "HDMI 1"));
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            controller.PreviewMenuTopologyOutline(new MenuTopologyOutlineRequest(
+                "tv-interface",
+                "Settings\n   Picture")));
+
+        Assert.Contains("line 2", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("two spaces", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -196,7 +196,7 @@ public sealed record MenuNodeEditRequest(
 public sealed record MenuTopologyOutlineRequest(
     string ParentNodeId,
     string Outline,
-    bool KeepUnlistedNodes = true);
+    bool KeepUnlistedNodes = false);
 
 public sealed record MenuTopologyOutlinePreview(
     int OutlineNodeCount,

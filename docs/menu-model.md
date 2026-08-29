@@ -250,7 +250,9 @@ can be planned or sent.
    branch as an indented outline; edit it directly or use **Reload branch from
    YAML** to discard unsaved text. Add the expected menu positions with two spaces
    per level, choose **Preview changes**, and then choose **Save outline to
-   YAML**. Any text edit invalidates the preview and requires a new one. Matching
+   YAML**. Any text edit invalidates the preview and requires a new one. Invalid
+   formatting is reported beside the editor with the affected outline line.
+   Matching
    labels under the same parent reuse their stable IDs; append `[stable-id]` to a
    line when identity must be explicit. Add behavior metadata in braces before
    the stable ID, for example `Brightness {slider; default=50; min=0; max=100}`, `Picture Mode
@@ -258,12 +260,13 @@ can be planned or sent.
    `Adaptive Picture {switch; default=off}`, or `Reset Picture {confirmation;
    default=Cancel; options=Reset|Cancel}`. The option order after
    `options=` is preserved. A dependent gray row can be written as `Brightness {slider;
-   default=50; disabledWhen=adaptive-picture=on}`; separate multiple disabling
+   default=50; min=0; max=100; disabledWhen=adaptive-picture=on}`; separate multiple disabling
    conditions with `|`. The fine-adjustment editor exposes selection and
    confirmation choices as an ordered add/remove/move list, and exposes slider
-   boundaries as numeric fields. The safe default preserves unlisted
-   items. Disable it only to synchronize the complete selected branch; recorded
-   references are protected from removal. Applying the outline advances to
+   boundaries as numeric fields. By default the outline synchronizes the complete
+   selected branch, so deleting a line previews and saves that item as a removal.
+   Enable partial-outline mode only when unlisted items should remain; recorded
+   references are protected from removal in either mode. Applying the outline advances to
    **Record route**. Open **Fine adjustments for individual menu items** only for
    precise corrections and descriptions. Choose **Custom · TV
    order** and move siblings up or down to match the on-screen menu; switch to
