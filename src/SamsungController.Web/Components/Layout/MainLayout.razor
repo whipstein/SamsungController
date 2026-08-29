@@ -38,6 +38,7 @@
                             <li><strong>Connect/Disconnect</strong> uses the TV profile last saved on the Connection page.</li>
                             <li><strong>Quick access</strong> runs pinned remote keys or behaviorally verified macros. Return to video is pinned by default.</li>
                             <li><strong>Current menu</strong> is the application's expected location, not a cursor position reported by the TV.</li>
+                            <li><strong>Menu configuration</strong> identifies which settings-dependent list layout is active. Change it before navigation when the TV adds or removes menu rows.</li>
                             <li><strong>Warming</strong> means authorization succeeded and a requested command is being held until the TV is ready.</li>
                         </ul>
                         <p class="help-callout safe">Commands are temporarily disabled while a macro, verified traversal, or live recording owns the TV connection.</p>
@@ -83,12 +84,33 @@
                      aria-label="@MenuStateTitle">
                     <span>CURRENT MENU</span>
                     <strong>@(Snapshot.MenuLabel ?? "Unknown")</strong>
+                    @if (Navigation.Configurations.Count > 1)
+                    {
+                        <select value="@Navigation.ActiveConfigurationId"
+                                @onchange="ChangeHeaderMenuConfigurationAsync"
+                                disabled="@MenuConfigurationControlDisabled"
+                                aria-label="Active menu configuration"
+                                title="Choose the visible menu layout before running menu navigation">
+                            @foreach (var configuration in Navigation.Configurations)
+                            {
+                                <option value="@configuration.Id">@configuration.Name</option>
+                            }
+                        </select>
+                    }
+                    else
+                    {
+                        <small>@ActiveMenuConfigurationLabel</small>
+                    }
                 </div>
             </div>
 
             @if (!string.IsNullOrWhiteSpace(ConnectionControlError))
             {
                 <div class="topbar-feedback danger" role="alert">@ConnectionControlError</div>
+            }
+            else if (!string.IsNullOrWhiteSpace(MenuConfigurationError))
+            {
+                <div class="topbar-feedback danger" role="alert">@MenuConfigurationError</div>
             }
             else if (!string.IsNullOrWhiteSpace(QuickAccessError))
             {
@@ -189,6 +211,7 @@
 @code {
     private ControllerSnapshot Snapshot { get; set; } = null!;
     private MenuAuthoringSnapshot Authoring { get; set; } = null!;
+    private MenuNavigationSnapshot Navigation { get; set; } = null!;
     private IReadOnlyList<QuickAccessAction> QuickActions { get; set; } = [];
     private IReadOnlyList<MacroSummary> QuickMacros { get; set; } = [];
     private QuickAccessActionKind QuickEditorKind { get; set; } = QuickAccessActionKind.RemoteKey;
@@ -200,9 +223,11 @@
     private bool QuickEditorBusy { get; set; }
     private bool QuickActionBusy { get; set; }
     private bool ConnectionControlBusy { get; set; }
+    private bool MenuConfigurationBusy { get; set; }
     private string? QuickAccessError { get; set; }
     private string? QuickAccessStatus { get; set; }
     private string? ConnectionControlError { get; set; }
+    private string? MenuConfigurationError { get; set; }
     private PendingQuickMacroExecution? PendingQuickMacro { get; set; }
 
     private bool QuickControlsDisabled => Snapshot.ConnectionState != SamsungConnectionState.Connected ||
@@ -213,6 +238,10 @@
     private bool HeaderConnectionDisabled => ConnectionControlBusy ||
         Snapshot.MacroRunning || Snapshot.NavigationRunning || Authoring.IsRecording ||
         (!CanDisconnectFromHeader && string.IsNullOrWhiteSpace(Snapshot.Host));
+    private bool MenuConfigurationControlDisabled => MenuConfigurationBusy
+        || Snapshot.MacroRunning
+        || Snapshot.NavigationRunning
+        || Authoring.IsRecording;
     private string HeaderConnectionTitle => CanDisconnectFromHeader
         ? "Disconnect from the TV"
         : string.IsNullOrWhiteSpace(Snapshot.Host)
@@ -224,8 +253,11 @@
             : !string.IsNullOrWhiteSpace(QuickMacro));
     private string MenuConfidenceClass => Snapshot.MenuConfidence.ToString().ToLowerInvariant();
     private string MenuStateTitle => Snapshot.MenuPath is null
-        ? "Expected menu state is unknown. Run a verified anchor to synchronize it."
-        : $"Expected menu path: {Snapshot.MenuPath}. Confidence: {Snapshot.MenuConfidence}. This is predicted, not reported by the TV.";
+        ? $"Expected menu state is unknown. Active menu configuration: {ActiveMenuConfigurationLabel}. Run a verified anchor to synchronize it."
+        : $"Expected menu path: {Snapshot.MenuPath}. Confidence: {Snapshot.MenuConfidence}. Active menu configuration: {ActiveMenuConfigurationLabel}. This is predicted, not reported by the TV.";
+    private string ActiveMenuConfigurationLabel => Navigation.Configurations
+        .FirstOrDefault(configuration => configuration.IsActive)?.Name
+        ?? "Universal / legacy layout";
 
     private string StateClass => Snapshot.ConnectionState switch
     {
@@ -240,6 +272,7 @@
     {
         Snapshot = Controller.GetSnapshot();
         Authoring = Controller.GetMenuAuthoringSnapshot();
+        Navigation = Controller.GetMenuNavigationSnapshot();
         QuickActions = Controller.GetQuickAccessActions();
         Controller.Changed += HandleControllerChanged;
         await Controller.InitializeAsync();
@@ -287,6 +320,27 @@
         finally
         {
             ConnectionControlBusy = false;
+            Refresh();
+        }
+    }
+
+    private async Task ChangeHeaderMenuConfigurationAsync(ChangeEventArgs args)
+    {
+        MenuConfigurationBusy = true;
+        MenuConfigurationError = null;
+        try
+        {
+            var configurationId = args.Value?.ToString()
+                ?? throw new InvalidOperationException("Choose a menu configuration.");
+            await Controller.SetMenuConfigurationAsync(configurationId);
+        }
+        catch (Exception exception)
+        {
+            MenuConfigurationError = exception.Message;
+        }
+        finally
+        {
+            MenuConfigurationBusy = false;
             Refresh();
         }
     }
@@ -467,6 +521,7 @@
     {
         Snapshot = Controller.GetSnapshot();
         Authoring = Controller.GetMenuAuthoringSnapshot();
+        Navigation = Controller.GetMenuNavigationSnapshot();
         QuickActions = Controller.GetQuickAccessActions();
     }
 

@@ -150,6 +150,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         GetMenuDefinitionPath(settings),
                         cancellationToken)
                     .ConfigureAwait(false);
+                menuDefinition = ActivateMenuConfiguration(
+                    menuDefinition,
+                    settings.MenuConfigurationId);
                 menuStateTracker = new MenuStateTracker(menuDefinition);
                 menuNavigator = new MenuNavigator(
                     menuDefinition,
@@ -273,22 +276,22 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         definition.GetDepth(node.Id),
                         node.Description,
                         node.ParentId,
-                        definition.Transitions.Values.Any(transition =>
+                        definition.ApplicableTransitions.Any(transition =>
                             transition.Verified
                             && transition.ToNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase))
-                        || definition.Anchors.Values.Any(anchor =>
+                        || definition.ApplicableAnchors.Any(anchor =>
                             anchor.Verified
                             && anchor.TargetNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase)),
-                        definition.Transitions.Values.Any(transition =>
+                        definition.ApplicableTransitions.Any(transition =>
                             !transition.Verified
                             && transition.ToNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase))
-                        || definition.Anchors.Values.Any(anchor =>
+                        || definition.ApplicableAnchors.Any(anchor =>
                             !anchor.Verified
                             && anchor.TargetNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase))))
                     .ToArray();
             var anchors = definition is null
                 ? []
-                : definition.Anchors.Values.Select(anchor => new MenuAnchorSummary(
+                : definition.ApplicableAnchors.Select(anchor => new MenuAnchorSummary(
                         anchor.Id,
                         anchor.Label,
                         anchor.TargetNodeId,
@@ -302,6 +305,16 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 definition?.Name,
                 definition?.Model,
                 definition?.Context,
+                definition?.Configurations.Values.Select(configuration =>
+                        new MenuConfigurationSummary(
+                            configuration.Id,
+                            configuration.Name,
+                            configuration.Conditions,
+                            configuration.Id.Equals(
+                                definition.ActiveConfigurationId,
+                                StringComparison.OrdinalIgnoreCase)))
+                    .ToArray() ?? [],
+                definition?.ActiveConfigurationId,
                 nodes,
                 anchors,
                 _menuStateTracker?.Current ?? new MenuState(
@@ -325,7 +338,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             var definition = _menuDefinition;
             var candidates = definition is null
                 ? []
-                : definition.Anchors.Values
+                : definition.ApplicableAnchors
                     .Where(anchor => !anchor.Verified)
                     .Select(anchor => new MenuAuthoringCandidateSummary(
                         MenuAuthoringItemKind.Anchor,
@@ -342,7 +355,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         GetReplaySteps(anchor.Operations, definition.Timing),
                         0,
                         []))
-                    .Concat(definition.Transitions.Values
+                    .Concat(definition.ApplicableTransitions
                         .Where(transition => !transition.Verified)
                         .Select(transition => new MenuAuthoringCandidateSummary(
                             MenuAuthoringItemKind.Transition,
@@ -660,11 +673,18 @@ public sealed class SamsungControllerService : IAsyncDisposable
         {
             var definition = await LoadValidatedMenuDefinitionAsync(fullPath, cancellationToken)
                 .ConfigureAwait(false);
+            var configurationId = ResolveMenuConfigurationId(
+                definition,
+                GetSettings().MenuConfigurationId);
             await UpdateSettingsAsync(
-                    current => current with { MenuDefinitionPath = fullPath },
+                    current => current with
+                    {
+                        MenuDefinitionPath = fullPath,
+                        MenuConfigurationId = configurationId
+                    },
                     cancellationToken)
                 .ConfigureAwait(false);
-            InstallMenuDefinition(definition);
+            InstallMenuDefinition(definition.WithActiveConfiguration(configurationId));
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -705,7 +725,15 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 new MenuNode("normal-video", "Normal video", "tv-interface", "No TV menu is expected to be visible.")
             ],
             [],
-            []);
+            [],
+            configurations:
+            [
+                new MenuConfiguration(
+                    "default",
+                    "Default",
+                    "Record the setting values that affect which menu items are visible.")
+            ],
+            activeConfigurationId: "default");
         new MenuDefinitionValidator().ValidateAndThrow(definition);
         var path = Path.Combine(
             _configurationDirectory,
@@ -724,7 +752,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 .WriteFileAsync(path, definition, cancellationToken)
                 .ConfigureAwait(false);
             await UpdateSettingsAsync(
-                    current => current with { MenuDefinitionPath = path },
+                    current => current with
+                    {
+                        MenuDefinitionPath = path,
+                        MenuConfigurationId = "default"
+                    },
                     cancellationToken)
                 .ConfigureAwait(false);
             InstallMenuDefinition(definition);
@@ -739,6 +771,219 @@ public sealed class SamsungControllerService : IAsyncDisposable
         finally
         {
             _menuDefinitionGate.Release();
+        }
+
+        NotifyChanged();
+    }
+
+    public async Task SetMenuConfigurationAsync(
+        string configurationId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(configurationId);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("change the active menu configuration");
+        EnsureNoMenuRecording("change the active menu configuration");
+
+        MenuDefinition definition;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+        }
+
+        var normalizedId = configurationId.Trim();
+        var configuration = definition.Configurations.TryGetValue(normalizedId, out var candidate)
+            ? candidate
+            : throw new InvalidOperationException(
+                $"Menu configuration '{normalizedId}' does not exist in this TV definition.");
+        if (normalizedId.Equals(definition.ActiveConfigurationId, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        await UpdateSettingsAsync(
+                current => current with { MenuConfigurationId = configuration.Id },
+                cancellationToken)
+            .ConfigureAwait(false);
+        InstallMenuDefinition(
+            definition.WithActiveConfiguration(configuration.Id),
+            preserveValidationProgress: true);
+        lock (_sync)
+        {
+            _navigationStatus = $"Menu configuration selected · {configuration.Name} · position reset to unknown";
+            _menuAuthoringStatus = $"Active menu configuration · {configuration.Name}";
+        }
+
+        NotifyChanged();
+    }
+
+    public async Task CreateMenuConfigurationAsync(
+        MenuConfigurationEditRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("add a menu configuration");
+        EnsureNoMenuRecording("add a menu configuration");
+
+        MenuDefinition definition;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+        }
+
+        var configuration = NormalizeMenuConfigurationRequest(request);
+        if (definition.Configurations.ContainsKey(configuration.Id))
+        {
+            throw new InvalidOperationException(
+                $"Menu configuration '{configuration.Id}' already exists.");
+        }
+
+        var firstConfiguration = definition.Configurations.Count == 0;
+        var configurations = definition.Configurations.Values.Append(configuration).ToArray();
+        var transitions = firstConfiguration
+            ? definition.Transitions.Values.Select(transition => transition with
+            {
+                ConfigurationId = configuration.Id
+            }).ToArray()
+            : definition.Transitions.Values.ToArray();
+        var anchors = firstConfiguration
+            ? definition.Anchors.Values.Select(anchor => anchor with
+            {
+                ConfigurationId = configuration.Id
+            }).ToArray()
+            : definition.Anchors.Values.ToArray();
+        var updated = new MenuDefinition(
+            definition.Id,
+            definition.Name,
+            definition.Model,
+            definition.Context,
+            definition.Nodes.Values,
+            transitions,
+            anchors,
+            definition.Timing,
+            configurations,
+            configuration.Id);
+        new MenuDefinitionValidator().ValidateAndThrow(updated);
+        await UpdateSettingsAsync(
+                current => current with { MenuConfigurationId = configuration.Id },
+                cancellationToken)
+            .ConfigureAwait(false);
+        await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
+        lock (_sync)
+        {
+            _menuAuthoringStatus = firstConfiguration
+                ? $"Menu configuration created · {configuration.Name} · existing routes were safely scoped to it"
+                : $"Menu configuration created and selected · {configuration.Name} · record routes for this layout";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
+    }
+
+    public async Task UpdateMenuConfigurationAsync(
+        string configurationId,
+        MenuConfigurationEditRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(configurationId);
+        ArgumentNullException.ThrowIfNull(request);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("edit a menu configuration");
+        EnsureNoMenuRecording("edit a menu configuration");
+
+        MenuDefinition definition;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+        }
+
+        var existing = definition.Configurations.TryGetValue(configurationId.Trim(), out var candidate)
+            ? candidate
+            : throw new InvalidOperationException(
+                $"Menu configuration '{configurationId.Trim()}' does not exist.");
+        var configuration = NormalizeMenuConfigurationRequest(request);
+        if (!configuration.Id.Equals(existing.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "A menu configuration's stable ID cannot be changed after creation.");
+        }
+
+        configuration = configuration with { Id = existing.Id };
+        var configurations = definition.Configurations.Values.Select(item =>
+                item.Id.Equals(existing.Id, StringComparison.OrdinalIgnoreCase)
+                    ? configuration
+                    : item)
+            .ToArray();
+        var updated = new MenuDefinition(
+            definition.Id,
+            definition.Name,
+            definition.Model,
+            definition.Context,
+            definition.Nodes.Values,
+            definition.Transitions.Values,
+            definition.Anchors.Values,
+            definition.Timing,
+            configurations,
+            definition.ActiveConfigurationId);
+        new MenuDefinitionValidator().ValidateAndThrow(updated);
+        await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
+        lock (_sync)
+        {
+            _menuAuthoringStatus = $"Menu configuration updated · {configuration.Name}";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
+    }
+
+    public MenuTopologyOutlinePreview PreviewMenuTopologyOutline(
+        MenuTopologyOutlineRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        MenuDefinition definition;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+        }
+
+        return MenuTopologyOutlinePlanner.Create(definition, request).Preview;
+    }
+
+    public async Task ApplyMenuTopologyOutlineAsync(
+        MenuTopologyOutlineRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("apply a menu topology outline");
+        EnsureNoMenuRecording("apply a menu topology outline");
+
+        MenuDefinition definition;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+        }
+
+        var plan = MenuTopologyOutlinePlanner.Create(definition, request);
+        if (plan.Preview.HasChanges)
+        {
+            var updated = CopyMenuDefinition(definition, nodes: plan.Nodes);
+            new MenuDefinitionValidator().ValidateAndThrow(updated);
+            await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
+        }
+
+        lock (_sync)
+        {
+            _menuAuthoringStatus = plan.Preview.HasChanges
+                ? $"Menu topology saved to YAML · {plan.Preview.AddedNodeCount} added · {plan.Preview.UpdatedNodeCount} updated · {plan.Preview.RemovedNodeCount} removed"
+                : "Menu topology already matches the outline · no YAML changes were needed";
+            _menuAuthoringError = null;
         }
 
         NotifyChanged();
@@ -2047,19 +2292,14 @@ public sealed class SamsungControllerService : IAsyncDisposable
             }
         }
 
-        var updated = new MenuDefinition(
-            definition.Id,
-            definition.Name,
-            definition.Model,
-            definition.Context,
-            definition.Nodes.Values,
-            definition.Transitions.Values.Where(transition =>
+        var updated = CopyMenuDefinition(
+            definition,
+            transitions: definition.Transitions.Values.Where(transition =>
                 kind != MenuAuthoringItemKind.Transition
                 || !transition.Id.Equals(itemId, StringComparison.OrdinalIgnoreCase)),
-            definition.Anchors.Values.Where(anchor =>
+            anchors: definition.Anchors.Values.Where(anchor =>
                 kind != MenuAuthoringItemKind.Anchor
-                || !anchor.Id.Equals(itemId, StringComparison.OrdinalIgnoreCase)),
-            definition.Timing);
+                || !anchor.Id.Equals(itemId, StringComparison.OrdinalIgnoreCase)));
         await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
         lock (_sync)
         {
@@ -2140,7 +2380,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
                                     .ToArray()
                             }
                         }),
-            definition.Timing);
+            definition.Timing,
+            definition.Configurations.Values,
+            definition.ActiveConfigurationId);
         new MenuDefinitionValidator().ValidateAndThrow(updated);
         await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
         lock (_sync)
@@ -2393,6 +2635,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
         {
             var matchingDrafts = transitions.Where(transition =>
                     !transition.Verified
+                    && string.Equals(
+                        transition.ConfigurationId,
+                        definition.ActiveConfigurationId,
+                        StringComparison.OrdinalIgnoreCase)
                     && transition.FromNodeId.Equals(
                         failedPlan.SourceNodeId,
                         StringComparison.OrdinalIgnoreCase)
@@ -2422,7 +2668,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             failedPlan.TargetNodeId,
             operations,
             Verified: false,
-            Description: TraversalFailureDescription));
+            Description: TraversalFailureDescription,
+            ConfigurationId: definition.ActiveConfigurationId));
         var updated = CopyMenuDefinition(definition, transitions: transitions);
         new MenuDefinitionValidator().ValidateAndThrow(updated);
         await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
@@ -2966,7 +3213,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         MenuAnchor? anchor;
         lock (_sync)
         {
-            anchor = _menuDefinition?.Anchors.Values
+            anchor = _menuDefinition?.ApplicableAnchors
                 .Where(candidate => candidate.Verified)
                 .OrderBy(candidate =>
                     candidate.Id.Equals("normal-video", StringComparison.OrdinalIgnoreCase)
@@ -3282,7 +3529,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
     }
 
     private static MenuAnchor? FindPreferredKnownStateAnchor(
-        MenuDefinition definition) => definition.Anchors.Values
+        MenuDefinition definition) => definition.ApplicableAnchors
         .Where(anchor => anchor.Verified)
         .OrderBy(anchor =>
             anchor.Id.Equals("normal-video", StringComparison.OrdinalIgnoreCase)
@@ -3417,7 +3664,15 @@ public sealed class SamsungControllerService : IAsyncDisposable
             nodes ?? definition.Nodes.Values,
             transitions ?? definition.Transitions.Values,
             anchors ?? definition.Anchors.Values,
-            timing ?? definition.Timing);
+            timing ?? definition.Timing,
+            definition.Configurations.Values,
+            definition.ActiveConfigurationId);
+
+    private static MenuConfiguration NormalizeMenuConfigurationRequest(
+        MenuConfigurationEditRequest request) => new(
+            request.Id.Trim(),
+            request.Name.Trim(),
+            string.IsNullOrWhiteSpace(request.Conditions) ? null : request.Conditions.Trim());
 
     private static MenuNode NormalizeMenuNodeRequest(MenuNodeEditRequest request) =>
         new(
@@ -3506,7 +3761,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 request.Label,
                 request.TargetNodeId,
                 [placeholder],
-                ValidationSourceNodeId: request.SourceNodeId));
+                ValidationSourceNodeId: request.SourceNodeId,
+                ConfigurationId: definition.ActiveConfigurationId));
         }
         else
         {
@@ -3519,7 +3775,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 request.ItemId,
                 request.SourceNodeId,
                 request.TargetNodeId,
-                [placeholder]));
+                [placeholder],
+                ConfigurationId: definition.ActiveConfigurationId));
         }
 
         var candidate = new MenuDefinition(
@@ -3530,7 +3787,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
             nodes,
             transitions,
             anchors,
-            definition.Timing);
+            definition.Timing,
+            definition.Configurations.Values,
+            definition.ActiveConfigurationId);
         new MenuDefinitionValidator().ValidateAndThrow(candidate);
     }
 
@@ -3570,7 +3829,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 operations,
                 false,
                 description,
-                ValidationSourceNodeId: request.SourceNodeId));
+                ValidationSourceNodeId: request.SourceNodeId,
+                ConfigurationId: definition.ActiveConfigurationId));
         }
         else
         {
@@ -3581,7 +3841,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 operations,
                 false,
                 description,
-                request.RecordReturnToVideo ? returnOperations : null));
+                request.RecordReturnToVideo ? returnOperations : null,
+                definition.ActiveConfigurationId));
         }
 
         var updated = new MenuDefinition(
@@ -3592,7 +3853,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
             nodes,
             transitions,
             anchors,
-            definition.Timing);
+            definition.Timing,
+            definition.Configurations.Values,
+            definition.ActiveConfigurationId);
         new MenuDefinitionValidator().ValidateAndThrow(updated);
         return updated;
     }
@@ -3739,15 +4002,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
             throw new KeyNotFoundException($"Menu {kind.ToString().ToLowerInvariant()} '{itemId}' was not found.");
         }
 
-        return new MenuDefinition(
-            definition.Id,
-            definition.Name,
-            definition.Model,
-            definition.Context,
-            definition.Nodes.Values,
-            transitions,
-            anchors,
-            definition.Timing);
+        return CopyMenuDefinition(
+            definition,
+            transitions: transitions,
+            anchors: anchors);
     }
 
     private async Task ExecuteMenuAuthoringValidationAsync(
@@ -4101,12 +4359,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
             return new ReturnStrategyContext(anchor, existing);
         }
 
-        var returnTransition = definition.Transitions.Values
+        var returnTransition = definition.ApplicableTransitions
             .Where(transition =>
                 transition.ToNodeId.Equals(anchor.TargetNodeId, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(transition => transition.Verified)
             .ThenBy(transition => definition.GetDepth(transition.FromNodeId))
-            .FirstOrDefault(transition => definition.Transitions.Values.Any(open =>
+            .FirstOrDefault(transition => definition.ApplicableTransitions.Any(open =>
                 open.FromNodeId.Equals(anchor.TargetNodeId, StringComparison.OrdinalIgnoreCase)
                 && open.ToNodeId.Equals(transition.FromNodeId, StringComparison.OrdinalIgnoreCase)));
         if (returnTransition is null)
@@ -4128,12 +4386,13 @@ public sealed class SamsungControllerService : IAsyncDisposable
         string? excludedAnchorId = null)
     {
         if (definition.Anchors.TryGetValue("normal-video", out var namedAnchor)
+            && definition.IsApplicableToActiveConfiguration(namedAnchor.ConfigurationId)
             && !namedAnchor.Id.Equals(excludedAnchorId, StringComparison.OrdinalIgnoreCase))
         {
             return namedAnchor;
         }
 
-        return definition.Anchors.Values
+        return definition.ApplicableAnchors
             .Where(candidate => !candidate.Id.Equals(
                 excludedAnchorId,
                 StringComparison.OrdinalIgnoreCase))
@@ -4307,7 +4566,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
     private static IReadOnlyList<MenuTimingTestRouteSummary> GetTimingTestRoutes(
         MenuDefinition definition) =>
-        definition.Transitions.Values
+        definition.ApplicableTransitions
             .Where(transition => transition.Operations.Count > 0)
             .OrderBy(transition => definition.GetPath(transition.FromNodeId), StringComparer.OrdinalIgnoreCase)
             .ThenBy(transition => definition.GetPath(transition.ToNodeId), StringComparer.OrdinalIgnoreCase)
@@ -4324,7 +4583,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         string sourceNodeId)
     {
         ValidationSetup? best = null;
-        foreach (var anchor in definition.Anchors.Values.Where(anchor => anchor.Verified))
+        foreach (var anchor in definition.ApplicableAnchors.Where(anchor => anchor.Verified))
         {
             try
             {
@@ -4546,6 +4805,25 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private string GetMenuDefinitionPath(SamsungWebSettings settings) =>
         Path.GetFullPath(settings.MenuDefinitionPath ?? _defaultMenuDefinitionPath);
 
+    private static MenuDefinition ActivateMenuConfiguration(
+        MenuDefinition definition,
+        string? requestedConfigurationId) =>
+        definition.WithActiveConfiguration(
+            ResolveMenuConfigurationId(definition, requestedConfigurationId));
+
+    private static string? ResolveMenuConfigurationId(
+        MenuDefinition definition,
+        string? requestedConfigurationId)
+    {
+        if (!string.IsNullOrWhiteSpace(requestedConfigurationId)
+            && definition.Configurations.TryGetValue(requestedConfigurationId, out var requested))
+        {
+            return requested.Id;
+        }
+
+        return definition.Configurations.Values.FirstOrDefault()?.Id;
+    }
+
     private async Task<MacroCatalog> LoadValidatedCatalogAsync(
         CancellationToken cancellationToken)
     {
@@ -4750,16 +5028,20 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     $"Menu destination '{targetNodeId}' does not exist in '{definition.Name}'.");
             }
 
-            var verified = definition.Transitions.Values.Any(transition =>
+            var verified = definition.ApplicableTransitions.Any(transition =>
                     transition.Verified
                     && transition.ToNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase))
-                || definition.Anchors.Values.Any(anchor =>
+                || definition.ApplicableAnchors.Any(anchor =>
                     anchor.Verified
                     && anchor.TargetNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase));
             if (!verified)
             {
+                var configuration = definition.ActiveConfigurationId is { } activeId
+                    && definition.Configurations.TryGetValue(activeId, out var active)
+                        ? $" for menu configuration '{active.Name}'"
+                        : string.Empty;
                 throw new InvalidOperationException(
-                    $"Menu destination '{definition.GetPath(node.Id)}' is not verified and cannot be called by a macro.");
+                    $"Menu destination '{definition.GetPath(node.Id)}' is not verified{configuration} and cannot be called by a macro.");
             }
 
             if (requireKnownState && _menuStateTracker?.Current.NodeId is null)

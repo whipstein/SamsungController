@@ -172,6 +172,125 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task MenuTopologyOutlineCreatesAnOrderedTreeInOneYamlUpdate()
+    {
+        Directory.CreateDirectory(_directory);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+        await controller.CreateMenuDefinitionAsync(new MenuDefinitionCreationRequest(
+            "outline-tv",
+            "Outline TV",
+            "Samsung Test TV",
+            "1000",
+            "SDR",
+            "Movie",
+            "HDMI 1"));
+
+        const string outline =
+            """
+            Normal video [normal-video]
+            Settings [settings]
+              Picture
+                Expert Settings
+                  Brightness
+                  Contrast
+              Sound
+            """;
+        var request = new MenuTopologyOutlineRequest("tv-interface", outline);
+        var preview = controller.PreviewMenuTopologyOutline(request);
+
+        Assert.Equal(7, preview.OutlineNodeCount);
+        Assert.Equal(6, preview.AddedNodeCount);
+        Assert.Equal(0, preview.RemovedNodeCount);
+        await controller.ApplyMenuTopologyOutlineAsync(request);
+
+        var snapshot = controller.GetMenuNavigationSnapshot();
+        Assert.Equal(
+            [
+                "tv-interface", "normal-video", "settings", "picture",
+                "expert-settings", "brightness", "contrast", "sound"
+            ],
+            snapshot.Nodes.Select(node => node.Id));
+        Assert.Equal("expert-settings", snapshot.Nodes.Single(node => node.Id == "brightness").ParentId);
+        Assert.All(snapshot.Nodes.Where(node => node.Id != "tv-interface"), node =>
+            Assert.False(node.HasVerifiedRoute));
+
+        var reparsed = await new MenuDefinitionParser().ParseFileAsync(snapshot.DefinitionPath);
+        Assert.Equal("Outline TV", reparsed.Name);
+        Assert.Single(reparsed.Configurations);
+        Assert.Equal("default", reparsed.Configurations.Values.Single().Id);
+    }
+
+    [Fact]
+    public async Task TopologySynchronizationProtectsItemsUsedByRecordedRoutes()
+    {
+        Directory.CreateDirectory(_directory);
+        var definitionPath = Path.Combine(_directory, "protected-topology.yaml");
+        await File.WriteAllTextAsync(definitionPath, VerifiedRemovalMenuYaml);
+        await WriteSettingsAsync(definitionPath);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            controller.PreviewMenuTopologyOutline(new MenuTopologyOutlineRequest(
+                "tv-interface",
+                "Normal video [normal-video]",
+                KeepUnlistedNodes: false)));
+
+        Assert.Contains("used by recorded routes", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Settings overlay", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ActiveMenuConfigurationScopesVerifiedRoutesAndPersistsSelection()
+    {
+        Directory.CreateDirectory(_directory);
+        var definitionPath = Path.Combine(_directory, "conditional-menu.yaml");
+        await File.WriteAllTextAsync(definitionPath, ConditionalMenuYaml);
+        await WriteSettingsAsync(definitionPath);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+
+        var standard = controller.GetMenuNavigationSnapshot();
+        Assert.Equal("standard", standard.ActiveConfigurationId);
+        Assert.True(standard.Nodes.Single(node => node.Id == "picture-clarity").HasVerifiedRoute);
+
+        await controller.SetMenuConfigurationAsync("game-mode");
+
+        var gameMode = controller.GetMenuNavigationSnapshot();
+        Assert.Equal("game-mode", gameMode.ActiveConfigurationId);
+        Assert.False(gameMode.Nodes.Single(node => node.Id == "picture-clarity").HasVerifiedRoute);
+        Assert.Equal(MenuStateConfidence.Unknown, gameMode.State.Confidence);
+        using var settings = JsonDocument.Parse(await File.ReadAllTextAsync(
+            Path.Combine(_directory, "settings.json")));
+        Assert.Equal(
+            "game-mode",
+            settings.RootElement.GetProperty("MenuConfigurationId").GetString());
+    }
+
+    [Fact]
+    public async Task FirstConfigurationSafelyScopesExistingLegacyRoutes()
+    {
+        Directory.CreateDirectory(_directory);
+        var definitionPath = Path.Combine(_directory, "legacy-menu.yaml");
+        await File.WriteAllTextAsync(definitionPath, ValidMenuYaml);
+        await WriteSettingsAsync(definitionPath);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+
+        await controller.CreateMenuConfigurationAsync(new MenuConfigurationEditRequest(
+            "current-layout",
+            "Current layout",
+            "Game Mode = Off"));
+
+        var snapshot = controller.GetMenuNavigationSnapshot();
+        Assert.Equal("current-layout", snapshot.ActiveConfigurationId);
+        var reparsed = await new MenuDefinitionParser().ParseFileAsync(definitionPath);
+        Assert.Equal("current-layout", Assert.Single(reparsed.Configurations.Values).Id);
+        Assert.Equal("current-layout", Assert.Single(reparsed.Anchors.Values).ConfigurationId);
+    }
+
+    [Fact]
     public async Task VerifiedSettingRemovalDeletesItsSubtreeAndRelatedRoutes()
     {
         Directory.CreateDirectory(_directory);
@@ -1595,6 +1714,47 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             to: expert-settings
             verified: true
             steps:
+              - key: KEY_ENTER
+        """;
+
+    private const string ConditionalMenuYaml =
+        """
+        version: 1
+        id: conditional-menu
+        name: Conditional Menu
+        model: Test TV
+        configurations:
+          - id: standard
+            name: Standard
+            conditions: Game Mode = Off
+          - id: game-mode
+            name: Game Mode
+            conditions: Game Mode = On
+        nodes:
+          - id: normal-video
+            label: Normal video
+          - id: settings
+            label: Settings
+          - id: picture-clarity
+            label: Picture Clarity Settings
+            parent: settings
+        anchors:
+          - id: normal
+            label: Normal video
+            target: normal-video
+            verified: true
+            steps:
+              - key: KEY_RETURN
+        transitions:
+          - id: open-picture-clarity-standard
+            from: normal-video
+            to: picture-clarity
+            configuration: standard
+            verified: true
+            steps:
+              - key: KEY_MENU
+              - key: KEY_DOWN
+                repeat: 4
               - key: KEY_ENTER
         """;
 

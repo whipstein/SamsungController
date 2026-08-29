@@ -8,15 +8,17 @@ namespace SamsungController.Automation.Navigation;
 public sealed class MenuDefinitionParser
 {
     private static readonly HashSet<string> RootFields =
-        new(["version", "id", "name", "model", "context", "timing", "nodes", "anchors", "transitions"], StringComparer.OrdinalIgnoreCase);
+        new(["version", "id", "name", "model", "context", "configurations", "timing", "nodes", "anchors", "transitions"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ContextFields =
         new(["firmware", "signal", "pictureMode", "input"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> TimingFields =
         new(["defaultDelay", "screenChangeDelay", "returnDelay", "verified"], StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> ConfigurationFields =
+        new(["id", "name", "conditions"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> NodeFields =
         new(["id", "label", "parent", "description"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> AnchorFields =
-        new(["id", "label", "target", "verified", "description", "validationSource", "returnStrategy", "steps"], StringComparer.OrdinalIgnoreCase);
+        new(["id", "label", "target", "configuration", "verified", "description", "validationSource", "returnStrategy", "steps"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ReturnStrategyFields =
         new(["menuRoot", "atMenuRoot", "belowMenuRoot", "overrides"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ReturnOverrideFields =
@@ -24,7 +26,7 @@ public sealed class MenuDefinitionParser
     private static readonly HashSet<string> ReturnScriptFields =
         new(["verified", "steps"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> TransitionFields =
-        new(["id", "from", "to", "verified", "description", "returnSteps", "steps"], StringComparer.OrdinalIgnoreCase);
+        new(["id", "from", "to", "configuration", "verified", "description", "returnSteps", "steps"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> StepFields =
         new(["key", "action", "repeat", "delay"], StringComparer.OrdinalIgnoreCase);
 
@@ -48,6 +50,9 @@ public sealed class MenuDefinitionParser
             ValidateVersion(RequiredScalar(fields, "version", "document root"));
 
             var context = ParseContext(fields.GetValueOrDefault("context"));
+            var configurations = fields.TryGetValue("configurations", out var configurationsNode)
+                ? ParseConfigurations(RequireSequence(configurationsNode, "configurations"))
+                : [];
             var timing = ParseTiming(fields.GetValueOrDefault("timing"));
             var nodes = ParseNodes(RequiredSequence(fields, "nodes", "document root"));
             var anchors = fields.TryGetValue("anchors", out var anchorsNode)
@@ -65,7 +70,8 @@ public sealed class MenuDefinitionParser
                 nodes,
                 transitions,
                 anchors,
-                timing);
+                timing,
+                configurations);
         }
         catch (MenuDefinitionParseException)
         {
@@ -98,6 +104,23 @@ public sealed class MenuDefinitionParser
             ParseTimingMilliseconds(fields, "screenChangeDelay", defaults.ScreenChangeDelayMilliseconds),
             ParseTimingMilliseconds(fields, "returnDelay", defaults.ReturnDelayMilliseconds),
             OptionalBoolean(fields, "verified", "timing"));
+    }
+
+    private static IReadOnlyList<MenuConfiguration> ParseConfigurations(YamlSequenceNode sequence)
+    {
+        var configurations = new List<MenuConfiguration>(sequence.Children.Count);
+        for (var index = 0; index < sequence.Children.Count; index++)
+        {
+            var context = $"configuration {index + 1}";
+            var fields = ReadFields(RequireMapping(sequence.Children[index], context), context);
+            EnsureAllowedFields(fields, ConfigurationFields, context);
+            configurations.Add(new MenuConfiguration(
+                RequiredScalar(fields, "id", context),
+                RequiredScalar(fields, "name", context),
+                OptionalScalar(fields, "conditions")));
+        }
+
+        return configurations;
     }
 
     private static int ParseTimingMilliseconds(
@@ -177,7 +200,8 @@ public sealed class MenuDefinitionParser
                 fields.TryGetValue("returnStrategy", out var strategyNode)
                     ? ParseReturnStrategy(strategyNode, context)
                     : null,
-                OptionalScalar(fields, "validationSource")));
+                OptionalScalar(fields, "validationSource"),
+                OptionalScalar(fields, "configuration")));
         }
 
         return anchors;
@@ -249,7 +273,8 @@ public sealed class MenuDefinitionParser
                     ? ParseOperations(
                         RequireSequence(returnStepsNode, $"'returnSteps' in {context}"),
                         $"{context}, return-to-video")
-                    : null));
+                    : null,
+                OptionalScalar(fields, "configuration")));
         }
 
         return transitions;

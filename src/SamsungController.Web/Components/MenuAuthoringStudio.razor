@@ -1,6 +1,7 @@
 @implements IDisposable
 @inject SamsungControllerService Controller
 @inject IJSRuntime JavaScript
+@using System.Text
 
 <section class="panel authoring-studio">
     <div class="panel-label">
@@ -18,7 +19,8 @@
         <div class="authoring-intro-actions">
             <HelpBubble Title="Menu-authoring workflow" ButtonText="Workflow help">
                 <ol>
-                    <li><strong>Tree:</strong> name and arrange the TV's visible menu positions before recording.</li>
+                    <li><strong>Tree:</strong> paste an indented outline to create the hierarchy at once, then use the single-node editor for fine adjustments.</li>
+                    <li><strong>Configurations:</strong> define each settings-dependent visible layout and select the one currently shown on the TV.</li>
                     <li><strong>Record:</strong> select a source and target, then use the embedded remote. Successful buttons control the TV and enter the draft.</li>
                     <li><strong>Timing:</strong> test common waits system-wide, then override only the steps that need special pacing.</li>
                     <li><strong>Verify:</strong> prepare the source, replay the draft, and confirm three separate visual passes.</li>
@@ -72,8 +74,138 @@
             @if (MenuTreeExpanded)
             {
                 <div class="authoring-section-body">
+                    <div class="bulk-topology-editor @(BulkTopologyExpanded ? "" : "collapsed")">
+                        <button type="button" class="bulk-topology-toggle" @onclick="ToggleBulkTopology" aria-expanded="@(BulkTopologyExpanded ? "true" : "false")">
+                            <span>
+                                <b>FAST SETUP</b>
+                                <strong>Build many menu items from one outline</strong>
+                            </span>
+                            <i aria-hidden="true">@(BulkTopologyExpanded ? "−" : "+")</i>
+                        </button>
+                        @if (BulkTopologyExpanded)
+                        {
+                            <div class="bulk-topology-body">
+                                <div class="menu-configuration-workspace">
+                                    <div class="menu-configuration-heading">
+                                        <span>
+                                            <b>ACTIVE MENU CONFIGURATION</b>
+                                            <strong>@(ActiveMenuConfiguration?.Name ?? "Universal / legacy routes")</strong>
+                                            <small>@(ActiveMenuConfiguration?.Conditions ?? "Add a configuration before recording routes whose key counts depend on visible menu items.")</small>
+                                        </span>
+                                        <div>
+                                            @if (ActiveMenuConfiguration is not null)
+                                            {
+                                                <button class="secondary-action" @onclick="BeginEditMenuConfiguration" disabled="@(!CanEditMenuTree)">Edit</button>
+                                            }
+                                            <button class="secondary-action" @onclick="BeginAddMenuConfiguration" disabled="@(!CanEditMenuTree)">+ Add configuration</button>
+                                        </div>
+                                    </div>
+                                    @if (Navigation.Configurations.Count > 0)
+                                    {
+                                        <label class="menu-configuration-selector">
+                                            <span>CONFIGURATION USED FOR RECORDING, VERIFICATION, AND NAVIGATION</span>
+                                            <select value="@Navigation.ActiveConfigurationId" @onchange="ChangeMenuConfigurationAsync" disabled="@(!CanEditMenuTree)">
+                                                @foreach (var configuration in Navigation.Configurations)
+                                                {
+                                                    <option value="@configuration.Id">@configuration.Name</option>
+                                                }
+                                            </select>
+                                        </label>
+                                    }
+                                    @if (ShowMenuConfigurationEditor)
+                                    {
+                                        <div class="menu-configuration-editor">
+                                            <div class="authoring-form-grid compact">
+                                                <label>
+                                                    <span>Name</span>
+                                                    <input value="@MenuConfigurationName" @oninput="HandleMenuConfigurationNameChanged" placeholder="Game Mode on" disabled="@IsBusy" />
+                                                </label>
+                                                <label>
+                                                    <span>Stable ID</span>
+                                                    <input @bind="MenuConfigurationId" placeholder="Generated from name" disabled="@(!IsAddingMenuConfiguration || IsBusy)" />
+                                                </label>
+                                                <label class="wide-field">
+                                                    <span>Selections that produce this menu layout</span>
+                                                    <input @bind="MenuConfigurationConditions" placeholder="Game Mode = On; Input Signal Plus = On" disabled="@IsBusy" />
+                                                </label>
+                                            </div>
+                                            <div class="menu-node-editor-actions">
+                                                <button class="secondary-action" @onclick="CancelMenuConfigurationEdit" disabled="@IsBusy">Cancel</button>
+                                                <button class="primary-action" @onclick="SaveMenuConfigurationAsync" disabled="@(!CanSaveMenuConfiguration)">
+                                                    @(IsAddingMenuConfiguration ? "Create & select" : "Update") <span>→</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                                <p>Paste the visible hierarchy using two spaces per level. Matching items keep their stable IDs; new IDs are generated automatically. Add <code>[stable-id]</code> after a name only when you need to force an identity.</p>
+                                <div class="bulk-topology-controls">
+                                    <label>
+                                        <span>PLACE OUTLINE UNDER</span>
+                                        <select value="@TopologyParentId" @onchange="HandleTopologyParentChanged" disabled="@(!CanEditMenuTree)">
+                                            @foreach (var node in Navigation.Nodes.OrderBy(node => node.Path, StringComparer.OrdinalIgnoreCase))
+                                            {
+                                                <option value="@node.Id">@node.Path</option>
+                                            }
+                                        </select>
+                                    </label>
+                                    <button class="secondary-action" @onclick="LoadCurrentTopologyOutline" disabled="@(!CanEditMenuTree)">Edit current branch</button>
+                                </div>
+                                <label class="bulk-topology-outline">
+                                    <span>MENU OUTLINE</span>
+                                    <textarea value="@TopologyOutline"
+                                              @oninput="HandleTopologyOutlineChanged"
+                                              rows="11"
+                                              spellcheck="false"
+                                              placeholder="Settings&#10;  Picture&#10;    Expert Settings&#10;      Brightness&#10;      Contrast&#10;  Sound"
+                                              disabled="@(!CanEditMenuTree)"></textarea>
+                                </label>
+                                <label class="bulk-topology-keep">
+                                    <input type="checkbox" checked="@KeepUnlistedTopologyNodes" @onchange="HandleKeepUnlistedChanged" disabled="@(!CanEditMenuTree)" />
+                                    <span>
+                                        <strong>Keep menu items not listed</strong>
+                                        <small>Recommended. Turn this off only to synchronize the entire selected branch; items used by recordings are protected from removal.</small>
+                                    </span>
+                                </label>
+                                <div class="bulk-topology-actions">
+                                    <button class="secondary-action" @onclick="PreviewTopologyOutline" disabled="@(!CanPreviewTopology)">Preview changes</button>
+                                    <button class="primary-action" @onclick="ApplyTopologyOutlineAsync" disabled="@(!CanApplyTopology)">Apply to this TV YAML <span>→</span></button>
+                                </div>
+                                @if (TopologyPreview is not null)
+                                {
+                                    <div class="bulk-topology-preview @(TopologyPreview.HasChanges ? "" : "no-changes")">
+                                        <div>
+                                            <span><b>@TopologyPreview.OutlineNodeCount</b> in outline</span>
+                                            <span><b>@TopologyPreview.AddedNodeCount</b> add</span>
+                                            <span><b>@TopologyPreview.UpdatedNodeCount</b> update</span>
+                                            <span><b>@TopologyPreview.RemovedNodeCount</b> remove</span>
+                                            <span><b>@TopologyPreview.FinalNodeCount</b> total</span>
+                                        </div>
+                                        @if (TopologyPreview.Changes.Count == 0)
+                                        {
+                                            <p>The active topology already matches this outline.</p>
+                                        }
+                                        else
+                                        {
+                                            <ul>
+                                                @foreach (var change in TopologyPreview.Changes.Take(8))
+                                                {
+                                                    <li>@change</li>
+                                                }
+                                            </ul>
+                                            @if (TopologyPreview.Changes.Count > 8)
+                                            {
+                                                <p>Plus @(TopologyPreview.Changes.Count - 8) more change(s).</p>
+                                            }
+                                        }
+                                    </div>
+                                }
+                                <p class="bulk-topology-footnote"><strong>Topology is not verification.</strong> Record only the destinations you want to execute. Unrecorded items remain in this model file but stay off the verified Menu page.</p>
+                            </div>
+                        }
+                    </div>
                     <div class="menu-tree-toolbar">
-                        <p class="menu-tree-intro">Name and arrange the complete on-screen hierarchy first. Custom order is saved to YAML and can mirror the TV; alphabetical order is a temporary viewing aid. Red has no recorded command; yellow is recorded and needs verification.</p>
+                        <p class="menu-tree-intro">Review the complete on-screen hierarchy here, or make a precise one-item edit. Custom order is saved to YAML and can mirror the TV; alphabetical order is a temporary viewing aid. Red has no recorded command; yellow is recorded and needs verification.</p>
                         <label>
                             <span>TREE ORDER</span>
                             <select @bind="TreeOrdering">
@@ -234,6 +366,11 @@
         <div class="authoring-workflow-grid">
             <div class="authoring-config">
                 <div class="authoring-section-title"><span>01</span><strong>Describe the recording</strong></div>
+                <div class="recording-configuration-badge">
+                    <span>ROUTE VALID ONLY FOR</span>
+                    <strong>@(ActiveMenuConfiguration?.Name ?? "Universal / legacy configuration")</strong>
+                    <small>@(ActiveMenuConfiguration?.Conditions ?? "Add a named configuration when visible rows can change.")</small>
+                </div>
                 <div class="authoring-form-grid compact">
                     <label>
                         <span>Record as</span>
@@ -742,6 +879,7 @@
     private string? PendingVerifiedSettingRemovalId { get; set; }
     private bool ManageVerifiedSettingsExpanded { get; set; }
     private bool MenuTreeExpanded { get; set; } = true;
+    private bool BulkTopologyExpanded { get; set; } = true;
     private MenuTreeSortMode TreeOrdering { get; set; } = MenuTreeSortMode.Custom;
     private bool ReturnScriptsExpanded { get; set; }
     private bool SystemTimingExpanded { get; set; }
@@ -753,6 +891,15 @@
     private ElementReference MenuTreeElement { get; set; }
     private bool IsAddingMenuNode { get; set; }
     private string? MenuNodeBeforeAddId { get; set; }
+    private string TopologyParentId { get; set; } = string.Empty;
+    private string TopologyOutline { get; set; } = string.Empty;
+    private bool KeepUnlistedTopologyNodes { get; set; } = true;
+    private MenuTopologyOutlinePreview? TopologyPreview { get; set; }
+    private bool ShowMenuConfigurationEditor { get; set; }
+    private bool IsAddingMenuConfiguration { get; set; }
+    private string MenuConfigurationId { get; set; } = string.Empty;
+    private string MenuConfigurationName { get; set; } = string.Empty;
+    private string MenuConfigurationConditions { get; set; } = string.Empty;
 
     private string DefinitionId { get; set; } = "samsung-menu";
     private string DefinitionName { get; set; } = "Samsung TV Menu";
@@ -763,6 +910,8 @@
     private string DefinitionInput { get; set; } = "any";
 
     private string? ErrorMessage => LocalError ?? Authoring.Error;
+    private MenuConfigurationSummary? ActiveMenuConfiguration => Navigation.Configurations
+        .FirstOrDefault(configuration => configuration.IsActive);
     private IReadOnlyList<MenuNodeSummary> VerifiedSettings => Navigation.Nodes
         .Where(node => node.HasVerifiedRoute)
         .ToArray();
@@ -828,6 +977,18 @@
         && !Navigation.IsRunning && !Snapshot.MacroRunning
         && !ConfirmMenuNodeDelete;
     private bool CanBeginMenuNodeAdd => CanEditMenuTree && !IsAddingMenuNode;
+    private bool CanPreviewTopology => CanEditMenuTree
+        && !string.IsNullOrWhiteSpace(TopologyParentId)
+        && !string.IsNullOrWhiteSpace(TopologyOutline);
+    private bool CanApplyTopology => CanPreviewTopology && TopologyPreview is not null;
+    private bool CanSaveMenuConfiguration => CanEditMenuTree
+        && ShowMenuConfigurationEditor
+        && !string.IsNullOrWhiteSpace(MenuConfigurationName)
+        && !string.IsNullOrWhiteSpace(GetMenuConfigurationId())
+        && (!IsAddingMenuConfiguration
+            || Navigation.Configurations.All(configuration => !configuration.Id.Equals(
+                GetMenuConfigurationId(),
+                StringComparison.OrdinalIgnoreCase)));
     private bool CanSaveOrUpdateMenuNode => CanEditMenuTree
         && !string.IsNullOrWhiteSpace(NodeEditorLabel)
         && (IsAddingMenuNode
@@ -940,11 +1101,162 @@
 
     private void ToggleMenuTree() => MenuTreeExpanded = !MenuTreeExpanded;
 
+    private void ToggleBulkTopology() => BulkTopologyExpanded = !BulkTopologyExpanded;
+
     private void ToggleReturnScripts() => ReturnScriptsExpanded = !ReturnScriptsExpanded;
 
     private void ToggleSystemTiming() => SystemTimingExpanded = !SystemTimingExpanded;
 
     private void ToggleDraftValidation() => DraftValidationExpanded = !DraftValidationExpanded;
+
+    private Task ChangeMenuConfigurationAsync(ChangeEventArgs args) => RunBusyAsync(async () =>
+    {
+        var configurationId = args.Value?.ToString()
+            ?? throw new InvalidOperationException("Choose a menu configuration.");
+        await Controller.SetMenuConfigurationAsync(configurationId);
+        TopologyPreview = null;
+        PreparedRerecordTargetId = null;
+        Refresh();
+        InitializeNodeDefaults(force: true);
+    });
+
+    private void BeginAddMenuConfiguration()
+    {
+        ShowMenuConfigurationEditor = true;
+        IsAddingMenuConfiguration = true;
+        MenuConfigurationId = string.Empty;
+        MenuConfigurationName = string.Empty;
+        MenuConfigurationConditions = string.Empty;
+        LocalError = null;
+    }
+
+    private void BeginEditMenuConfiguration()
+    {
+        var configuration = ActiveMenuConfiguration
+            ?? throw new InvalidOperationException("Choose a menu configuration to edit.");
+        ShowMenuConfigurationEditor = true;
+        IsAddingMenuConfiguration = false;
+        MenuConfigurationId = configuration.Id;
+        MenuConfigurationName = configuration.Name;
+        MenuConfigurationConditions = configuration.Conditions ?? string.Empty;
+        LocalError = null;
+    }
+
+    private void CancelMenuConfigurationEdit()
+    {
+        ShowMenuConfigurationEditor = false;
+        IsAddingMenuConfiguration = false;
+        MenuConfigurationId = string.Empty;
+        MenuConfigurationName = string.Empty;
+        MenuConfigurationConditions = string.Empty;
+        LocalError = null;
+    }
+
+    private void HandleMenuConfigurationNameChanged(ChangeEventArgs args)
+    {
+        MenuConfigurationName = args.Value?.ToString() ?? string.Empty;
+        LocalError = null;
+    }
+
+    private Task SaveMenuConfigurationAsync() => RunBusyAsync(async () =>
+    {
+        var request = new MenuConfigurationEditRequest(
+            GetMenuConfigurationId(),
+            MenuConfigurationName,
+            MenuConfigurationConditions);
+        if (IsAddingMenuConfiguration)
+        {
+            await Controller.CreateMenuConfigurationAsync(request);
+        }
+        else
+        {
+            await Controller.UpdateMenuConfigurationAsync(MenuConfigurationId, request);
+        }
+
+        CancelMenuConfigurationEdit();
+        TopologyPreview = null;
+        PreparedRerecordTargetId = null;
+        Refresh();
+        InitializeNodeDefaults(force: true);
+    });
+
+    private string GetMenuConfigurationId() => string.IsNullOrWhiteSpace(MenuConfigurationId)
+        ? CreateMenuNodeId(MenuConfigurationName)
+        : MenuConfigurationId.Trim();
+
+    private void HandleTopologyParentChanged(ChangeEventArgs args)
+    {
+        TopologyParentId = args.Value?.ToString() ?? string.Empty;
+        TopologyPreview = null;
+        LocalError = null;
+    }
+
+    private void HandleTopologyOutlineChanged(ChangeEventArgs args)
+    {
+        TopologyOutline = args.Value?.ToString() ?? string.Empty;
+        TopologyPreview = null;
+        LocalError = null;
+    }
+
+    private void HandleKeepUnlistedChanged(ChangeEventArgs args)
+    {
+        KeepUnlistedTopologyNodes = args.Value is true;
+        TopologyPreview = null;
+        LocalError = null;
+    }
+
+    private void LoadCurrentTopologyOutline()
+    {
+        var builder = new StringBuilder();
+
+        void AppendChildren(string parentId, int depth)
+        {
+            foreach (var node in Navigation.Nodes.Where(candidate => string.Equals(
+                         candidate.ParentId,
+                         parentId,
+                         StringComparison.OrdinalIgnoreCase)))
+            {
+                builder.Append(' ', depth * 2)
+                    .Append(node.Label)
+                    .Append(" [")
+                    .Append(node.Id)
+                    .AppendLine("]");
+                AppendChildren(node.Id, depth + 1);
+            }
+        }
+
+        AppendChildren(TopologyParentId, 0);
+        TopologyOutline = builder.ToString().TrimEnd();
+        TopologyPreview = null;
+        LocalError = null;
+    }
+
+    private void PreviewTopologyOutline()
+    {
+        LocalError = null;
+        try
+        {
+            TopologyPreview = Controller.PreviewMenuTopologyOutline(CreateTopologyOutlineRequest());
+        }
+        catch (Exception exception)
+        {
+            TopologyPreview = null;
+            LocalError = exception.Message;
+        }
+    }
+
+    private Task ApplyTopologyOutlineAsync() => RunBusyAsync(async () =>
+    {
+        await Controller.ApplyMenuTopologyOutlineAsync(CreateTopologyOutlineRequest());
+        Refresh();
+        LoadCurrentTopologyOutline();
+        InitializeNodeDefaults(force: true);
+    });
+
+    private MenuTopologyOutlineRequest CreateTopologyOutlineRequest() => new(
+        TopologyParentId,
+        TopologyOutline,
+        KeepUnlistedTopologyNodes);
 
     private async Task CreateDefinitionAsync()
     {
@@ -1665,6 +1977,18 @@
         if (Navigation.Nodes.Count == 0)
         {
             return;
+        }
+
+        if (string.IsNullOrWhiteSpace(TopologyParentId)
+            || Navigation.Nodes.All(node => !node.Id.Equals(
+                TopologyParentId,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            TopologyParentId = Navigation.Nodes.FirstOrDefault(node => node.Id.Equals(
+                    "tv-interface",
+                    StringComparison.OrdinalIgnoreCase))?.Id
+                ?? Navigation.Nodes[0].Id;
+            TopologyPreview = null;
         }
 
         if (force || string.IsNullOrWhiteSpace(SourceNodeId) || Navigation.Nodes.All(node => node.Id != SourceNodeId))

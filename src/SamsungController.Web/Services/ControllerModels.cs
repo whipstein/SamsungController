@@ -119,11 +119,19 @@ public sealed record MenuAnchorSummary(
     bool Verified,
     int CommandCount);
 
+public sealed record MenuConfigurationSummary(
+    string Id,
+    string Name,
+    string? Conditions,
+    bool IsActive);
+
 public sealed record MenuNavigationSnapshot(
     string DefinitionPath,
     string? DefinitionName,
     string? Model,
     MenuDefinitionContext? Context,
+    IReadOnlyList<MenuConfigurationSummary> Configurations,
+    string? ActiveConfigurationId,
     IReadOnlyList<MenuNodeSummary> Nodes,
     IReadOnlyList<MenuAnchorSummary> Anchors,
     MenuState State,
@@ -155,11 +163,36 @@ public sealed record MenuDefinitionCreationRequest(
     string PictureMode,
     string Input);
 
+public sealed record MenuConfigurationEditRequest(
+    string Id,
+    string Name,
+    string? Conditions);
+
 public sealed record MenuNodeEditRequest(
     string Id,
     string Label,
     string? ParentId,
     string? Description);
+
+public sealed record MenuTopologyOutlineRequest(
+    string ParentNodeId,
+    string Outline,
+    bool KeepUnlistedNodes = true);
+
+public sealed record MenuTopologyOutlinePreview(
+    int OutlineNodeCount,
+    int AddedNodeCount,
+    int UpdatedNodeCount,
+    int RemovedNodeCount,
+    int ReorderedLevelCount,
+    int FinalNodeCount,
+    IReadOnlyList<string> Changes)
+{
+    public bool HasChanges => AddedNodeCount > 0
+        || UpdatedNodeCount > 0
+        || RemovedNodeCount > 0
+        || ReorderedLevelCount > 0;
+}
 
 public sealed record MenuRecordingRequest(
     MenuAuthoringItemKind Kind,
@@ -190,7 +223,11 @@ public sealed record MenuRecordingRequest(
         var matchingRoutes = definition.Transitions.Values
             .Where(transition =>
                 transition.FromNodeId.Equals(sourceNodeId, StringComparison.OrdinalIgnoreCase)
-                && transition.ToNodeId.Equals(targetNodeId, StringComparison.OrdinalIgnoreCase))
+                && transition.ToNodeId.Equals(targetNodeId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(
+                    transition.ConfigurationId,
+                    definition.ActiveConfigurationId,
+                    StringComparison.OrdinalIgnoreCase))
             .ToArray();
         var matchingDrafts = matchingRoutes
             .Where(transition => !transition.Verified)

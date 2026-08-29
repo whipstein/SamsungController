@@ -109,7 +109,7 @@ public sealed class NavigationPlanner
                 break;
             }
 
-            foreach (var transition in definition.Transitions.Values.Where(transition =>
+            foreach (var transition in definition.ApplicableTransitions.Where(transition =>
                          transition.FromNodeId.Equals(nodeId, StringComparison.OrdinalIgnoreCase)
                          && (transition.Verified || includeDraftTransitions)))
             {

@@ -14,11 +14,13 @@
         <HelpBubble Title="Build a TV menu interface" ButtonText="Page help">
             <ol>
                 <li>Create or load a definition for the exact model, firmware, signal, picture mode, and input context being tested.</li>
-                <li>Define the visible menu tree, then record live keys between named source and target positions.</li>
+                <li>Build the visible hierarchy from an indented outline. Add a named configuration whenever TV settings add, remove, or reorder rows.</li>
+                <li>Select the configuration currently visible on the TV, then record live keys between named source and target positions.</li>
                 <li>Tune system-wide timing first; use per-button overrides only for exceptional steps.</li>
                 <li>Prepare the source, replay the draft, and accept only a visually correct result. Three passes promote it to the verified Menu page.</li>
             </ol>
             <p class="help-callout">Red tree nodes have no recorded command. Yellow nodes are recorded but still need validation. Normal-color nodes are verified.</p>
+            <p>A route is valid only in the configuration where it was recorded. SamsungController cannot detect external setting changes, so choose the matching configuration explicitly.</p>
             <p>Do not approve a failed pass. Manually restore the TV if needed, adjust the route or waits, and replay it.</p>
         </HelpBubble>
         <a class="secondary-action menu-authoring-link" href="menu">View verified menus <span>→</span></a>
@@ -37,6 +39,10 @@
         <div><span>Model</span><strong>@(Navigation.Model ?? "—")</strong></div>
         <div><span>Firmware</span><strong>@(Navigation.Context?.Firmware ?? "—")</strong></div>
         <div><span>Context</span><strong>@ContextLabel</strong></div>
+        <div title="@ActiveConfiguration?.Conditions">
+            <span>Menu configuration</span>
+            <strong>@(ActiveConfiguration?.Name ?? "Universal / legacy")</strong>
+        </div>
     </div>
     <div class="definition-editor">
         <label>
@@ -60,6 +66,8 @@
     private string ContextLabel => Navigation.Context is null
         ? "—"
         : $"{Navigation.Context.Signal} · {Navigation.Context.PictureMode} · {Navigation.Context.Input}";
+    private MenuConfigurationSummary? ActiveConfiguration => Navigation.Configurations
+        .FirstOrDefault(configuration => configuration.IsActive);
 
     protected override async Task OnInitializedAsync()
     {

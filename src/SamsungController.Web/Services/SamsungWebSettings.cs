@@ -35,6 +35,8 @@ internal sealed record SamsungWebSettings
 
     public string? MenuDefinitionPath { get; init; }
 
+    public string? MenuConfigurationId { get; init; }
+
     public IReadOnlyList<QuickAccessAction>? QuickAccess { get; init; }
 
     public static async Task<SamsungWebSettings> LoadAsync(

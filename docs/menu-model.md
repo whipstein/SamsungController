@@ -65,6 +65,14 @@ context:
   pictureMode: unrecorded
   input: unrecorded
 
+configurations:
+  - id: standard
+    name: Standard menu
+    conditions: Game Mode = Off
+  - id: game-mode
+    name: Game Mode menu
+    conditions: Game Mode = On
+
 timing:
   defaultDelay: 300ms
   screenChangeDelay: 800ms
@@ -82,6 +90,7 @@ anchors:
   - id: normal-video
     label: Return to normal video
     target: normal-video
+    configuration: standard
     verified: false
     returnStrategy:
       menuRoot: settings
@@ -100,10 +109,26 @@ transitions:
   - id: open-settings
     from: normal-video
     to: settings
+    configuration: standard
     verified: false
     steps:
       - key: KEY_MENU
 ```
+
+`configurations` keeps settings-dependent visible layouts in one TV model file.
+Use one entry for each combination that changes row presence or order. The
+`conditions` value is a human-readable checklist, not an expression evaluated
+from TV telemetry: Samsung does not report the highlighted row or these setting
+values over this control channel. The active configuration is selected in the
+persistent header or Build & Verify and is stored in per-user application
+settings. Changing it deliberately resets expected menu position to unknown.
+
+An anchor or transition with `configuration` is eligible only while that
+configuration is active. An entry without `configuration` is universal and may
+be used in every layout, so omit it only for behavior that has genuinely been
+verified as layout-independent. New UI recordings are automatically tagged with
+the active configuration. A verified route from another configuration never
+contributes to direct or calculated navigation.
 
 Parent relationships on nodes control tree presentation only. Within each parent,
 the YAML node sequence is the persistent custom order used to mirror the TV.
@@ -155,8 +180,14 @@ can be planned or sent.
 3. Create a new TV interface there if no
    definition exists; the generated YAML is stored in the per-user configuration
    directory and loaded automatically.
-4. In **Define the overall menu tree**, add and name the expected menu positions,
-   assign their parents, and save the hierarchy to YAML. Choose **Custom · TV
+4. In **Define the overall menu tree**, use **Fast setup** to load the current
+   branch as an indented outline, add the expected menu positions with two spaces
+   per level, preview the changes, and apply them to the same YAML. Matching
+   labels under the same parent reuse their stable IDs; append `[stable-id]` to a
+   line when identity must be explicit. The safe default preserves unlisted
+   items. Disable it only to synchronize the complete selected branch; recorded
+   references are protected from removal. Use the single-item editor for fine
+   corrections and descriptions. Choose **Custom · TV
    order** and move siblings up or down to match the on-screen menu; switch to
    **Alphabetical** when that view is more useful. Display names and parents remain
    editable; stable node IDs do not change after creation. Tree labels are red
@@ -168,6 +199,11 @@ can be planned or sent.
    existing node. With focus in the tree, Up/Down select adjacent visible
    positions, Left selects the parent, and Right selects the first child without
    scrolling the page.
+   When selections change which rows are present, add a named menu configuration
+   for each visible layout and record its relevant selection values. Choose the
+   matching configuration before recording, validation, or everyday navigation.
+   Nodes may exist only as topology documentation; only destinations with a
+   route verified in the active configuration appear on the ordinary Menu page.
 5. Choose **Anchor** or **Transition**, select two predefined nodes, and start
    live recording. For a transition, **Prepare source**
    uses a verified anchor and verified routes to position the TV first. The UI

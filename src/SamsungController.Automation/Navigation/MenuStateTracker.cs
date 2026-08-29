@@ -129,7 +129,7 @@ public sealed class MenuStateTracker
             return;
         }
 
-        var matches = _definition.Transitions.Values.Where(transition =>
+        var matches = _definition.ApplicableTransitions.Where(transition =>
                 transition.Verified
                 && transition.FromNodeId.Equals(current.NodeId, StringComparison.OrdinalIgnoreCase)
                 && transition.Operations.Count == 1

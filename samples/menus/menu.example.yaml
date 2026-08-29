@@ -11,6 +11,13 @@ context:
   pictureMode: unrecorded
   input: unrecorded
 
+# Keep settings-dependent menu layouts in this same model file. Add another
+# configuration when a TV selection causes rows to appear, disappear, or move.
+configurations:
+  - id: standard
+    name: Standard menu
+    conditions: Replace with the setting values that produce this visible list.
+
 timing:
   defaultDelay: 300ms
   screenChangeDelay: 800ms
@@ -49,6 +56,7 @@ anchors:
   - id: normal-video
     label: Return to normal video
     target: normal-video
+    configuration: standard
     verified: false
     description: Example only. Record and verify the correct return sequence for your TV.
     returnStrategy:
@@ -68,6 +76,7 @@ transitions:
   - id: open-settings
     from: normal-video
     to: settings
+    configuration: standard
     verified: false
     description: Example only. Record this transition from the browser UI.
     steps:
@@ -76,6 +85,7 @@ transitions:
   - id: open-picture
     from: settings
     to: picture
+    configuration: standard
     verified: false
     description: Example only. Replace with the observed route on your TV.
     steps:
@@ -85,6 +95,7 @@ transitions:
   - id: open-expert-settings
     from: picture
     to: expert-settings
+    configuration: standard
     verified: false
     description: Example only. Replace with the observed route on your TV.
     steps:

@@ -34,7 +34,8 @@ public sealed class MenuDefinitionWriterTests : IDisposable
                     ReturnToVideoOperations:
                     [
                         new MenuOperation("KEY_RETURN", DelayAfter: TimeSpan.FromMilliseconds(325))
-                    ])
+                    ],
+                    ConfigurationId: "standard")
             ],
             [
                 new MenuAnchor(
@@ -55,9 +56,11 @@ public sealed class MenuDefinitionWriterTests : IDisposable
                                 "settings",
                                 new MenuReturnScript([new MenuOperation("KEY_EXIT")], true))
                         ]),
-                    ValidationSourceNodeId: "settings")
+                    ValidationSourceNodeId: "settings",
+                    ConfigurationId: "standard")
             ],
-            new MenuTimingProfile(175, 650, 325, true));
+            new MenuTimingProfile(175, 650, 325, true),
+            [new MenuConfiguration("standard", "Standard", "Game Mode = Off")]);
         var path = Path.Combine(_directory, "menu.yaml");
 
         await new MenuDefinitionWriter().WriteFileAsync(path, definition);
@@ -67,9 +70,13 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Assert.Equal(definition.Name, reparsed.Name);
         Assert.Equal(definition.Context, reparsed.Context);
         Assert.Equal(definition.Timing, reparsed.Timing);
+        var configuration = Assert.Single(reparsed.Configurations.Values);
+        Assert.Equal("standard", configuration.Id);
+        Assert.Equal("Game Mode = Off", configuration.Conditions);
         Assert.Contains("  verified: true", await File.ReadAllTextAsync(path), StringComparison.Ordinal);
         Assert.Equal("Owner's settings", reparsed.Nodes["settings"].Description);
         Assert.True(reparsed.Anchors["normal"].Verified);
+        Assert.Equal("standard", reparsed.Anchors["normal"].ConfigurationId);
         Assert.Equal("settings", reparsed.Anchors["normal"].ValidationSourceNodeId);
         var returnStrategy = Assert.IsType<MenuReturnStrategy>(
             reparsed.Anchors["normal"].ReturnStrategy);
@@ -85,6 +92,7 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Assert.True(nodeOverride.Script.Verified);
         Assert.Equal("KEY_EXIT", Assert.Single(nodeOverride.Script.Operations).Key);
         var transition = reparsed.Transitions["open-settings"];
+        Assert.Equal("standard", transition.ConfigurationId);
         Assert.False(transition.Verified);
         Assert.Equal(4, transition.Operations[0].Repeat);
         Assert.Equal(RemoteKeyAction.Press, transition.Operations[1].Action);

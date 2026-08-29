@@ -46,6 +46,53 @@ public sealed class NavigationPlannerTests
         Assert.Contains("No verified", exception.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void UsesOnlyRoutesVerifiedForTheActiveMenuConfiguration()
+    {
+        var definition = new MenuDefinition(
+            "conditional",
+            "Conditional",
+            "TV",
+            new MenuDefinitionContext(),
+            [new MenuNode("start", "Start"), new MenuNode("target", "Target")],
+            [
+                new MenuTransition(
+                    "standard-route",
+                    "start",
+                    "target",
+                    [new MenuOperation("KEY_DOWN", Repeat: 2)],
+                    true,
+                    ConfigurationId: "standard"),
+                new MenuTransition(
+                    "game-route",
+                    "start",
+                    "target",
+                    [new MenuOperation("KEY_DOWN", Repeat: 4)],
+                    true,
+                    ConfigurationId: "game")
+            ],
+            [],
+            configurations:
+            [
+                new MenuConfiguration("standard", "Standard"),
+                new MenuConfiguration("game", "Game Mode")
+            ]);
+
+        var standardPlan = new NavigationPlanner().Plan(
+            definition.WithActiveConfiguration("standard"),
+            "start",
+            "target");
+        var gamePlan = new NavigationPlanner().Plan(
+            definition.WithActiveConfiguration("game"),
+            "start",
+            "target");
+
+        Assert.Equal("standard-route", Assert.Single(standardPlan.Transitions).Id);
+        Assert.Equal(2, standardPlan.CommandCount);
+        Assert.Equal("game-route", Assert.Single(gamePlan.Transitions).Id);
+        Assert.Equal(4, gamePlan.CommandCount);
+    }
+
     private static MenuDefinition CreateDefinition() => new(
         "test",
         "Test",

@@ -128,7 +128,7 @@ public sealed class MenuNavigator
             directRouteError = exception;
         }
 
-        foreach (var anchor in _definition.Anchors.Values.Where(anchor =>
+        foreach (var anchor in _definition.ApplicableAnchors.Where(anchor =>
                      anchor.Verified
                      && !anchor.TargetNodeId.Equals(
                          state.NodeId,
@@ -193,6 +193,12 @@ public sealed class MenuNavigator
         CancellationToken cancellationToken = default)
     {
         var anchor = _definition.GetRequiredAnchor(anchorId);
+        if (!_definition.IsApplicableToActiveConfiguration(anchor.ConfigurationId))
+        {
+            throw new InvalidOperationException(
+                $"Anchor '{anchor.Label}' is not valid for the active menu configuration.");
+        }
+
         if (!anchor.Verified)
         {
             throw new InvalidOperationException(
@@ -222,7 +228,7 @@ public sealed class MenuNavigator
     {
         var planner = new NavigationPlanner();
         var candidates = new List<UnknownStatePreparation>();
-        foreach (var anchor in _definition.Anchors.Values.Where(anchor => anchor.Verified))
+        foreach (var anchor in _definition.ApplicableAnchors.Where(anchor => anchor.Verified))
         {
             try
             {
@@ -267,7 +273,7 @@ public sealed class MenuNavigator
                 nodeOverride.Script.Operations);
         }
 
-        var integratedReturn = _definition.Transitions.Values
+        var integratedReturn = _definition.ApplicableTransitions
             .Where(transition => transition.ToNodeId.Equals(
                     state.NodeId,
                     StringComparison.OrdinalIgnoreCase)

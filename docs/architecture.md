@@ -131,6 +131,19 @@ display does not mutate the definition. Unreferenced draft branches can be delet
 referenced branches must first have their traversal, anchor, or return definition
 removed.
 
+An indented-outline planner can add or synchronize an entire branch in one
+atomic write. It reuses matching stable IDs, previews additions, updates,
+reordering, and removals, and refuses to remove nodes referenced by recorded
+behavior.
+
+Named menu configurations describe settings-dependent visible layouts inside a
+single model YAML. Routes and anchors may be configuration-scoped; planning,
+state observation, recording, validation queues, macro checks, and the ordinary
+Menu page consider only universal behavior plus the active configuration.
+Because the TV does not report these selection values, configuration choice is
+explicit and a change replaces the navigator and resets predicted position to
+unknown.
+
 Build & Verify may delete an incorrect verified setting after a two-step UI
 confirmation. Deletion removes the setting's full descendant subtree and every
 transition that references it, and clears a return strategy whose menu root was

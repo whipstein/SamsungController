@@ -9,6 +9,11 @@ public sealed record MenuDefinitionContext(
     string PictureMode = "any",
     string Input = "any");
 
+public sealed record MenuConfiguration(
+    string Id,
+    string Name,
+    string? Conditions = null);
+
 public sealed record MenuTimingProfile(
     int DefaultDelayMilliseconds = 150,
     int ScreenChangeDelayMilliseconds = 500,
@@ -56,7 +61,8 @@ public sealed record MenuTransition(
     IReadOnlyList<MenuOperation> Operations,
     bool Verified = false,
     string? Description = null,
-    IReadOnlyList<MenuOperation>? ReturnToVideoOperations = null);
+    IReadOnlyList<MenuOperation>? ReturnToVideoOperations = null,
+    string? ConfigurationId = null);
 
 public sealed record MenuReturnScript(
     IReadOnlyList<MenuOperation> Operations,
@@ -80,13 +86,15 @@ public sealed record MenuAnchor(
     bool Verified = false,
     string? Description = null,
     MenuReturnStrategy? ReturnStrategy = null,
-    string? ValidationSourceNodeId = null);
+    string? ValidationSourceNodeId = null,
+    string? ConfigurationId = null);
 
 public sealed class MenuDefinition
 {
     private readonly IReadOnlyDictionary<string, MenuNode> _nodes;
     private readonly IReadOnlyDictionary<string, MenuTransition> _transitions;
     private readonly IReadOnlyDictionary<string, MenuAnchor> _anchors;
+    private readonly IReadOnlyDictionary<string, MenuConfiguration> _configurations;
 
     public MenuDefinition(
         string id,
@@ -96,7 +104,9 @@ public sealed class MenuDefinition
         IEnumerable<MenuNode> nodes,
         IEnumerable<MenuTransition> transitions,
         IEnumerable<MenuAnchor> anchors,
-        MenuTimingProfile? timing = null)
+        MenuTimingProfile? timing = null,
+        IEnumerable<MenuConfiguration>? configurations = null,
+        string? activeConfigurationId = null)
     {
         Id = id;
         Name = name;
@@ -106,6 +116,13 @@ public sealed class MenuDefinition
         _nodes = ToUniqueDictionary(nodes, node => node.Id, "node");
         _transitions = ToUniqueDictionary(transitions, transition => transition.Id, "transition");
         _anchors = ToUniqueDictionary(anchors, anchor => anchor.Id, "anchor");
+        _configurations = ToUniqueDictionary(
+            configurations ?? [],
+            configuration => configuration.Id,
+            "configuration");
+        ActiveConfigurationId = string.IsNullOrWhiteSpace(activeConfigurationId)
+            ? null
+            : activeConfigurationId.Trim();
     }
 
     public string Id { get; }
@@ -123,6 +140,33 @@ public sealed class MenuDefinition
     public IReadOnlyDictionary<string, MenuTransition> Transitions => _transitions;
 
     public IReadOnlyDictionary<string, MenuAnchor> Anchors => _anchors;
+
+    public IReadOnlyDictionary<string, MenuConfiguration> Configurations => _configurations;
+
+    public string? ActiveConfigurationId { get; }
+
+    public IEnumerable<MenuTransition> ApplicableTransitions => _transitions.Values.Where(
+        transition => IsApplicableToActiveConfiguration(transition.ConfigurationId));
+
+    public IEnumerable<MenuAnchor> ApplicableAnchors => _anchors.Values.Where(
+        anchor => IsApplicableToActiveConfiguration(anchor.ConfigurationId));
+
+    public bool IsApplicableToActiveConfiguration(string? configurationId) =>
+        string.IsNullOrWhiteSpace(configurationId)
+        || (!string.IsNullOrWhiteSpace(ActiveConfigurationId)
+            && configurationId.Equals(ActiveConfigurationId, StringComparison.OrdinalIgnoreCase));
+
+    public MenuDefinition WithActiveConfiguration(string? configurationId) => new(
+        Id,
+        Name,
+        Model,
+        Context,
+        Nodes.Values,
+        Transitions.Values,
+        Anchors.Values,
+        Timing,
+        Configurations.Values,
+        configurationId);
 
     public MenuNode GetRequiredNode(string nodeId) =>
         _nodes.TryGetValue(nodeId, out var node)

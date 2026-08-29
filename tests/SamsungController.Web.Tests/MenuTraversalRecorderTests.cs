@@ -84,6 +84,46 @@ public sealed class MenuTraversalRecorderTests
     }
 
     [Fact]
+    public void SameSourceAndTargetCanBeRecordedForAnotherMenuConfiguration()
+    {
+        var definition = new MenuDefinition(
+            "conditional-recording",
+            "Conditional Recording",
+            "Test TV",
+            new MenuDefinitionContext(),
+            [new MenuNode("normal-video", "Normal video"), new MenuNode("settings", "Settings")],
+            [
+                new MenuTransition(
+                    "open-settings-standard",
+                    "normal-video",
+                    "settings",
+                    [new MenuOperation("KEY_MENU")],
+                    Verified: true,
+                    ConfigurationId: "standard")
+            ],
+            [],
+            configurations:
+            [
+                new MenuConfiguration("standard", "Standard"),
+                new MenuConfiguration("game", "Game Mode")
+            ],
+            activeConfigurationId: "game");
+        var request = new MenuRecordingRequest(
+            MenuAuthoringItemKind.Transition,
+            string.Empty,
+            string.Empty,
+            "normal-video",
+            "settings",
+            null,
+            null);
+
+        var resolved = request.ResolveIdentity(definition);
+
+        Assert.NotEqual("open-settings-standard", resolved.ItemId);
+        Assert.Equal("to-settings", resolved.ItemId);
+    }
+
+    [Fact]
     public void CapturesSuccessfulButtonOrderAndCoalescesRepeats()
     {
         var recorder = new MenuTraversalRecorder();

@@ -35,6 +35,21 @@ public sealed class MenuDefinitionValidator
         ValidateIdentifier("definition", definition.Id, errors);
         ValidateRequired("definition", "name", definition.Name, errors);
         ValidateRequired("definition", "model", definition.Model, errors);
+        foreach (var configuration in definition.Configurations.Values)
+        {
+            var location = $"configuration '{configuration.Id}'";
+            ValidateIdentifier(location, configuration.Id, errors);
+            ValidateRequired(location, "name", configuration.Name, errors);
+        }
+
+        if (definition.ActiveConfigurationId is { } activeConfigurationId
+            && !definition.Configurations.ContainsKey(activeConfigurationId))
+        {
+            errors.Add(new MenuDefinitionValidationError(
+                "active configuration",
+                $"Configuration '{activeConfigurationId}' does not exist."));
+        }
+
         ValidateTiming(definition.Timing, errors);
         if (definition.Nodes.Count == 0)
         {
@@ -70,6 +85,7 @@ public sealed class MenuDefinitionValidator
             var location = $"anchor '{anchor.Id}'";
             ValidateIdentifier(location, anchor.Id, errors);
             ValidateRequired(location, "label", anchor.Label, errors);
+            ValidateConfigurationReference(definition, anchor.ConfigurationId, location, errors);
             if (!definition.Nodes.ContainsKey(anchor.TargetNodeId))
             {
                 errors.Add(new MenuDefinitionValidationError(
@@ -93,6 +109,7 @@ public sealed class MenuDefinitionValidator
         {
             var location = $"transition '{transition.Id}'";
             ValidateIdentifier(location, transition.Id, errors);
+            ValidateConfigurationReference(definition, transition.ConfigurationId, location, errors);
             if (!definition.Nodes.ContainsKey(transition.FromNodeId))
             {
                 errors.Add(new MenuDefinitionValidationError(
@@ -124,6 +141,21 @@ public sealed class MenuDefinitionValidator
         }
 
         return errors;
+    }
+
+    private static void ValidateConfigurationReference(
+        MenuDefinition definition,
+        string? configurationId,
+        string location,
+        ICollection<MenuDefinitionValidationError> errors)
+    {
+        if (!string.IsNullOrWhiteSpace(configurationId)
+            && !definition.Configurations.ContainsKey(configurationId))
+        {
+            errors.Add(new MenuDefinitionValidationError(
+                location,
+                $"Configuration '{configurationId}' does not exist."));
+        }
     }
 
     private static void ValidateTiming(

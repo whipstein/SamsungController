@@ -21,6 +21,18 @@ public sealed class MenuDefinitionWriter
         AppendScalar(yaml, 2, "signal", definition.Context.Signal);
         AppendScalar(yaml, 2, "pictureMode", definition.Context.PictureMode);
         AppendScalar(yaml, 2, "input", definition.Context.Input);
+        if (definition.Configurations.Count > 0)
+        {
+            yaml.AppendLine();
+            yaml.AppendLine("configurations:");
+            foreach (var configuration in definition.Configurations.Values)
+            {
+                AppendListScalar(yaml, 2, "id", configuration.Id);
+                AppendScalar(yaml, 4, "name", configuration.Name);
+                AppendOptionalScalar(yaml, 4, "conditions", configuration.Conditions);
+            }
+        }
+
         yaml.AppendLine();
         yaml.AppendLine("timing:");
         AppendDuration(yaml, 2, "defaultDelay", definition.Timing.DefaultDelayMilliseconds);
@@ -44,6 +56,7 @@ public sealed class MenuDefinitionWriter
             AppendListScalar(yaml, 2, "id", anchor.Id);
             AppendScalar(yaml, 4, "label", anchor.Label);
             AppendScalar(yaml, 4, "target", anchor.TargetNodeId);
+            AppendOptionalScalar(yaml, 4, "configuration", anchor.ConfigurationId);
             AppendBoolean(yaml, 4, "verified", anchor.Verified);
             AppendOptionalScalar(yaml, 4, "description", anchor.Description);
             AppendOptionalScalar(yaml, 4, "validationSource", anchor.ValidationSourceNodeId);
@@ -58,6 +71,7 @@ public sealed class MenuDefinitionWriter
             AppendListScalar(yaml, 2, "id", transition.Id);
             AppendScalar(yaml, 4, "from", transition.FromNodeId);
             AppendScalar(yaml, 4, "to", transition.ToNodeId);
+            AppendOptionalScalar(yaml, 4, "configuration", transition.ConfigurationId);
             AppendBoolean(yaml, 4, "verified", transition.Verified);
             AppendOptionalScalar(yaml, 4, "description", transition.Description);
             if (transition.ReturnToVideoOperations is { Count: > 0 } returnOperations)
