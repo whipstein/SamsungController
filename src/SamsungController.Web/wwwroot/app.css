@@ -576,6 +576,8 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .bulk-topology-keep small { margin-top: 3px; color: var(--muted); font-size: 8px; line-height: 1.45; }
 .bulk-topology-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 .bulk-topology-actions .primary-action { width: auto; }
+.bulk-topology-save-note { display: block; margin-top: 6px; color: var(--faint); font-size: 8px; line-height: 1.45; text-align: right; }
+.bulk-topology-save-note strong { color: var(--cyan); }
 .bulk-topology-preview { margin-top: 11px; padding: 11px 12px; border: 1px solid rgba(124,231,220,.25); border-radius: 6px; background: rgba(124,231,220,.035); }
 .bulk-topology-preview.no-changes { border-color: var(--line); background: #09151e; }
 .bulk-topology-preview > div { display: flex; flex-wrap: wrap; gap: 7px; }

@@ -99,6 +99,8 @@ nodes:
     parent: settings
     controlType: slider
     defaultValue: 50
+    minimumValue: 0
+    maximumValue: 100
     disabledWhen:
       - setting: adaptive-picture
         equals: on
@@ -112,6 +114,15 @@ nodes:
       - Standard
       - Movie
       - Filmmaker Mode
+
+  - id: reset-picture
+    label: Reset Picture
+    parent: settings
+    controlType: confirmation
+    defaultValue: Cancel
+    options:
+      - Reset
+      - Cancel
 
 anchors:
   - id: normal-video
@@ -158,13 +169,16 @@ the active configuration. A verified route from another configuration never
 contributes to direct or calculated navigation.
 
 Each node also describes how the highlighted row behaves. `controlType` is
-`submenu`, `slider`, `selection`, or `switch`; older definitions that omit it
-continue to load as `submenu`. Sliders require a human-readable `defaultValue`,
-and switches require `on` or `off`. A selection requires an ordered `options`
-list plus a `defaultValue` that matches one of those options; duplicate choices
-are rejected. Keep the list in the same order displayed by the TV. A submenu
-has no value. These defaults document the expected initial TV setup;
-SamsungController cannot read the live value from the TV.
+`submenu`, `slider`, `selection`, `switch`, or `confirmation`; older definitions
+that omit it continue to load as `submenu`. Sliders require numeric
+`minimumValue` and `maximumValue` boundaries plus a numeric `defaultValue` inside
+that range. Switches require `on` or `off`. A selection requires an ordered
+`options` list plus a `defaultValue` that matches one option. A confirmation is
+an action dialog rather than a persistent setting; it requires at least two
+ordered `options`, and its `defaultValue` records the initially highlighted
+choice. Duplicate choices are rejected. Keep lists in the same order displayed
+by the TV. A submenu has no value. These declarations document the expected TV
+behavior; SamsungController cannot read the live value or highlighted choice.
 
 `disabledWhen` documents rows that remain visible and occupy their normal place
 in the menu but become unavailable or gray. Each condition names another
@@ -235,16 +249,19 @@ can be planned or sent.
    is currently visible. **Menu outline** automatically loads the selected YAML
    branch as an indented outline; edit it directly or use **Reload branch from
    YAML** to discard unsaved text. Add the expected menu positions with two spaces
-   per level, preview the changes, and apply them to the same YAML. Matching
+   per level, choose **Preview changes**, and then choose **Save outline to
+   YAML**. Any text edit invalidates the preview and requires a new one. Matching
    labels under the same parent reuse their stable IDs; append `[stable-id]` to a
    line when identity must be explicit. Add behavior metadata in braces before
-   the stable ID, for example `Brightness {slider; default=50}`, `Picture Mode
+   the stable ID, for example `Brightness {slider; default=50; min=0; max=100}`, `Picture Mode
    {selection; default=Filmmaker Mode; options=Standard|Movie|Filmmaker Mode}`,
-   or `Adaptive Picture {switch; default=off}`. The option order after
+   `Adaptive Picture {switch; default=off}`, or `Reset Picture {confirmation;
+   default=Cancel; options=Reset|Cancel}`. The option order after
    `options=` is preserved. A dependent gray row can be written as `Brightness {slider;
    default=50; disabledWhen=adaptive-picture=on}`; separate multiple disabling
-   conditions with `|`. The fine-adjustment editor exposes selections as an
-   ordered add/remove/move list and restricts the default to that list. The safe default preserves unlisted
+   conditions with `|`. The fine-adjustment editor exposes selection and
+   confirmation choices as an ordered add/remove/move list, and exposes slider
+   boundaries as numeric fields. The safe default preserves unlisted
    items. Disable it only to synchronize the complete selected branch; recorded
    references are protected from removal. Applying the outline advances to
    **Record route**. Open **Fine adjustments for individual menu items** only for

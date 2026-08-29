@@ -16,7 +16,7 @@ public sealed class MenuDefinitionParser
     private static readonly HashSet<string> ConfigurationFields =
         new(["id", "name", "conditions"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> NodeFields =
-        new(["id", "label", "parent", "description", "controlType", "defaultValue", "options", "disabledWhen"], StringComparer.OrdinalIgnoreCase);
+        new(["id", "label", "parent", "description", "controlType", "defaultValue", "minimumValue", "maximumValue", "options", "disabledWhen"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> DisabledConditionFields =
         new(["setting", "equals"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> AnchorFields =
@@ -190,7 +190,9 @@ public sealed class MenuDefinitionParser
                     ? ParseSelectionOptions(
                         RequireSequence(optionsNode, $"options in {context}"),
                         context)
-                    : []));
+                    : [],
+                OptionalDecimal(fields, "minimumValue", context),
+                OptionalDecimal(fields, "maximumValue", context)));
         }
 
         return nodes;
@@ -209,7 +211,7 @@ public sealed class MenuDefinitionParser
                && Enum.IsDefined(result)
             ? result
             : throw new MenuDefinitionParseException(
-                $"'controlType' in {context} must be submenu, slider, selection, or switch.");
+                $"'controlType' in {context} must be submenu, slider, selection, switch, or confirmation.");
     }
 
     private static IReadOnlyList<MenuNodeDisabledCondition> ParseDisabledConditions(
@@ -243,6 +245,27 @@ public sealed class MenuDefinitionParser
         }
 
         return options;
+    }
+
+    private static decimal? OptionalDecimal(
+        IReadOnlyDictionary<string, YamlNode> fields,
+        string name,
+        string context)
+    {
+        if (!fields.TryGetValue(name, out var node))
+        {
+            return null;
+        }
+
+        var value = RequireScalar(node, $"'{name}' in {context}");
+        return decimal.TryParse(
+            value,
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out var result)
+            ? result
+            : throw new MenuDefinitionParseException(
+                $"'{name}' in {context} must be a number.");
     }
 
     private static IReadOnlyList<MenuAnchor> ParseAnchors(YamlSequenceNode sequence)

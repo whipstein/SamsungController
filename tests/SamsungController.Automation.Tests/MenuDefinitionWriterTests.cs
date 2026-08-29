@@ -32,14 +32,23 @@ public sealed class MenuDefinitionWriterTests : IDisposable
                     "settings",
                     ControlType: MenuControlType.Slider,
                     DefaultValue: "50",
-                    DisabledWhen: [new MenuNodeDisabledCondition("adaptive-picture", "on")]),
+                    DisabledWhen: [new MenuNodeDisabledCondition("adaptive-picture", "on")],
+                    MinimumValue: 0,
+                    MaximumValue: 100),
                 new MenuNode(
                     "picture-mode",
                     "Picture Mode",
                     "settings",
                     ControlType: MenuControlType.Selection,
                     DefaultValue: "Movie",
-                    SelectionOptions: ["Standard", "Movie", "Filmmaker Mode"])
+                    SelectionOptions: ["Standard", "Movie", "Filmmaker Mode"]),
+                new MenuNode(
+                    "reset-picture",
+                    "Reset Picture",
+                    "settings",
+                    ControlType: MenuControlType.Confirmation,
+                    DefaultValue: "Cancel",
+                    SelectionOptions: ["Reset", "Cancel"])
             ],
             [
                 new MenuTransition(
@@ -99,12 +108,17 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Assert.Equal("off", reparsed.Nodes["adaptive-picture"].DefaultValue);
         Assert.Equal(MenuControlType.Slider, reparsed.Nodes["brightness"].ControlType);
         Assert.Equal("50", reparsed.Nodes["brightness"].DefaultValue);
+        Assert.Equal(0m, reparsed.Nodes["brightness"].MinimumValue);
+        Assert.Equal(100m, reparsed.Nodes["brightness"].MaximumValue);
         var disabledCondition = Assert.Single(reparsed.Nodes["brightness"].DisabledWhen!);
         Assert.Equal("adaptive-picture", disabledCondition.SettingNodeId);
         Assert.Equal("on", disabledCondition.EqualsValue);
         Assert.Equal(
             ["Standard", "Movie", "Filmmaker Mode"],
             reparsed.Nodes["picture-mode"].SelectionOptions);
+        Assert.Equal(MenuControlType.Confirmation, reparsed.Nodes["reset-picture"].ControlType);
+        Assert.Equal("Cancel", reparsed.Nodes["reset-picture"].DefaultValue);
+        Assert.Equal(["Reset", "Cancel"], reparsed.Nodes["reset-picture"].SelectionOptions);
         Assert.True(reparsed.Anchors["normal"].Verified);
         Assert.Equal("standard", reparsed.Anchors["normal"].ConfigurationId);
         Assert.Equal("settings", reparsed.Anchors["normal"].ValidationSourceNodeId);

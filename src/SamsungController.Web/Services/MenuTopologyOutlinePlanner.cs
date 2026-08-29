@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using SamsungController.Automation.Navigation;
 
@@ -72,9 +73,20 @@ internal static class MenuTopologyOutlinePlanner
             var selectionOptions = entry.SelectionOptionsSpecified
                 ? entry.SelectionOptions
                 : entry.ControlType is not null
-                  && entry.ControlType != MenuControlType.Selection
+                  && entry.ControlType is not MenuControlType.Selection
+                      and not MenuControlType.Confirmation
                     ? []
                     : existing?.SelectionOptions ?? [];
+            var minimumValue = entry.MinimumValueSpecified
+                ? entry.MinimumValue
+                : entry.ControlType is not null && entry.ControlType != MenuControlType.Slider
+                    ? null
+                    : existing?.MinimumValue;
+            var maximumValue = entry.MaximumValueSpecified
+                ? entry.MaximumValue
+                : entry.ControlType is not null && entry.ControlType != MenuControlType.Slider
+                    ? null
+                    : existing?.MaximumValue;
             var node = new MenuNode(
                 nodeId,
                 entry.Label,
@@ -83,7 +95,9 @@ internal static class MenuTopologyOutlinePlanner
                 controlType,
                 defaultValue,
                 disabledWhen,
-                selectionOptions);
+                selectionOptions,
+                minimumValue,
+                maximumValue);
             nodesById[node.Id] = node;
             if (!plannedChildren.TryGetValue(resolvedParentId, out var children))
             {
@@ -107,6 +121,8 @@ internal static class MenuTopologyOutlinePlanner
                      || !string.Equals(existing.ParentId, node.ParentId, StringComparison.OrdinalIgnoreCase)
                      || existing.ControlType != node.ControlType
                      || !string.Equals(existing.DefaultValue, node.DefaultValue, StringComparison.Ordinal)
+                     || existing.MinimumValue != node.MinimumValue
+                     || existing.MaximumValue != node.MaximumValue
                      || !SequenceEqual(existing.SelectionOptions, node.SelectionOptions)
                      || !ConditionsEqual(existing.DisabledWhen, node.DisabledWhen))
             {
@@ -257,6 +273,10 @@ internal static class MenuTopologyOutlinePlanner
         IReadOnlyList<MenuNodeDisabledCondition> disabledWhen = [];
         var selectionOptionsSpecified = false;
         IReadOnlyList<string> selectionOptions = [];
+        var minimumValueSpecified = false;
+        decimal? minimumValue = null;
+        var maximumValueSpecified = false;
+        decimal? maximumValue = null;
         if (label.EndsWith('}'))
         {
             var openingBrace = label.LastIndexOf(" {", StringComparison.Ordinal);
@@ -299,6 +319,26 @@ internal static class MenuTopologyOutlinePlanner
                     continue;
                 }
 
+                if (rawPart.StartsWith("min=", StringComparison.OrdinalIgnoreCase))
+                {
+                    minimumValueSpecified = true;
+                    minimumValue = ParseDecimalMetadata(
+                        rawPart["min=".Length..],
+                        "minimum",
+                        lineNumber);
+                    continue;
+                }
+
+                if (rawPart.StartsWith("max=", StringComparison.OrdinalIgnoreCase))
+                {
+                    maximumValueSpecified = true;
+                    maximumValue = ParseDecimalMetadata(
+                        rawPart["max=".Length..],
+                        "maximum",
+                        lineNumber);
+                    continue;
+                }
+
                 var typeValue = rawPart.StartsWith("type=", StringComparison.OrdinalIgnoreCase)
                     ? rawPart["type=".Length..]
                     : rawPart;
@@ -329,8 +369,24 @@ internal static class MenuTopologyOutlinePlanner
             disabledWhenSpecified,
             disabledWhen,
             selectionOptionsSpecified,
-            selectionOptions);
+            selectionOptions,
+            minimumValueSpecified,
+            minimumValue,
+            maximumValueSpecified,
+            maximumValue);
     }
+
+    private static decimal ParseDecimalMetadata(
+        string value,
+        string name,
+        int lineNumber) => decimal.TryParse(
+            value.Trim(),
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out var result)
+        ? result
+        : throw new InvalidOperationException(
+            $"Outline line {lineNumber} {name} value must be a number.");
 
     private static MenuControlType ParseControlType(string value, int lineNumber)
     {
@@ -341,7 +397,7 @@ internal static class MenuTopologyOutlinePlanner
                && Enum.IsDefined(result)
             ? result
             : throw new InvalidOperationException(
-                $"Outline line {lineNumber} control type must be submenu, slider, selection, or switch.");
+                $"Outline line {lineNumber} control type must be submenu, slider, selection, switch, or confirmation.");
     }
 
     private static IReadOnlyList<MenuNodeDisabledCondition> ParseDisabledConditions(
@@ -684,5 +740,9 @@ internal static class MenuTopologyOutlinePlanner
         bool DisabledWhenSpecified,
         IReadOnlyList<MenuNodeDisabledCondition> DisabledWhen,
         bool SelectionOptionsSpecified,
-        IReadOnlyList<string> SelectionOptions);
+        IReadOnlyList<string> SelectionOptions,
+        bool MinimumValueSpecified,
+        decimal? MinimumValue,
+        bool MaximumValueSpecified,
+        decimal? MaximumValue);
 }

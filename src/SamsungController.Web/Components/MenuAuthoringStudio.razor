@@ -180,7 +180,7 @@
                                     }
                                 </div>
                                 <div class="menu-outline-step setup-step-anchor" @ref="TopologyStepElement">
-                                <p>Paste the visible hierarchy using two spaces per level. Add control details as <code>{slider; default=50}</code>, <code>{selection; default=Warm2; options=Standard|Warm1|Warm2}</code>, or <code>{switch; default=off}</code>. A disabled rule uses a setting's stable ID: <code>{slider; default=50; disabledWhen=adaptive-picture=on}</code>. Add <code>[stable-id]</code> last only when identity must be explicit.</p>
+                                <p>Paste the visible hierarchy using two spaces per level. Add control details as <code>{slider; default=50; min=0; max=100}</code>, <code>{selection; default=Warm2; options=Standard|Warm1|Warm2}</code>, <code>{switch; default=off}</code>, or <code>{confirmation; default=Cancel; options=Reset|Cancel}</code>. A disabled rule uses a setting's stable ID: <code>{slider; default=50; min=0; max=100; disabledWhen=adaptive-picture=on}</code>. Add <code>[stable-id]</code> last only when identity must be explicit.</p>
                                 <div class="bulk-topology-controls">
                                     <label>
                                         <span>PLACE OUTLINE UNDER</span>
@@ -200,7 +200,7 @@
                                               @ref="TopologyOutlineElement"
                                               rows="11"
                                               spellcheck="false"
-                                              placeholder="Settings {submenu}&#10;  Picture {submenu}&#10;    Expert Settings {submenu}&#10;      Brightness {slider; default=50}&#10;      Color Tone {selection; default=Warm2; options=Standard|Warm1|Warm2}&#10;      Adaptive Picture {switch; default=off}"
+                                              placeholder="Settings {submenu}&#10;  Picture {submenu}&#10;    Expert Settings {submenu}&#10;      Brightness {slider; default=50; min=0; max=100}&#10;      Color Tone {selection; default=Warm2; options=Standard|Warm1|Warm2}&#10;      Adaptive Picture {switch; default=off}&#10;      Reset Picture {confirmation; default=Cancel; options=Reset|Cancel}"
                                               disabled="@(!CanEditMenuTree)"></textarea>
                                 </label>
                                 <small class="bulk-topology-indent-note">Enter starts the next line with the same indentation as the current line.</small>
@@ -213,8 +213,9 @@
                                 </label>
                                 <div class="bulk-topology-actions">
                                     <button class="secondary-action" @onclick="PreviewTopologyOutline" disabled="@(!CanPreviewTopology)">Preview changes</button>
-                                    <button class="primary-action" @onclick="ApplyTopologyOutlineAsync" disabled="@(!CanApplyTopology)">Apply to this TV YAML <span>→</span></button>
+                                    <button class="primary-action" @onclick="ApplyTopologyOutlineAsync" disabled="@(!CanApplyTopology)">Save outline to YAML <span>→</span></button>
                                 </div>
+                                <small class="bulk-topology-save-note">Saving is two-step: preview the current text, then choose <strong>Save outline to YAML</strong>. Editing the text requires a new preview.</small>
                                 @if (TopologyPreview is not null)
                                 {
                                     <div class="bulk-topology-preview @(TopologyPreview.HasChanges ? "" : "no-changes")">
@@ -339,14 +340,15 @@
                                         <option value="@MenuControlType.Slider">Slider</option>
                                         <option value="@MenuControlType.Selection">Selection</option>
                                         <option value="@MenuControlType.Switch">Switch</option>
+                                        <option value="@MenuControlType.Confirmation">Confirmation dialog</option>
                                     </select>
                                 </label>
-                                @if (NodeEditorControlType == MenuControlType.Selection)
+                                @if (NodeEditorControlType is MenuControlType.Selection or MenuControlType.Confirmation)
                                 {
                                     <label>
-                                        <span>Default selection</span>
+                                        <span>@(NodeEditorControlType == MenuControlType.Confirmation ? "Initially highlighted choice" : "Default selection")</span>
                                         <select @bind="NodeEditorDefaultValue" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">
-                                            <option value="">Choose an available option</option>
+                                            <option value="">Choose an available choice</option>
                                             @foreach (var option in SelectionOptionChoices)
                                             {
                                                 <option value="@option">@option</option>
@@ -368,15 +370,26 @@
                                 {
                                     <label>
                                         <span>Default setting</span>
-                                        <input @bind="NodeEditorDefaultValue" placeholder="Value shown initially" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
+                                        <input type="number" step="any" @bind="NodeEditorDefaultValue" placeholder="Value shown initially" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
+                                    </label>
+                                    <label>
+                                        <span>Minimum value</span>
+                                        <input type="number" step="any" @bind="NodeEditorMinimumValue" placeholder="0" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
+                                    </label>
+                                    <label>
+                                        <span>Maximum value</span>
+                                        <input type="number" step="any" @bind="NodeEditorMaximumValue" placeholder="100" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
                                     </label>
                                 }
                             </div>
-                            @if (NodeEditorControlType == MenuControlType.Selection)
+                            @if (NodeEditorControlType is MenuControlType.Selection or MenuControlType.Confirmation)
                             {
                                 <div class="selection-option-editor">
                                     <header>
-                                        <span><b>AVAILABLE SELECTIONS</b><small>Keep these in the same order shown on the TV. The default must be one of them.</small></span>
+                                        <span>
+                                            <b>@(NodeEditorControlType == MenuControlType.Confirmation ? "CONFIRMATION CHOICES" : "AVAILABLE SELECTIONS")</b>
+                                            <small>@(NodeEditorControlType == MenuControlType.Confirmation ? "List the dialog buttons in TV order. The initially highlighted choice must be one of them." : "Keep these in the same order shown on the TV. The default must be one of them.")</small>
+                                        </span>
                                         <button type="button" class="secondary-action" @onclick="AddSelectionOption" disabled="@(!CanAddSelectionOption)">+ Add option</button>
                                     </header>
                                     @for (var index = 0; index < NodeEditorSelectionOptions.Count; index++)
@@ -1024,6 +1037,8 @@
     private string NodeEditorDescription { get; set; } = string.Empty;
     private MenuControlType NodeEditorControlType { get; set; } = MenuControlType.Submenu;
     private string NodeEditorDefaultValue { get; set; } = string.Empty;
+    private decimal? NodeEditorMinimumValue { get; set; }
+    private decimal? NodeEditorMaximumValue { get; set; }
     private List<SelectionOptionEdit> NodeEditorSelectionOptions { get; } = [];
     private List<NodeDisabledConditionEdit> NodeEditorDisabledConditions { get; } = [];
     private bool ConfirmMenuNodeDelete { get; set; }
@@ -1127,7 +1142,8 @@
     private MenuNodeSummary? SelectedRecordingTarget => Navigation.Nodes.FirstOrDefault(node =>
         node.Id.Equals(ExistingTargetId, StringComparison.OrdinalIgnoreCase));
     private IReadOnlyList<MenuNodeSummary> AvailableDisabledConditionSettings => Navigation.Nodes
-        .Where(node => node.ControlType != MenuControlType.Submenu
+        .Where(node => node.ControlType is not MenuControlType.Submenu
+            and not MenuControlType.Confirmation
             && !node.Id.Equals(EditingNodeId, StringComparison.OrdinalIgnoreCase))
         .OrderBy(node => node.Path, StringComparer.OrdinalIgnoreCase)
         .ToArray();
@@ -1137,7 +1153,7 @@
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .ToArray();
     private bool CanAddSelectionOption => CanEditMenuTree
-        && NodeEditorControlType == MenuControlType.Selection
+        && NodeEditorControlType is MenuControlType.Selection or MenuControlType.Confirmation
         && NodeEditorSelectionOptions.Count < 100;
     private bool CanAddNodeDisabledCondition => CanEditMenuTree
         && NodeEditorDisabledConditions.Count < 20
@@ -1236,6 +1252,7 @@
     private bool CanSaveOrUpdateMenuNode => CanEditMenuTree
         && !string.IsNullOrWhiteSpace(NodeEditorLabel)
         && IsNodeEditorDefaultValid
+        && AreSliderBoundsValid
         && IsSelectionOptionsValid
         && NodeEditorDisabledConditions.All(condition =>
             !string.IsNullOrWhiteSpace(condition.SettingNodeId)
@@ -1253,10 +1270,26 @@
         MenuControlType.Selection => SelectionOptionChoices.Any(option => option.Equals(
             NodeEditorDefaultValue,
             StringComparison.OrdinalIgnoreCase)),
+        MenuControlType.Confirmation => SelectionOptionChoices.Any(option => option.Equals(
+            NodeEditorDefaultValue,
+            StringComparison.OrdinalIgnoreCase)),
         _ => !string.IsNullOrWhiteSpace(NodeEditorDefaultValue)
     };
-    private bool IsSelectionOptionsValid => NodeEditorControlType == MenuControlType.Selection
-        ? NodeEditorSelectionOptions.Count > 0
+    private bool AreSliderBoundsValid => NodeEditorControlType == MenuControlType.Slider
+        ? NodeEditorMinimumValue is { } minimum
+          && NodeEditorMaximumValue is { } maximum
+          && minimum < maximum
+          && decimal.TryParse(
+              NodeEditorDefaultValue,
+              NumberStyles.Float,
+              CultureInfo.InvariantCulture,
+              out var defaultValue)
+          && defaultValue >= minimum
+          && defaultValue <= maximum
+        : NodeEditorMinimumValue is null && NodeEditorMaximumValue is null;
+    private bool IsSelectionOptionsValid => NodeEditorControlType is MenuControlType.Selection
+        or MenuControlType.Confirmation
+        ? NodeEditorSelectionOptions.Count >= (NodeEditorControlType == MenuControlType.Confirmation ? 2 : 1)
           && NodeEditorSelectionOptions.All(option =>
               !string.IsNullOrWhiteSpace(option.Value)
               && option.Value.Trim().Length <= 100)
@@ -1819,6 +1852,8 @@
         NodeEditorParentId = retainedParentId;
         NodeEditorControlType = MenuControlType.Submenu;
         NodeEditorDefaultValue = string.Empty;
+        NodeEditorMinimumValue = null;
+        NodeEditorMaximumValue = null;
         NodeEditorSelectionOptions.Clear();
         NodeEditorDisabledConditions.Clear();
         ConfirmMenuNodeDelete = false;
@@ -1848,6 +1883,8 @@
             NodeEditorDescription = string.Empty;
             NodeEditorControlType = MenuControlType.Submenu;
             NodeEditorDefaultValue = string.Empty;
+            NodeEditorMinimumValue = null;
+            NodeEditorMaximumValue = null;
             NodeEditorSelectionOptions.Clear();
             NodeEditorDisabledConditions.Clear();
             LocalError = null;
@@ -1865,6 +1902,8 @@
         NodeEditorDescription = node.Description ?? string.Empty;
         NodeEditorControlType = node.ControlType;
         NodeEditorDefaultValue = node.DefaultValue ?? string.Empty;
+        NodeEditorMinimumValue = node.MinimumValue;
+        NodeEditorMaximumValue = node.MaximumValue;
         NodeEditorSelectionOptions.Clear();
         NodeEditorSelectionOptions.AddRange(node.SelectionOptions.Select(option =>
             new SelectionOptionEdit(option)));
@@ -1877,16 +1916,26 @@
 
     private void HandleNodeControlTypeChanged()
     {
+        if (NodeEditorControlType != MenuControlType.Slider)
+        {
+            NodeEditorMinimumValue = null;
+            NodeEditorMaximumValue = null;
+        }
+
         if (NodeEditorControlType == MenuControlType.Submenu)
         {
             NodeEditorDefaultValue = string.Empty;
             NodeEditorSelectionOptions.Clear();
         }
-        else if (NodeEditorControlType == MenuControlType.Selection)
+        else if (NodeEditorControlType is MenuControlType.Selection or MenuControlType.Confirmation)
         {
             NodeEditorDefaultValue = string.Empty;
             NodeEditorSelectionOptions.Clear();
             NodeEditorSelectionOptions.Add(new SelectionOptionEdit(string.Empty));
+            if (NodeEditorControlType == MenuControlType.Confirmation)
+            {
+                NodeEditorSelectionOptions.Add(new SelectionOptionEdit(string.Empty));
+            }
         }
         else
         {
@@ -1963,7 +2012,7 @@
 
     private bool CanMoveSelectionOption(int index, int direction) =>
         CanEditMenuTree
-        && NodeEditorControlType == MenuControlType.Selection
+        && NodeEditorControlType is MenuControlType.Selection or MenuControlType.Confirmation
         && index >= 0
         && index < NodeEditorSelectionOptions.Count
         && index + direction >= 0
@@ -2041,7 +2090,9 @@
                 NodeEditorControlType,
                 NodeEditorDefaultValue,
                 CreateNodeDisabledConditions(),
-                CreateSelectionOptions());
+                CreateSelectionOptions(),
+                NodeEditorMinimumValue,
+                NodeEditorMaximumValue);
             await Controller.UpdateMenuNodeAsync(nodeId, request);
 
             Refresh();
@@ -2063,7 +2114,9 @@
             NodeEditorControlType,
             NodeEditorDefaultValue,
             CreateNodeDisabledConditions(),
-            CreateSelectionOptions());
+            CreateSelectionOptions(),
+            NodeEditorMinimumValue,
+            NodeEditorMaximumValue);
         await Controller.CreateMenuNodeAsync(request);
 
         Refresh();
@@ -2761,6 +2814,7 @@
         MenuControlType.Slider => "Slider",
         MenuControlType.Selection => "Selection",
         MenuControlType.Switch => "Switch",
+        MenuControlType.Confirmation => "Confirmation",
         _ => controlType.ToString()
     };
 
@@ -2773,6 +2827,16 @@
         if (!string.IsNullOrWhiteSpace(node.DefaultValue))
         {
             details.Add($"default={node.DefaultValue}");
+        }
+
+        if (node.MinimumValue is { } minimum)
+        {
+            details.Add($"min={minimum.ToString("G29", CultureInfo.InvariantCulture)}");
+        }
+
+        if (node.MaximumValue is { } maximum)
+        {
+            details.Add($"max={maximum.ToString("G29", CultureInfo.InvariantCulture)}");
         }
 
         if (node.SelectionOptions.Count > 0)
@@ -2810,12 +2874,22 @@
         return node.ControlType switch
         {
             MenuControlType.Submenu => "Press OK to open this sub-menu.",
-            MenuControlType.Slider => "Use Left/Right to change the slider." + defaultSuffix,
+            MenuControlType.Slider => "Use Left/Right to change the slider from "
+                                      + node.MinimumValue?.ToString("G29", CultureInfo.InvariantCulture)
+                                      + " to "
+                                      + node.MaximumValue?.ToString("G29", CultureInfo.InvariantCulture)
+                                      + "."
+                                      + defaultSuffix,
             MenuControlType.Selection => "Press OK to open its choices, then select a value. Available: "
                                          + string.Join(", ", node.SelectionOptions)
                                          + "."
                                          + defaultSuffix,
             MenuControlType.Switch => "Press OK to toggle the switch." + defaultSuffix,
+            MenuControlType.Confirmation => "Press OK to open the confirmation dialog. Choices: "
+                                            + string.Join(", ", node.SelectionOptions)
+                                            + ". Initially highlighted: "
+                                            + node.DefaultValue
+                                            + ".",
             _ => "Follow the recorded interaction."
         };
     }

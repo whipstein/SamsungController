@@ -19,6 +19,11 @@ public sealed class MenuDefinitionParserTests
         Assert.Equal(
             ["Standard", "Movie", "Filmmaker Mode"],
             definition.Nodes["picture"].SelectionOptions);
+        Assert.Equal(MenuControlType.Slider, definition.Nodes["brightness"].ControlType);
+        Assert.Equal(0m, definition.Nodes["brightness"].MinimumValue);
+        Assert.Equal(100m, definition.Nodes["brightness"].MaximumValue);
+        Assert.Equal(MenuControlType.Confirmation, definition.Nodes["reset-picture"].ControlType);
+        Assert.Equal(["Reset", "Cancel"], definition.Nodes["reset-picture"].SelectionOptions);
         var disabledCondition = Assert.Single(definition.Nodes["picture"].DisabledWhen!);
         Assert.Equal("auto-picture", disabledCondition.SettingNodeId);
         Assert.Equal("on", disabledCondition.EqualsValue);
@@ -149,6 +154,21 @@ public sealed class MenuDefinitionParserTests
             disabledWhen:
               - setting: auto-picture
                 equals: on
+          - id: brightness
+            label: Brightness
+            parent: menu
+            controlType: slider
+            defaultValue: 50
+            minimumValue: 0
+            maximumValue: 100
+          - id: reset-picture
+            label: Reset Picture
+            parent: menu
+            controlType: confirmation
+            defaultValue: Cancel
+            options:
+              - Reset
+              - Cancel
         anchors:
           - id: normal
             label: Back to video

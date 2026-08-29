@@ -225,15 +225,25 @@
             MenuControlType.Slider => "Slider",
             MenuControlType.Selection => "Selection",
             MenuControlType.Switch => "Switch",
+            MenuControlType.Confirmation => "Confirmation",
             _ => node.ControlType.ToString()
         };
-        var defaultValue = node.DefaultValue is null ? string.Empty : $" · default {node.DefaultValue}";
+        var defaultValue = node.DefaultValue is null
+            ? string.Empty
+            : node.ControlType == MenuControlType.Confirmation
+                ? $" · initially highlights {node.DefaultValue}"
+                : $" · default {node.DefaultValue}";
         var options = node.SelectionOptions.Count == 0
             ? string.Empty
             : " · choices " + string.Join(" / ", node.SelectionOptions);
+        var range = node.ControlType == MenuControlType.Slider
+                    && node.MinimumValue is { } minimum
+                    && node.MaximumValue is { } maximum
+            ? $" · range {minimum:G29}–{maximum:G29}"
+            : string.Empty;
         if (node.DisabledWhen.Count == 0)
         {
-            return control + defaultValue + options;
+            return control + defaultValue + range + options;
         }
 
         var rules = node.DisabledWhen.Select(condition =>
@@ -243,7 +253,7 @@
                 StringComparison.OrdinalIgnoreCase));
             return $"{setting?.Label ?? condition.SettingNodeId} = {condition.EqualsValue}";
         });
-        return control + defaultValue + options
+        return control + defaultValue + range + options
                + (node.IsDisabledByDefault ? " · disabled by default when " : " · disabled when ")
                + string.Join(" or ", rules);
     }

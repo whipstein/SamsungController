@@ -290,16 +290,17 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
               Picture
                 Expert Settings
                   Adaptive Picture {switch; default=on}
-                  Brightness {slider; default=50; disabledWhen=adaptive-picture=on}
+                  Brightness {slider; default=50; min=0; max=100; disabledWhen=adaptive-picture=on}
                   Color Tone {selection; default=Warm2; options=Standard|Warm1|Warm2}
                   Contrast
+                  Reset Picture {confirmation; default=Cancel; options=Reset|Cancel}
               Sound
             """;
         var request = new MenuTopologyOutlineRequest("tv-interface", outline);
         var preview = controller.PreviewMenuTopologyOutline(request);
 
-        Assert.Equal(9, preview.OutlineNodeCount);
-        Assert.Equal(8, preview.AddedNodeCount);
+        Assert.Equal(10, preview.OutlineNodeCount);
+        Assert.Equal(9, preview.AddedNodeCount);
         Assert.Equal(0, preview.RemovedNodeCount);
         await controller.ApplyMenuTopologyOutlineAsync(request);
 
@@ -307,7 +308,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         Assert.Equal(
             [
                 "tv-interface", "normal-video", "settings", "picture",
-                "expert-settings", "adaptive-picture", "brightness", "color-tone", "contrast", "sound"
+                "expert-settings", "adaptive-picture", "brightness", "color-tone", "contrast", "reset-picture", "sound"
             ],
             snapshot.Nodes.Select(node => node.Id));
         Assert.Equal("expert-settings", snapshot.Nodes.Single(node => node.Id == "brightness").ParentId);
@@ -317,12 +318,18 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         var brightness = snapshot.Nodes.Single(node => node.Id == "brightness");
         Assert.Equal(MenuControlType.Slider, brightness.ControlType);
         Assert.Equal("50", brightness.DefaultValue);
+        Assert.Equal(0m, brightness.MinimumValue);
+        Assert.Equal(100m, brightness.MaximumValue);
         Assert.True(brightness.IsDisabledByDefault);
         Assert.Equal("adaptive-picture", Assert.Single(brightness.DisabledWhen).SettingNodeId);
         var colorTone = snapshot.Nodes.Single(node => node.Id == "color-tone");
         Assert.Equal(MenuControlType.Selection, colorTone.ControlType);
         Assert.Equal("Warm2", colorTone.DefaultValue);
         Assert.Equal(["Standard", "Warm1", "Warm2"], colorTone.SelectionOptions);
+        var resetPicture = snapshot.Nodes.Single(node => node.Id == "reset-picture");
+        Assert.Equal(MenuControlType.Confirmation, resetPicture.ControlType);
+        Assert.Equal("Cancel", resetPicture.DefaultValue);
+        Assert.Equal(["Reset", "Cancel"], resetPicture.SelectionOptions);
         Assert.All(snapshot.Nodes.Where(node => node.Id != "tv-interface"), node =>
             Assert.False(node.HasVerifiedRoute));
 

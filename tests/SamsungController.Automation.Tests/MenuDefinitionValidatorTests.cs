@@ -80,7 +80,22 @@ public sealed class MenuDefinitionValidatorTests
                     "dependent",
                     "Dependent",
                     "menu",
-                    DisabledWhen: [new MenuNodeDisabledCondition("picture-mode", "Dynamic")])
+                    DisabledWhen: [new MenuNodeDisabledCondition("picture-mode", "Dynamic")]),
+                new MenuNode(
+                    "bad-slider-range",
+                    "Bad slider range",
+                    "menu",
+                    ControlType: MenuControlType.Slider,
+                    DefaultValue: "20",
+                    MinimumValue: 0,
+                    MaximumValue: 10),
+                new MenuNode(
+                    "reset-picture",
+                    "Reset Picture",
+                    "menu",
+                    ControlType: MenuControlType.Confirmation,
+                    DefaultValue: "Cancel",
+                    SelectionOptions: ["Reset"])
             ],
             [],
             []);
@@ -95,5 +110,8 @@ public sealed class MenuDefinitionValidatorTests
         Assert.Contains(errors, error => error.Message.Contains("option 'movie' is duplicated", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(errors, error => error.Message.Contains("at least one available option", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(errors, error => error.Message.Contains("not an available option", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(errors, error => error.Message.Contains("must be between 0 and 10", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(errors, error => error.Message.Contains("at least two available choices", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(errors, error => error.Message.Contains("Confirmation default", StringComparison.OrdinalIgnoreCase));
     }
 }

@@ -47,7 +47,8 @@ public enum MenuControlType
     Submenu,
     Slider,
     Selection,
-    Switch
+    Switch,
+    Confirmation
 }
 
 public sealed record MenuNodeDisabledCondition(
@@ -62,7 +63,9 @@ public sealed record MenuNode(
     MenuControlType ControlType = MenuControlType.Submenu,
     string? DefaultValue = null,
     IReadOnlyList<MenuNodeDisabledCondition>? DisabledWhen = null,
-    IReadOnlyList<string>? SelectionOptions = null);
+    IReadOnlyList<string>? SelectionOptions = null,
+    decimal? MinimumValue = null,
+    decimal? MaximumValue = null);
 
 public sealed record MenuOperation(
     string Key,

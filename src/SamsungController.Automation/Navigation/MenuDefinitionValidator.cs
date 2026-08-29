@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace SamsungController.Automation.Navigation;
 
 public sealed record MenuDefinitionValidationError(string Location, string Message)
@@ -155,7 +157,7 @@ public sealed class MenuDefinitionValidator
         {
             errors.Add(new MenuDefinitionValidationError(
                 location,
-                "Control type must be Submenu, Slider, Selection, or Switch."));
+                "Control type must be Submenu, Slider, Selection, Switch, or Confirmation."));
         }
 
         var hasDefaultValue = !string.IsNullOrWhiteSpace(node.DefaultValue);
@@ -182,36 +184,87 @@ public sealed class MenuDefinitionValidator
                 "A switch default value must be 'on' or 'off'."));
         }
 
-        var selectionOptions = node.SelectionOptions ?? [];
-        if (node.ControlType == MenuControlType.Selection)
+        if (node.ControlType == MenuControlType.Slider)
         {
-            if (selectionOptions.Count == 0)
+            if (node.MinimumValue is null || node.MaximumValue is null)
             {
                 errors.Add(new MenuDefinitionValidationError(
                     location,
-                    "A selection must define at least one available option."));
+                    "A slider must define both minimum and maximum values."));
             }
-            else if (hasDefaultValue && !selectionOptions.Any(option => option.Equals(
-                         node.DefaultValue,
-                         StringComparison.OrdinalIgnoreCase)))
+            else if (node.MinimumValue >= node.MaximumValue)
             {
                 errors.Add(new MenuDefinitionValidationError(
                     location,
-                    $"Selection default value '{node.DefaultValue}' must match an available option."));
+                    "A slider minimum value must be less than its maximum value."));
+            }
+
+            if (hasDefaultValue)
+            {
+                if (!decimal.TryParse(
+                        node.DefaultValue,
+                        NumberStyles.Float,
+                        CultureInfo.InvariantCulture,
+                        out var sliderDefault))
+                {
+                    errors.Add(new MenuDefinitionValidationError(
+                        location,
+                        "A slider default value must be numeric."));
+                }
+                else if (node.MinimumValue is { } minimum
+                         && node.MaximumValue is { } maximum
+                         && (sliderDefault < minimum || sliderDefault > maximum))
+                {
+                    errors.Add(new MenuDefinitionValidationError(
+                        location,
+                        $"Slider default value '{node.DefaultValue}' must be between {minimum:G29} and {maximum:G29}."));
+                }
+            }
+        }
+        else if (node.MinimumValue is not null || node.MaximumValue is not null)
+        {
+            errors.Add(new MenuDefinitionValidationError(
+                location,
+                "Only a slider can define minimum and maximum values."));
+        }
+
+        var selectionOptions = node.SelectionOptions ?? [];
+        var isChoiceControl = node.ControlType is MenuControlType.Selection
+            or MenuControlType.Confirmation;
+        if (isChoiceControl)
+        {
+            var minimumOptions = node.ControlType == MenuControlType.Confirmation ? 2 : 1;
+            if (selectionOptions.Count < minimumOptions)
+            {
+                errors.Add(new MenuDefinitionValidationError(
+                    location,
+                    node.ControlType == MenuControlType.Confirmation
+                        ? "A confirmation must define at least two available choices."
+                        : "A selection must define at least one available option."));
+            }
+            if (hasDefaultValue && !selectionOptions.Any(option => option.Equals(
+                    node.DefaultValue,
+                    StringComparison.OrdinalIgnoreCase)))
+            {
+                errors.Add(new MenuDefinitionValidationError(
+                    location,
+                    node.ControlType == MenuControlType.Selection
+                        ? $"Selection default value '{node.DefaultValue}' must match an available option."
+                        : $"Confirmation default value '{node.DefaultValue}' must match an available choice."));
             }
         }
         else if (selectionOptions.Count > 0)
         {
             errors.Add(new MenuDefinitionValidationError(
                 location,
-                "Only a selection can define available options."));
+                "Only a selection or confirmation can define available choices."));
         }
 
         if (selectionOptions.Count > 100)
         {
             errors.Add(new MenuDefinitionValidationError(
                 location,
-                "A selection can define at most 100 available options."));
+                "A selection or confirmation can define at most 100 available choices."));
         }
 
         var uniqueOptions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -223,14 +276,14 @@ public sealed class MenuDefinitionValidator
             {
                 errors.Add(new MenuDefinitionValidationError(
                     optionLocation,
-                    "A selection option cannot exceed 100 characters."));
+                    "A control choice cannot exceed 100 characters."));
             }
 
             if (!uniqueOptions.Add(selectionOptions[index]))
             {
                 errors.Add(new MenuDefinitionValidationError(
                     optionLocation,
-                    $"Selection option '{selectionOptions[index]}' is duplicated."));
+                    $"{node.ControlType} option '{selectionOptions[index]}' is duplicated."));
             }
         }
 
@@ -267,7 +320,8 @@ public sealed class MenuDefinitionValidator
                     conditionLocation,
                     "A menu item cannot disable itself based on its own value."));
             }
-            else if (setting.ControlType == MenuControlType.Submenu)
+            else if (setting.ControlType is MenuControlType.Submenu
+                     or MenuControlType.Confirmation)
             {
                 errors.Add(new MenuDefinitionValidationError(
                     conditionLocation,

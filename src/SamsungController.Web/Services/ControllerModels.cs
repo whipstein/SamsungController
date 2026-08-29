@@ -113,7 +113,9 @@ public sealed record MenuNodeSummary(
     string? DefaultValue,
     IReadOnlyList<MenuNodeDisabledCondition> DisabledWhen,
     bool IsDisabledByDefault,
-    IReadOnlyList<string> SelectionOptions);
+    IReadOnlyList<string> SelectionOptions,
+    decimal? MinimumValue,
+    decimal? MaximumValue);
 
 public sealed record MenuAnchorSummary(
     string Id,
@@ -187,7 +189,9 @@ public sealed record MenuNodeEditRequest(
     MenuControlType ControlType = MenuControlType.Submenu,
     string? DefaultValue = null,
     IReadOnlyList<MenuNodeDisabledCondition>? DisabledWhen = null,
-    IReadOnlyList<string>? SelectionOptions = null);
+    IReadOnlyList<string>? SelectionOptions = null,
+    decimal? MinimumValue = null,
+    decimal? MaximumValue = null);
 
 public sealed record MenuTopologyOutlineRequest(
     string ParentNodeId,

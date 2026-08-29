@@ -49,6 +49,8 @@ public sealed class MenuDefinitionWriter
             AppendOptionalScalar(yaml, 4, "description", node.Description);
             AppendScalar(yaml, 4, "controlType", FormatControlType(node.ControlType));
             AppendOptionalScalar(yaml, 4, "defaultValue", node.DefaultValue);
+            AppendOptionalDecimal(yaml, 4, "minimumValue", node.MinimumValue);
+            AppendOptionalDecimal(yaml, 4, "maximumValue", node.MaximumValue);
             if (node.SelectionOptions is { Count: > 0 })
             {
                 yaml.AppendLine("    options:");
@@ -111,8 +113,21 @@ public sealed class MenuDefinitionWriter
         MenuControlType.Slider => "slider",
         MenuControlType.Selection => "selection",
         MenuControlType.Switch => "switch",
+        MenuControlType.Confirmation => "confirmation",
         _ => throw new ArgumentOutOfRangeException(nameof(controlType), controlType, null)
     };
+
+    private static void AppendOptionalDecimal(
+        StringBuilder yaml,
+        int indentation,
+        string name,
+        decimal? value)
+    {
+        if (value is { } number)
+        {
+            AppendScalar(yaml, indentation, name, number.ToString("G29", CultureInfo.InvariantCulture));
+        }
+    }
 
     public async Task WriteFileAsync(
         string path,
