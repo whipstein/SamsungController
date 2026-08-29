@@ -99,6 +99,46 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task ExistingDefinitionRequiresConfirmationAndCanBeReplaced()
+    {
+        Directory.CreateDirectory(_directory);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+        var request = new MenuDefinitionCreationRequest(
+            "replace-tv",
+            "Replacement TV Menu",
+            "Samsung Test TV",
+            "1000",
+            "SDR",
+            "Movie",
+            "HDMI 1");
+
+        await controller.CreateMenuDefinitionAsync(request);
+        await controller.CreateMenuNodeAsync(new MenuNodeEditRequest(
+            "settings",
+            "Settings",
+            "tv-interface",
+            null));
+
+        var preview = controller.PreviewMenuDefinitionCreation(request);
+        Assert.True(preview.FileExists);
+        Assert.EndsWith("replace-tv.yaml", preview.Path, StringComparison.Ordinal);
+        var exception = await Assert.ThrowsAsync<IOException>(
+            () => controller.CreateMenuDefinitionAsync(request));
+        Assert.Contains("Confirm replacement", exception.Message, StringComparison.Ordinal);
+
+        await controller.CreateMenuDefinitionAsync(request, replaceExisting: true);
+
+        var snapshot = controller.GetMenuNavigationSnapshot();
+        Assert.DoesNotContain(snapshot.Nodes, node => node.Id == "settings");
+        Assert.Equal(["tv-interface", "normal-video"], snapshot.Nodes.Select(node => node.Id));
+        Assert.Contains(
+            "profile replaced",
+            controller.GetMenuAuthoringSnapshot().Status,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task NewDefinitionDefaultsItsNameAndIdFromModelFirmwareAndSpecificContext()
     {
         Directory.CreateDirectory(_directory);

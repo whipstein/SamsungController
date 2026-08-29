@@ -86,6 +86,20 @@
                     Create profile and continue <span>→</span>
                 </button>
             </div>
+            @if (PendingDefinitionReplacement is { } replacement)
+            {
+                <div class="definition-replacement-confirmation" role="alert">
+                    <div>
+                        <span>FILE ALREADY EXISTS</span>
+                        <strong>@Path.GetFileName(replacement.Path)</strong>
+                        <p>Replacing it will overwrite that file's menu tree, recorded routes, and verification state with a new empty TV profile.</p>
+                    </div>
+                    <div>
+                        <button type="button" class="secondary-action" @onclick="CancelDefinitionReplacement" disabled="@IsBusy">Cancel</button>
+                        <button type="button" class="secondary-action danger-action" @onclick="ConfirmDefinitionReplacementAsync" disabled="@IsBusy">Replace existing file</button>
+                    </div>
+                </div>
+            }
             <p class="field-note">The YAML file is created in SamsungController's per-user configuration directory and becomes the active definition.</p>
         </div>
     }
@@ -177,7 +191,7 @@
                                             }
                                         </select>
                                     </label>
-                                    <button class="secondary-action" @onclick="LoadCurrentTopologyOutline" disabled="@(!CanEditMenuTree)">Edit current branch</button>
+                                    <button class="secondary-action" @onclick="LoadCurrentTopologyOutline" disabled="@(!CanEditMenuTree)">Reload branch from YAML</button>
                                 </div>
                                 <label class="bulk-topology-outline">
                                     <span>MENU OUTLINE</span>
@@ -1033,6 +1047,7 @@
     private string? TimingEditorId { get; set; }
     private List<TimingStepEdit> TimingSteps { get; } = [];
     private bool ShowDefinitionForm { get; set; }
+    private MenuDefinitionCreationPreview? PendingDefinitionReplacement { get; set; }
     private bool IsBusy { get; set; }
     private bool IsSendingKey { get; set; }
     private string? LocalError { get; set; }
@@ -1061,6 +1076,8 @@
     private string? MenuNodeBeforeAddId { get; set; }
     private string TopologyParentId { get; set; } = string.Empty;
     private string TopologyOutline { get; set; } = string.Empty;
+    private bool TopologyOutlineDirty { get; set; }
+    private string? TopologyOutlineDefinitionPath { get; set; }
     private bool KeepUnlistedTopologyNodes { get; set; } = true;
     private MenuTopologyOutlinePreview? TopologyPreview { get; set; }
     private bool ShowMenuConfigurationEditor { get; set; }
@@ -1136,7 +1153,8 @@
             : !string.IsNullOrWhiteSpace(RecordingId) && !string.IsNullOrWhiteSpace(RecordingLabel));
     private bool CanGenerateDefinitionIdentity => !string.IsNullOrWhiteSpace(DefinitionModel)
         && !string.IsNullOrWhiteSpace(DefinitionFirmware);
-    private bool CanCreateDefinition => !IsBusy && CanGenerateDefinitionIdentity
+    private bool CanCreateDefinition => !IsBusy && PendingDefinitionReplacement is null
+        && CanGenerateDefinitionIdentity
         && !string.IsNullOrWhiteSpace(DefinitionName)
         && !string.IsNullOrWhiteSpace(DefinitionId);
     private MenuSetupStep RecommendedSetupStep => Navigation.DefinitionName is null
@@ -1354,6 +1372,7 @@
     private void ToggleDefinitionForm()
     {
         ShowDefinitionForm = !ShowDefinitionForm;
+        PendingDefinitionReplacement = null;
         LocalError = null;
         if (ShowDefinitionForm)
         {
@@ -1498,6 +1517,7 @@
     {
         DefinitionName = args.Value?.ToString() ?? string.Empty;
         DefinitionNameWasEdited = true;
+        PendingDefinitionReplacement = null;
         LocalError = null;
     }
 
@@ -1505,6 +1525,7 @@
     {
         DefinitionId = args.Value?.ToString() ?? string.Empty;
         DefinitionIdWasEdited = true;
+        PendingDefinitionReplacement = null;
         LocalError = null;
     }
 
@@ -1517,6 +1538,7 @@
 
     private void UpdateGeneratedDefinitionIdentity()
     {
+        PendingDefinitionReplacement = null;
         LocalError = null;
         if (!CanGenerateDefinitionIdentity)
         {
@@ -1644,13 +1666,13 @@
     private void HandleTopologyParentChanged(ChangeEventArgs args)
     {
         TopologyParentId = args.Value?.ToString() ?? string.Empty;
-        TopologyPreview = null;
-        LocalError = null;
+        LoadCurrentTopologyOutline();
     }
 
     private void HandleTopologyOutlineChanged(ChangeEventArgs args)
     {
         TopologyOutline = args.Value?.ToString() ?? string.Empty;
+        TopologyOutlineDirty = true;
         TopologyPreview = null;
         LocalError = null;
     }
@@ -1686,6 +1708,8 @@
 
         AppendChildren(TopologyParentId, 0);
         TopologyOutline = builder.ToString().TrimEnd();
+        TopologyOutlineDirty = false;
+        TopologyOutlineDefinitionPath = Navigation.DefinitionPath;
         TopologyPreview = null;
         LocalError = null;
     }
@@ -1719,18 +1743,56 @@
         TopologyOutline,
         KeepUnlistedTopologyNodes);
 
+    private MenuDefinitionCreationRequest CreateDefinitionRequest() => new(
+        DefinitionId,
+        DefinitionName,
+        DefinitionModel,
+        DefinitionFirmware,
+        DefinitionSignal,
+        DefinitionPictureMode,
+        DefinitionInput);
+
     private async Task CreateDefinitionAsync()
+    {
+        LocalError = null;
+        try
+        {
+            var preview = Controller.PreviewMenuDefinitionCreation(CreateDefinitionRequest());
+            if (preview.FileExists)
+            {
+                PendingDefinitionReplacement = preview;
+                return;
+            }
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+            return;
+        }
+
+        await PersistDefinitionAsync(replaceExisting: false);
+    }
+
+    private Task ConfirmDefinitionReplacementAsync() =>
+        PersistDefinitionAsync(replaceExisting: true);
+
+    private void CancelDefinitionReplacement()
+    {
+        PendingDefinitionReplacement = null;
+        LocalError = null;
+    }
+
+    private async Task PersistDefinitionAsync(bool replaceExisting)
     {
         await RunBusyAsync(async () =>
         {
-            await Controller.CreateMenuDefinitionAsync(new MenuDefinitionCreationRequest(
-                DefinitionId,
-                DefinitionName,
-                DefinitionModel,
-                DefinitionFirmware,
-                DefinitionSignal,
-                DefinitionPictureMode,
-                DefinitionInput));
+            await Controller.CreateMenuDefinitionAsync(
+                CreateDefinitionRequest(),
+                replaceExisting);
+            PendingDefinitionReplacement = null;
+            TopologyOutline = string.Empty;
+            TopologyOutlineDirty = false;
+            TopologyOutlineDefinitionPath = null;
             ShowDefinitionForm = false;
             Refresh();
             InitializeNodeDefaults(force: true);
@@ -2618,6 +2680,15 @@
             return;
         }
 
+        if (!string.Equals(
+                TopologyOutlineDefinitionPath,
+                Navigation.DefinitionPath,
+                StringComparison.Ordinal))
+        {
+            TopologyOutlineDirty = false;
+            TopologyOutline = string.Empty;
+        }
+
         if (string.IsNullOrWhiteSpace(TopologyParentId)
             || Navigation.Nodes.All(node => !node.Id.Equals(
                 TopologyParentId,
@@ -2628,6 +2699,11 @@
                     StringComparison.OrdinalIgnoreCase))?.Id
                 ?? Navigation.Nodes[0].Id;
             TopologyPreview = null;
+        }
+
+        if (!TopologyOutlineDirty)
+        {
+            LoadCurrentTopologyOutline();
         }
 
         if (force || string.IsNullOrWhiteSpace(SourceNodeId) || Navigation.Nodes.All(node => node.Id != SourceNodeId))

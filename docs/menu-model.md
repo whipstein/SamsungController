@@ -228,10 +228,13 @@ can be planned or sent.
    definition name uses those two values. The generated file ID also appends
    signal type, picture mode, and input/source when their value is more specific
    than `any`. The YAML is stored in the per-user configuration directory and
-   loaded automatically.
+   loaded automatically. Reusing an existing file ID opens a destructive
+   replacement confirmation instead of failing silently or overwriting it
+   immediately.
 4. In **Configuration**, describe and select the settings-dependent layout that
-   is currently visible. In **Menu outline**, load the current branch as an
-   indented outline, add the expected menu positions with two spaces
+   is currently visible. **Menu outline** automatically loads the selected YAML
+   branch as an indented outline; edit it directly or use **Reload branch from
+   YAML** to discard unsaved text. Add the expected menu positions with two spaces
    per level, preview the changes, and apply them to the same YAML. Matching
    labels under the same parent reuse their stable IDs; append `[stable-id]` to a
    line when identity must be explicit. Add behavior metadata in braces before

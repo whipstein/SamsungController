@@ -168,6 +168,12 @@ public sealed record MenuDefinitionCreationRequest(
     string PictureMode,
     string Input);
 
+public sealed record MenuDefinitionCreationPreview(
+    string Id,
+    string Name,
+    string Path,
+    bool FileExists);
+
 public sealed record MenuConfigurationEditRequest(
     string Id,
     string Name,

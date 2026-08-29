@@ -707,8 +707,20 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
     }
 
+    public MenuDefinitionCreationPreview PreviewMenuDefinitionCreation(
+        MenuDefinitionCreationRequest request)
+    {
+        var (definition, path) = BuildMenuDefinitionCreation(request);
+        return new MenuDefinitionCreationPreview(
+            definition.Id,
+            definition.Name,
+            path,
+            File.Exists(path));
+    }
+
     public async Task CreateMenuDefinitionAsync(
         MenuDefinitionCreationRequest request,
+        bool replaceExisting = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -716,6 +728,51 @@ public sealed class SamsungControllerService : IAsyncDisposable
         EnsureNoAutomationRunning("create a menu definition");
         EnsureNoMenuRecording("create a menu definition");
 
+        var (definition, path) = BuildMenuDefinitionCreation(request);
+        var replacingExisting = File.Exists(path);
+        if (replacingExisting && !replaceExisting)
+        {
+            throw new IOException(
+                $"A menu definition already exists at '{path}'. Confirm replacement or choose a different identifier.");
+        }
+
+        await _menuDefinitionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await new MenuDefinitionWriter()
+                .WriteFileAsync(path, definition, cancellationToken)
+                .ConfigureAwait(false);
+            await UpdateSettingsAsync(
+                    current => current with
+                    {
+                        MenuDefinitionPath = path,
+                        MenuConfigurationId = "default"
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
+            InstallMenuDefinition(definition);
+            lock (_sync)
+            {
+                _menuRecorder.Reset();
+                _menuValidation = null;
+                _menuAuthoringStatus = replacingExisting
+                    ? "Existing TV profile replaced · describe the active menu configuration next"
+                    : "TV profile created · describe the active menu configuration next";
+                _menuAuthoringError = null;
+            }
+        }
+        finally
+        {
+            _menuDefinitionGate.Release();
+        }
+
+        NotifyChanged();
+    }
+
+    private (MenuDefinition Definition, string Path) BuildMenuDefinitionCreation(
+        MenuDefinitionCreationRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
         var model = request.Model.Trim();
         var firmware = NormalizeContextValue(request.Firmware);
         var signal = NormalizeContextValue(request.Signal);
@@ -755,41 +812,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _configurationDirectory,
             "menu-definitions",
             $"{definition.Id}.yaml");
-        if (File.Exists(path))
-        {
-            throw new IOException(
-                $"A menu definition already exists at '{path}'. Load it or choose a different identifier.");
-        }
-
-        await _menuDefinitionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            await new MenuDefinitionWriter()
-                .WriteFileAsync(path, definition, cancellationToken)
-                .ConfigureAwait(false);
-            await UpdateSettingsAsync(
-                    current => current with
-                    {
-                        MenuDefinitionPath = path,
-                        MenuConfigurationId = "default"
-                    },
-                    cancellationToken)
-                .ConfigureAwait(false);
-            InstallMenuDefinition(definition);
-            lock (_sync)
-            {
-                _menuRecorder.Reset();
-                _menuValidation = null;
-                _menuAuthoringStatus = "TV profile created · describe the active menu configuration next";
-                _menuAuthoringError = null;
-            }
-        }
-        finally
-        {
-            _menuDefinitionGate.Release();
-        }
-
-        NotifyChanged();
+        return (definition, path);
     }
 
     private static string CreateMenuDefinitionId(

@@ -528,6 +528,12 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .definition-setup-card { margin-top: 18px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: #08131b; }
 .definition-identity-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 15px; }
 .definition-identity-actions .authoring-save { width: auto; margin-top: 0; }
+.definition-replacement-confirmation { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 16px; margin-top: 14px; padding: 13px; border: 1px solid rgba(255,109,116,.38); border-radius: 7px; background: rgba(255,109,116,.07); }
+.definition-replacement-confirmation span, .definition-replacement-confirmation strong { display: block; }
+.definition-replacement-confirmation span { color: var(--danger); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .09em; }
+.definition-replacement-confirmation strong { margin-top: 4px; color: var(--ink); font-size: 11px; }
+.definition-replacement-confirmation p { margin: 6px 0 0; color: var(--muted); font-size: 9px; line-height: 1.45; }
+.definition-replacement-confirmation > div:last-child { display: flex; gap: 8px; }
 .menu-tree-builder { margin-top: 18px; padding: 18px; border: 1px solid rgba(145,178,255,.2); border-radius: 8px; background: rgba(145,178,255,.035); }
 .tree-node-count { margin-left: auto; color: var(--muted); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; }
 .authoring-section-toggle > .tree-node-count + i { margin-left: 0; }
@@ -858,6 +864,8 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .menu-setup-next .secondary-action { grid-column: 1 / -1; width: 100%; }
     .definition-identity-actions { align-items: stretch; flex-direction: column; }
     .definition-identity-actions .secondary-action, .definition-identity-actions .primary-action { width: 100%; }
+    .definition-replacement-confirmation { grid-template-columns: 1fr; }
+    .definition-replacement-confirmation > div:last-child { display: grid; grid-template-columns: 1fr; }
     .help-bubble-panel { position: fixed; top: 50%; right: 20px; left: 20px; width: auto; max-height: calc(100vh - 60px); transform: translateY(-50%); }
     .topbar-context .help-bubble-panel { right: 20px; left: 20px; }
     .help-bubble-panel::before { display: none; }
