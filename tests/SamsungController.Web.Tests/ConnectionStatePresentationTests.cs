@@ -9,6 +9,7 @@ public sealed class ConnectionStatePresentationTests
     [InlineData(SamsungConnectionState.Disconnected, false)]
     [InlineData(SamsungConnectionState.Connecting, true)]
     [InlineData(SamsungConnectionState.Pairing, true)]
+    [InlineData(SamsungConnectionState.Warming, true)]
     [InlineData(SamsungConnectionState.Connected, true)]
     [InlineData(SamsungConnectionState.Reconnecting, true)]
     [InlineData(SamsungConnectionState.Disconnecting, true)]

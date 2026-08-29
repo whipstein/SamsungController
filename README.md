@@ -140,6 +140,8 @@ The server listens only on the local computer by default. That is intentional: t
 
 The TV may take several seconds to show the prompt. When pairing succeeds, SamsungController stores the token for that TV address and reuses it on later connections. The saved address also enables the persistent **Connect**/**Disconnect** button at the top of every page.
 
+Expand **Channel readiness** to tune first-command reliability. The defaults send a WebSocket health check every 20 seconds, require a response within 10 seconds, wait 1.5 seconds after Samsung authorizes a new channel, and refresh the authenticated channel before the first command after five idle minutes. During that refresh the UI shows **Warming**, holds one requested command, and sends it exactly once. Set **Refresh channel after idle** to `0` to disable the proactive refresh. Set **Health-check timeout** to `0` only if a TV does not answer standard WebSocket PINGs. Increase the warm-up value if a newly powered-on TV still ignores or delays the first key.
+
 If the active menu definition has a verified anchor, a successful web connection runs its preferred known-state sequence automatically. A verified `normal-video` anchor is preferred. This establishes the application's expected menu position before other navigation.
 
 Use non-secure mode only if the TV does not expose port 8002: disable **Secure WebSocket** and leave the port empty to use port 8001. A custom port is rarely necessary.
@@ -154,6 +156,8 @@ The top bar is available on every page:
 - **Current menu** shows the leaf name of the menu position SamsungController expects to be active.
 
 The current-menu value is a prediction, not feedback from the TV. Samsung's remote WebSocket does not report the on-screen cursor. Its confidence falls when an unknown key, interrupted route, lost connection, or failed visual result makes the position uncertain.
+
+Samsung also does not acknowledge execution of individual remote keys. SamsungController can verify that the WebSocket is responsive, but it cannot distinguish a key the TV executed from one its menu service ignored. For that reason, an ambiguous send failure reconnects the channel without automatically retrying the key; retry manually only after checking the screen.
 
 ### Remote
 

@@ -19,6 +19,10 @@ internal sealed class FakeSamsungTransport : ISamsungTransport
 
     public Uri? LastEndpoint { get; private set; }
 
+    public TimeSpan LastKeepAliveInterval { get; private set; }
+
+    public TimeSpan LastKeepAliveTimeout { get; private set; }
+
     public string? PairingToken { get; set; } = "12345678";
 
     public string HandshakeEvent { get; set; } = "ms.channel.connect";
@@ -33,9 +37,13 @@ internal sealed class FakeSamsungTransport : ISamsungTransport
         Uri endpoint,
         TimeSpan timeout,
         bool allowUntrustedCertificate,
+        TimeSpan keepAliveInterval,
+        TimeSpan keepAliveTimeout,
         CancellationToken cancellationToken = default)
     {
         LastEndpoint = endpoint;
+        LastKeepAliveInterval = keepAliveInterval;
+        LastKeepAliveTimeout = keepAliveTimeout;
         ConnectCount++;
         IsConnected = true;
         Interlocked.Increment(ref _generation);

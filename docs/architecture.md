@@ -147,7 +147,14 @@ omitted for first pairing.
 `ClientWebSocket.ConnectAsync` only establishes the socket. A connection is not
 considered authorized until an `ms.channel.connect` message arrives. On first
 pairing, the TV is expected to display an authorization prompt. The CLI waits up
-to the configured pairing timeout for the user to approve it.
+to the configured pairing timeout for the user to approve it. After authorization,
+the connection enters `Warming` for the configured post-connect delay before it
+becomes available to command senders.
+
+The transport configures both `KeepAliveInterval` and `KeepAliveTimeout`. On
+.NET 9 and later this selects bidirectional WebSocket PING/PONG health checking,
+so an unresponsive TV is detected without waiting for an application-level
+message.
 
 Samsung TVs commonly use a self-signed certificate on port 8002. Certificate
 relaxation is scoped to the one TV WebSocket and is enabled by default; it can be
@@ -210,15 +217,22 @@ restricted to a known list so experimental keys can be sent.
 
 Each successful transport connection increments a generation number. When
 automatic reconnect is enabled, an unexpected receive-loop termination
-schedules bounded exponential reconnects and a send failure reconnects once
-before retrying the complete command. Generation numbers in the session log
-distinguish traffic before and after reconnect.
+schedules bounded exponential reconnects. A send failure may mean that the TV
+received the complete key before the socket reported its error, so the client
+refreshes the connection but never retries that ambiguous command. Generation
+numbers in the session log distinguish traffic before and after reconnect.
+
+Only one command may wait for connection readiness. After the configured idle
+threshold, that command forces a fresh token-authenticated channel, waits through
+`Warming`, and is then transmitted exactly once. This refresh sends no hidden TV
+keys. A zero idle threshold disables proactive refresh.
 
 Automatic reconnect remains a core-client option. The local web controller
 disables it: if the TV closes or loses the control channel, the shared web
 session immediately becomes `Disconnected`, all command controls disable, and
-the connection page offers an explicit reconnect. This prevents the UI from
-presenting a stale connected session.
+the connection page offers an explicit reconnect. PING/PONG makes that transition
+timely, while the idle refresh handles a locally open but application-cold channel
+before its next command.
 
 ## ColorControl-derived assumptions
 

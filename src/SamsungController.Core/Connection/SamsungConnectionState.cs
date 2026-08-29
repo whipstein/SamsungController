@@ -5,6 +5,7 @@ public enum SamsungConnectionState
     Disconnected,
     Connecting,
     Pairing,
+    Warming,
     Connected,
     Reconnecting,
     Disconnecting,

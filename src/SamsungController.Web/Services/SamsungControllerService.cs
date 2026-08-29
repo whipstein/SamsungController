@@ -199,6 +199,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 _settings.Secure,
                 _settings.Port,
                 _settings.AllowUntrustedCertificate,
+                _settings.KeepAliveIntervalSeconds,
+                _settings.KeepAliveTimeoutSeconds,
+                _settings.PostConnectWarmupMilliseconds,
+                _settings.ReconnectAfterIdleSeconds,
                 macroPath,
                 _client.State,
                 _client.ConnectionGeneration,
@@ -423,7 +427,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 Port = request.Port,
                 AllowUntrustedCertificate = request.AllowUntrustedCertificate,
                 AutoReconnect = false,
-                PairingTimeout = TimeSpan.FromSeconds(90)
+                PairingTimeout = TimeSpan.FromSeconds(90),
+                KeepAliveInterval = TimeSpan.FromSeconds(request.KeepAliveIntervalSeconds),
+                KeepAliveTimeout = TimeSpan.FromSeconds(request.KeepAliveTimeoutSeconds),
+                PostConnectWarmup = TimeSpan.FromMilliseconds(
+                    request.PostConnectWarmupMilliseconds),
+                ReconnectAfterIdle = TimeSpan.FromSeconds(request.ReconnectAfterIdleSeconds)
             };
             await _client.ConnectAsync(options, cancellationToken).ConfigureAwait(false);
             await UpdateSettingsAsync(
@@ -435,7 +444,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
                             : request.DisplayName.Trim(),
                         Secure = request.Secure,
                         Port = request.Port,
-                        AllowUntrustedCertificate = request.AllowUntrustedCertificate
+                        AllowUntrustedCertificate = request.AllowUntrustedCertificate,
+                        KeepAliveIntervalSeconds = request.KeepAliveIntervalSeconds,
+                        KeepAliveTimeoutSeconds = request.KeepAliveTimeoutSeconds,
+                        PostConnectWarmupMilliseconds = request.PostConnectWarmupMilliseconds,
+                        ReconnectAfterIdleSeconds = request.ReconnectAfterIdleSeconds
                     },
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -4321,6 +4334,14 @@ public sealed class SamsungControllerService : IAsyncDisposable
         object? sender,
         SamsungConnectionStateChangedEventArgs eventArgs)
     {
+        if (eventArgs.Current == SamsungConnectionState.Connected)
+        {
+            lock (_sync)
+            {
+                _lastError = null;
+            }
+        }
+
         if (eventArgs.Error is not null)
         {
             lock (_sync)

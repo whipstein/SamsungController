@@ -154,6 +154,15 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .toggle-row small { margin-left: auto; color: var(--faint); }
 .toggle-row.compact-option > span { display: inline; margin: 0; color: var(--ink); }
 .toggle-row.compact-option input { width: 115px; margin-left: auto; padding: 8px 10px; }
+.connection-readiness-settings { margin: -7px 0 24px; border: 1px solid var(--line); border-radius: 7px; background: rgba(124,231,220,.025); }
+.connection-readiness-settings summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 13px; color: var(--ink); font-size: 11px; cursor: pointer; }
+.connection-readiness-settings summary small { color: var(--cyan); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; }
+.connection-readiness-settings[open] summary { border-bottom: 1px solid var(--line); }
+.readiness-field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 14px 13px 4px; }
+.readiness-field-grid label > span { font-size: 10px; }
+.readiness-field-grid input { padding: 9px 36px 9px 10px; }
+.connection-readiness-settings > p { margin: 10px 13px 14px; color: var(--faint); font-size: 9px; line-height: 1.5; }
+.connection-readiness-settings > .readiness-validation { color: var(--danger); }
 .primary-action { width: 100%; border: 0; border-radius: 6px; background: var(--cyan); color: #061117; padding: 13px 16px; font-weight: 700; cursor: pointer; display: flex; justify-content: space-between; text-decoration: none; }
 .primary-action:hover { filter: brightness(1.07); }
 .primary-action.inline-action { width: fit-content; display: inline-flex; margin-top: 25px; gap: 15px; }
@@ -629,6 +638,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .state-orb { margin-top: 28px; width: 105px; height: 105px; }
     .page-heading-actions .state-orb { margin-top: 0; }
     .dashboard-grid, .field-grid { grid-template-columns: 1fr; }
+    .readiness-field-grid { grid-template-columns: 1fr; }
     .connection-panel { grid-row: auto; }
     .remote-layout, .macro-layout { display: block; }
     .remote-side-stack, .macro-side-stack { margin-top: 18px; }

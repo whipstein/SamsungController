@@ -22,6 +22,14 @@ public sealed record SamsungConnectionOptions
 
     public TimeSpan PairingTimeout { get; init; } = TimeSpan.FromSeconds(90);
 
+    public TimeSpan KeepAliveInterval { get; init; } = TimeSpan.FromSeconds(20);
+
+    public TimeSpan KeepAliveTimeout { get; init; } = TimeSpan.FromSeconds(10);
+
+    public TimeSpan PostConnectWarmup { get; init; } = TimeSpan.FromMilliseconds(1500);
+
+    public TimeSpan ReconnectAfterIdle { get; init; } = TimeSpan.FromMinutes(5);
+
     internal void Validate()
     {
         if (string.IsNullOrWhiteSpace(Host))
@@ -47,6 +55,33 @@ public sealed record SamsungConnectionOptions
         if (PairingTimeout <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(PairingTimeout));
+        }
+
+        if (KeepAliveInterval < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(KeepAliveInterval));
+        }
+
+        if (KeepAliveTimeout < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(KeepAliveTimeout));
+        }
+
+        if (KeepAliveInterval == TimeSpan.Zero && KeepAliveTimeout > TimeSpan.Zero)
+        {
+            throw new ArgumentException(
+                "A keep-alive interval is required when a keep-alive timeout is enabled.",
+                nameof(KeepAliveInterval));
+        }
+
+        if (PostConnectWarmup < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(PostConnectWarmup));
+        }
+
+        if (ReconnectAfterIdle < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(ReconnectAfterIdle));
         }
 
         if (MaxReconnectAttempts < 0)

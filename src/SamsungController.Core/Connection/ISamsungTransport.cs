@@ -10,6 +10,8 @@ public interface ISamsungTransport : IAsyncDisposable
         Uri endpoint,
         TimeSpan timeout,
         bool allowUntrustedCertificate,
+        TimeSpan keepAliveInterval,
+        TimeSpan keepAliveTimeout,
         CancellationToken cancellationToken = default);
 
     Task SendAsync(string rawJson, CancellationToken cancellationToken = default);

@@ -23,6 +23,14 @@ internal sealed record SamsungWebSettings
 
     public bool AllowUntrustedCertificate { get; init; } = true;
 
+    public int KeepAliveIntervalSeconds { get; init; } = 20;
+
+    public int KeepAliveTimeoutSeconds { get; init; } = 10;
+
+    public int PostConnectWarmupMilliseconds { get; init; } = 1500;
+
+    public int ReconnectAfterIdleSeconds { get; init; } = 300;
+
     public string? MacroFilePath { get; init; }
 
     public string? MenuDefinitionPath { get; init; }

@@ -25,7 +25,17 @@
     </div>
 </section>
 
-@if (!IsConnected)
+@if (Snapshot.ConnectionState is SamsungConnectionState.Connecting
+    or SamsungConnectionState.Pairing
+    or SamsungConnectionState.Reconnecting
+    or SamsungConnectionState.Warming)
+{
+    <div class="notice pairing" role="status">
+        <strong>@(Snapshot.ConnectionState == SamsungConnectionState.Warming ? "Warming TV" : "Preparing connection")</strong>
+        <span>Command controls remain held until the authorized channel is ready.</span>
+    </div>
+}
+else if (!IsConnected)
 {
     <div class="notice pairing"><strong>Remote idle</strong><span>Connect to the TV before sending keys.</span><a href="/">Connection →</a></div>
 }
@@ -119,7 +129,16 @@
         action.Kind == QuickAccessActionKind.RemoteKey &&
         action.Target.Equals(CustomKey.Trim(), StringComparison.OrdinalIgnoreCase) &&
         action.Action == CustomAction);
-    private string ConnectionClass => IsConnected ? "connected" : Snapshot.ConnectionState == SamsungConnectionState.Faulted ? "faulted" : "disconnected";
+    private string ConnectionClass => IsConnected
+        ? "connected"
+        : Snapshot.ConnectionState is SamsungConnectionState.Connecting
+            or SamsungConnectionState.Pairing
+            or SamsungConnectionState.Warming
+            or SamsungConnectionState.Reconnecting
+            ? "working"
+            : Snapshot.ConnectionState == SamsungConnectionState.Faulted
+                ? "faulted"
+                : "disconnected";
 
     protected override async Task OnInitializedAsync()
     {

@@ -10,7 +10,11 @@ public sealed record TvConnectionRequest(
     string Host,
     bool Secure,
     int? Port,
-    bool AllowUntrustedCertificate = true);
+    bool AllowUntrustedCertificate = true,
+    int KeepAliveIntervalSeconds = 20,
+    int KeepAliveTimeoutSeconds = 10,
+    int PostConnectWarmupMilliseconds = 1500,
+    int ReconnectAfterIdleSeconds = 300);
 
 public sealed record ControllerSnapshot(
     string DisplayName,
@@ -19,6 +23,10 @@ public sealed record ControllerSnapshot(
     bool Secure,
     int? Port,
     bool AllowUntrustedCertificate,
+    int KeepAliveIntervalSeconds,
+    int KeepAliveTimeoutSeconds,
+    int PostConnectWarmupMilliseconds,
+    int ReconnectAfterIdleSeconds,
     string MacroFilePath,
     SamsungConnectionState ConnectionState,
     long ConnectionGeneration,

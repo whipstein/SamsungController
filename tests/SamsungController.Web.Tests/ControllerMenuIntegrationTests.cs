@@ -939,6 +939,40 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task ConnectionReadinessSettingsPersistAndReachTransport()
+    {
+        Directory.CreateDirectory(_directory);
+        var transport = new RecordingSamsungTransport();
+        await using var controller = CreateController(transport);
+        await controller.InitializeAsync();
+
+        await controller.ConnectAsync(new TvConnectionRequest(
+            "Test TV",
+            "192.0.2.10",
+            Secure: true,
+            Port: null,
+            AllowUntrustedCertificate: true,
+            KeepAliveIntervalSeconds: 17,
+            KeepAliveTimeoutSeconds: 6,
+            PostConnectWarmupMilliseconds: 0,
+            ReconnectAfterIdleSeconds: 90));
+
+        var snapshot = controller.GetSnapshot();
+        Assert.Equal(17, snapshot.KeepAliveIntervalSeconds);
+        Assert.Equal(6, snapshot.KeepAliveTimeoutSeconds);
+        Assert.Equal(0, snapshot.PostConnectWarmupMilliseconds);
+        Assert.Equal(90, snapshot.ReconnectAfterIdleSeconds);
+        Assert.Equal(TimeSpan.FromSeconds(17), transport.LastKeepAliveInterval);
+        Assert.Equal(TimeSpan.FromSeconds(6), transport.LastKeepAliveTimeout);
+
+        using var settings = JsonDocument.Parse(await File.ReadAllTextAsync(
+            Path.Combine(_directory, "settings.json")));
+        Assert.Equal(
+            90,
+            settings.RootElement.GetProperty("ReconnectAfterIdleSeconds").GetInt32());
+    }
+
+    [Fact]
     public async Task QuickAccessDefaultsToReturnToVideo()
     {
         Directory.CreateDirectory(_directory);
@@ -1063,7 +1097,9 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             "Test TV",
             "192.0.2.10",
             Secure: true,
-            Port: null));
+            Port: null,
+            PostConnectWarmupMilliseconds: 0,
+            ReconnectAfterIdleSeconds: 0));
         if (clearSentMessages)
         {
             transport.SentMessages.Clear();
@@ -1108,7 +1144,12 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
 
     private async Task WriteSettingsAsync(string definitionPath)
     {
-        var json = JsonSerializer.Serialize(new { MenuDefinitionPath = definitionPath });
+        var json = JsonSerializer.Serialize(new
+        {
+            MenuDefinitionPath = definitionPath,
+            PostConnectWarmupMilliseconds = 0,
+            ReconnectAfterIdleSeconds = 0
+        });
         await File.WriteAllTextAsync(Path.Combine(_directory, "settings.json"), json);
     }
 
@@ -1285,10 +1326,16 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
 
         public Exception? ConnectFailure { get; init; }
 
+        public TimeSpan LastKeepAliveInterval { get; private set; }
+
+        public TimeSpan LastKeepAliveTimeout { get; private set; }
+
         public Task ConnectAsync(
             Uri endpoint,
             TimeSpan timeout,
             bool allowUntrustedCertificate,
+            TimeSpan keepAliveInterval,
+            TimeSpan keepAliveTimeout,
             CancellationToken cancellationToken = default)
         {
             if (ConnectFailure is not null)
@@ -1296,6 +1343,8 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 return Task.FromException(ConnectFailure);
             }
 
+            LastKeepAliveInterval = keepAliveInterval;
+            LastKeepAliveTimeout = keepAliveTimeout;
             IsConnected = true;
             Interlocked.Increment(ref _generation);
             _inbound.Writer.TryWrite(JsonSerializer.Serialize(new

@@ -25,7 +25,9 @@ public sealed class SamsungTvClient : IAsyncDisposable
     private SamsungConnectionOptions? _options;
     private TaskCompletionSource<string?>? _handshakeSource;
     private int _state = (int)SamsungConnectionState.Disconnected;
+    private int _sendPending;
     private long _activeGeneration;
+    private long _lastApplicationActivityUnixMilliseconds;
     private bool _disposed;
 
     public SamsungTvClient(
@@ -51,9 +53,15 @@ public sealed class SamsungTvClient : IAsyncDisposable
 
     public long ConnectionGeneration => Interlocked.Read(ref _activeGeneration);
 
-    public async Task ConnectAsync(
+    public Task ConnectAsync(
         SamsungConnectionOptions options,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        ConnectCoreAsync(options, forceReconnect: false, cancellationToken);
+
+    private async Task ConnectCoreAsync(
+        SamsungConnectionOptions options,
+        bool forceReconnect,
+        CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(options);
@@ -62,7 +70,9 @@ public sealed class SamsungTvClient : IAsyncDisposable
         await _connectionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (State == SamsungConnectionState.Connected && _transport.IsConnected)
+            if (!forceReconnect
+                && State == SamsungConnectionState.Connected
+                && _transport.IsConnected)
             {
                 return;
             }
@@ -90,6 +100,8 @@ public sealed class SamsungTvClient : IAsyncDisposable
                         endpoint,
                         options.ConnectTimeout,
                         options.AllowUntrustedCertificate,
+                        options.KeepAliveInterval,
+                        options.KeepAliveTimeout,
                         cancellationToken)
                     .ConfigureAwait(false);
 
@@ -128,7 +140,26 @@ public sealed class SamsungTvClient : IAsyncDisposable
                         .ConfigureAwait(false);
                 }
 
+                if (options.PostConnectWarmup > TimeSpan.Zero)
+                {
+                    SetState(SamsungConnectionState.Warming);
+                    await Task.Delay(options.PostConnectWarmup, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (!_transport.IsConnected)
+                    {
+                        throw new SamsungConnectionException(
+                            "The Samsung TV connection ended while the channel was warming up.");
+                    }
+                }
+
+                MarkApplicationActivity();
                 SetState(SamsungConnectionState.Connected);
+            }
+            catch (OperationCanceledException)
+            {
+                SetState(SamsungConnectionState.Disconnected);
+                await StopCurrentSessionAsync(CancellationToken.None).ConfigureAwait(false);
+                throw;
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -176,9 +207,17 @@ public sealed class SamsungTvClient : IAsyncDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentException.ThrowIfNullOrWhiteSpace(rawJson);
 
-        await _sendGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        if (Interlocked.CompareExchange(ref _sendPending, 1, 0) != 0)
+        {
+            throw new InvalidOperationException(
+                "Another TV command is already waiting for the connection to become ready.");
+        }
+
+        var gateAcquired = false;
         try
         {
+            await _sendGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            gateAcquired = true;
             await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
 
             try
@@ -191,23 +230,21 @@ public sealed class SamsungTvClient : IAsyncDisposable
                         cancellationToken)
                     .ConfigureAwait(false);
                 await _transport.SendAsync(rawJson, cancellationToken).ConfigureAwait(false);
+                MarkApplicationActivity();
             }
             catch (Exception exception) when (IsReconnectable(exception))
             {
                 if (_options?.AutoReconnect == true)
                 {
                     SetState(SamsungConnectionState.Reconnecting, exception);
-                    await ConnectAsync(_options with { Token = Token }, cancellationToken)
-                        .ConfigureAwait(false);
-
-                    await EmitAsync(
-                            SamsungProtocol.ParseMessage(
-                                rawJson,
-                                SamsungMessageDirection.Tx,
-                                ConnectionGeneration),
+                    await ConnectCoreAsync(
+                            _options with { Token = Token },
+                            forceReconnect: true,
                             cancellationToken)
                         .ConfigureAwait(false);
-                    await _transport.SendAsync(rawJson, cancellationToken).ConfigureAwait(false);
+                    throw new SamsungConnectionException(
+                        "The TV connection was refreshed after the send failed. The command was not retried because delivery could not be confirmed; send it again if the TV did not respond.",
+                        exception);
                 }
                 else
                 {
@@ -220,7 +257,12 @@ public sealed class SamsungTvClient : IAsyncDisposable
         }
         finally
         {
-            _sendGate.Release();
+            if (gateAcquired)
+            {
+                _sendGate.Release();
+            }
+
+            Volatile.Write(ref _sendPending, 0);
         }
     }
 
@@ -388,7 +430,8 @@ public sealed class SamsungTvClient : IAsyncDisposable
 
     private async Task EnsureConnectedAsync(CancellationToken cancellationToken)
     {
-        if (State == SamsungConnectionState.Connected && _transport.IsConnected)
+        var connected = State == SamsungConnectionState.Connected && _transport.IsConnected;
+        if (connected && !ConnectionIsIdle())
         {
             return;
         }
@@ -398,9 +441,44 @@ public sealed class SamsungTvClient : IAsyncDisposable
             throw new InvalidOperationException("ConnectAsync must be called before sending a command.");
         }
 
+        if (State is SamsungConnectionState.Connecting
+            or SamsungConnectionState.Pairing
+            or SamsungConnectionState.Warming
+            or SamsungConnectionState.Reconnecting)
+        {
+            await ConnectCoreAsync(
+                    _options with { Token = Token },
+                    forceReconnect: false,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
         SetState(SamsungConnectionState.Reconnecting);
-        await ConnectAsync(_options with { Token = Token }, cancellationToken).ConfigureAwait(false);
+        await ConnectCoreAsync(
+                _options with { Token = Token },
+                forceReconnect: true,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
+
+    private bool ConnectionIsIdle()
+    {
+        var threshold = _options?.ReconnectAfterIdle ?? TimeSpan.Zero;
+        if (threshold <= TimeSpan.Zero)
+        {
+            return false;
+        }
+
+        var lastActivity = Interlocked.Read(ref _lastApplicationActivityUnixMilliseconds);
+        return lastActivity > 0
+            && DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - lastActivity
+                >= threshold.TotalMilliseconds;
+    }
+
+    private void MarkApplicationActivity() => Interlocked.Exchange(
+        ref _lastApplicationActivityUnixMilliseconds,
+        DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
 
     private async ValueTask EmitAsync(
         SamsungMessage message,

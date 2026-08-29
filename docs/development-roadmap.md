@@ -22,6 +22,8 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 - [x] Base64-encode the controller name and parse Samsung pairing responses.
 - [x] Persist tokens by TV host and reuse them on later connections.
 - [x] Expose connection states including connecting, pairing, connected, reconnecting, faulted, and disconnected.
+- [x] Verify idle WebSockets with PING/PONG and expose a warming state before first-command delivery.
+- [x] Refresh the authorized channel after configurable idle time while queuing one command and never retrying an ambiguous key send.
 - [x] Provide bounded reconnect behavior in the reusable core client.
 - [x] Make the web UI disconnect immediately when its TV channel is lost instead of presenting a stale session.
 - [x] Implement `status` and host-specific `forget` operations.

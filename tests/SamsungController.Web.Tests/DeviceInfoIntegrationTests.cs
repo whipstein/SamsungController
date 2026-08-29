@@ -166,6 +166,8 @@ public sealed class DeviceInfoIntegrationTests : IDisposable
             Uri endpoint,
             TimeSpan timeout,
             bool allowUntrustedCertificate,
+            TimeSpan keepAliveInterval,
+            TimeSpan keepAliveTimeout,
             CancellationToken cancellationToken = default) => Task.CompletedTask;
 
         public Task SendAsync(string rawJson, CancellationToken cancellationToken = default) =>

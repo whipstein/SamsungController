@@ -20,6 +20,8 @@ public sealed class ClientWebSocketSamsungTransport : ISamsungTransport
         Uri endpoint,
         TimeSpan timeout,
         bool allowUntrustedCertificate,
+        TimeSpan keepAliveInterval,
+        TimeSpan keepAliveTimeout,
         CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -27,7 +29,8 @@ public sealed class ClientWebSocketSamsungTransport : ISamsungTransport
         await DisconnectAsync(cancellationToken).ConfigureAwait(false);
 
         var socket = new ClientWebSocket();
-        socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
+        socket.Options.KeepAliveInterval = keepAliveInterval;
+        socket.Options.KeepAliveTimeout = keepAliveTimeout;
 
         if (allowUntrustedCertificate && endpoint.Scheme == Uri.UriSchemeWss)
         {
