@@ -275,7 +275,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
                             && anchor.TargetNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase)),
                         definition.Transitions.Values.Any(transition =>
                             !transition.Verified
-                            && transition.ToNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase))))
+                            && transition.ToNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase))
+                        || definition.Anchors.Values.Any(anchor =>
+                            !anchor.Verified
+                            && anchor.TargetNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase))))
                     .ToArray();
             var anchors = definition is null
                 ? []

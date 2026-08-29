@@ -266,12 +266,20 @@
                     }
                     <label class="wide-field">
                         <span>Target node</span>
-                        <select @bind="ExistingTargetId" disabled="@Authoring.IsRecording">
-                            @foreach (var node in Navigation.Nodes)
+                        <select @bind="ExistingTargetId" disabled="@(Authoring.IsRecording || SelectableRecordingTargets.Count == 0)">
+                            @if (SelectableRecordingTargets.Count == 0)
                             {
-                                <option value="@node.Id">@node.Path</option>
+                                <option value="">No unrecorded targets</option>
+                            }
+                            @foreach (var node in SelectableRecordingTargets)
+                            {
+                                var isPreparedRerecordTarget = !IsUnrecordedRecordingTarget(node);
+                                <option value="@node.Id" disabled="@isPreparedRerecordTarget">
+                                    @node.Path@(isPreparedRerecordTarget ? " · selected for re-recording" : string.Empty)
+                                </option>
                             }
                         </select>
+                        <small class="field-note">Only red, unrecorded menu positions are available. Use Re-record on an existing draft to edit it explicitly.</small>
                     </label>
                 </div>
                 @if (RecordingKind == MenuAuthoringItemKind.Transition && ReturnToVideoAnchor is not null)
@@ -587,7 +595,7 @@
             @if (DraftValidationExpanded)
             {
                 <div class="authoring-section-body">
-                    <p class="field-note">For a traversal with recorded return keys, Prepare source sends that return sequence and then follows verified routes toward the forward source. Replay test sends the forward traversal. Each card remembers its own 3-pass count when you switch between commands. The third accepted pass verifies the command and returns to normal video automatically.</p>
+                    <p class="field-note">For a traversal with recorded return keys, Prepare source sends that return sequence and then follows verified routes toward the forward source. Replay test sends the forward traversal, then that same command row changes to Count pass. Each card remembers its own 3-pass count when you switch between commands. The third accepted pass verifies the command and returns to normal video automatically.</p>
             @if (Authoring.DraftCandidates.Count == 0)
             {
                 <div class="capture-empty compact">No draft anchors or transitions are waiting for validation.</div>
@@ -612,7 +620,20 @@
                                 }
                                 <button class="secondary-action" @onclick="() => PrepareRerecord(candidate)" disabled="@(Authoring.IsRecording || Navigation.IsRunning)">Re-record</button>
                                 <button class="secondary-action" @onclick="() => ToggleTimingEditor(candidate)" disabled="@(Authoring.IsRecording || Navigation.IsRunning)">@(IsTimingEditorOpen(candidate) ? "Close timing" : "Timing lab")</button>
-                                <button class="secondary-action" @onclick="() => RunValidationAsync(candidate)" disabled="@(!CanRunValidation || Authoring.AwaitingValidationConfirmation)">Replay test</button>
+                                @if (isActive && Authoring.AwaitingValidationConfirmation)
+                                {
+                                    <span class="validation-inline-prompt" role="status">Did the TV reach @candidate.TargetPath?</span>
+                                    <button class="secondary-action danger-action" @onclick="() => ConfirmValidationAsync(false)" disabled="@IsBusy">No — adjust timing</button>
+                                    <button class="primary-action" @onclick="() => ConfirmValidationAsync(true)" disabled="@IsBusy">
+                                        @(candidate.ValidationPasses + 1 >= Authoring.RequiredValidationPasses
+                                            ? "Count final pass + return"
+                                            : "Count pass") <span>✓</span>
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button class="secondary-action" @onclick="() => RunValidationAsync(candidate)" disabled="@(!CanRunValidation || Authoring.AwaitingValidationConfirmation)">Replay test</button>
+                                }
                                 <button class="secondary-action danger-action" @onclick="() => DeleteDraftAsync(candidate)" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">Delete</button>
                             </div>
                             @if (IsTimingEditorOpen(candidate))
@@ -653,18 +674,6 @@
                 </div>
             }
 
-            @if (Authoring.AwaitingValidationConfirmation)
-            {
-                <div class="validation-confirmation">
-                    <div><span>VISUAL CONFIRMATION REQUIRED</span><strong>Did the TV reach @Authoring.ExpectedTargetPath?</strong></div>
-                    <button class="secondary-action danger-action" @onclick="() => ConfirmValidationAsync(false)" disabled="@IsBusy">No — adjust timing</button>
-                    <button class="primary-action" @onclick="() => ConfirmValidationAsync(true)" disabled="@IsBusy">
-                        @(Authoring.ValidationPasses + 1 >= Authoring.RequiredValidationPasses
-                            ? "Yes — verify + return to video"
-                            : "Yes — count pass") <span>✓</span>
-                    </button>
-                </div>
-            }
                 </div>
             }
         </div>
@@ -686,6 +695,7 @@
     private string RecordingLabel { get; set; } = "Return to known state";
     private string SourceNodeId { get; set; } = string.Empty;
     private string ExistingTargetId { get; set; } = string.Empty;
+    private string? PreparedRerecordTargetId { get; set; }
     private bool RecordReturnToVideo { get; set; }
     private string? EditingNodeId { get; set; }
     private string NodeEditorId { get; set; } = string.Empty;
@@ -753,8 +763,18 @@
         .ThenByDescending(anchor => anchor.Verified)
         .FirstOrDefault();
     private bool IsConnected => Snapshot.ConnectionState == SamsungConnectionState.Connected;
+    private IReadOnlyList<MenuNodeSummary> UnrecordedRecordingTargets => Navigation.Nodes
+        .Where(IsUnrecordedRecordingTarget)
+        .ToArray();
+    private IReadOnlyList<MenuNodeSummary> SelectableRecordingTargets => Navigation.Nodes
+        .Where(node => IsUnrecordedRecordingTarget(node)
+            || node.Id.Equals(PreparedRerecordTargetId, StringComparison.OrdinalIgnoreCase))
+        .ToArray();
     private bool CanStartRecording => IsConnected && !IsBusy && !Snapshot.MacroRunning && !Navigation.IsRunning &&
         !string.IsNullOrWhiteSpace(ExistingTargetId)
+        && SelectableRecordingTargets.Any(node => node.Id.Equals(
+            ExistingTargetId,
+            StringComparison.OrdinalIgnoreCase))
         && (RecordingKind == MenuAuthoringItemKind.Transition
             ? !string.IsNullOrWhiteSpace(SourceNodeId)
               && (!RecordReturnToVideo || ReturnToVideoAnchor is not null)
@@ -1120,7 +1140,13 @@
     private Task PrepareSourceAsync() =>
         RunBusyAsync(() => Controller.PrepareMenuRecordingSourceAsync(SourceNodeId));
 
-    private Task StopAndSaveAsync() => RunBusyAsync(() => Controller.StopAndSaveMenuRecordingAsync());
+    private Task StopAndSaveAsync() => RunBusyAsync(async () =>
+    {
+        await Controller.StopAndSaveMenuRecordingAsync();
+        PreparedRerecordTargetId = null;
+        Refresh();
+        InitializeNodeDefaults(force: true);
+    });
 
     private void BeginReturnRecording()
     {
@@ -1141,6 +1167,9 @@
         try
         {
             Controller.CancelMenuRecording();
+            PreparedRerecordTargetId = null;
+            Refresh();
+            InitializeNodeDefaults(force: true);
         }
         catch (Exception exception)
         {
@@ -1276,6 +1305,7 @@
         }
 
         SourceNodeId = candidate.SourceNodeId ?? SourceNodeId;
+        PreparedRerecordTargetId = candidate.TargetNodeId;
         ExistingTargetId = candidate.TargetNodeId;
     }
 
@@ -1477,6 +1507,14 @@
 
         LastObservedTiming = authoring.Timing;
         Authoring = authoring;
+        if (PreparedRerecordTargetId is not null
+            && Authoring.DraftCandidates.All(candidate => !candidate.TargetNodeId.Equals(
+                PreparedRerecordTargetId,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            PreparedRerecordTargetId = null;
+        }
+
         if (ReturnToVideoAnchor is null)
         {
             RecordReturnToVideo = false;
@@ -1622,10 +1660,16 @@
                 ?? Navigation.Nodes[0].Id;
         }
 
-        if (force || string.IsNullOrWhiteSpace(ExistingTargetId) || Navigation.Nodes.All(node => node.Id != ExistingTargetId))
+        if (force
+            || string.IsNullOrWhiteSpace(ExistingTargetId)
+            || SelectableRecordingTargets.All(node => !node.Id.Equals(
+                ExistingTargetId,
+                StringComparison.OrdinalIgnoreCase)))
         {
-            ExistingTargetId = Navigation.Nodes.FirstOrDefault(node => node.Id != SourceNodeId)?.Id
-                ?? Navigation.Nodes[0].Id;
+            ExistingTargetId = UnrecordedRecordingTargets.FirstOrDefault(node =>
+                    !node.Id.Equals(SourceNodeId, StringComparison.OrdinalIgnoreCase))?.Id
+                ?? UnrecordedRecordingTargets.FirstOrDefault()?.Id
+                ?? string.Empty;
         }
 
         if (EditingNodeId is null && string.IsNullOrWhiteSpace(NodeEditorParentId))
@@ -1651,6 +1695,13 @@
     private string GetTargetLabel(string targetId) => Navigation.Nodes.FirstOrDefault(node =>
             node.Id.Equals(targetId, StringComparison.OrdinalIgnoreCase))?.Label
         ?? targetId;
+
+    private bool IsUnrecordedRecordingTarget(MenuNodeSummary node) =>
+        !node.HasVerifiedRoute
+        && !node.HasDraftRoute
+        && Authoring.DraftCandidates.All(candidate => !candidate.TargetNodeId.Equals(
+            node.Id,
+            StringComparison.OrdinalIgnoreCase));
 
     private static string CreateMenuNodeId(string label)
     {

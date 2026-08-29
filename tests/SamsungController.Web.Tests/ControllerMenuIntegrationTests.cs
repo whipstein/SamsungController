@@ -35,6 +35,24 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task UnverifiedAnchorTargetIsReportedAsRecordedDraftRoute()
+    {
+        Directory.CreateDirectory(_directory);
+        var definitionPath = Path.Combine(_directory, "draft-anchor-menu.yaml");
+        await File.WriteAllTextAsync(
+            definitionPath,
+            ValidMenuYaml.Replace("verified: true", "verified: false", StringComparison.Ordinal));
+        await WriteSettingsAsync(definitionPath);
+        await using var controller = CreateController();
+
+        await controller.InitializeAsync();
+        var node = Assert.Single(controller.GetMenuNavigationSnapshot().Nodes);
+
+        Assert.False(node.HasVerifiedRoute);
+        Assert.True(node.HasDraftRoute);
+    }
+
+    [Fact]
     public async Task InvalidConfiguredDefinitionIsVisibleWithoutBreakingTheWebSession()
     {
         Directory.CreateDirectory(_directory);

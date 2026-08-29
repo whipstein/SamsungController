@@ -549,6 +549,8 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .validation-card small { margin-top: 5px; color: var(--muted); font-size: 8px; }
 .validation-card-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .validation-card-actions b { color: var(--amber); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.validation-card-actions .validation-inline-prompt { max-width: 230px; color: var(--amber); font: 8px/1.35 ui-monospace, "SFMono-Regular", Consolas, monospace; text-align: right; text-transform: none; }
+.validation-card-actions .primary-action { width: auto; gap: 12px; }
 .timing-step-editor { grid-column: 1 / -1; margin-top: 2px; padding-top: 14px; border-top: 1px solid var(--line); }
 .timing-step-editor > header { display: flex; justify-content: space-between; gap: 18px; align-items: end; margin-bottom: 10px; }
 .timing-step-editor > header strong { margin: 0; font-size: 10px; }
