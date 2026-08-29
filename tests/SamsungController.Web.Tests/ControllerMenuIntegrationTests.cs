@@ -1103,10 +1103,12 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 "First",
                 new MacroEditRequest(
                     "FirstRenamed",
-                    "Description-only changes preserve verification",
-                    [new KeyStep("KEY_MENU")]));
+                    "Metadata-only changes preserve verification",
+                    [new KeyStep("KEY_MENU")],
+                    ConfirmBeforeRun: true));
             var renamed = await controller.LoadMacroDetailsAsync("FirstRenamed");
             Assert.True(renamed.Verified);
+            Assert.True(renamed.ConfirmBeforeRun);
             Assert.Contains(
                 controller.GetQuickAccessActions(),
                 action => action.Kind == QuickAccessActionKind.Macro
@@ -1117,14 +1119,49 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 new MacroEditRequest(
                     "FirstRenamed",
                     "Behavior changed",
-                    [new KeyStep("KEY_MENU"), new DelayStep(TimeSpan.FromMilliseconds(50))]));
+                    [new KeyStep("KEY_MENU"), new DelayStep(TimeSpan.FromMilliseconds(50))],
+                    ConfirmBeforeRun: true));
             var changed = await controller.LoadMacroDetailsAsync("FirstRenamed");
             Assert.False(changed.Verified);
             Assert.Equal(0, changed.VerificationPasses);
+            Assert.True(changed.ConfirmBeforeRun);
             Assert.DoesNotContain(
                 controller.GetQuickAccessActions(),
                 action => action.Kind == QuickAccessActionKind.Macro);
         }
+    }
+
+    [Fact]
+    public async Task MacroEditorDeletesUnreferencedMacroAndItsQuickAccessAction()
+    {
+        Directory.CreateDirectory(_directory);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+        var macroPath = Path.Combine(_directory, "delete-macros.yaml");
+        await File.WriteAllTextAsync(
+            macroPath,
+            """
+            version: 1
+            macros:
+              Keep:
+                steps:
+                  - key: KEY_HOME
+              Remove:
+                verified: true
+                confirmBeforeRun: true
+                steps:
+                  - key: KEY_MENU
+            """);
+        await controller.SetMacroFileAsync(macroPath);
+        await controller.AddQuickAccessMacroAsync("Remove");
+
+        await controller.DeleteMacroAsync("Remove");
+
+        var remaining = await controller.LoadMacrosAsync();
+        Assert.Equal("Keep", Assert.Single(remaining).Name);
+        Assert.DoesNotContain(
+            controller.GetQuickAccessActions(),
+            action => action.Kind == QuickAccessActionKind.Macro);
     }
 
     [Fact]

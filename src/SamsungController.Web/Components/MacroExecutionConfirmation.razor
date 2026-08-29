@@ -1,0 +1,36 @@
+<div class="macro-confirm-backdrop" role="presentation" @onclick="OnCancel">
+    <section class="macro-confirm-dialog"
+             role="alertdialog"
+             aria-modal="true"
+             aria-labelledby="macro-confirm-title"
+             aria-describedby="macro-confirm-description"
+             @onclick:stopPropagation="true">
+        <span class="eyebrow">CONFIRM MACRO</span>
+        <h2 id="macro-confirm-title">Are you sure?</h2>
+        <p id="macro-confirm-description">
+            <strong>@MacroName</strong> is marked to require confirmation before it sends commands to the TV.
+        </p>
+        @if (!string.IsNullOrWhiteSpace(Description))
+        {
+            <small>@Description</small>
+        }
+        <div class="macro-confirm-actions">
+            <button class="primary-action" @onclick="OnConfirm">Run macro <span>▶</span></button>
+            <button class="secondary-action" @onclick="OnCancel">Cancel</button>
+        </div>
+    </section>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string MacroName { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? Description { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback OnConfirm { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback OnCancel { get; set; }
+}

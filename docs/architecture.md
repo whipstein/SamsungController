@@ -106,7 +106,10 @@ successful replay of that same macro can be confirmed, and the third accepted
 run promotes it to verified. Behavioral edits or a reported failed replay reset
 the count and remove the macro from quick access. Description-only edits and
 renames preserve verification, with renames updating nested calls and pinned
-targets.
+targets. A per-definition `confirmBeforeRun` flag is non-behavioral safety
+metadata, so changing it preserves the pass count. The web Replay and quick-
+access entry points honor it with an explicit confirmation before invoking the
+controller; lower-level execution stays deterministic and non-interactive.
 
 Each detailed macro may declare a starting menu node ID, and macro steps may
 also contain verified menu destinations. The executor expands both starts and

@@ -18,6 +18,7 @@ public sealed class MacroParserTests
             macros:
               BackToVideo:
                 description: Close open menus
+                confirmBeforeRun: true
                 steps:
                   - key: KEY_RETURN
                     repeat: 3
@@ -32,7 +33,10 @@ public sealed class MacroParserTests
         var catalog = new MacroParser().Parse(yaml);
 
         Assert.Equal(2, catalog.Macros.Count);
-        Assert.Equal("Close open menus", catalog.GetRequiredMacro("backtovideo").Description);
+        var backToVideo = catalog.GetRequiredMacro("backtovideo");
+        Assert.Equal("Close open menus", backToVideo.Description);
+        Assert.True(backToVideo.ConfirmBeforeRun);
+        Assert.False(catalog.GetRequiredMacro("TestNavigation").ConfirmBeforeRun);
         var steps = catalog.GetRequiredMacro("TestNavigation").Steps;
         Assert.Equal(new CallMacroStep("BackToVideo"), steps[0]);
         Assert.Equal(

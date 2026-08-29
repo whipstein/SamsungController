@@ -26,7 +26,8 @@ public sealed class MacroCatalogWriterTests
                 ],
                 "Open settings",
                 verificationPasses: 2,
-                startingNodeId: "normal-video")
+                startingNodeId: "normal-video",
+                confirmBeforeRun: true)
         ],
         new Dictionary<string, string> { ["legacyDelay"] = "150ms" });
 
@@ -42,6 +43,7 @@ public sealed class MacroCatalogWriterTests
         Assert.False(settings.Verified);
         Assert.Equal(2, settings.VerificationPasses);
         Assert.Equal("normal-video", settings.StartingNodeId);
+        Assert.True(settings.ConfirmBeforeRun);
         Assert.Equal(catalog.GetRequiredMacro("OpenSettings").Steps, settings.Steps);
         Assert.Equal("150ms", reparsed.Variables["legacyDelay"]);
     }

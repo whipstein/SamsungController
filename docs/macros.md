@@ -57,6 +57,7 @@ macros:
   MoveAndSelect:
     description: Demonstrates variables, nesting, and an explicit delay
     start: normal-video
+    confirmBeforeRun: true
     verified: false
     verificationPasses: 1
     steps:
@@ -87,6 +88,12 @@ but the browser editor requires it for new or edited macros. The value is a
 stable node ID from the active menu definition, including states such as
 `normal-video`.
 
+`confirmBeforeRun` is optional and defaults to `false`. When it is `true`, the
+web interface asks **Are you sure?** before a Replay or persistent quick-access
+run sends any commands. It is interactive UI safety metadata; terminal CLI and
+console execution remain non-interactive, so review macros before running them
+there.
+
 Root variables are scalar values and can reference other variables with
 `${name}`. They are resolved before actions, repeat counts, and durations are
 typed. Missing variables and variable cycles are errors.
@@ -110,11 +117,14 @@ nested call, and verified menu-destination steps and rewrites the complete
 catalog atomically only after the resulting
 catalog passes the same parser and validator used by the CLI. A failed save
 leaves the previous file intact. Renaming a macro updates calls to that macro.
-Deletion is rejected while another macro still calls the target.
+Each catalog row has an **×** delete control followed by an inline confirmation.
+Deletion is rejected while another macro still calls the target and when it
+would leave the catalog empty.
 
 The detailed definition also accepts these fields:
 
 - `start`: the verified starting menu-state node ID.
+- `confirmBeforeRun`: whether the web UI must confirm a root Replay or quick-access run; defaults to `false`.
 - `verificationPasses`: an integer from `0` through `3`.
 - `verified`: `true` after three accepted visual runs; `false` otherwise.
 
@@ -127,7 +137,7 @@ only that macro's stored count. **Failed** resets only that macro to `0/3`. The
 service accepts a confirmation only after a successful replay of the same
 macro. At `3/3`, the macro can be pinned to quick access.
 
-Changing a description or name preserves behavioral verification when the
+Changing a description, name, or confirmation preference preserves behavioral verification when the
 starting state and operations are identical. Changing the start, a key, action,
 repeat, delay, wait, or nested call resets the macro to `0/3` and removes its
 quick-access entry. Each called macro prepares its own declared start before its

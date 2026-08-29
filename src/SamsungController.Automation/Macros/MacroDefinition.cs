@@ -10,7 +10,8 @@ public sealed record MacroDefinition
         string? description = null,
         bool verified = false,
         int verificationPasses = 0,
-        string? startingNodeId = null)
+        string? startingNodeId = null,
+        bool confirmBeforeRun = false)
     {
         Name = name;
         Steps = Array.AsReadOnly(
@@ -19,6 +20,7 @@ public sealed record MacroDefinition
         VerificationPasses = verified ? Math.Max(3, verificationPasses) : verificationPasses;
         Verified = verified || VerificationPasses >= 3;
         StartingNodeId = startingNodeId;
+        ConfirmBeforeRun = confirmBeforeRun;
     }
 
     public string Name { get; }
@@ -32,6 +34,8 @@ public sealed record MacroDefinition
     public int VerificationPasses { get; }
 
     public string? StartingNodeId { get; }
+
+    public bool ConfirmBeforeRun { get; }
 }
 
 public sealed class MacroCatalog

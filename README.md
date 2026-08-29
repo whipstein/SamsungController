@@ -151,7 +151,7 @@ Use non-secure mode only if the TV does not expose port 8002: disable **Secure W
 The top bar is available on every page:
 
 - **Connect/Disconnect** controls the saved TV without returning to the Connection page.
-- **Quick access** runs pinned keys or behaviorally verified macros. **Return to video** is included by default.
+- **Quick access** runs pinned keys or behaviorally verified macros. A macro marked **Confirm before execution** asks “Are you sure?” before it sends anything. **Return to video** is included by default.
 - **+ Add** adds a Samsung key or a verified macro from the current catalog. Remote keys and macros can also be pinned from their own pages.
 - **Current menu** shows the leaf name of the menu position SamsungController expects to be active.
 
@@ -177,16 +177,16 @@ Key names are intentionally not restricted. Review unfamiliar keys before sendin
 The **Macros** page is a complete browser-based editor and visual verifier:
 
 1. Enter a YAML catalog path and select **Load & validate**. You can also select **New macro** when the default or chosen file does not exist; the first save creates it.
-2. The catalog loads with no macro selected. Select a macro to inspect it; select the same card again to clear the selection and empty the editor. Create, duplicate, or edit a macro, then choose its verified **Starting TV state** and use **Prepare selected start** to move the TV there without adding preparation keys to the draft.
+2. The catalog loads with no macro selected. Select a macro to inspect it; select the same card again to clear the selection and empty the editor. Use the **×** beside a macro for an inline delete confirmation. Create, duplicate, or edit a macro, then choose its verified **Starting TV state** and use **Prepare selected start** to move the TV there without adding preparation keys to the draft.
 3. Use the compact editor remote or the verified-menu list beside it. A successfully sent remote button becomes a key step; a successfully selected menu item executes immediately and becomes one high-level menu-call step. Select **Pause capture** to continue controlling or repositioning the TV without adding those actions, then resume capture. Set **Wait after each captured key** to preserve reliable key replay timing.
 4. Build the remaining ordered operations from Samsung keys, explicit waits, calls to other saved macros, and calls to verified menu destinations. A menu call uses the same current-state-aware shortest-route planner as clicking that destination on the Menu page.
-5. Move operations with the up/down controls, remove incorrect operations, then save. Catalog structure, nested calls, menu targets, cycles, durations, repeats, and expanded size are validated before the file is replaced.
+5. Move operations with the up/down controls, remove incorrect operations, then save. For a macro that can make substantial changes, enable **Confirm before execution**. It is off by default; when enabled, Replay and quick access show an **Are you sure?** dialog before any commands are sent. Catalog structure, nested calls, menu targets, cycles, durations, repeats, and expanded size are validated before the file is replaced.
 6. Connect to the TV and select **Replay test**. Its first visible progress operation prepares the declared starting state through verified routes. If state is unknown, the planner uses a verified anchor; if the TV is already at the start, it sends nothing. Ordinary key and wait steps remain exact. A saved menu call intentionally delegates to the verified planner.
 7. Inspect the TV. Select **Count pass** when the result is correct, or **Failed** to reset that macro to 0/3. Counts are stored independently in YAML, so you can alternate between macros without losing progress.
 8. Three accepted replays mark the macro verified. Only verified macros can be pinned to the always-visible quick-access bar.
 9. Use **Download YAML** to export the validated catalog. Loading another path provides the import workflow, and the remembered path is shared with the CLI and interactive console.
 
-Changing only a macro's name or description preserves its passes; renaming also updates nested calls and a pinned quick-access entry. Changing its starting state or any operation resets that macro's behavioral verification and removes it from quick access. A called macro prepares its own declared start each time it is invoked. When the visual editor saves a hand-authored variable-based catalog, it writes normalized concrete step values while retaining the root variables.
+Changing only a macro's name, description, or confirmation preference preserves its passes; renaming also updates nested calls and a pinned quick-access entry. Changing its starting state or any operation resets that macro's behavioral verification and removes it from quick access. A called macro prepares its own declared start each time it is invoked. When the visual editor saves a hand-authored variable-based catalog, it writes normalized concrete step values while retaining the root variables.
 
 The entire catalog is parsed and validated before the first TV key is sent. See [Macro format](docs/macros.md) for the YAML schema, variables, nested calls, validation limits, and safety behavior.
 

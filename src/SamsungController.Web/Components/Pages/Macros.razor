@@ -67,18 +67,35 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
             <div class="macro-list">
                 @foreach (var macro in CatalogMacros)
                 {
-                    <button class="macro-card @(SelectedMacro == macro.Name ? "selected" : "") @(macro.Verified ? "verified" : "needs-verification")"
-                            @onclick="() => SelectMacroAsync(macro.Name)" disabled="@IsLocked">
-                        <span>
-                            <strong>@macro.Name</strong>
-                            <small>@(string.IsNullOrWhiteSpace(macro.Description) ? "No description" : macro.Description)</small>
-                            <small class="macro-start-state">Starts at @GetMenuPath(macro.StartingNodeId)</small>
-                        </span>
-                        <span class="macro-card-meta">
-                            <b>@macro.StepCount steps</b>
-                            <em>@(macro.Verified ? "Verified" : $"{macro.VerificationPasses}/3 passes")</em>
-                        </span>
-                    </button>
+                    <div class="macro-card-shell">
+                        <button class="macro-card @(SelectedMacro == macro.Name ? "selected" : "") @(macro.Verified ? "verified" : "needs-verification")"
+                                @onclick="() => SelectMacroAsync(macro.Name)" disabled="@IsLocked">
+                            <span>
+                                <strong>@macro.Name</strong>
+                                <small>@(string.IsNullOrWhiteSpace(macro.Description) ? "No description" : macro.Description)</small>
+                                <small class="macro-start-state">Starts at @GetMenuPath(macro.StartingNodeId)</small>
+                            </span>
+                            <span class="macro-card-meta">
+                                <b>@macro.StepCount steps</b>
+                                <em>@(macro.Verified ? "Verified" : $"{macro.VerificationPasses}/3 passes")</em>
+                                @if (macro.ConfirmBeforeRun)
+                                {
+                                    <i>Confirm to run</i>
+                                }
+                            </span>
+                        </button>
+                        <div class="macro-card-actions">
+                            @if (ListDeleteConfirmationName?.Equals(macro.Name, StringComparison.OrdinalIgnoreCase) == true)
+                            {
+                                <button class="macro-list-delete-confirm" title="Confirm deleting @macro.Name" @onclick="() => DeleteMacroFromListAsync(macro.Name)" disabled="@IsLocked">Delete</button>
+                                <button title="Keep @macro.Name" @onclick="CancelListDelete" disabled="@IsLocked">Keep</button>
+                            }
+                            else
+                            {
+                                <button class="macro-list-delete" title="Delete @macro.Name" aria-label="Delete @macro.Name" @onclick="() => BeginListDelete(macro.Name)" disabled="@IsLocked">×</button>
+                            }
+                        </div>
+                    </div>
                 }
             </div>
         }
@@ -122,7 +139,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
             }
             else
             {
-                <button class="primary-action" @onclick="RunMacroAsync" disabled="@(!CanRun)">Replay test <span>▶</span></button>
+                <button class="primary-action" @onclick="RequestRunMacroAsync" disabled="@(!CanRun)">Replay test <span>▶</span></button>
             }
 
             @if (SelectedMacro is not null)
@@ -190,6 +207,13 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
                         <option value="@menuItem.Id">@menuItem.Path</option>
                     }
                 </select>
+            </label>
+            <label class="macro-confirm-run-toggle">
+                <input type="checkbox" @bind="EditorConfirmBeforeRun" disabled="@IsBusy" />
+                <span>
+                    <strong>Confirm before execution</strong>
+                    <small>Show an “Are you sure?” prompt before Replay or quick access runs this macro.</small>
+                </span>
             </label>
         </div>
 
@@ -388,9 +412,17 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
                 }
             }
         </div>
-        <p class="field-note">Changing the name or description alone preserves visual passes. Changing the starting state, key, wait, repeat, action, nested call, or menu destination resets this macro to 0/3.</p>
+        <p class="field-note">Changing the name, description, or confirmation preference preserves visual passes. Changing the starting state, key, wait, repeat, action, nested call, or menu destination resets this macro to 0/3.</p>
     }
 </section>
+
+@if (PendingRunMacroName is { } pendingRunMacroName)
+{
+    <MacroExecutionConfirmation MacroName="@pendingRunMacroName"
+                                Description="@SelectedDetails?.Description"
+                                OnConfirm="ConfirmRunMacroAsync"
+                                OnCancel="CancelRunMacro" />
+}
 
 @code {
     private ControllerSnapshot Snapshot { get; set; } = null!;
@@ -404,6 +436,8 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
     private string? ErrorMessage { get; set; }
     private string? StatusMessage { get; set; }
     private string? AwaitingValidationName { get; set; }
+    private string? PendingRunMacroName { get; set; }
+    private string? ListDeleteConfirmationName { get; set; }
     private bool IsLoading { get; set; }
     private bool IsBusy { get; set; }
     private bool IsEditing { get; set; }
@@ -412,6 +446,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
     private string EditorName { get; set; } = string.Empty;
     private string EditorDescription { get; set; } = string.Empty;
     private string EditorStartingNodeId { get; set; } = string.Empty;
+    private bool EditorConfirmBeforeRun { get; set; }
     private List<MacroStepDraft> EditorSteps { get; } = [];
     private bool IsSendingCapturedKey { get; set; }
     private string CaptureCustomKey { get; set; } = string.Empty;
@@ -421,7 +456,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
 
     private bool IsLocked => IsBusy || Run.IsRunning || Snapshot.NavigationRunning || IsEditing;
     private bool CanRun => Snapshot.ConnectionState == SamsungConnectionState.Connected
-        && !IsLocked && !IsEditing && !string.IsNullOrWhiteSpace(SelectedMacro);
+        && !IsLocked && !IsEditing && PendingRunMacroName is null && !string.IsNullOrWhiteSpace(SelectedMacro);
     private bool CanManageQuickAccess => !IsLocked && !IsEditing
         && SelectedSummary?.Verified == true && !string.IsNullOrWhiteSpace(SelectedMacro);
     private bool CanCaptureKey => IsEditing
@@ -472,6 +507,8 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
             SelectedMacro = null;
             SelectedDetails = null;
             AwaitingValidationName = null;
+            PendingRunMacroName = null;
+            ListDeleteConfirmationName = null;
             MacroPath = Controller.GetSnapshot().MacroFilePath;
             CancelEdit();
         }
@@ -502,6 +539,8 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
             SelectedMacro = null;
             SelectedDetails = null;
             AwaitingValidationName = null;
+            PendingRunMacroName = null;
+            ListDeleteConfirmationName = null;
             ErrorMessage = null;
             StatusMessage = null;
             CancelEdit();
@@ -510,6 +549,8 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
 
         SelectedMacro = name;
         AwaitingValidationName = null;
+        PendingRunMacroName = null;
+        ListDeleteConfirmationName = null;
         ErrorMessage = null;
         StatusMessage = null;
         CancelEdit();
@@ -529,9 +570,12 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
         EditorName = string.Empty;
         EditorDescription = string.Empty;
         EditorStartingNodeId = GetPreferredStartingNodeId();
+        EditorConfirmBeforeRun = false;
         IsCapturePaused = false;
         EditorSteps.Clear();
         DeleteConfirmation = false;
+        PendingRunMacroName = null;
+        ListDeleteConfirmationName = null;
         IsEditing = true;
         ErrorMessage = null;
         StatusMessage = null;
@@ -549,10 +593,13 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
         EditorName = SelectedDetails.Name;
         EditorDescription = SelectedDetails.Description ?? string.Empty;
         EditorStartingNodeId = SelectedDetails.StartingNodeId ?? GetPreferredStartingNodeId();
+        EditorConfirmBeforeRun = SelectedDetails.ConfirmBeforeRun;
         IsCapturePaused = false;
         EditorSteps.Clear();
         EditorSteps.AddRange(SelectedDetails.Steps.Select(MacroStepDraft.FromStep));
         DeleteConfirmation = false;
+        PendingRunMacroName = null;
+        ListDeleteConfirmationName = null;
         IsEditing = true;
         ErrorMessage = null;
         StatusMessage = null;
@@ -570,10 +617,13 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
         EditorName = CreateCopyName(SelectedDetails.Name);
         EditorDescription = SelectedDetails.Description ?? string.Empty;
         EditorStartingNodeId = SelectedDetails.StartingNodeId ?? GetPreferredStartingNodeId();
+        EditorConfirmBeforeRun = SelectedDetails.ConfirmBeforeRun;
         IsCapturePaused = false;
         EditorSteps.Clear();
         EditorSteps.AddRange(SelectedDetails.Steps.Select(MacroStepDraft.FromStep));
         DeleteConfirmation = false;
+        PendingRunMacroName = null;
+        ListDeleteConfirmationName = null;
         IsEditing = true;
         ErrorMessage = null;
         StatusMessage = "Review the duplicate, then save it as a new unverified macro.";
@@ -775,7 +825,8 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
             EditorName,
             EditorDescription,
             EditorSteps.Select((step, index) => step.ToStep(index + 1)).ToArray(),
-            EditorStartingNodeId);
+            EditorStartingNodeId,
+            EditorConfirmBeforeRun);
     }
 
     private void CancelEdit()
@@ -786,6 +837,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
         EditorName = string.Empty;
         EditorDescription = string.Empty;
         EditorStartingNodeId = string.Empty;
+        EditorConfirmBeforeRun = false;
         IsCapturePaused = false;
         EditorSteps.Clear();
     }
@@ -802,6 +854,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
         {
             await Controller.DeleteMacroAsync(deleted);
             CatalogMacros = await Controller.LoadMacrosAsync();
+            QuickActions = Controller.GetQuickAccessActions();
             SelectedMacro = null;
             await LoadSelectedDetailsAsync();
             CancelEdit();
@@ -810,9 +863,80 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
         });
     }
 
-    private async Task RunMacroAsync()
+    private void BeginListDelete(string name)
+    {
+        ListDeleteConfirmationName = name;
+        PendingRunMacroName = null;
+        ErrorMessage = null;
+        StatusMessage = null;
+    }
+
+    private void CancelListDelete() => ListDeleteConfirmationName = null;
+
+    private async Task DeleteMacroFromListAsync(string name)
+    {
+        if (ListDeleteConfirmationName?.Equals(name, StringComparison.OrdinalIgnoreCase) != true)
+        {
+            return;
+        }
+
+        await RunBusyAsync(async () =>
+        {
+            await Controller.DeleteMacroAsync(name);
+            CatalogMacros = await Controller.LoadMacrosAsync();
+            QuickActions = Controller.GetQuickAccessActions();
+            ListDeleteConfirmationName = null;
+            PendingRunMacroName = null;
+            AwaitingValidationName = null;
+
+            if (SelectedMacro?.Equals(name, StringComparison.OrdinalIgnoreCase) == true)
+            {
+                SelectedMacro = null;
+                SelectedDetails = null;
+                CancelEdit();
+            }
+
+            StatusMessage = $"Deleted {name} from the YAML catalog.";
+        });
+    }
+
+    private async Task RequestRunMacroAsync()
     {
         if (SelectedMacro is null)
+        {
+            return;
+        }
+
+        if (SelectedSummary?.ConfirmBeforeRun == true)
+        {
+            PendingRunMacroName = SelectedMacro;
+            ErrorMessage = null;
+            StatusMessage = null;
+            return;
+        }
+
+        await ExecuteMacroAsync(SelectedMacro);
+    }
+
+    private async Task ConfirmRunMacroAsync()
+    {
+        var name = PendingRunMacroName;
+        PendingRunMacroName = null;
+        if (name is not null)
+        {
+            await ExecuteMacroAsync(name);
+        }
+    }
+
+    private void CancelRunMacro()
+    {
+        PendingRunMacroName = null;
+        StatusMessage = "Macro execution cancelled before any commands were sent.";
+    }
+
+    private async Task ExecuteMacroAsync(string macroName)
+    {
+        if (SelectedMacro?.Equals(macroName, StringComparison.OrdinalIgnoreCase) != true)
         {
             return;
         }
@@ -822,9 +946,8 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
         AwaitingValidationName = null;
         try
         {
-            var testedName = SelectedMacro;
-            await Controller.RunMacroAsync(testedName);
-            AwaitingValidationName = testedName;
+            await Controller.RunMacroAsync(macroName);
+            AwaitingValidationName = macroName;
             StatusMessage = "Replay completed. Inspect the TV, then count the pass or report failure.";
         }
         catch (OperationCanceledException)

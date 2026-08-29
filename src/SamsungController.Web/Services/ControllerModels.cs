@@ -75,7 +75,8 @@ public sealed record MacroSummary(
     int StepCount,
     bool Verified,
     int VerificationPasses,
-    string? StartingNodeId);
+    string? StartingNodeId,
+    bool ConfirmBeforeRun);
 
 public sealed record MacroDetails(
     string Name,
@@ -83,13 +84,15 @@ public sealed record MacroDetails(
     IReadOnlyList<MacroStep> Steps,
     bool Verified,
     int VerificationPasses,
-    string? StartingNodeId);
+    string? StartingNodeId,
+    bool ConfirmBeforeRun);
 
 public sealed record MacroEditRequest(
     string Name,
     string? Description,
     IReadOnlyList<MacroStep> Steps,
-    string? StartingNodeId = null);
+    string? StartingNodeId = null,
+    bool ConfirmBeforeRun = false);
 
 public sealed record MacroRunSnapshot(
     bool IsRunning,

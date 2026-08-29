@@ -11,7 +11,7 @@ public sealed class MacroParser
     private static readonly HashSet<string> RootFields =
         new(["version", "variables", "macros"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> DefinitionFields =
-        new(["description", "start", "verified", "verificationPasses", "steps"], StringComparer.OrdinalIgnoreCase);
+        new(["description", "start", "confirmBeforeRun", "verified", "verificationPasses", "steps"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> KeyFields =
         new(["key", "action", "repeat", "delay"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> CallFields =
@@ -148,13 +148,20 @@ public sealed class MacroParser
                 resolver.ResolveText(RequireScalar(passesNode, $"verificationPasses for macro '{name}'")),
                 name)
             : 0;
+        var confirmBeforeRun = fields.TryGetValue("confirmBeforeRun", out var confirmationNode)
+            && ParseBoolean(
+                resolver.ResolveText(RequireScalar(
+                    confirmationNode,
+                    $"confirmBeforeRun for macro '{name}'")),
+                $"confirmBeforeRun for macro '{name}'");
         return new MacroDefinition(
             name,
             ParseSteps(name, RequireSequence(stepsNode, $"steps for macro '{name}'"), resolver),
             description,
             verified,
             verificationPasses,
-            startingNodeId);
+            startingNodeId,
+            confirmBeforeRun);
     }
 
     private static IReadOnlyList<MacroStep> ParseSteps(

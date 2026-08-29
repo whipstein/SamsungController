@@ -2576,7 +2576,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
                 verified: behaviorUnchanged && existing!.Verified,
                 verificationPasses: behaviorUnchanged ? existing!.VerificationPasses : 0,
-                startingNodeId: startingNodeId);
+                startingNodeId: startingNodeId,
+                confirmBeforeRun: request.ConfirmBeforeRun);
 
             var definitions = new List<MacroDefinition>(catalog.Macros.Count + (existing is null ? 1 : 0));
             foreach (var macro in catalog.Macros.Values)
@@ -2702,7 +2703,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 existing.Description,
                 verified: passes >= 3,
                 verificationPasses: passes,
-                startingNodeId: existing.StartingNodeId);
+                startingNodeId: existing.StartingNodeId,
+                confirmBeforeRun: existing.ConfirmBeforeRun);
             var definitions = catalog.Macros.Values
                 .Select(macro => macro.Name.Equals(existing.Name, StringComparison.OrdinalIgnoreCase)
                     ? updated
@@ -4646,7 +4648,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             macro.Steps.Count,
             macro.Verified,
             macro.VerificationPasses,
-            macro.StartingNodeId);
+            macro.StartingNodeId,
+            macro.ConfirmBeforeRun);
 
     private static MacroDetails CreateMacroDetails(MacroDefinition macro) =>
         new(
@@ -4655,7 +4658,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             macro.Steps.ToArray(),
             macro.Verified,
             macro.VerificationPasses,
-            macro.StartingNodeId);
+            macro.StartingNodeId,
+            macro.ConfirmBeforeRun);
 
     private void ValidateMacroMenuDestinations(MacroCatalog catalog)
     {
@@ -4770,7 +4774,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 macro.Description,
                 macro.Verified,
                 macro.VerificationPasses,
-                macro.StartingNodeId)
+                macro.StartingNodeId,
+                macro.ConfirmBeforeRun)
             : macro;
     }
 

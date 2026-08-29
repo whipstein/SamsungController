@@ -54,6 +54,7 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 - [x] Call verified menu destinations from macros through the current-state-aware navigation planner.
 - [x] Declare and visibly prepare verified starting TV states for root and nested macros.
 - [x] Launch and capture verified menu calls beside the macro remote, with pause/resume capture for unrecorded repositioning.
+- [x] Delete macros directly from the catalog list and optionally require a web confirmation before Replay or quick-access execution.
 
 ### Local web control surface
 

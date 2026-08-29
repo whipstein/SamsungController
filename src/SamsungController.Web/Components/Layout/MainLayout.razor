@@ -63,7 +63,7 @@
                         {
                             <button class="quick-access-button"
                                     title="@GetQuickActionTitle(action)"
-                                    @onclick="() => RunQuickActionAsync(action.Id)"
+                                    @onclick="() => RequestQuickActionAsync(action)"
                                     disabled="@QuickControlsDisabled">
                                 <b>@GetQuickActionGlyph(action)</b>
                                 <span>@action.Label</span>
@@ -178,6 +178,14 @@
     </main>
 </div>
 
+@if (PendingQuickMacro is { } pendingQuickMacro)
+{
+    <MacroExecutionConfirmation MacroName="@pendingQuickMacro.Details.Name"
+                                Description="@pendingQuickMacro.Details.Description"
+                                OnConfirm="ConfirmQuickMacroAsync"
+                                OnCancel="CancelQuickMacro" />
+}
+
 @code {
     private ControllerSnapshot Snapshot { get; set; } = null!;
     private MenuAuthoringSnapshot Authoring { get; set; } = null!;
@@ -195,9 +203,11 @@
     private string? QuickAccessError { get; set; }
     private string? QuickAccessStatus { get; set; }
     private string? ConnectionControlError { get; set; }
+    private PendingQuickMacroExecution? PendingQuickMacro { get; set; }
 
     private bool QuickControlsDisabled => Snapshot.ConnectionState != SamsungConnectionState.Connected ||
-        Snapshot.MacroRunning || Snapshot.NavigationRunning || Authoring.IsRecording || QuickActionBusy;
+        Snapshot.MacroRunning || Snapshot.NavigationRunning || Authoring.IsRecording || QuickActionBusy ||
+        PendingQuickMacro is not null;
     private bool CanDisconnectFromHeader => ConnectionStatePresentation.CanDisconnect(
         Snapshot.ConnectionState);
     private bool HeaderConnectionDisabled => ConnectionControlBusy ||
@@ -367,6 +377,48 @@
         }
     }
 
+    private async Task RequestQuickActionAsync(QuickAccessAction action)
+    {
+        QuickAccessError = null;
+        QuickAccessStatus = null;
+
+        if (action.Kind == QuickAccessActionKind.Macro)
+        {
+            try
+            {
+                var details = await Controller.LoadMacroDetailsAsync(action.Target);
+                if (details.ConfirmBeforeRun)
+                {
+                    PendingQuickMacro = new PendingQuickMacroExecution(action, details);
+                    return;
+                }
+            }
+            catch (Exception exception)
+            {
+                QuickAccessError = exception.Message;
+                return;
+            }
+        }
+
+        await RunQuickActionAsync(action.Id);
+    }
+
+    private async Task ConfirmQuickMacroAsync()
+    {
+        var pending = PendingQuickMacro;
+        PendingQuickMacro = null;
+        if (pending is not null)
+        {
+            await RunQuickActionAsync(pending.Action.Id);
+        }
+    }
+
+    private void CancelQuickMacro()
+    {
+        PendingQuickMacro = null;
+        QuickAccessStatus = "Macro execution cancelled before any commands were sent.";
+    }
+
     private async Task RunQuickActionAsync(string actionId)
     {
         QuickActionBusy = true;
@@ -422,6 +474,10 @@
     {
         Controller.Changed -= HandleControllerChanged;
     }
+
+    private sealed record PendingQuickMacroExecution(
+        QuickAccessAction Action,
+        MacroDetails Details);
 }
 
 <div id="blazor-error-ui" data-nosnippet>

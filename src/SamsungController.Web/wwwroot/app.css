@@ -230,6 +230,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .panel-empty strong { color: var(--ink); font-size: 13px; }
 .panel-empty span { margin-top: 7px; font-size: 11px; }
 .macro-list { display: grid; gap: 8px; }
+.macro-card-shell { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; align-items: stretch; }
 .macro-card { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 15px 16px; text-align: left; border: 1px solid var(--line); border-radius: 7px; background: #0a161f; color: var(--ink); cursor: pointer; }
 .macro-card:hover, .macro-card.selected { border-color: rgba(124,231,220,.42); background: var(--cyan-soft); }
 .macro-card.needs-verification { border-left: 2px solid var(--amber); }
@@ -243,6 +244,12 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .macro-card .macro-card-meta { flex: 0 0 auto; text-align: right; }
 .macro-card .macro-card-meta em { display: block; margin-top: 5px; color: var(--amber); font: normal 8px ui-monospace, "SFMono-Regular", Consolas, monospace; white-space: nowrap; }
 .macro-card.verified .macro-card-meta em { color: var(--cyan); }
+.macro-card .macro-card-meta i { display: block; margin-top: 5px; color: var(--amber); font: normal 7px ui-monospace, "SFMono-Regular", Consolas, monospace; white-space: nowrap; }
+.macro-card-actions { display: flex; gap: 5px; align-items: stretch; }
+.macro-card-actions button { min-width: 40px; padding: 0 9px; border: 1px solid var(--line); border-radius: 7px; background: #0a161f; color: var(--muted); cursor: pointer; }
+.macro-card-actions button:hover:not(:disabled) { border-color: rgba(242,181,107,.55); color: var(--amber); }
+.macro-card-actions .macro-list-delete { font-size: 18px; }
+.macro-card-actions .macro-list-delete-confirm { border-color: rgba(255,111,119,.45); color: var(--danger); font-size: 8px; text-transform: uppercase; letter-spacing: .08em; }
 .selected-label { display: block; color: var(--faint); font: 9px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .12em; }
 .selected-macro { display: block; margin: 10px 0 25px; font-size: 24px; letter-spacing: -.03em; }
 .macro-start-summary { margin: -11px 0 18px; padding: 10px 12px; border-left: 2px solid var(--cyan); background: var(--cyan-soft); }
@@ -274,6 +281,12 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .macro-editor-empty > span { max-width: 100%; margin-top: 9px; color: var(--muted); font: 10px/1.7 ui-monospace, "SFMono-Regular", Consolas, monospace; overflow-wrap: anywhere; }
 .macro-editor-heading { display: grid; grid-template-columns: minmax(180px,.65fr) minmax(260px,1.1fr) minmax(220px,.9fr); gap: 12px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
 .macro-editor-heading input, .macro-editor-heading select { min-height: 39px; padding: 10px 11px; }
+.macro-editor-heading .macro-confirm-run-toggle { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 10px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 7px; background: rgba(242,181,107,.035); cursor: pointer; }
+.macro-editor-heading .macro-confirm-run-toggle input { flex: 0 0 auto; width: 16px; min-height: 0; height: 16px; margin: 1px 0 0; padding: 0; accent-color: var(--amber); }
+.macro-confirm-run-toggle > span, .macro-confirm-run-toggle strong, .macro-confirm-run-toggle small { display: block; }
+.macro-confirm-run-toggle > span { margin: 0; }
+.macro-confirm-run-toggle strong { color: var(--ink); font-size: 10px; }
+.macro-confirm-run-toggle small { margin-top: 4px; color: var(--faint); font-size: 8px; line-height: 1.45; }
 .macro-live-builder { display: grid; grid-template-columns: minmax(210px,.65fr) minmax(300px,.9fr) minmax(235px,.75fr); gap: 20px; margin: 18px 0 2px; padding: 18px; border: 1px solid rgba(124,231,220,.2); border-radius: 9px; background: rgba(124,231,220,.025); }
 .macro-live-builder-copy { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; }
 .macro-live-builder-copy > strong { margin-top: 8px; font-size: 17px; line-height: 1.25; }
@@ -667,6 +680,15 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .validation-confirmation strong { margin-top: 5px; font-size: 11px; }
 .validation-confirmation .primary-action { width: auto; gap: 15px; }
 
+.macro-confirm-backdrop { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; padding: 20px; background: rgba(2,8,12,.82); backdrop-filter: blur(4px); }
+.macro-confirm-dialog { width: min(440px, 100%); padding: 25px; border: 1px solid rgba(242,181,107,.4); border-radius: 10px; background: var(--surface); box-shadow: 0 24px 80px rgba(0,0,0,.55); }
+.macro-confirm-dialog h2 { margin: 9px 0 0; font-size: 25px; letter-spacing: -.03em; }
+.macro-confirm-dialog p { margin: 13px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.macro-confirm-dialog p strong { color: var(--ink); }
+.macro-confirm-dialog > small { display: block; margin-top: 10px; color: var(--faint); font-size: 9px; line-height: 1.5; }
+.macro-confirm-actions { display: grid; grid-template-columns: 1fr auto; gap: 9px; margin-top: 22px; }
+.macro-confirm-actions .primary-action { gap: 20px; }
+
 #blazor-error-ui { color-scheme: light; background: #fff2b8; bottom: 0; box-shadow: 0 -1px 2px rgba(0,0,0,.2); display: none; left: 0; padding: .7rem 1.25rem; position: fixed; width: 100%; z-index: 1000; color: #241c00; }
 #blazor-error-ui .dismiss { cursor: pointer; position: absolute; right: .8rem; top: .5rem; }
 
@@ -721,6 +743,9 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .remote-layout, .macro-layout { display: block; }
     .remote-side-stack, .macro-side-stack { margin-top: 18px; }
     .macro-editor-heading { grid-template-columns: 1fr; }
+    .macro-card-shell { grid-template-columns: minmax(0, 1fr); }
+    .macro-card-actions { justify-content: flex-end; }
+    .macro-card-actions button { min-height: 36px; }
     .macro-custom-record-key { grid-template-columns: 1fr; }
     .macro-step-row { grid-template-columns: 28px repeat(2, minmax(0, 1fr)); }
     .macro-step-number { grid-row: 1 / 4; }
@@ -756,6 +781,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .device-observation-card header { grid-template-columns: 1fr auto; }
     .device-observation-card header small { grid-column: 1 / -1; }
     .notice { grid-template-columns: 1fr; }
+    .macro-confirm-actions { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 480px) {
