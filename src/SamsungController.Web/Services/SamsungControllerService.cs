@@ -2652,6 +2652,26 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     "A macro catalog must contain at least one macro. Create its replacement before deleting this one.");
             }
 
+            var callers = catalog.Macros.Values
+                .Where(macro => !macro.Name.Equals(existing.Name, StringComparison.OrdinalIgnoreCase))
+                .SelectMany(macro => macro.Steps.Select((step, index) => new
+                {
+                    macro.Name,
+                    StepNumber = index + 1,
+                    CalledMacro = step is CallMacroStep call ? call.MacroName : null
+                }))
+                .Where(reference => reference.CalledMacro?.Equals(
+                    existing.Name,
+                    StringComparison.OrdinalIgnoreCase) == true)
+                .Select(reference => $"{reference.Name} (step {reference.StepNumber})")
+                .ToArray();
+            if (callers.Length > 0)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot delete '{existing.Name}' because it is called by {string.Join(", ", callers)}. " +
+                    "Edit those macros and remove or replace the listed call steps first.");
+            }
+
             await new MacroCatalogWriter().WriteFileAsync(
                     path,
                     new MacroCatalog(definitions, catalog.Variables),

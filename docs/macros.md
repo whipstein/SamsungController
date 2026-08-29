@@ -119,7 +119,9 @@ catalog passes the same parser and validator used by the CLI. A failed save
 leaves the previous file intact. Renaming a macro updates calls to that macro.
 Each catalog row has an **×** delete control followed by an inline confirmation.
 Deletion is rejected while another macro still calls the target and when it
-would leave the catalog empty.
+would leave the catalog empty. The rejection names every direct caller and its
+call-step number so those references can be removed or replaced in the editor
+before retrying the deletion; the catalog is left unchanged.
 
 The detailed definition also accepts these fields:
 

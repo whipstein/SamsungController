@@ -1165,7 +1165,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task MacroRenameUpdatesNestedCallsAndDeleteRejectsReferencedMacro()
+    public async Task MacroRenameUpdatesNestedCallsAndDeleteNamesEveryDirectCaller()
     {
         Directory.CreateDirectory(_directory);
         await using var controller = CreateController();
@@ -1178,6 +1178,12 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         await controller.SaveMacroAsync(
             null,
             new MacroEditRequest("Parent", null, [new CallMacroStep("Child")]));
+        await controller.SaveMacroAsync(
+            null,
+            new MacroEditRequest(
+                "ParentTwo",
+                null,
+                [new KeyStep("KEY_HOME"), new CallMacroStep("Child")]));
 
         await controller.SaveMacroAsync(
             "Child",
@@ -1185,10 +1191,14 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
 
         var parent = await controller.LoadMacroDetailsAsync("Parent");
         Assert.Equal(new CallMacroStep("RenamedChild"), Assert.Single(parent.Steps));
+        var parentTwo = await controller.LoadMacroDetailsAsync("ParentTwo");
+        Assert.Equal(new CallMacroStep("RenamedChild"), parentTwo.Steps[1]);
 
-        var exception = await Assert.ThrowsAsync<MacroValidationException>(() =>
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             controller.DeleteMacroAsync("RenamedChild"));
-        Assert.Contains("does not exist", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Parent (step 1)", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("ParentTwo (step 2)", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("remove or replace", exception.Message, StringComparison.OrdinalIgnoreCase);
         Assert.NotNull(await controller.LoadMacroDetailsAsync("RenamedChild"));
     }
 
