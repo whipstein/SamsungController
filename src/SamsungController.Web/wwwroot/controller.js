@@ -22,6 +22,29 @@ window.samsungController = {
             element.scrollIntoView({ behavior: "smooth", block: "start" });
         });
     },
+    bindAutoIndent: function (element) {
+        if (!element || element.dataset.autoIndentBound === "true") {
+            return;
+        }
+
+        element.dataset.autoIndentBound = "true";
+        element.addEventListener("keydown", function (event) {
+            if (event.key !== "Enter") {
+                return;
+            }
+
+            const selectionStart = element.selectionStart;
+            const selectionEnd = element.selectionEnd;
+            const textBeforeCursor = element.value.slice(0, selectionStart);
+            const currentLineStart = textBeforeCursor.lastIndexOf("\n") + 1;
+            const currentLine = textBeforeCursor.slice(currentLineStart);
+            const indentation = currentLine.match(/^[ \t]*/)?.[0] ?? "";
+
+            event.preventDefault();
+            element.setRangeText(`\n${indentation}`, selectionStart, selectionEnd, "end");
+            element.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+    },
     bindMenuTree: function (element) {
         if (!element || element.dataset.keyboardNavigationBound === "true") {
             return;

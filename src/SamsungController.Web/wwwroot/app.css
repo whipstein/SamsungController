@@ -558,6 +558,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .bulk-topology-outline { display: block; margin-top: 10px; }
 .bulk-topology-outline textarea { width: 100%; min-height: 185px; resize: vertical; padding: 11px 12px; border: 1px solid var(--line); border-radius: 6px; background: #071019; color: var(--ink); font: 10px/1.65 ui-monospace, "SFMono-Regular", Consolas, monospace; tab-size: 2; }
 .bulk-topology-outline textarea:focus { border-color: rgba(124,231,220,.55); outline: 0; box-shadow: 0 0 0 2px rgba(124,231,220,.08); }
+.bulk-topology-indent-note { display: block; margin-top: 5px; color: var(--faint); font-size: 8px; }
 .bulk-topology-keep { display: flex; align-items: flex-start; gap: 9px; margin-top: 10px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 6px; background: #09151e; cursor: pointer; }
 .bulk-topology-keep input { width: 15px; height: 15px; margin: 1px 0 0; accent-color: var(--cyan); }
 .bulk-topology-keep span, .bulk-topology-keep strong, .bulk-topology-keep small { display: block; }

@@ -183,11 +183,13 @@
                                     <span>MENU OUTLINE</span>
                                     <textarea value="@TopologyOutline"
                                               @oninput="HandleTopologyOutlineChanged"
+                                              @ref="TopologyOutlineElement"
                                               rows="11"
                                               spellcheck="false"
                                               placeholder="Settings&#10;  Picture&#10;    Expert Settings&#10;      Brightness&#10;      Contrast&#10;  Sound"
                                               disabled="@(!CanEditMenuTree)"></textarea>
                                 </label>
+                                <small class="bulk-topology-indent-note">Enter starts the next line with the same indentation as the current line.</small>
                                 <label class="bulk-topology-keep">
                                     <input type="checkbox" checked="@KeepUnlistedTopologyNodes" @onchange="HandleKeepUnlistedChanged" disabled="@(!CanEditMenuTree)" />
                                     <span>
@@ -931,6 +933,7 @@
     private ElementReference DefinitionSetupElement { get; set; }
     private ElementReference ConfigurationStepElement { get; set; }
     private ElementReference TopologyStepElement { get; set; }
+    private ElementReference TopologyOutlineElement { get; set; }
     private ElementReference RecordingStepElement { get; set; }
     private ElementReference ValidationStepElement { get; set; }
     private MenuSetupStep? PendingSetupScroll { get; set; }
@@ -1163,6 +1166,13 @@
                 await JavaScript.InvokeVoidAsync(
                     "samsungController.bindMenuTree",
                     MenuTreeElement);
+            }
+
+            if (MenuTreeExpanded && BulkTopologyExpanded && Navigation.DefinitionName is not null)
+            {
+                await JavaScript.InvokeVoidAsync(
+                    "samsungController.bindAutoIndent",
+                    TopologyOutlineElement);
             }
         }
         catch (JSDisconnectedException)
