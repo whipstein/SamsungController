@@ -1,24 +1,26 @@
 @page "/macros"
 @implements IDisposable
 @inject SamsungControllerService Controller
+@inject IJSRuntime JavaScript
 
 <PageTitle>Macros · SamsungController</PageTitle>
 
 <section class="page-heading compact-heading">
     <div>
-        <span class="eyebrow">MACRO RUNNER</span>
-        <h1>Repeat the sequence. Keep the result.</h1>
-        <p>Load a validated YAML catalog, choose a macro, and watch each operation as it reaches the TV.</p>
+        <span class="eyebrow">MACRO STUDIO</span>
+        <h1>Build it. Replay it. Prove it.</h1>
+        <p>Create and edit YAML macros in the browser, then count three visual passes on the TV before treating a sequence as verified.</p>
     </div>
     <div class="page-heading-actions">
-        <HelpBubble Title="Load and run a macro" ButtonText="Page help">
+        <HelpBubble Title="Build and verify a macro" ButtonText="Page help">
             <ol>
-                <li>Enter the path to a YAML macro catalog and select <strong>Load &amp; validate</strong>.</li>
-                <li>Choose a macro card to inspect its description and expanded step count.</li>
-                <li>Connect to the TV, then select <strong>Run macro</strong>. Execution progress appears on the right.</li>
-                <li>Use <strong>Cancel macro</strong> to stop between operations, or pin a trusted macro to quick access.</li>
+                <li>Load an existing YAML catalog, or select <strong>New macro</strong> to create the missing default catalog.</li>
+                <li>Add key, wait, or nested-macro steps. Reorder the steps to match the exact sequence you expect.</li>
+                <li>Save before testing. Any behavioral edit resets only that macro's verification count.</li>
+                <li>Connect to the TV and select <strong>Replay test</strong>. If the observed result is correct, select <strong>Count pass</strong>.</li>
+                <li>Three accepted runs mark the macro verified in YAML. A failed run resets that macro to 0/3.</li>
             </ol>
-            <p class="help-callout">Catalog validation checks structure and limits; it cannot prove that the keys are safe or correct for the current TV menu. Review a new macro before running it.</p>
+            <p class="help-callout">Replay sends only the saved macro's explicit keys and waits. It does not silently prepare or reset the TV's menu position.</p>
         </HelpBubble>
         <div class="page-state @(Snapshot.MacroRunning ? "working" : "")"><span></span>@(Snapshot.MacroRunning ? "Running" : "Ready")</div>
     </div>
@@ -28,6 +30,10 @@
 {
     <div class="notice danger" role="alert"><strong>Macro unavailable</strong><span>@ErrorMessage</span></div>
 }
+else if (!string.IsNullOrWhiteSpace(StatusMessage))
+{
+    <div class="notice" role="status"><strong>Macro studio</strong><span>@StatusMessage</span></div>
+}
 
 <section class="macro-layout">
     <div class="panel macro-catalog-panel">
@@ -35,16 +41,22 @@
         <div class="path-editor">
             <label>
                 <span>YAML file</span>
-                <input @bind="MacroPath" disabled="@Run.IsRunning" />
+                <input @bind="MacroPath" disabled="@IsLocked" />
             </label>
-            <button class="secondary-action" @onclick="LoadMacrosAsync" disabled="@(Run.IsRunning || IsLoading)">@(IsLoading ? "Checking…" : "Load & validate")</button>
+            <button class="secondary-action" @onclick="LoadMacrosAsync" disabled="@(IsLocked || IsLoading)">@(IsLoading ? "Checking…" : "Load & validate")</button>
+        </div>
+        <div class="macro-catalog-actions">
+            <button class="secondary-action" @onclick="StartNewMacro" disabled="@IsLocked">New macro <span>＋</span></button>
+            <button class="secondary-action" @onclick="StartDuplicateMacro" disabled="@(IsLocked || SelectedDetails is null)">Duplicate <span>⧉</span></button>
+            <button class="secondary-action" @onclick="DownloadCatalogAsync" disabled="@(IsLocked || CatalogMacros.Count == 0)">Download YAML <span>↓</span></button>
         </div>
 
         @if (CatalogMacros.Count == 0)
         {
             <div class="panel-empty">
-                <strong>No catalog loaded</strong>
-                <span>Choose a YAML macro file to begin.</span>
+                <strong>No macros in this catalog</strong>
+                <span>Create the first macro here; no command line is required.</span>
+                <button class="primary-action inline-action" @onclick="StartNewMacro" disabled="@IsLocked">Create first macro <span>＋</span></button>
             </div>
         }
         else
@@ -52,12 +64,16 @@
             <div class="macro-list">
                 @foreach (var macro in CatalogMacros)
                 {
-                    <button class="macro-card @(SelectedMacro == macro.Name ? "selected" : "")" @onclick="() => SelectMacro(macro.Name)" disabled="@Run.IsRunning">
+                    <button class="macro-card @(SelectedMacro == macro.Name ? "selected" : "") @(macro.Verified ? "verified" : "needs-verification")"
+                            @onclick="() => SelectMacroAsync(macro.Name)" disabled="@IsLocked">
                         <span>
                             <strong>@macro.Name</strong>
                             <small>@(string.IsNullOrWhiteSpace(macro.Description) ? "No description" : macro.Description)</small>
                         </span>
-                        <b>@macro.StepCount steps</b>
+                        <span class="macro-card-meta">
+                            <b>@macro.StepCount steps</b>
+                            <em>@(macro.Verified ? "Verified" : $"{macro.VerificationPasses}/3 passes")</em>
+                        </span>
                     </button>
                 }
             </div>
@@ -66,17 +82,37 @@
 
     <div class="macro-side-stack">
         <div class="panel run-panel">
-            <div class="panel-label"><span>RUN CONTROL</span><span>@Snapshot.ConnectionState</span></div>
-            <span class="selected-label">SELECTED MACRO</span>
+            <div class="panel-label"><span>REPLAY + VERIFY</span><span>@Snapshot.ConnectionState</span></div>
+            <span class="selected-label">SAVED MACRO</span>
             <strong class="selected-macro">@(SelectedMacro ?? "—")</strong>
+
+            @if (SelectedSummary is { } summary)
+            {
+                <div class="macro-verification-state @(summary.Verified ? "verified" : "unverified")">
+                    <strong>@(summary.Verified ? "Verified" : "Needs visual verification")</strong>
+                    <span>@summary.VerificationPasses / 3 accepted runs</span>
+                    <i><span style="width: @(summary.VerificationPasses * 100 / 3)%"></span></i>
+                </div>
+            }
+
             @if (Run.IsRunning)
             {
                 <button class="secondary-action danger-action" @onclick="CancelMacro">Cancel macro <span>×</span></button>
             }
+            else if (AwaitingValidationName is not null
+                && AwaitingValidationName.Equals(SelectedMacro, StringComparison.OrdinalIgnoreCase))
+            {
+                <div class="macro-confirmation" role="group" aria-label="Confirm macro replay">
+                    <p>Did this exact replay behave correctly on the TV?</p>
+                    <button class="primary-action" @onclick="() => ConfirmValidationAsync(true)" disabled="@IsBusy">Count pass <span>✓</span></button>
+                    <button class="secondary-action danger-action" @onclick="() => ConfirmValidationAsync(false)" disabled="@IsBusy">Failed · reset count <span>×</span></button>
+                </div>
+            }
             else
             {
-                <button class="primary-action" @onclick="RunMacroAsync" disabled="@(!CanRun)">Run macro <span>▶</span></button>
+                <button class="primary-action" @onclick="RunMacroAsync" disabled="@(!CanRun)">Replay test <span>▶</span></button>
             }
+
             @if (SelectedMacro is not null)
             {
                 <button class="secondary-action quick-pin-action" @onclick="ToggleSelectedMacroQuickAccessAsync" disabled="@(!CanManageQuickAccess)">
@@ -84,7 +120,7 @@
                     <span>@(SelectedQuickAction is null ? "＋" : "×")</span>
                 </button>
             }
-            <p class="field-note">Run is available only while the TV is connected.</p>
+            <p class="field-note">Save edits before replaying. Quick access is available after 3/3 visual passes.</p>
         </div>
 
         <div class="panel progress-panel">
@@ -104,23 +140,179 @@
     </div>
 </section>
 
+<section class="panel macro-editor-panel">
+    <div class="panel-label"><span>EDITOR</span><span>@(IsEditing ? (OriginalName is null ? "NEW" : "EDITING") : "SELECT A MACRO")</span></div>
+    @if (!IsEditing)
+    {
+        <div class="macro-editor-empty">
+            <strong>@(SelectedDetails is null ? "Choose a macro or create a new one" : SelectedDetails.Name)</strong>
+            @if (SelectedDetails is not null)
+            {
+                <span>@DescribeSteps(SelectedDetails.Steps)</span>
+                <button class="primary-action inline-action" @onclick="StartEditSelected" disabled="@IsLocked">Edit macro <span>✎</span></button>
+            }
+            else
+            {
+                <span>The editor saves directly to the YAML catalog shown above.</span>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="macro-editor-heading">
+            <label>
+                <span>Macro name</span>
+                <input @bind="EditorName" placeholder="OpenPictureSettings" disabled="@IsBusy" />
+            </label>
+            <label>
+                <span>Description</span>
+                <input @bind="EditorDescription" placeholder="What should this sequence accomplish?" disabled="@IsBusy" />
+            </label>
+        </div>
+
+        <div class="macro-step-toolbar">
+            <span>Add an operation</span>
+            <button class="secondary-action" @onclick="() => AddStep(MacroStepKind.Key)" disabled="@IsBusy">Key</button>
+            <button class="secondary-action" @onclick="() => AddStep(MacroStepKind.Delay)" disabled="@IsBusy">Wait</button>
+            <button class="secondary-action" @onclick="() => AddStep(MacroStepKind.Call)" disabled="@(IsBusy || CatalogMacros.Count == 0)">Call macro</button>
+        </div>
+
+        @if (EditorSteps.Count == 0)
+        {
+            <div class="panel-empty macro-step-empty">
+                <strong>This macro has no operations</strong>
+                <span>Add a key, explicit wait, or nested macro above.</span>
+            </div>
+        }
+        else
+        {
+            <div class="macro-step-list">
+                @for (var index = 0; index < EditorSteps.Count; index++)
+                {
+                    var stepIndex = index;
+                    var step = EditorSteps[index];
+                    <div class="macro-step-row">
+                        <span class="macro-step-number">@(index + 1)</span>
+                        <label class="macro-step-kind">
+                            <span>Type</span>
+                            <select @bind="step.Kind" disabled="@IsBusy">
+                                <option value="@MacroStepKind.Key">Key</option>
+                                <option value="@MacroStepKind.Delay">Wait</option>
+                                <option value="@MacroStepKind.Call">Call macro</option>
+                            </select>
+                        </label>
+
+                        @if (step.Kind == MacroStepKind.Key)
+                        {
+                            <label class="macro-step-value">
+                                <span>Samsung key</span>
+                                <input @bind="step.Key" placeholder="KEY_MENU" disabled="@IsBusy" />
+                            </label>
+                            <label>
+                                <span>Action</span>
+                                <select @bind="step.Action" disabled="@IsBusy">
+                                    @foreach (var action in Enum.GetValues<RemoteKeyAction>())
+                                    {
+                                        <option value="@action">@action</option>
+                                    }
+                                </select>
+                            </label>
+                            <label>
+                                <span>Repeat</span>
+                                <input type="number" min="1" max="1000" @bind="step.Repeat" disabled="@IsBusy" />
+                            </label>
+                            <label>
+                                <span>Wait after (ms)</span>
+                                <input type="number" min="1" max="86400000" @bind="step.DelayMilliseconds" placeholder="None" disabled="@IsBusy" />
+                            </label>
+                        }
+                        else if (step.Kind == MacroStepKind.Delay)
+                        {
+                            <label class="macro-step-value macro-step-wide">
+                                <span>Wait duration (ms)</span>
+                                <input type="number" min="1" max="86400000" @bind="step.DelayMilliseconds" disabled="@IsBusy" />
+                            </label>
+                        }
+                        else
+                        {
+                            <label class="macro-step-value macro-step-wide">
+                                <span>Saved macro</span>
+                                <select @bind="step.CalledMacro" disabled="@IsBusy">
+                                    <option value="">Select macro</option>
+                                    @foreach (var candidate in CallableMacros)
+                                    {
+                                        <option value="@candidate.Name">@candidate.Name</option>
+                                    }
+                                </select>
+                            </label>
+                            <label>
+                                <span>Repeat</span>
+                                <input type="number" min="1" max="1000" @bind="step.Repeat" disabled="@IsBusy" />
+                            </label>
+                        }
+
+                        <div class="macro-step-controls">
+                            <button title="Move up" @onclick="() => MoveStep(stepIndex, -1)" disabled="@(IsBusy || stepIndex == 0)">↑</button>
+                            <button title="Move down" @onclick="() => MoveStep(stepIndex, 1)" disabled="@(IsBusy || stepIndex == EditorSteps.Count - 1)">↓</button>
+                            <button class="danger-action" title="Delete step" @onclick="() => DeleteStep(stepIndex)" disabled="@IsBusy">×</button>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        <div class="macro-editor-actions">
+            <button class="primary-action" @onclick="SaveMacroAsync" disabled="@IsBusy">@(OriginalName is null ? "Save new macro" : "Update macro") <span>✓</span></button>
+            <button class="secondary-action" @onclick="CancelEdit" disabled="@IsBusy">Cancel</button>
+            @if (OriginalName is not null)
+            {
+                @if (DeleteConfirmation)
+                {
+                    <button class="secondary-action danger-action" @onclick="DeleteSelectedMacroAsync" disabled="@IsBusy">Confirm delete <span>×</span></button>
+                    <button class="secondary-action" @onclick="() => DeleteConfirmation = false" disabled="@IsBusy">Keep macro</button>
+                }
+                else
+                {
+                    <button class="secondary-action danger-action macro-delete-action" @onclick="() => DeleteConfirmation = true" disabled="@IsBusy">Delete macro</button>
+                }
+            }
+        </div>
+        <p class="field-note">Changing the name or description alone preserves visual passes. Changing any key, wait, repeat, action, or nested call resets this macro to 0/3.</p>
+    }
+</section>
+
 @code {
     private ControllerSnapshot Snapshot { get; set; } = null!;
     private MacroRunSnapshot Run { get; set; } = new(false, null, null, []);
     private IReadOnlyList<MacroSummary> CatalogMacros { get; set; } = [];
     private IReadOnlyList<QuickAccessAction> QuickActions { get; set; } = [];
+    private MacroDetails? SelectedDetails { get; set; }
     private string MacroPath { get; set; } = string.Empty;
     private string? SelectedMacro { get; set; }
     private string? ErrorMessage { get; set; }
+    private string? StatusMessage { get; set; }
+    private string? AwaitingValidationName { get; set; }
     private bool IsLoading { get; set; }
+    private bool IsBusy { get; set; }
+    private bool IsEditing { get; set; }
+    private bool DeleteConfirmation { get; set; }
+    private string? OriginalName { get; set; }
+    private string EditorName { get; set; } = string.Empty;
+    private string EditorDescription { get; set; } = string.Empty;
+    private List<MacroStepDraft> EditorSteps { get; } = [];
 
-    private bool CanRun => Snapshot.ConnectionState == SamsungConnectionState.Connected &&
-        !Run.IsRunning && !Snapshot.NavigationRunning && !string.IsNullOrWhiteSpace(SelectedMacro);
-    private bool CanManageQuickAccess => !Run.IsRunning && !Snapshot.NavigationRunning &&
-        !string.IsNullOrWhiteSpace(SelectedMacro);
+    private bool IsLocked => IsBusy || Run.IsRunning || Snapshot.NavigationRunning || IsEditing;
+    private bool CanRun => Snapshot.ConnectionState == SamsungConnectionState.Connected
+        && !IsLocked && !IsEditing && !string.IsNullOrWhiteSpace(SelectedMacro);
+    private bool CanManageQuickAccess => !IsLocked && !IsEditing
+        && SelectedSummary?.Verified == true && !string.IsNullOrWhiteSpace(SelectedMacro);
+    private MacroSummary? SelectedSummary => CatalogMacros.FirstOrDefault(macro =>
+        macro.Name.Equals(SelectedMacro, StringComparison.OrdinalIgnoreCase));
     private QuickAccessAction? SelectedQuickAction => QuickActions.FirstOrDefault(action =>
-        action.Kind == QuickAccessActionKind.Macro &&
-        action.Target.Equals(SelectedMacro, StringComparison.OrdinalIgnoreCase));
+        action.Kind == QuickAccessActionKind.Macro
+        && action.Target.Equals(SelectedMacro, StringComparison.OrdinalIgnoreCase));
+    private IEnumerable<MacroSummary> CallableMacros => CatalogMacros.Where(macro =>
+        !macro.Name.Equals(EditorName, StringComparison.OrdinalIgnoreCase));
 
     protected override async Task OnInitializedAsync()
     {
@@ -140,6 +332,7 @@
     {
         IsLoading = true;
         ErrorMessage = null;
+        StatusMessage = null;
         try
         {
             CatalogMacros = savePath
@@ -149,11 +342,21 @@
                 ? SelectedMacro
                 : CatalogMacros.FirstOrDefault()?.Name;
             MacroPath = Controller.GetSnapshot().MacroFilePath;
+            await LoadSelectedDetailsAsync();
+            CancelEdit();
+        }
+        catch (FileNotFoundException)
+        {
+            CatalogMacros = [];
+            SelectedMacro = null;
+            SelectedDetails = null;
+            StatusMessage = "This catalog does not exist yet. Select New macro to create it.";
         }
         catch (Exception exception)
         {
             CatalogMacros = [];
             SelectedMacro = null;
+            SelectedDetails = null;
             ErrorMessage = exception.Message;
         }
         finally
@@ -162,7 +365,176 @@
         }
     }
 
-    private void SelectMacro(string name) => SelectedMacro = name;
+    private async Task SelectMacroAsync(string name)
+    {
+        SelectedMacro = name;
+        AwaitingValidationName = null;
+        ErrorMessage = null;
+        StatusMessage = null;
+        CancelEdit();
+        await LoadSelectedDetailsAsync();
+    }
+
+    private async Task LoadSelectedDetailsAsync()
+    {
+        SelectedDetails = SelectedMacro is null
+            ? null
+            : await Controller.LoadMacroDetailsAsync(SelectedMacro);
+    }
+
+    private void StartNewMacro()
+    {
+        OriginalName = null;
+        EditorName = string.Empty;
+        EditorDescription = string.Empty;
+        EditorSteps.Clear();
+        EditorSteps.Add(MacroStepDraft.Create(MacroStepKind.Key));
+        DeleteConfirmation = false;
+        IsEditing = true;
+        ErrorMessage = null;
+        StatusMessage = null;
+        AwaitingValidationName = null;
+    }
+
+    private void StartEditSelected()
+    {
+        if (SelectedDetails is null)
+        {
+            return;
+        }
+
+        OriginalName = SelectedDetails.Name;
+        EditorName = SelectedDetails.Name;
+        EditorDescription = SelectedDetails.Description ?? string.Empty;
+        EditorSteps.Clear();
+        EditorSteps.AddRange(SelectedDetails.Steps.Select(MacroStepDraft.FromStep));
+        DeleteConfirmation = false;
+        IsEditing = true;
+        ErrorMessage = null;
+        StatusMessage = null;
+        AwaitingValidationName = null;
+    }
+
+    private void StartDuplicateMacro()
+    {
+        if (SelectedDetails is null)
+        {
+            return;
+        }
+
+        OriginalName = null;
+        EditorName = CreateCopyName(SelectedDetails.Name);
+        EditorDescription = SelectedDetails.Description ?? string.Empty;
+        EditorSteps.Clear();
+        EditorSteps.AddRange(SelectedDetails.Steps.Select(MacroStepDraft.FromStep));
+        DeleteConfirmation = false;
+        IsEditing = true;
+        ErrorMessage = null;
+        StatusMessage = "Review the duplicate, then save it as a new unverified macro.";
+        AwaitingValidationName = null;
+    }
+
+    private string CreateCopyName(string sourceName)
+    {
+        var candidate = $"{sourceName}-copy";
+        var suffix = 2;
+        while (CatalogMacros.Any(macro => macro.Name.Equals(candidate, StringComparison.OrdinalIgnoreCase)))
+        {
+            candidate = $"{sourceName}-copy-{suffix++}";
+        }
+
+        return candidate;
+    }
+
+    private void AddStep(MacroStepKind kind) => EditorSteps.Add(MacroStepDraft.Create(kind));
+
+    private void MoveStep(int index, int offset)
+    {
+        var destination = index + offset;
+        if (index < 0 || index >= EditorSteps.Count || destination < 0 || destination >= EditorSteps.Count)
+        {
+            return;
+        }
+
+        var item = EditorSteps[index];
+        EditorSteps.RemoveAt(index);
+        EditorSteps.Insert(destination, item);
+    }
+
+    private void DeleteStep(int index)
+    {
+        if (index >= 0 && index < EditorSteps.Count)
+        {
+            EditorSteps.RemoveAt(index);
+        }
+    }
+
+    private async Task SaveMacroAsync()
+    {
+        await RunBusyAsync(async () =>
+        {
+            var request = BuildEditRequest();
+            var saved = await Controller.SaveMacroAsync(OriginalName, request);
+            CatalogMacros = await Controller.LoadMacrosAsync();
+            SelectedMacro = saved.Name;
+            await LoadSelectedDetailsAsync();
+            IsEditing = false;
+            OriginalName = null;
+            EditorSteps.Clear();
+            AwaitingValidationName = null;
+            StatusMessage = saved.Verified
+                ? $"Saved {saved.Name}; its verified behavior was unchanged."
+                : $"Saved {saved.Name}; replay it and count three visual passes.";
+        });
+    }
+
+    private MacroEditRequest BuildEditRequest()
+    {
+        if (string.IsNullOrWhiteSpace(EditorName))
+        {
+            throw new InvalidOperationException("Enter a macro name.");
+        }
+
+        if (EditorSteps.Count == 0)
+        {
+            throw new InvalidOperationException("Add at least one macro operation.");
+        }
+
+        return new MacroEditRequest(
+            EditorName,
+            EditorDescription,
+            EditorSteps.Select((step, index) => step.ToStep(index + 1)).ToArray());
+    }
+
+    private void CancelEdit()
+    {
+        IsEditing = false;
+        DeleteConfirmation = false;
+        OriginalName = null;
+        EditorName = string.Empty;
+        EditorDescription = string.Empty;
+        EditorSteps.Clear();
+    }
+
+    private async Task DeleteSelectedMacroAsync()
+    {
+        if (OriginalName is null)
+        {
+            return;
+        }
+
+        var deleted = OriginalName;
+        await RunBusyAsync(async () =>
+        {
+            await Controller.DeleteMacroAsync(deleted);
+            CatalogMacros = await Controller.LoadMacrosAsync();
+            SelectedMacro = CatalogMacros.FirstOrDefault()?.Name;
+            await LoadSelectedDetailsAsync();
+            CancelEdit();
+            AwaitingValidationName = null;
+            StatusMessage = $"Deleted {deleted} from the YAML catalog.";
+        });
+    }
 
     private async Task RunMacroAsync()
     {
@@ -172,9 +544,14 @@
         }
 
         ErrorMessage = null;
+        StatusMessage = null;
+        AwaitingValidationName = null;
         try
         {
-            await Controller.RunMacroAsync(SelectedMacro);
+            var testedName = SelectedMacro;
+            await Controller.RunMacroAsync(testedName);
+            AwaitingValidationName = testedName;
+            StatusMessage = "Replay completed. Inspect the TV, then count the pass or report failure.";
         }
         catch (OperationCanceledException)
         {
@@ -188,6 +565,29 @@
 
     private void CancelMacro() => Controller.CancelMacro();
 
+    private async Task ConfirmValidationAsync(bool passed)
+    {
+        if (AwaitingValidationName is null)
+        {
+            return;
+        }
+
+        var name = AwaitingValidationName;
+        await RunBusyAsync(async () =>
+        {
+            var updated = await Controller.ConfirmMacroValidationAsync(name, passed);
+            CatalogMacros = await Controller.LoadMacrosAsync();
+            await LoadSelectedDetailsAsync();
+            QuickActions = Controller.GetQuickAccessActions();
+            AwaitingValidationName = null;
+            StatusMessage = passed
+                ? updated.Verified
+                    ? $"{updated.Name} is verified after 3/3 visual passes."
+                    : $"Pass counted for {updated.Name}: {updated.VerificationPasses}/3. Replay it again from the intended starting state."
+                : $"{updated.Name} failed visual verification; its count is reset to 0/3.";
+        });
+    }
+
     private async Task ToggleSelectedMacroQuickAccessAsync()
     {
         if (SelectedMacro is null)
@@ -195,8 +595,7 @@
             return;
         }
 
-        ErrorMessage = null;
-        try
+        await RunBusyAsync(async () =>
         {
             if (SelectedQuickAction is { } existing)
             {
@@ -206,12 +605,53 @@
             {
                 await Controller.AddQuickAccessMacroAsync(SelectedMacro);
             }
+
+            QuickActions = Controller.GetQuickAccessActions();
+        });
+    }
+
+    private async Task DownloadCatalogAsync()
+    {
+        await RunBusyAsync(async () =>
+        {
+            var yaml = await Controller.ExportMacroCatalogAsync();
+            var fileName = Path.GetFileName(MacroPath);
+            await JavaScript.InvokeVoidAsync(
+                "samsungController.downloadText",
+                string.IsNullOrWhiteSpace(fileName) ? "macros.yaml" : fileName,
+                yaml);
+            StatusMessage = "Downloaded the validated YAML catalog.";
+        });
+    }
+
+    private async Task RunBusyAsync(Func<Task> action)
+    {
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            await action();
         }
         catch (Exception exception)
         {
             ErrorMessage = exception.Message;
         }
+        finally
+        {
+            IsBusy = false;
+        }
     }
+
+    private static string DescribeSteps(IReadOnlyList<MacroStep> steps) =>
+        string.Join(" · ", steps.Select((step, index) => $"{index + 1}. {DescribeStep(step)}"));
+
+    private static string DescribeStep(MacroStep step) => step switch
+    {
+        KeyStep key => $"{key.Key}{(key.Repeat == 1 ? string.Empty : $" ×{key.Repeat}")}",
+        DelayStep delay => $"wait {delay.Duration.TotalMilliseconds:0.###} ms",
+        CallMacroStep call => $"call {call.MacroName}{(call.Repeat == 1 ? string.Empty : $" ×{call.Repeat}")}",
+        _ => step.GetType().Name
+    };
 
     private void HandleControllerChanged()
     {
@@ -224,5 +664,88 @@
     public void Dispose()
     {
         Controller.Changed -= HandleControllerChanged;
+    }
+
+    private enum MacroStepKind
+    {
+        Key,
+        Delay,
+        Call
+    }
+
+    private sealed class MacroStepDraft
+    {
+        public MacroStepKind Kind { get; set; }
+
+        public string Key { get; set; } = "KEY_MENU";
+
+        public RemoteKeyAction Action { get; set; } = RemoteKeyAction.Click;
+
+        public int Repeat { get; set; } = 1;
+
+        public int? DelayMilliseconds { get; set; }
+
+        public string CalledMacro { get; set; } = string.Empty;
+
+        public static MacroStepDraft Create(MacroStepKind kind) => new()
+        {
+            Kind = kind,
+            DelayMilliseconds = kind == MacroStepKind.Delay ? 500 : null
+        };
+
+        public static MacroStepDraft FromStep(MacroStep step) => step switch
+        {
+            KeyStep key => new MacroStepDraft
+            {
+                Kind = MacroStepKind.Key,
+                Key = key.Key,
+                Action = key.Action,
+                Repeat = key.Repeat,
+                DelayMilliseconds = key.Delay is null ? null : checked((int)Math.Round(key.Delay.Value.TotalMilliseconds))
+            },
+            DelayStep delay => new MacroStepDraft
+            {
+                Kind = MacroStepKind.Delay,
+                DelayMilliseconds = checked((int)Math.Round(delay.Duration.TotalMilliseconds))
+            },
+            CallMacroStep call => new MacroStepDraft
+            {
+                Kind = MacroStepKind.Call,
+                CalledMacro = call.MacroName,
+                Repeat = call.Repeat
+            },
+            _ => throw new InvalidOperationException($"Unsupported macro step type '{step.GetType().Name}'.")
+        };
+
+        public MacroStep ToStep(int stepNumber)
+        {
+            if (Repeat is < 1 or > MacroValidator.MaximumRepeat)
+            {
+                throw new InvalidOperationException(
+                    $"Step {stepNumber}: repeat must be from 1 through {MacroValidator.MaximumRepeat}.");
+            }
+
+            return Kind switch
+            {
+                MacroStepKind.Key when string.IsNullOrWhiteSpace(Key) =>
+                    throw new InvalidOperationException($"Step {stepNumber}: enter a Samsung key."),
+                MacroStepKind.Key when DelayMilliseconds is <= 0 or > 86_400_000 =>
+                    throw new InvalidOperationException(
+                        $"Step {stepNumber}: wait after must be empty or from 1 through 86,400,000 ms."),
+                MacroStepKind.Key => new KeyStep(
+                    Key.Trim(),
+                    Action,
+                    Repeat,
+                    DelayMilliseconds is { } keyDelay ? TimeSpan.FromMilliseconds(keyDelay) : null),
+                MacroStepKind.Delay when DelayMilliseconds is null or <= 0 or > 86_400_000 =>
+                    throw new InvalidOperationException(
+                        $"Step {stepNumber}: wait duration must be from 1 through 86,400,000 ms."),
+                MacroStepKind.Delay => new DelayStep(TimeSpan.FromMilliseconds(DelayMilliseconds.Value)),
+                MacroStepKind.Call when string.IsNullOrWhiteSpace(CalledMacro) =>
+                    throw new InvalidOperationException($"Step {stepNumber}: select a saved macro to call."),
+                MacroStepKind.Call => new CallMacroStep(CalledMacro.Trim(), Repeat),
+                _ => throw new InvalidOperationException($"Step {stepNumber}: unsupported operation type.")
+            };
+        }
     }
 }

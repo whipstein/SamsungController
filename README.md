@@ -9,7 +9,7 @@ The web interface is the recommended way to use the application. A command-line 
 - Secure (`wss://`, normally port 8002) and non-secure (`ws://`, normally port 8001) Samsung connections
 - First-use TV authorization with host-specific token storage
 - Remote keys using `Click`, `Press`, and `Release` actions
-- YAML macros with variables, repeats, nested calls, delays, cancellation, and progress
+- Browser-edited YAML macros with variables, nested calls, explicit waits, progress, and three-pass visual verification
 - Verified, state-aware menu navigation and a guided menu-map builder
 - Persistent quick-access buttons and an expected-current-menu indicator
 - Searchable RX/TX protocol messages, redacted browser views, and NDJSON session logs
@@ -151,8 +151,8 @@ Use non-secure mode only if the TV does not expose port 8002: disable **Secure W
 The top bar is available on every page:
 
 - **Connect/Disconnect** controls the saved TV without returning to the Connection page.
-- **Quick access** runs pinned keys or validated macros. **Return to video** is included by default.
-- **+ Add** adds a Samsung key or a macro from the current validated catalog. Remote keys and macros can also be pinned from their own pages.
+- **Quick access** runs pinned keys or behaviorally verified macros. **Return to video** is included by default.
+- **+ Add** adds a Samsung key or a verified macro from the current catalog. Remote keys and macros can also be pinned from their own pages.
 - **Current menu** shows the leaf name of the menu position SamsungController expects to be active.
 
 The current-menu value is a prediction, not feedback from the TV. Samsung's remote WebSocket does not report the on-screen cursor. Its confidence falls when an unknown key, interrupted route, lost connection, or failed visual result makes the position uncertain.
@@ -174,13 +174,17 @@ Key names are intentionally not restricted. Review unfamiliar keys before sendin
 
 ### Macros
 
-The **Macros** page runs named sequences from a YAML catalog:
+The **Macros** page is a complete browser-based editor and visual verifier:
 
-1. Enter the macro YAML path. The included example is `samples/macros/macros.example.yaml` when the server was started from the repository root.
-2. Select **Load & validate**. The path is remembered after successful validation.
-3. Select a macro card, review its description and operation count, and choose **Run macro**.
-4. Watch the execution panel for each expanded operation. Use **Cancel macro** to stop a run.
-5. Optionally add the selected macro to quick access.
+1. Enter a YAML catalog path and select **Load & validate**. You can also select **New macro** when the default or chosen file does not exist; the first save creates it.
+2. Create, duplicate, or edit a macro. Build its ordered operations from Samsung keys, explicit waits, and calls to other saved macros. Every key supports action, repeat count, and an optional wait after each send.
+3. Move operations with the up/down controls, remove incorrect operations, then save. Catalog structure, nested calls, cycles, durations, repeats, and expanded size are validated before the file is replaced.
+4. Connect to the TV and select **Replay test**. Replay sends only the explicit saved macro; it does not add a menu reset or starting-state preparation.
+5. Inspect the TV. Select **Count pass** when the result is correct, or **Failed** to reset that macro to 0/3. Counts are stored independently in YAML, so you can alternate between macros without losing progress.
+6. Three accepted replays mark the macro verified. Only verified macros can be pinned to the always-visible quick-access bar.
+7. Use **Download YAML** to export the validated catalog. Loading another path provides the import workflow, and the remembered path is shared with the CLI and interactive console.
+
+Changing only a macro's name or description preserves its passes; renaming also updates nested calls and a pinned quick-access entry. Any operation change resets that macro's behavioral verification and removes it from quick access. When the visual editor saves a hand-authored variable-based catalog, it writes normalized concrete step values while retaining the root variables.
 
 The entire catalog is parsed and validated before the first TV key is sent. See [Macro format](docs/macros.md) for the YAML schema, variables, nested calls, validation limits, and safety behavior.
 

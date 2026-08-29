@@ -36,7 +36,7 @@
                     <HelpBubble Title="Controls available on every page" Class="topbar-help">
                         <ul>
                             <li><strong>Connect/Disconnect</strong> uses the TV profile last saved on the Connection page.</li>
-                            <li><strong>Quick access</strong> runs pinned remote keys or validated macros. Return to video is pinned by default.</li>
+                            <li><strong>Quick access</strong> runs pinned remote keys or behaviorally verified macros. Return to video is pinned by default.</li>
                             <li><strong>Current menu</strong> is the application's expected location, not a cursor position reported by the TV.</li>
                             <li><strong>Warming</strong> means authorization succeeded and a requested command is being held until the TV is ready.</li>
                         </ul>
@@ -105,7 +105,7 @@
                     <div class="quick-editor-heading">
                         <div>
                             <span class="topbar-label">CUSTOMIZE QUICK ACCESS</span>
-                            <strong>Pin a remote command or validated macro.</strong>
+                            <strong>Pin a remote command or verified macro.</strong>
                         </div>
                         <small>@QuickActions.Count / 12 used</small>
                     </div>
@@ -136,7 +136,7 @@
                         else
                         {
                             <label class="quick-macro-field">
-                                <span>Validated macro</span>
+                                <span>Verified macro</span>
                                 <select @bind="QuickMacro" disabled="@(QuickEditorBusy || QuickMacros.Count == 0)">
                                     @if (QuickMacros.Count == 0)
                                     {
@@ -294,7 +294,9 @@
         QuickEditorBusy = true;
         try
         {
-            QuickMacros = await Controller.LoadMacrosAsync();
+            QuickMacros = (await Controller.LoadMacrosAsync())
+                .Where(macro => macro.Verified)
+                .ToArray();
             QuickMacro = QuickMacros.Any(macro => macro.Name == QuickMacro)
                 ? QuickMacro
                 : QuickMacros.FirstOrDefault()?.Name ?? string.Empty;

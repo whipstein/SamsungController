@@ -72,7 +72,21 @@ public sealed record DeviceInfoSnapshot(
 public sealed record MacroSummary(
     string Name,
     string? Description,
-    int StepCount);
+    int StepCount,
+    bool Verified,
+    int VerificationPasses);
+
+public sealed record MacroDetails(
+    string Name,
+    string? Description,
+    IReadOnlyList<MacroStep> Steps,
+    bool Verified,
+    int VerificationPasses);
+
+public sealed record MacroEditRequest(
+    string Name,
+    string? Description,
+    IReadOnlyList<MacroStep> Steps);
 
 public sealed record MacroRunSnapshot(
     bool IsRunning,

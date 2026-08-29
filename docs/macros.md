@@ -56,6 +56,8 @@ macros:
 
   MoveAndSelect:
     description: Demonstrates variables, nesting, and an explicit delay
+    verified: false
+    verificationPasses: 1
     steps:
       - call: BackToVideo
       - key: ${direction}
@@ -80,6 +82,34 @@ Root variables are scalar values and can reference other variables with
 `${name}`. They are resolved before actions, repeat counts, and durations are
 typed. Missing variables and variable cycles are errors.
 
+## Browser editing and behavioral verification
+
+The web **Macros** page can create, duplicate, edit, delete, load, and download
+catalogs without hand-editing YAML. The editor accepts key, delay, and nested
+call steps and rewrites the complete catalog atomically only after the resulting
+catalog passes the same parser and validator used by the CLI. A failed save
+leaves the previous file intact. Renaming a macro updates calls to that macro.
+Deletion is rejected while another macro still calls the target.
+
+The detailed definition also accepts these optional fields:
+
+- `verificationPasses`: an integer from `0` through `3`.
+- `verified`: `true` after three accepted visual runs; `false` otherwise.
+
+Select **Replay test** to execute the exact saved macro, then visually inspect
+the TV. **Count pass** increments only that macro's stored count. **Failed**
+resets only that macro to `0/3`. The service accepts a confirmation only after a
+successful replay of the same macro. It does not silently send an anchor,
+return-to-video sequence, or other preparation command. At `3/3`, the macro can
+be pinned to quick access.
+
+Changing a description or name preserves behavioral verification when the
+operations are identical. Changing a key, action, repeat, delay, wait, or nested
+call resets the macro to `0/3` and removes its quick-access entry. The visual
+editor presents resolved values; saving a catalog that used `${variables}`
+normalizes the steps to their concrete values while retaining the root variable
+mapping for compatibility.
+
 ## Validation and execution
 
 The complete catalog is validated before any key is sent. Validation rejects:
@@ -97,4 +127,6 @@ macro is cancelled or fails after a `Press`, the executor makes a short,
 best-effort attempt to send the matching `Release` so the key is not left held.
 
 Macro keys intentionally are not allowlisted, matching the raw remote-key API.
+Syntax validation proves that the file is structurally safe to execute; only the
+three visual passes establish the application's behavioral `verified` status.
 Review a macro before execution and do not automate unknown service-menu keys.

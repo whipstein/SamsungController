@@ -29,6 +29,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private readonly SemaphoreSlim _initializationGate = new(1, 1);
     private readonly SemaphoreSlim _settingsGate = new(1, 1);
     private readonly SemaphoreSlim _menuDefinitionGate = new(1, 1);
+    private readonly SemaphoreSlim _macroCatalogGate = new(1, 1);
     private readonly string _configurationDirectory;
     private readonly string _settingsPath;
     private readonly string _tokenPath;
@@ -59,6 +60,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private int _deviceInfoQuerying;
     private string? _activeMacro;
     private string? _lastMacroStatus;
+    private string? _macroValidationCandidate;
     private string? _navigationStatus;
     private string? _navigationError;
     private NavigationProgress? _navigationProgress;
@@ -2468,7 +2470,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         var catalog = await LoadValidatedCatalogAsync(cancellationToken).ConfigureAwait(false);
         return catalog.Macros.Values
             .OrderBy(macro => macro.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(macro => new MacroSummary(macro.Name, macro.Description, macro.Steps.Count))
+            .Select(CreateMacroSummary)
             .ToArray();
     }
 
@@ -2479,8 +2481,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         await InitializeAsync(cancellationToken).ConfigureAwait(false);
         var fullPath = Path.GetFullPath(path.Trim());
-        var catalog = await LoadValidatedCatalogAsync(fullPath, cancellationToken)
-            .ConfigureAwait(false);
+        var catalog = File.Exists(fullPath)
+            ? await LoadValidatedCatalogAsync(fullPath, cancellationToken).ConfigureAwait(false)
+            : new MacroCatalog([]);
         await UpdateSettingsAsync(
                 current => current with { MacroFilePath = fullPath },
                 cancellationToken)
@@ -2488,8 +2491,224 @@ public sealed class SamsungControllerService : IAsyncDisposable
         NotifyChanged();
         return catalog.Macros.Values
             .OrderBy(macro => macro.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(macro => new MacroSummary(macro.Name, macro.Description, macro.Steps.Count))
+            .Select(CreateMacroSummary)
             .ToArray();
+    }
+
+    public async Task<MacroDetails> LoadMacroDetailsAsync(
+        string macroName,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(macroName);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        var macro = (await LoadValidatedCatalogAsync(cancellationToken).ConfigureAwait(false))
+            .GetRequiredMacro(macroName.Trim());
+        return CreateMacroDetails(macro);
+    }
+
+    public async Task<MacroSummary> SaveMacroAsync(
+        string? originalName,
+        MacroEditRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.Name);
+        ArgumentNullException.ThrowIfNull(request.Steps);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("save a macro");
+
+        await _macroCatalogGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var path = GetSnapshot().MacroFilePath;
+            var catalog = await LoadCatalogForEditingAsync(path, cancellationToken).ConfigureAwait(false);
+            var normalizedOriginal = string.IsNullOrWhiteSpace(originalName) ? null : originalName.Trim();
+            MacroDefinition? existing = null;
+            if (normalizedOriginal is not null)
+            {
+                existing = catalog.GetRequiredMacro(normalizedOriginal);
+            }
+
+            var normalizedName = request.Name.Trim();
+            if (catalog.TryGetMacro(normalizedName, out var collision)
+                && collision is not null
+                && (existing is null
+                    || !collision.Name.Equals(existing.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidOperationException($"Macro '{normalizedName}' already exists.");
+            }
+
+            var steps = request.Steps.ToArray();
+            var behaviorUnchanged = existing is not null && existing.Steps.SequenceEqual(steps);
+            var updated = new MacroDefinition(
+                normalizedName,
+                steps,
+                string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
+                verified: behaviorUnchanged && existing!.Verified,
+                verificationPasses: behaviorUnchanged ? existing!.VerificationPasses : 0);
+
+            var definitions = new List<MacroDefinition>(catalog.Macros.Count + (existing is null ? 1 : 0));
+            foreach (var macro in catalog.Macros.Values)
+            {
+                if (existing is not null
+                    && macro.Name.Equals(existing.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    definitions.Add(updated);
+                    continue;
+                }
+
+                definitions.Add(existing is not null
+                    && !existing.Name.Equals(normalizedName, StringComparison.OrdinalIgnoreCase)
+                        ? RenameMacroCalls(macro, existing.Name, normalizedName)
+                        : macro);
+            }
+
+            if (existing is null)
+            {
+                definitions.Add(updated);
+            }
+
+            var savedCatalog = new MacroCatalog(definitions, catalog.Variables);
+            await new MacroCatalogWriter().WriteFileAsync(path, savedCatalog, cancellationToken)
+                .ConfigureAwait(false);
+            if (existing is not null && !updated.Verified)
+            {
+                await RemoveQuickAccessMacroAsync(existing.Name, cancellationToken).ConfigureAwait(false);
+            }
+            else if (existing is not null
+                && !existing.Name.Equals(normalizedName, StringComparison.OrdinalIgnoreCase))
+            {
+                await RenameQuickAccessMacroAsync(existing.Name, normalizedName, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            lock (_sync)
+            {
+                _macroValidationCandidate = null;
+            }
+
+            NotifyChanged();
+            return CreateMacroSummary(updated);
+        }
+        finally
+        {
+            _macroCatalogGate.Release();
+        }
+    }
+
+    public async Task DeleteMacroAsync(
+        string macroName,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(macroName);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("delete a macro");
+
+        await _macroCatalogGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var path = GetSnapshot().MacroFilePath;
+            var catalog = await LoadValidatedCatalogAsync(path, cancellationToken).ConfigureAwait(false);
+            var existing = catalog.GetRequiredMacro(macroName.Trim());
+            var definitions = catalog.Macros.Values
+                .Where(macro => !macro.Name.Equals(existing.Name, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            if (definitions.Length == 0)
+            {
+                throw new InvalidOperationException(
+                    "A macro catalog must contain at least one macro. Create its replacement before deleting this one.");
+            }
+
+            await new MacroCatalogWriter().WriteFileAsync(
+                    path,
+                    new MacroCatalog(definitions, catalog.Variables),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            await RemoveQuickAccessMacroAsync(existing.Name, cancellationToken).ConfigureAwait(false);
+            lock (_sync)
+            {
+                _macroValidationCandidate = null;
+            }
+
+            NotifyChanged();
+        }
+        finally
+        {
+            _macroCatalogGate.Release();
+        }
+    }
+
+    public async Task<MacroSummary> ConfirmMacroValidationAsync(
+        string macroName,
+        bool passed,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(macroName);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("confirm a macro verification run");
+        var normalizedName = macroName.Trim();
+        await _macroCatalogGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            lock (_sync)
+            {
+                if (_macroValidationCandidate is null
+                    || !_macroValidationCandidate.Equals(normalizedName, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        "Replay this macro successfully before recording its visual verification result.");
+                }
+            }
+
+            var path = GetSnapshot().MacroFilePath;
+            var catalog = await LoadValidatedCatalogAsync(path, cancellationToken).ConfigureAwait(false);
+            var existing = catalog.GetRequiredMacro(normalizedName);
+            var passes = passed ? Math.Min(3, existing.VerificationPasses + 1) : 0;
+            var updated = new MacroDefinition(
+                existing.Name,
+                existing.Steps,
+                existing.Description,
+                verified: passes >= 3,
+                verificationPasses: passes);
+            var definitions = catalog.Macros.Values
+                .Select(macro => macro.Name.Equals(existing.Name, StringComparison.OrdinalIgnoreCase)
+                    ? updated
+                    : macro)
+                .ToArray();
+            await new MacroCatalogWriter().WriteFileAsync(
+                    path,
+                    new MacroCatalog(definitions, catalog.Variables),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!passed)
+            {
+                await RemoveQuickAccessMacroAsync(existing.Name, cancellationToken).ConfigureAwait(false);
+            }
+
+            lock (_sync)
+            {
+                _macroValidationCandidate = null;
+                _lastMacroStatus = passed
+                    ? passes >= 3
+                        ? "Verified · 3/3 visual passes"
+                        : $"Visual pass recorded · {passes}/3"
+                    : "Visual check failed · verification reset to 0/3";
+            }
+
+            NotifyChanged();
+            return CreateMacroSummary(updated);
+        }
+        finally
+        {
+            _macroCatalogGate.Release();
+        }
+    }
+
+    public async Task<string> ExportMacroCatalogAsync(CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        var catalog = await LoadValidatedCatalogAsync(cancellationToken).ConfigureAwait(false);
+        return new MacroCatalogWriter().Serialize(catalog);
     }
 
     public async Task AddQuickAccessRemoteKeyAsync(
@@ -2518,7 +2737,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
         await InitializeAsync(cancellationToken).ConfigureAwait(false);
         var target = macroName.Trim();
         var catalog = await LoadValidatedCatalogAsync(cancellationToken).ConfigureAwait(false);
-        catalog.GetRequiredMacro(target);
+        var macro = catalog.GetRequiredMacro(target);
+        if (!macro.Verified)
+        {
+            throw new InvalidOperationException(
+                $"Macro '{macro.Name}' needs 3/3 visual verification passes before it can be added to quick access.");
+        }
         var item = new QuickAccessAction(
             CreateQuickAccessId(
                 QuickAccessActionKind.Macro,
@@ -2570,6 +2794,15 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 break;
 
             case QuickAccessActionKind.Macro:
+                var quickCatalog = await LoadValidatedCatalogAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                var quickMacro = quickCatalog.GetRequiredMacro(action.Target);
+                if (!quickMacro.Verified)
+                {
+                    throw new InvalidOperationException(
+                        $"Macro '{quickMacro.Name}' is no longer verified. Replay and confirm it on the Macros page before using quick access.");
+                }
+
                 await RunMacroAsync(action.Target, cancellationToken).ConfigureAwait(false);
                 break;
 
@@ -2596,6 +2829,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _macroSource = linkedSource;
             _activeMacro = macroName;
             _lastMacroStatus = "Preparing";
+            _macroValidationCandidate = null;
             _macroProgress.Clear();
             _lastError = null;
         }
@@ -2619,6 +2853,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             {
                 _lastMacroStatus =
                     $"Completed · {result.KeysSent} keys · {result.Elapsed.TotalSeconds:0.###}s";
+                _macroValidationCandidate = macroName;
             }
         }
         catch (OperationCanceledException) when (linkedSource.IsCancellationRequested)
@@ -4248,6 +4483,104 @@ public sealed class SamsungControllerService : IAsyncDisposable
         return catalog;
     }
 
+    private static async Task<MacroCatalog> LoadCatalogForEditingAsync(
+        string path,
+        CancellationToken cancellationToken) =>
+        File.Exists(path)
+            ? await LoadValidatedCatalogAsync(path, cancellationToken).ConfigureAwait(false)
+            : new MacroCatalog([]);
+
+    private static MacroSummary CreateMacroSummary(MacroDefinition macro) =>
+        new(
+            macro.Name,
+            macro.Description,
+            macro.Steps.Count,
+            macro.Verified,
+            macro.VerificationPasses);
+
+    private static MacroDetails CreateMacroDetails(MacroDefinition macro) =>
+        new(
+            macro.Name,
+            macro.Description,
+            macro.Steps.ToArray(),
+            macro.Verified,
+            macro.VerificationPasses);
+
+    private static MacroDefinition RenameMacroCalls(
+        MacroDefinition macro,
+        string oldName,
+        string newName)
+    {
+        var changed = false;
+        var steps = macro.Steps.Select(step =>
+        {
+            if (step is CallMacroStep call
+                && call.MacroName.Equals(oldName, StringComparison.OrdinalIgnoreCase))
+            {
+                changed = true;
+                return (MacroStep)new CallMacroStep(newName, call.Repeat);
+            }
+
+            return step;
+        }).ToArray();
+        return changed
+            ? new MacroDefinition(
+                macro.Name,
+                steps,
+                macro.Description,
+                macro.Verified,
+                macro.VerificationPasses)
+            : macro;
+    }
+
+    private async Task RenameQuickAccessMacroAsync(
+        string oldName,
+        string newName,
+        CancellationToken cancellationToken)
+    {
+        var changed = false;
+        var actions = GetQuickAccessActions().Select(action =>
+        {
+            if (action.Kind != QuickAccessActionKind.Macro
+                || !action.Target.Equals(oldName, StringComparison.OrdinalIgnoreCase))
+            {
+                return action;
+            }
+
+            changed = true;
+            return action with
+            {
+                Id = CreateQuickAccessId(QuickAccessActionKind.Macro, newName, RemoteKeyAction.Click),
+                Target = newName
+            };
+        }).ToArray();
+        if (changed)
+        {
+            await UpdateSettingsAsync(
+                    settings => settings with { QuickAccess = actions },
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private async Task RemoveQuickAccessMacroAsync(
+        string macroName,
+        CancellationToken cancellationToken)
+    {
+        var existing = GetQuickAccessActions();
+        var actions = existing
+            .Where(action => action.Kind != QuickAccessActionKind.Macro
+                || !action.Target.Equals(macroName, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (actions.Length != existing.Count)
+        {
+            await UpdateSettingsAsync(
+                    settings => settings with { QuickAccess = actions },
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
     private static async Task<MenuDefinition> LoadValidatedMenuDefinitionAsync(
         string path,
         CancellationToken cancellationToken)
@@ -4494,6 +4827,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         _initializationGate.Dispose();
         _settingsGate.Dispose();
         _menuDefinitionGate.Dispose();
+        _macroCatalogGate.Dispose();
     }
 
     private sealed class WebMacroCommandTarget(SamsungControllerService controller) : IMacroCommandTarget

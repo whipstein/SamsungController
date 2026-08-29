@@ -7,12 +7,16 @@ public sealed record MacroDefinition
     public MacroDefinition(
         string name,
         IEnumerable<MacroStep> steps,
-        string? description = null)
+        string? description = null,
+        bool verified = false,
+        int verificationPasses = 0)
     {
         Name = name;
         Steps = Array.AsReadOnly(
             steps?.ToArray() ?? throw new ArgumentNullException(nameof(steps)));
         Description = description;
+        VerificationPasses = verified ? Math.Max(3, verificationPasses) : verificationPasses;
+        Verified = verified || VerificationPasses >= 3;
     }
 
     public string Name { get; }
@@ -20,6 +24,10 @@ public sealed record MacroDefinition
     public IReadOnlyList<MacroStep> Steps { get; }
 
     public string? Description { get; }
+
+    public bool Verified { get; }
+
+    public int VerificationPasses { get; }
 }
 
 public sealed class MacroCatalog

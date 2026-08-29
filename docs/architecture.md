@@ -28,7 +28,8 @@ SamsungController.Web
 - `SamsungTvClient` owns handshake interpretation, token lifecycle, remote-key
   messages, state, retry/reconnect behavior, and message publication.
 - `SamsungController.Automation` owns macro models, YAML parsing, validation,
-  plan expansion, cancellation, and progress events, plus menu-definition
+  atomic YAML serialization, behavioral verification metadata, plan expansion,
+  cancellation, and progress events, plus menu-definition
   parsing, graph planning, predicted state, confidence, anchors, and navigation
   execution. It targets plain `net10.0` and reaches the TV only through narrow
   command-target interfaces.
@@ -97,6 +98,15 @@ through the same controller methods as the Remote, Macros, and Menu views, so
 connection, automation, and menu-recording guards remain centralized. A missing
 quick-access setting gets a default `normal-video` anchor action. An explicitly
 saved empty list remains empty, allowing the default to be removed intentionally.
+
+The macro studio treats syntax validation and behavioral verification as
+separate states. `MacroCatalogWriter` validates and atomically replaces the
+normalized catalog. Each definition persists an independent pass count; only a
+successful replay of that same macro can be confirmed, and the third accepted
+run promotes it to verified. Behavioral edits or a reported failed replay reset
+the count and remove the macro from quick access. Description-only edits and
+renames preserve verification, with renames updating nested calls and pinned
+targets.
 
 Build & Verify persists menu-tree nodes before route recording, allowing display
 names and parents to be edited while keeping stable node IDs for route references.

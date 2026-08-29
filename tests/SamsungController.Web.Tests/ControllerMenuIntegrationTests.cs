@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Microsoft.Extensions.Configuration;
+using SamsungController.Automation.Macros;
 using SamsungController.Automation.Navigation;
 using SamsungController.Core.Connection;
 using SamsungController.Core.Protocol;
@@ -1040,7 +1041,9 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 version: 1
                 macros:
                   MovieNight:
-                    - key: KEY_HOME
+                    verified: true
+                    steps:
+                      - key: KEY_HOME
                 """);
             await controller.SetMacroFileAsync(macroPath);
             await controller.AddQuickAccessMacroAsync("MovieNight", "Movie night");
@@ -1052,6 +1055,104 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             Assert.Equal(["KEY_HOME"], GetSentKeys(transport));
             Assert.Equal("Movie night", action.Label);
         }
+    }
+
+    [Fact]
+    public async Task MacroEditorPersistsIndependentVerificationAndResetsOnlyBehavioralEdits()
+    {
+        var (controller, _) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            var macroPath = Path.Combine(_directory, "editor-macros.yaml");
+            Assert.Empty(await controller.SetMacroFileAsync(macroPath));
+
+            await controller.SaveMacroAsync(
+                null,
+                new MacroEditRequest(
+                    "First",
+                    "First macro",
+                    [new KeyStep("KEY_MENU")]));
+            await controller.SaveMacroAsync(
+                null,
+                new MacroEditRequest(
+                    "Second",
+                    "Second macro",
+                    [new KeyStep("KEY_HOME")]));
+
+            var quickAccessError = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                controller.AddQuickAccessMacroAsync("First"));
+            Assert.Contains("3/3", quickAccessError.Message, StringComparison.Ordinal);
+
+            await controller.RunMacroAsync("First");
+            Assert.Equal(1, (await controller.ConfirmMacroValidationAsync("First", true)).VerificationPasses);
+            await controller.RunMacroAsync("Second");
+            Assert.Equal(1, (await controller.ConfirmMacroValidationAsync("Second", true)).VerificationPasses);
+            await controller.RunMacroAsync("First");
+            Assert.Equal(2, (await controller.ConfirmMacroValidationAsync("First", true)).VerificationPasses);
+            await controller.RunMacroAsync("First");
+            var verified = await controller.ConfirmMacroValidationAsync("First", true);
+
+            Assert.True(verified.Verified);
+            Assert.Equal(3, verified.VerificationPasses);
+            Assert.Equal(
+                1,
+                (await controller.LoadMacroDetailsAsync("Second")).VerificationPasses);
+
+            await controller.AddQuickAccessMacroAsync("First");
+            await controller.SaveMacroAsync(
+                "First",
+                new MacroEditRequest(
+                    "FirstRenamed",
+                    "Description-only changes preserve verification",
+                    [new KeyStep("KEY_MENU")]));
+            var renamed = await controller.LoadMacroDetailsAsync("FirstRenamed");
+            Assert.True(renamed.Verified);
+            Assert.Contains(
+                controller.GetQuickAccessActions(),
+                action => action.Kind == QuickAccessActionKind.Macro
+                    && action.Target == "FirstRenamed");
+
+            await controller.SaveMacroAsync(
+                "FirstRenamed",
+                new MacroEditRequest(
+                    "FirstRenamed",
+                    "Behavior changed",
+                    [new KeyStep("KEY_MENU"), new DelayStep(TimeSpan.FromMilliseconds(50))]));
+            var changed = await controller.LoadMacroDetailsAsync("FirstRenamed");
+            Assert.False(changed.Verified);
+            Assert.Equal(0, changed.VerificationPasses);
+            Assert.DoesNotContain(
+                controller.GetQuickAccessActions(),
+                action => action.Kind == QuickAccessActionKind.Macro);
+        }
+    }
+
+    [Fact]
+    public async Task MacroRenameUpdatesNestedCallsAndDeleteRejectsReferencedMacro()
+    {
+        Directory.CreateDirectory(_directory);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+        var macroPath = Path.Combine(_directory, "nested-macros.yaml");
+        await controller.SetMacroFileAsync(macroPath);
+        await controller.SaveMacroAsync(
+            null,
+            new MacroEditRequest("Child", null, [new KeyStep("KEY_MENU")]));
+        await controller.SaveMacroAsync(
+            null,
+            new MacroEditRequest("Parent", null, [new CallMacroStep("Child")]));
+
+        await controller.SaveMacroAsync(
+            "Child",
+            new MacroEditRequest("RenamedChild", null, [new KeyStep("KEY_MENU")]));
+
+        var parent = await controller.LoadMacroDetailsAsync("Parent");
+        Assert.Equal(new CallMacroStep("RenamedChild"), Assert.Single(parent.Steps));
+
+        var exception = await Assert.ThrowsAsync<MacroValidationException>(() =>
+            controller.DeleteMacroAsync("RenamedChild"));
+        Assert.Contains("does not exist", exception.Message, StringComparison.Ordinal);
+        Assert.NotNull(await controller.LoadMacroDetailsAsync("RenamedChild"));
     }
 
     [Fact]

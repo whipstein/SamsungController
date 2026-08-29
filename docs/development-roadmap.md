@@ -47,7 +47,9 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 - [x] Report operation-by-operation progress and support cancellation.
 - [x] Attempt a best-effort matching Release when cancellation interrupts a held key.
 - [x] Run and validate macros from the CLI, interactive console, and web UI.
-- [x] Remember the selected macro catalog and allow validated macros in persistent quick access.
+- [x] Remember the selected macro catalog and allow behaviorally verified macros in persistent quick access.
+- [x] Create, duplicate, edit, delete, import, and export macro catalogs from the browser.
+- [x] Persist independent three-pass visual verification and revoke it after behavioral edits or failed replays.
 
 ### Local web control surface
 
@@ -119,7 +121,6 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 
 ### Macro management
 
-- [ ] Add a browser macro editor with create, duplicate, edit, delete, import, and export workflows.
 - [ ] Add conditional macro steps only after their inputs and failure behavior are explicitly modeled.
 - [ ] Add a dry-run or expanded-plan preview that can be reviewed without connecting to a TV.
 - [ ] Consider macro-level validation records for model, firmware, and context rather than treating syntax validity as behavioral verification.

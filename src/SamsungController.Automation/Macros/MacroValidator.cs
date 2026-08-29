@@ -88,6 +88,14 @@ public sealed class MacroValidator
             errors.Add(new MacroValidationError(macro.Name, null, "The macro has no steps."));
         }
 
+        if (macro.VerificationPasses is < 0 or > 3)
+        {
+            errors.Add(new MacroValidationError(
+                macro.Name,
+                null,
+                "Verification passes must be from 0 through 3."));
+        }
+
         for (var index = 0; index < macro.Steps.Count; index++)
         {
             var stepNumber = index + 1;

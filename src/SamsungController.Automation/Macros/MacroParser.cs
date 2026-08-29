@@ -11,7 +11,7 @@ public sealed class MacroParser
     private static readonly HashSet<string> RootFields =
         new(["version", "variables", "macros"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> DefinitionFields =
-        new(["description", "steps"], StringComparer.OrdinalIgnoreCase);
+        new(["description", "verified", "verificationPasses", "steps"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> KeyFields =
         new(["key", "action", "repeat", "delay"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> CallFields =
@@ -129,10 +129,21 @@ public sealed class MacroParser
         var description = fields.TryGetValue("description", out var descriptionNode)
             ? resolver.ResolveText(RequireScalar(descriptionNode, $"description for macro '{name}'"))
             : null;
+        var verified = fields.TryGetValue("verified", out var verifiedNode)
+            && ParseBoolean(
+                resolver.ResolveText(RequireScalar(verifiedNode, $"verified for macro '{name}'")),
+                $"verified for macro '{name}'");
+        var verificationPasses = fields.TryGetValue("verificationPasses", out var passesNode)
+            ? ParseVerificationPasses(
+                resolver.ResolveText(RequireScalar(passesNode, $"verificationPasses for macro '{name}'")),
+                name)
+            : 0;
         return new MacroDefinition(
             name,
             ParseSteps(name, RequireSequence(stepsNode, $"steps for macro '{name}'"), resolver),
-            description);
+            description,
+            verified,
+            verificationPasses);
     }
 
     private static IReadOnlyList<MacroStep> ParseSteps(
@@ -245,6 +256,23 @@ public sealed class MacroParser
         int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var result)
             ? result
             : throw new MacroParseException($"The repeat count in {context} must be an integer.");
+
+    private static bool ParseBoolean(string value, string context) =>
+        bool.TryParse(value, out var result)
+            ? result
+            : throw new MacroParseException($"The value of {context} must be true or false.");
+
+    private static int ParseVerificationPasses(string value, string macroName)
+    {
+        if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var result)
+            || result is < 0 or > 3)
+        {
+            throw new MacroParseException(
+                $"The verificationPasses for macro '{macroName}' must be an integer from 0 through 3.");
+        }
+
+        return result;
+    }
 
     private static TimeSpan ParseDuration(string value, string context)
     {
