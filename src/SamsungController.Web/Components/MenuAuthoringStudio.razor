@@ -13,14 +13,15 @@
 
     <div class="authoring-intro">
         <div>
-            <strong>Build routes without editing files.</strong>
-            <p>Record buttons while they control the TV, save the sequence as draft YAML, then replay it three times before it becomes verified.</p>
+            <strong>Follow one guided path from TV profile to verified menu.</strong>
+            <p>The highlighted step is the next recommended action. Successful saves automatically open and move to the next part of setup.</p>
         </div>
         <div class="authoring-intro-actions">
             <HelpBubble Title="Menu-authoring workflow" ButtonText="Workflow help">
                 <ol>
-                    <li><strong>Tree:</strong> paste an indented outline to create the hierarchy at once, then use the single-node editor for fine adjustments.</li>
-                    <li><strong>Configurations:</strong> define each settings-dependent visible layout and select the one currently shown on the TV.</li>
+                    <li><strong>TV profile:</strong> enter the model number and firmware. The definition name and file ID are generated for you.</li>
+                    <li><strong>Configuration:</strong> describe the settings-dependent layout currently shown on the TV.</li>
+                    <li><strong>Menu outline:</strong> paste the visible hierarchy using indentation. Use fine adjustments only when needed.</li>
                     <li><strong>Record:</strong> select a source and target, then use the embedded remote. Successful buttons control the TV and enter the draft.</li>
                     <li><strong>Timing:</strong> test common waits system-wide, then override only the steps that need special pacing.</li>
                     <li><strong>Verify:</strong> prepare the source, replay the draft, and confirm three separate visual passes.</li>
@@ -29,9 +30,32 @@
                 <p>Use <strong>Also record return to normal video</strong> when that target needs a specific return sequence. Forward and return keys then share one verification count.</p>
             </HelpBubble>
             <button class="secondary-action" @onclick="ToggleDefinitionForm" disabled="@(Authoring.IsRecording || Navigation.IsRunning)">
-                @(ShowDefinitionForm ? "Close setup" : "New TV interface")
+                @(ShowDefinitionForm ? "Close TV profile" : "Create TV profile")
             </button>
         </div>
+    </div>
+
+    <nav class="menu-setup-guide" aria-label="Menu setup progress">
+        <button type="button" class="@GetSetupStepClass(MenuSetupStep.Profile)" @onclick="() => GoToSetupStepAsync(MenuSetupStep.Profile)">
+            <span>1</span><strong>TV profile</strong><small>@GetSetupStepStatus(MenuSetupStep.Profile)</small>
+        </button>
+        <button type="button" class="@GetSetupStepClass(MenuSetupStep.Configuration)" @onclick="() => GoToSetupStepAsync(MenuSetupStep.Configuration)" disabled="@(Navigation.DefinitionName is null)">
+            <span>2</span><strong>Configuration</strong><small>@GetSetupStepStatus(MenuSetupStep.Configuration)</small>
+        </button>
+        <button type="button" class="@GetSetupStepClass(MenuSetupStep.Outline)" @onclick="() => GoToSetupStepAsync(MenuSetupStep.Outline)" disabled="@(Navigation.DefinitionName is null)">
+            <span>3</span><strong>Menu outline</strong><small>@GetSetupStepStatus(MenuSetupStep.Outline)</small>
+        </button>
+        <button type="button" class="@GetSetupStepClass(MenuSetupStep.Record)" @onclick="() => GoToSetupStepAsync(MenuSetupStep.Record)" disabled="@(Navigation.DefinitionName is null || Navigation.Nodes.Count <= 2)">
+            <span>4</span><strong>Record route</strong><small>@GetSetupStepStatus(MenuSetupStep.Record)</small>
+        </button>
+        <button type="button" class="@GetSetupStepClass(MenuSetupStep.Verify)" @onclick="() => GoToSetupStepAsync(MenuSetupStep.Verify)" disabled="@(Authoring.DraftCandidates.Count == 0)">
+            <span>5</span><strong>Verify</strong><small>@GetSetupStepStatus(MenuSetupStep.Verify)</small>
+        </button>
+    </nav>
+    <div class="menu-setup-next">
+        <span>NEXT</span>
+        <strong>@RecommendedSetupMessage</strong>
+        <button type="button" class="secondary-action" @onclick="() => GoToSetupStepAsync(RecommendedSetupStep)">Go to next step <span>→</span></button>
     </div>
 
     @if (!string.IsNullOrWhiteSpace(ErrorMessage))
@@ -45,20 +69,23 @@
 
     @if (ShowDefinitionForm)
     {
-        <div class="definition-setup-card">
-            <div class="authoring-section-title"><span>01</span><strong>Create a menu definition</strong></div>
+        <div class="definition-setup-card setup-step-anchor" @ref="DefinitionSetupElement">
+            <div class="authoring-section-title"><span>01</span><strong>Identify this TV software</strong></div>
             <div class="authoring-form-grid">
-                <label><span>Definition ID</span><input @bind="DefinitionId" placeholder="living-room-tv" /></label>
-                <label><span>Name</span><input @bind="DefinitionName" placeholder="Living Room TV Menu" /></label>
-                <label><span>TV model</span><input @bind="DefinitionModel" placeholder="Samsung TV model" /></label>
-                <label><span>Firmware</span><input @bind="DefinitionFirmware" placeholder="e.g. 1234" /></label>
+                <label><span>TV model number</span><input value="@DefinitionModel" @oninput="HandleDefinitionModelChanged" placeholder="e.g. QN90D" /></label>
+                <label><span>Firmware version</span><input value="@DefinitionFirmware" @oninput="HandleDefinitionFirmwareChanged" placeholder="e.g. 1296" /></label>
+                <label><span>Name · generated by default</span><input value="@DefinitionName" @oninput="HandleDefinitionNameChanged" placeholder="QN90D · firmware 1296" /></label>
+                <label><span>File ID · generated by default</span><input value="@DefinitionId" @oninput="HandleDefinitionIdChanged" placeholder="qn90d-1296" /></label>
                 <label><span>Signal</span><input @bind="DefinitionSignal" placeholder="SDR" /></label>
                 <label><span>Picture mode</span><input @bind="DefinitionPictureMode" placeholder="e.g. Movie" /></label>
                 <label class="wide-field"><span>Input/source</span><input @bind="DefinitionInput" placeholder="e.g. HDMI 1" /></label>
             </div>
-            <button class="primary-action authoring-save" @onclick="CreateDefinitionAsync" disabled="@IsBusy">
-                Create and load definition <span>→</span>
-            </button>
+            <div class="definition-identity-actions">
+                <button class="secondary-action" @onclick="UseGeneratedDefinitionIdentity" disabled="@(!CanGenerateDefinitionIdentity)">Use model + firmware name</button>
+                <button class="primary-action authoring-save" @onclick="CreateDefinitionAsync" disabled="@(!CanCreateDefinition)">
+                    Create profile and continue <span>→</span>
+                </button>
+            </div>
             <p class="field-note">The YAML file is created in SamsungController's per-user configuration directory and becomes the active definition.</p>
         </div>
     }
@@ -67,7 +94,7 @@
     {
         <div class="menu-tree-builder collapsible-authoring-section @(MenuTreeExpanded ? "" : "collapsed")">
             <button type="button" class="authoring-section-title authoring-section-toggle" @onclick="ToggleMenuTree" aria-expanded="@(MenuTreeExpanded ? "true" : "false")">
-                <span>00</span><strong>Define the overall menu tree</strong>
+                <span>02</span><strong>Configure and define the menu</strong>
                 <b class="tree-node-count">@Navigation.Nodes.Count nodes</b>
                 <i aria-hidden="true">@(MenuTreeExpanded ? "−" : "+")</i>
             </button>
@@ -77,7 +104,7 @@
                     <div class="bulk-topology-editor @(BulkTopologyExpanded ? "" : "collapsed")">
                         <button type="button" class="bulk-topology-toggle" @onclick="ToggleBulkTopology" aria-expanded="@(BulkTopologyExpanded ? "true" : "false")">
                             <span>
-                                <b>FAST SETUP</b>
+                                <b>GUIDED MENU SETUP</b>
                                 <strong>Build many menu items from one outline</strong>
                             </span>
                             <i aria-hidden="true">@(BulkTopologyExpanded ? "−" : "+")</i>
@@ -85,11 +112,11 @@
                         @if (BulkTopologyExpanded)
                         {
                             <div class="bulk-topology-body">
-                                <div class="menu-configuration-workspace">
+                                    <div class="menu-configuration-workspace setup-step-anchor" @ref="ConfigurationStepElement">
                                     <div class="menu-configuration-heading">
                                         <span>
                                             <b>ACTIVE MENU CONFIGURATION</b>
-                                            <strong>@(ActiveMenuConfiguration?.Name ?? "Universal / legacy routes")</strong>
+                                            <strong>@(ActiveMenuConfiguration?.Name ?? "Default menu configuration")</strong>
                                             <small>@(ActiveMenuConfiguration?.Conditions ?? "Add a configuration before recording routes whose key counts depend on visible menu items.")</small>
                                         </span>
                                         <div>
@@ -138,6 +165,7 @@
                                         </div>
                                     }
                                 </div>
+                                <div class="menu-outline-step setup-step-anchor" @ref="TopologyStepElement">
                                 <p>Paste the visible hierarchy using two spaces per level. Matching items keep their stable IDs; new IDs are generated automatically. Add <code>[stable-id]</code> after a name only when you need to force an identity.</p>
                                 <div class="bulk-topology-controls">
                                     <label>
@@ -201,9 +229,17 @@
                                     </div>
                                 }
                                 <p class="bulk-topology-footnote"><strong>Topology is not verification.</strong> Record only the destinations you want to execute. Unrecorded items remain in this model file but stay off the verified Menu page.</p>
+                                </div>
                             </div>
                         }
                     </div>
+                    <div class="fine-adjustments @(FineAdjustmentsExpanded ? "" : "collapsed")">
+                        <button type="button" class="fine-adjustments-toggle" @onclick="ToggleFineAdjustments" aria-expanded="@FineAdjustmentsExpanded">
+                            <span><b>OPTIONAL</b><strong>Fine adjustments for individual menu items</strong><small>Rename, move, add, or remove one item after applying the outline.</small></span>
+                            <i aria-hidden="true">@(FineAdjustmentsExpanded ? "−" : "+")</i>
+                        </button>
+                    @if (FineAdjustmentsExpanded)
+                    {
                     <div class="menu-tree-toolbar">
                         <p class="menu-tree-intro">Review the complete on-screen hierarchy here, or make a precise one-item edit. Custom order is saved to YAML and can mirror the TV; alphabetical order is a temporary viewing aid. Red has no recorded command; yellow is recorded and needs verification.</p>
                         <label>
@@ -310,6 +346,8 @@
                             </div>
                         </div>
                     </div>
+                    }
+                    </div>
                 </div>
             }
         </div>
@@ -363,12 +401,12 @@
 
     @if (Navigation.DefinitionName is not null)
     {
-        <div class="authoring-workflow-grid">
+        <div class="authoring-workflow-grid setup-step-anchor" @ref="RecordingStepElement">
             <div class="authoring-config">
                 <div class="authoring-section-title"><span>01</span><strong>Describe the recording</strong></div>
                 <div class="recording-configuration-badge">
                     <span>ROUTE VALID ONLY FOR</span>
-                    <strong>@(ActiveMenuConfiguration?.Name ?? "Universal / legacy configuration")</strong>
+                    <strong>@(ActiveMenuConfiguration?.Name ?? "Default menu configuration")</strong>
                     <small>@(ActiveMenuConfiguration?.Conditions ?? "Add a named configuration when visible rows can change.")</small>
                 </div>
                 <div class="authoring-form-grid compact">
@@ -733,7 +771,7 @@
             }
         </div>
 
-        <div id="draft-validation" class="validation-studio collapsible-authoring-section @(DraftValidationExpanded ? "" : "collapsed")">
+        <div id="draft-validation" class="validation-studio collapsible-authoring-section setup-step-anchor @(DraftValidationExpanded ? "" : "collapsed")" @ref="ValidationStepElement">
             <button type="button" class="authoring-section-title authoring-section-toggle" @onclick="ToggleDraftValidation" aria-expanded="@(DraftValidationExpanded ? "true" : "false")">
                 <span>06</span><strong>Timing lab and visual validation</strong>
                 @if (DraftValidationNeedsAttention)
@@ -880,6 +918,7 @@
     private bool ManageVerifiedSettingsExpanded { get; set; }
     private bool MenuTreeExpanded { get; set; } = true;
     private bool BulkTopologyExpanded { get; set; } = true;
+    private bool FineAdjustmentsExpanded { get; set; }
     private MenuTreeSortMode TreeOrdering { get; set; } = MenuTreeSortMode.Custom;
     private bool ReturnScriptsExpanded { get; set; }
     private bool SystemTimingExpanded { get; set; }
@@ -889,6 +928,12 @@
     private bool SystemTimingPreviouslyNeededValidation { get; set; }
     private int PreviousDraftValidationCount { get; set; }
     private ElementReference MenuTreeElement { get; set; }
+    private ElementReference DefinitionSetupElement { get; set; }
+    private ElementReference ConfigurationStepElement { get; set; }
+    private ElementReference TopologyStepElement { get; set; }
+    private ElementReference RecordingStepElement { get; set; }
+    private ElementReference ValidationStepElement { get; set; }
+    private MenuSetupStep? PendingSetupScroll { get; set; }
     private bool IsAddingMenuNode { get; set; }
     private string? MenuNodeBeforeAddId { get; set; }
     private string TopologyParentId { get; set; } = string.Empty;
@@ -901,17 +946,24 @@
     private string MenuConfigurationName { get; set; } = string.Empty;
     private string MenuConfigurationConditions { get; set; } = string.Empty;
 
-    private string DefinitionId { get; set; } = "samsung-menu";
-    private string DefinitionName { get; set; } = "Samsung TV Menu";
-    private string DefinitionModel { get; set; } = "Samsung TV";
-    private string DefinitionFirmware { get; set; } = "unrecorded";
+    private string DefinitionId { get; set; } = string.Empty;
+    private string DefinitionName { get; set; } = string.Empty;
+    private string DefinitionModel { get; set; } = string.Empty;
+    private string DefinitionFirmware { get; set; } = string.Empty;
     private string DefinitionSignal { get; set; } = "any";
     private string DefinitionPictureMode { get; set; } = "any";
     private string DefinitionInput { get; set; } = "any";
+    private bool DefinitionNameWasEdited { get; set; }
+    private bool DefinitionIdWasEdited { get; set; }
 
     private string? ErrorMessage => LocalError ?? Authoring.Error;
     private MenuConfigurationSummary? ActiveMenuConfiguration => Navigation.Configurations
         .FirstOrDefault(configuration => configuration.IsActive);
+    private bool ActiveMenuConfigurationIsDescribed => ActiveMenuConfiguration is { } configuration
+        && !string.IsNullOrWhiteSpace(configuration.Conditions)
+        && !configuration.Conditions.Equals(
+            "Record the setting values that affect which menu items are visible.",
+            StringComparison.OrdinalIgnoreCase);
     private IReadOnlyList<MenuNodeSummary> VerifiedSettings => Navigation.Nodes
         .Where(node => node.HasVerifiedRoute)
         .ToArray();
@@ -941,6 +993,29 @@
             ? !string.IsNullOrWhiteSpace(SourceNodeId)
               && (!RecordReturnToVideo || ReturnToVideoAnchor is not null)
             : !string.IsNullOrWhiteSpace(RecordingId) && !string.IsNullOrWhiteSpace(RecordingLabel));
+    private bool CanGenerateDefinitionIdentity => !string.IsNullOrWhiteSpace(DefinitionModel)
+        && !string.IsNullOrWhiteSpace(DefinitionFirmware);
+    private bool CanCreateDefinition => !IsBusy && CanGenerateDefinitionIdentity
+        && !string.IsNullOrWhiteSpace(DefinitionName)
+        && !string.IsNullOrWhiteSpace(DefinitionId);
+    private MenuSetupStep RecommendedSetupStep => Navigation.DefinitionName is null
+        ? MenuSetupStep.Profile
+        : !ActiveMenuConfigurationIsDescribed
+            ? MenuSetupStep.Configuration
+            : Navigation.Nodes.Count <= 2
+                ? MenuSetupStep.Outline
+                : Authoring.DraftCandidates.Count > 0
+                    ? MenuSetupStep.Verify
+                    : MenuSetupStep.Record;
+    private string RecommendedSetupMessage => RecommendedSetupStep switch
+    {
+        MenuSetupStep.Profile => "Enter the TV model number and firmware version.",
+        MenuSetupStep.Configuration => "Describe and select the menu layout currently visible on the TV.",
+        MenuSetupStep.Outline => "Paste the on-screen hierarchy and apply it to this TV profile.",
+        MenuSetupStep.Verify => $"Replay and visually approve {Authoring.DraftCandidates.Count} saved draft{(Authoring.DraftCandidates.Count == 1 ? string.Empty : "s")}.",
+        _ when UnrecordedRecordingTargets.Count > 0 => $"Record a route to one of {UnrecordedRecordingTargets.Count} unrecorded menu positions.",
+        _ => "All defined menu positions are recorded. Review routes or add more menu items when needed."
+    };
     private IReadOnlyList<MenuNodeSummary> AvailableParentNodes
     {
         get
@@ -1073,16 +1148,22 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!MenuTreeExpanded || Navigation.DefinitionName is null)
-        {
-            return;
-        }
-
         try
         {
-            await JavaScript.InvokeVoidAsync(
-                "samsungController.bindMenuTree",
-                MenuTreeElement);
+            if (PendingSetupScroll is { } step)
+            {
+                PendingSetupScroll = null;
+                await JavaScript.InvokeVoidAsync(
+                    "samsungController.scrollToElement",
+                    GetSetupStepElement(step));
+            }
+
+            if (MenuTreeExpanded && FineAdjustmentsExpanded && Navigation.DefinitionName is not null)
+            {
+                await JavaScript.InvokeVoidAsync(
+                    "samsungController.bindMenuTree",
+                    MenuTreeElement);
+            }
         }
         catch (JSDisconnectedException)
         {
@@ -1094,6 +1175,10 @@
     {
         ShowDefinitionForm = !ShowDefinitionForm;
         LocalError = null;
+        if (ShowDefinitionForm)
+        {
+            PendingSetupScroll = MenuSetupStep.Profile;
+        }
     }
 
     private void ToggleManageVerifiedSettings() =>
@@ -1103,11 +1188,165 @@
 
     private void ToggleBulkTopology() => BulkTopologyExpanded = !BulkTopologyExpanded;
 
+    private void ToggleFineAdjustments() => FineAdjustmentsExpanded = !FineAdjustmentsExpanded;
+
     private void ToggleReturnScripts() => ReturnScriptsExpanded = !ReturnScriptsExpanded;
 
     private void ToggleSystemTiming() => SystemTimingExpanded = !SystemTimingExpanded;
 
     private void ToggleDraftValidation() => DraftValidationExpanded = !DraftValidationExpanded;
+
+    private async Task GoToSetupStepAsync(MenuSetupStep step)
+    {
+        LocalError = null;
+        switch (step)
+        {
+            case MenuSetupStep.Profile:
+                ShowDefinitionForm = true;
+                break;
+            case MenuSetupStep.Configuration:
+                MenuTreeExpanded = true;
+                BulkTopologyExpanded = true;
+                if (!ActiveMenuConfigurationIsDescribed
+                    && ActiveMenuConfiguration is not null
+                    && !ShowMenuConfigurationEditor)
+                {
+                    BeginEditMenuConfiguration();
+                }
+
+                break;
+            case MenuSetupStep.Outline:
+                MenuTreeExpanded = true;
+                BulkTopologyExpanded = true;
+                break;
+            case MenuSetupStep.Record:
+                MenuTreeExpanded = false;
+                break;
+            case MenuSetupStep.Verify:
+                MenuTreeExpanded = false;
+                DraftValidationExpanded = true;
+                break;
+        }
+
+        PendingSetupScroll = step;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private ElementReference GetSetupStepElement(MenuSetupStep step) => step switch
+    {
+        MenuSetupStep.Profile => DefinitionSetupElement,
+        MenuSetupStep.Configuration => ConfigurationStepElement,
+        MenuSetupStep.Outline => TopologyStepElement,
+        MenuSetupStep.Record => RecordingStepElement,
+        MenuSetupStep.Verify => ValidationStepElement,
+        _ => RecordingStepElement
+    };
+
+    private string GetSetupStepClass(MenuSetupStep step)
+    {
+        var classes = new List<string> { "menu-setup-guide-step" };
+        if (IsSetupStepComplete(step))
+        {
+            classes.Add("complete");
+        }
+
+        if (step == RecommendedSetupStep)
+        {
+            classes.Add("current");
+        }
+
+        return string.Join(' ', classes);
+    }
+
+    private bool IsSetupStepComplete(MenuSetupStep step) => step switch
+    {
+        MenuSetupStep.Profile => Navigation.DefinitionName is not null,
+        MenuSetupStep.Configuration => ActiveMenuConfigurationIsDescribed,
+        MenuSetupStep.Outline => Navigation.Nodes.Count > 2,
+        MenuSetupStep.Record => Navigation.Nodes.Any(node => node.HasDraftRoute || node.HasVerifiedRoute),
+        MenuSetupStep.Verify => Navigation.Nodes.Any(node => node.HasVerifiedRoute)
+            && Authoring.DraftCandidates.Count == 0,
+        _ => false
+    };
+
+    private string GetSetupStepStatus(MenuSetupStep step) => step switch
+    {
+        MenuSetupStep.Profile when Navigation.DefinitionName is not null => Navigation.DefinitionName,
+        MenuSetupStep.Profile => "Required",
+        MenuSetupStep.Configuration when ActiveMenuConfigurationIsDescribed => ActiveMenuConfiguration!.Name,
+        MenuSetupStep.Configuration => "Describe layout",
+        MenuSetupStep.Outline when Navigation.Nodes.Count > 2 => $"{Navigation.Nodes.Count - 2} menu items",
+        MenuSetupStep.Outline => "Add hierarchy",
+        MenuSetupStep.Record when UnrecordedRecordingTargets.Count > 0 => $"{UnrecordedRecordingTargets.Count} remaining",
+        MenuSetupStep.Record => "Routes recorded",
+        MenuSetupStep.Verify when Authoring.DraftCandidates.Count > 0 => $"{Authoring.DraftCandidates.Count} waiting",
+        MenuSetupStep.Verify when IsSetupStepComplete(MenuSetupStep.Verify) => "Complete",
+        _ => "No draft yet"
+    };
+
+    private void HandleDefinitionModelChanged(ChangeEventArgs args)
+    {
+        DefinitionModel = args.Value?.ToString() ?? string.Empty;
+        UpdateGeneratedDefinitionIdentity();
+    }
+
+    private void HandleDefinitionFirmwareChanged(ChangeEventArgs args)
+    {
+        DefinitionFirmware = args.Value?.ToString() ?? string.Empty;
+        UpdateGeneratedDefinitionIdentity();
+    }
+
+    private void HandleDefinitionNameChanged(ChangeEventArgs args)
+    {
+        DefinitionName = args.Value?.ToString() ?? string.Empty;
+        DefinitionNameWasEdited = true;
+        LocalError = null;
+    }
+
+    private void HandleDefinitionIdChanged(ChangeEventArgs args)
+    {
+        DefinitionId = args.Value?.ToString() ?? string.Empty;
+        DefinitionIdWasEdited = true;
+        LocalError = null;
+    }
+
+    private void UseGeneratedDefinitionIdentity()
+    {
+        DefinitionNameWasEdited = false;
+        DefinitionIdWasEdited = false;
+        UpdateGeneratedDefinitionIdentity();
+    }
+
+    private void UpdateGeneratedDefinitionIdentity()
+    {
+        LocalError = null;
+        if (!CanGenerateDefinitionIdentity)
+        {
+            if (!DefinitionNameWasEdited)
+            {
+                DefinitionName = string.Empty;
+            }
+
+            if (!DefinitionIdWasEdited)
+            {
+                DefinitionId = string.Empty;
+            }
+
+            return;
+        }
+
+        var model = DefinitionModel.Trim();
+        var firmware = DefinitionFirmware.Trim();
+        if (!DefinitionNameWasEdited)
+        {
+            DefinitionName = $"{model} · firmware {firmware}";
+        }
+
+        if (!DefinitionIdWasEdited)
+        {
+            DefinitionId = CreateMenuNodeId($"{model}-{firmware}");
+        }
+    }
 
     private Task ChangeMenuConfigurationAsync(ChangeEventArgs args) => RunBusyAsync(async () =>
     {
@@ -1118,6 +1357,7 @@
         PreparedRerecordTargetId = null;
         Refresh();
         InitializeNodeDefaults(force: true);
+        PendingSetupScroll = MenuSetupStep.Outline;
     });
 
     private void BeginAddMenuConfiguration()
@@ -1178,6 +1418,7 @@
         PreparedRerecordTargetId = null;
         Refresh();
         InitializeNodeDefaults(force: true);
+        PendingSetupScroll = MenuSetupStep.Outline;
     });
 
     private string GetMenuConfigurationId() => string.IsNullOrWhiteSpace(MenuConfigurationId)
@@ -1251,6 +1492,8 @@
         Refresh();
         LoadCurrentTopologyOutline();
         InitializeNodeDefaults(force: true);
+        MenuTreeExpanded = false;
+        PendingSetupScroll = MenuSetupStep.Record;
     });
 
     private MenuTopologyOutlineRequest CreateTopologyOutlineRequest() => new(
@@ -1273,6 +1516,14 @@
             ShowDefinitionForm = false;
             Refresh();
             InitializeNodeDefaults(force: true);
+            MenuTreeExpanded = true;
+            BulkTopologyExpanded = true;
+            if (ActiveMenuConfiguration is not null)
+            {
+                BeginEditMenuConfiguration();
+            }
+
+            PendingSetupScroll = MenuSetupStep.Configuration;
         });
     }
 
@@ -1471,6 +1722,9 @@
         PreparedRerecordTargetId = null;
         Refresh();
         InitializeNodeDefaults(force: true);
+        DraftValidationExpanded = true;
+        MenuTreeExpanded = false;
+        PendingSetupScroll = MenuSetupStep.Verify;
     });
 
     private void BeginReturnRecording()
@@ -1635,7 +1889,15 @@
     }
 
     private Task DeleteDraftAsync(MenuAuthoringCandidateSummary candidate) =>
-        RunBusyAsync(() => Controller.DeleteMenuAuthoringDraftAsync(candidate.Kind, candidate.Id));
+        RunBusyAsync(async () =>
+        {
+            await Controller.DeleteMenuAuthoringDraftAsync(candidate.Kind, candidate.Id);
+            Refresh();
+            InitializeNodeDefaults(force: true);
+            PendingSetupScroll = Authoring.DraftCandidates.Count > 0
+                ? MenuSetupStep.Verify
+                : MenuSetupStep.Record;
+        });
 
     private bool IsKnownStateSetting(MenuNodeSummary setting) => Navigation.Anchors.Any(anchor =>
         anchor.Verified
@@ -1671,8 +1933,25 @@
         LocalError = null;
     }
 
-    private Task ConfirmValidationAsync(bool passed) =>
-        RunBusyAsync(() => Controller.ConfirmMenuAuthoringValidationAsync(passed));
+    private Task ConfirmValidationAsync(bool passed) => RunBusyAsync(async () =>
+    {
+        var activeCandidate = Authoring.DraftCandidates.FirstOrDefault(candidate =>
+            candidate.Kind == Authoring.ActiveValidationKind
+            && candidate.Id.Equals(Authoring.ActiveValidationId, StringComparison.OrdinalIgnoreCase));
+        var completesCandidate = passed
+            && activeCandidate is not null
+            && activeCandidate.ValidationPasses + 1 >= Authoring.RequiredValidationPasses;
+
+        await Controller.ConfirmMenuAuthoringValidationAsync(passed);
+        Refresh();
+        if (completesCandidate)
+        {
+            InitializeNodeDefaults(force: true);
+            PendingSetupScroll = Authoring.DraftCandidates.Count > 0
+                ? MenuSetupStep.Verify
+                : MenuSetupStep.Record;
+        }
+    });
 
     private Task ConfirmSystemTimingAsync(bool passed) =>
         RunBusyAsync(() => Controller.ConfirmMenuTimingProfileTestAsync(passed));
@@ -2110,6 +2389,15 @@
     public void Dispose()
     {
         Controller.Changed -= HandleControllerChanged;
+    }
+
+    private enum MenuSetupStep
+    {
+        Profile,
+        Configuration,
+        Outline,
+        Record,
+        Verify
     }
 
     private sealed class TimingStepEdit(MenuAuthoringReplayStepSummary step)

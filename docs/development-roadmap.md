@@ -82,7 +82,7 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 
 ### Menu authoring and validation
 
-- [x] Create new TV interface definitions entirely from the web UI.
+- [x] Create new TV menu profiles entirely from the web UI.
 - [x] Define, edit, delete, sort, and custom-order the overall menu tree before recording routes.
 - [x] Bulk-create or synchronize a full menu branch from an indented outline with stable-ID reuse and a safe change preview.
 - [x] Store named settings-dependent menu configurations in one TV YAML and scope route verification/navigation to the active configuration.

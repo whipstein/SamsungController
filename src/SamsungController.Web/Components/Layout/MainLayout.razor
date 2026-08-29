@@ -257,7 +257,7 @@
         : $"Expected menu path: {Snapshot.MenuPath}. Confidence: {Snapshot.MenuConfidence}. Active menu configuration: {ActiveMenuConfigurationLabel}. This is predicted, not reported by the TV.";
     private string ActiveMenuConfigurationLabel => Navigation.Configurations
         .FirstOrDefault(configuration => configuration.IsActive)?.Name
-        ?? "Universal / legacy layout";
+        ?? "Default menu configuration";
 
     private string StateClass => Snapshot.ConnectionState switch
     {

@@ -13,6 +13,15 @@ window.samsungController = {
         link.remove();
         URL.revokeObjectURL(url);
     },
+    scrollToElement: function (element) {
+        if (!element) {
+            return;
+        }
+
+        window.requestAnimationFrame(function () {
+            element.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+    },
     bindMenuTree: function (element) {
         if (!element || element.dataset.keyboardNavigationBound === "true") {
             return;

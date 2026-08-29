@@ -1073,7 +1073,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
 
     private string GetMenuPath(string? nodeId) =>
         string.IsNullOrWhiteSpace(nodeId)
-            ? "Not declared (legacy)"
+            ? "Not declared"
             : Navigation.Nodes.FirstOrDefault(node => node.Id.Equals(
                 nodeId,
                 StringComparison.OrdinalIgnoreCase))?.Path

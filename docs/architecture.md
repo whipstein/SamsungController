@@ -164,7 +164,7 @@ synchronized state may use its draft integrated return before 3/3, while a
 merely predicted draft state may not. The third acceptance persists verification
 and immediately executes the normal-video anchor unless the verified item already
 targets normal video.
-Legacy separate `return-to-video-replacement` anchors are folded into their
+Older separate `return-to-video-replacement` anchors are folded into their
 target transition when the definition is loaded. A user may keep a section
 minimized while its state is unchanged; a transition from
 verified to needing validation, or from no drafts to pending drafts,

@@ -177,17 +177,20 @@ can be planned or sent.
 
 1. Record the TV firmware, input, SDR/HDR state, and picture mode.
 2. Connect in the web interface and open **Build & Verify**.
-3. Create a new TV interface there if no
-   definition exists; the generated YAML is stored in the per-user configuration
-   directory and loaded automatically.
-4. In **Define the overall menu tree**, use **Fast setup** to load the current
-   branch as an indented outline, add the expected menu positions with two spaces
+3. Follow the highlighted five-step guide. If no definition exists, start with
+   **TV profile** and enter the model number and firmware version. The default
+   definition name and file ID are generated from those two values. The YAML is
+   stored in the per-user configuration directory and loaded automatically.
+4. In **Configuration**, describe and select the settings-dependent layout that
+   is currently visible. In **Menu outline**, load the current branch as an
+   indented outline, add the expected menu positions with two spaces
    per level, preview the changes, and apply them to the same YAML. Matching
    labels under the same parent reuse their stable IDs; append `[stable-id]` to a
    line when identity must be explicit. The safe default preserves unlisted
    items. Disable it only to synchronize the complete selected branch; recorded
-   references are protected from removal. Use the single-item editor for fine
-   corrections and descriptions. Choose **Custom · TV
+   references are protected from removal. Applying the outline advances to
+   **Record route**. Open **Fine adjustments for individual menu items** only for
+   precise corrections and descriptions. Choose **Custom · TV
    order** and move siblings up or down to match the on-screen menu; switch to
    **Alphabetical** when that view is more useful. Display names and parents remain
    editable; stable node IDs do not change after creation. Tree labels are red

@@ -711,12 +711,20 @@ public sealed class SamsungControllerService : IAsyncDisposable
         EnsureNoAutomationRunning("create a menu definition");
         EnsureNoMenuRecording("create a menu definition");
 
+        var model = request.Model.Trim();
+        var firmware = NormalizeContextValue(request.Firmware);
+        var definitionName = string.IsNullOrWhiteSpace(request.Name)
+            ? $"{model} · firmware {firmware}"
+            : request.Name.Trim();
+        var definitionId = string.IsNullOrWhiteSpace(request.Id)
+            ? CreateMenuDefinitionId(model, firmware)
+            : request.Id.Trim();
         var definition = new MenuDefinition(
-            request.Id.Trim(),
-            request.Name.Trim(),
-            request.Model.Trim(),
+            definitionId,
+            definitionName,
+            model,
             new MenuDefinitionContext(
-                NormalizeContextValue(request.Firmware),
+                firmware,
                 NormalizeContextValue(request.Signal),
                 NormalizeContextValue(request.PictureMode),
                 NormalizeContextValue(request.Input)),
@@ -764,7 +772,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             {
                 _menuRecorder.Reset();
                 _menuValidation = null;
-                _menuAuthoringStatus = "New menu definition created · record an anchor to establish a known starting point";
+                _menuAuthoringStatus = "TV profile created · describe the active menu configuration next";
                 _menuAuthoringError = null;
             }
         }
@@ -774,6 +782,29 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
 
         NotifyChanged();
+    }
+
+    private static string CreateMenuDefinitionId(string model, string firmware)
+    {
+        var normalized = new string($"{model}-{firmware}".Trim().ToLowerInvariant()
+            .Select(character => char.IsLetterOrDigit(character) || character == '_'
+                ? character
+                : '-')
+            .ToArray());
+        while (normalized.Contains("--", StringComparison.Ordinal))
+        {
+            normalized = normalized.Replace("--", "-", StringComparison.Ordinal);
+        }
+
+        normalized = normalized.Trim('-');
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return "samsung-tv";
+        }
+
+        return char.IsLetter(normalized[0]) || normalized[0] == '_'
+            ? normalized
+            : $"tv-{normalized}";
     }
 
     public async Task SetMenuConfigurationAsync(

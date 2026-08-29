@@ -99,6 +99,31 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task NewDefinitionDefaultsItsNameAndIdFromModelAndFirmware()
+    {
+        Directory.CreateDirectory(_directory);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+
+        await controller.CreateMenuDefinitionAsync(new MenuDefinitionCreationRequest(
+            string.Empty,
+            string.Empty,
+            "QN90D",
+            "1296",
+            "SDR",
+            "Filmmaker Mode",
+            "HDMI 1"));
+
+        var snapshot = controller.GetMenuNavigationSnapshot();
+        Assert.Equal("QN90D · firmware 1296", snapshot.DefinitionName);
+        Assert.EndsWith("qn90d-1296.yaml", snapshot.DefinitionPath, StringComparison.Ordinal);
+
+        var reparsed = await new MenuDefinitionParser().ParseFileAsync(snapshot.DefinitionPath);
+        Assert.Equal("qn90d-1296", reparsed.Id);
+        Assert.Equal("QN90D · firmware 1296", reparsed.Name);
+    }
+
+    [Fact]
     public async Task MenuTreeCanBeDefinedAndRenamedBeforeRecordingRoutes()
     {
         Directory.CreateDirectory(_directory);
