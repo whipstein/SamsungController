@@ -49,25 +49,25 @@ or reset commands are inserted before later navigation or validation runs.
 
 ## Version 1 YAML
 
-The initial S95F definition is
-[`samples/menus/s95f-draft.yaml`](../samples/menus/s95f-draft.yaml). Its basic
+The bundled, deliberately unverified template is
+[`samples/menus/menu.example.yaml`](../samples/menus/menu.example.yaml). Its basic
 shape is:
 
 ```yaml
 version: 1
-id: s95f-picture-draft
-name: S95F Picture Menu Draft
-model: Samsung S95F
+id: generic-picture-menu
+name: Generic Samsung Picture Menu Template
+model: Replace with your TV model
 
 context:
   firmware: unrecorded
-  signal: any
-  pictureMode: any
-  input: any
+  signal: unrecorded
+  pictureMode: unrecorded
+  input: unrecorded
 
 timing:
-  defaultDelay: 150ms
-  screenChangeDelay: 500ms
+  defaultDelay: 300ms
+  screenChangeDelay: 800ms
   returnDelay: 300ms
   verified: false
 
@@ -75,41 +75,32 @@ nodes:
   - id: normal-video
     label: Normal video
 
-  - id: settings-overlay
-    label: Settings overlay
+  - id: settings
+    label: Settings
 
 anchors:
   - id: normal-video
     label: Return to normal video
     target: normal-video
-    verified: true
+    verified: false
     returnStrategy:
-      menuRoot: settings-overlay
+      menuRoot: settings
       atMenuRoot:
-        verified: true
+        verified: false
         steps:
           - key: KEY_RETURN
       belowMenuRoot:
         verified: false
         steps:
-          - key: KEY_MENU
           - key: KEY_RETURN
-      overrides:
-        - node: expert-settings
-          verified: false
-          steps:
-            - key: KEY_EXIT
     steps:
-      - key: KEY_MENU
-        repeat: 2
+      - key: KEY_RETURN
 
 transitions:
-  - id: open-settings-overlay
+  - id: open-settings
     from: normal-video
-    to: settings-overlay
-    verified: true
-    returnSteps:
-      - key: KEY_RETURN
+    to: settings
+    verified: false
     steps:
       - key: KEY_MENU
 ```

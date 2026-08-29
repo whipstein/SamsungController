@@ -21,3 +21,6 @@ sessions/
 # Local overrides
 appsettings.json
 *.local.json
+
+# Personal TV definitions, macros, notes, and exports kept beside the repository
+/user-data/

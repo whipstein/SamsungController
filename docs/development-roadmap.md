@@ -109,11 +109,11 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 
 ## In progress
 
-- [ ] Complete and reverify the S95F menu map for every intended picture setting.
+- [ ] Complete and reverify the local TV menu map for every intended picture setting.
 - [ ] Record separate contexts where firmware, input/source, SDR/HDR signal, or picture mode changes traversal behavior.
-- [ ] Keep real-TV observations in `docs/research-notes.md` and promote assumptions only after repeatable evidence.
+- [ ] Keep real-TV observations in ignored `user-data/research-notes.md` and publish only deliberately sanitized conclusions.
 - [ ] Expand automated menu-planning fixtures as new tree shapes and state-specific return rules are discovered.
-- [ ] Reconcile older empirical questions in `docs/architecture.md` with the completed S95F observations.
+- [ ] Reconcile empirical questions in `docs/architecture.md` with sanitized, repeatable observations.
 
 ## Remaining product work
 
@@ -171,7 +171,7 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 
 ## Recommended next sequence
 
-1. Finish the intended S95F menu tree and collect three-pass results for each supported context.
+1. Finish the intended local TV menu tree and collect three-pass results for each supported context.
 2. Convert sanitized session captures into deterministic replay tests before expanding protocol parsing.
 3. Extend read-only device and application research, clearly separating confirmed responses from inference.
 4. Prototype macro-plan preview and browser-based macro editing without adding new execution semantics.
@@ -185,5 +185,5 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 - [Protocol observations and research envelopes](protocol.md)
 - [Macro engine format and validation](macros.md)
 - [Menu model, confidence, YAML, and authoring workflow](menu-model.md)
-- [Real-TV research log](research-notes.md)
-- [Current S95F draft definition](../samples/menus/s95f-draft.yaml)
+- [Generic research template](research-notes.md)
+- [Generic menu-definition template](../samples/menus/menu.example.yaml)

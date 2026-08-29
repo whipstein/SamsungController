@@ -14,22 +14,28 @@ used by a macro/console command, its absolute path is remembered for subsequent
 invocations. This means a later `console` command uses the same catalog without
 requiring the flag again.
 
-From the repository, the included example can be inspected without connecting
-to a TV:
+In a source checkout, keep a real TV's catalog under ignored `user-data/` (for
+example, `user-data/macros.yaml`). The tracked
+`samples/macros/macros.example.yaml` file is a generic, unverified format
+example and must not be used as the live catalog.
+
+Copy the included example to `user-data/macros.yaml` before using these
+commands. The ignored copy can be inspected without connecting to a TV and is
+safe to make your remembered working catalog:
 
 ```bash
 dotnet run --project src/SamsungController.Cli -- \
-  macro validate --macro-file samples/macros/macros.example.yaml
+  macro validate --macro-file user-data/macros.yaml
 
 dotnet run --project src/SamsungController.Cli -- \
-  macro list --macro-file samples/macros/macros.example.yaml
+  macro list --macro-file user-data/macros.yaml
 ```
 
 Run a named macro after reviewing its keys:
 
 ```bash
 dotnet run --project src/SamsungController.Cli -- \
-  macro TestNavigation --macro-file samples/macros/macros.example.yaml
+  macro ExampleSequence --macro-file user-data/macros.yaml
 ```
 
 The interactive console accepts the same `macro list`, `macro validate`,

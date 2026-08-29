@@ -403,7 +403,7 @@ internal static class Program
               --help                     Show this help
 
             Examples:
-              samsungctl connect 192.168.1.100
+              samsungctl connect 192.0.2.10
               samsungctl key KEY_UP
               samsungctl key KEY_RIGHT --action Press
               samsungctl key KEY_RIGHT --action Release

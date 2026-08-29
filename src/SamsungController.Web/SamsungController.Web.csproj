@@ -14,8 +14,8 @@
     <ProjectReference Include="../SamsungController.Core/SamsungController.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="../../samples/menus/s95f-draft.yaml"
-             Link="menu-definitions/s95f-draft.yaml"
+    <Content Include="../../samples/menus/menu.example.yaml"
+             Link="menu-definitions/menu.example.yaml"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

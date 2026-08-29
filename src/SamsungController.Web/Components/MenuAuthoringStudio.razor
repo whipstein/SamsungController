@@ -48,11 +48,11 @@
             <div class="authoring-form-grid">
                 <label><span>Definition ID</span><input @bind="DefinitionId" placeholder="living-room-tv" /></label>
                 <label><span>Name</span><input @bind="DefinitionName" placeholder="Living Room TV Menu" /></label>
-                <label><span>TV model</span><input @bind="DefinitionModel" placeholder="Samsung S95F" /></label>
-                <label><span>Firmware</span><input @bind="DefinitionFirmware" placeholder="1296" /></label>
+                <label><span>TV model</span><input @bind="DefinitionModel" placeholder="Samsung TV model" /></label>
+                <label><span>Firmware</span><input @bind="DefinitionFirmware" placeholder="e.g. 1234" /></label>
                 <label><span>Signal</span><input @bind="DefinitionSignal" placeholder="SDR" /></label>
-                <label><span>Picture mode</span><input @bind="DefinitionPictureMode" placeholder="Filmmaker Mode" /></label>
-                <label class="wide-field"><span>Input/source</span><input @bind="DefinitionInput" placeholder="Home Theater System" /></label>
+                <label><span>Picture mode</span><input @bind="DefinitionPictureMode" placeholder="e.g. Movie" /></label>
+                <label class="wide-field"><span>Input/source</span><input @bind="DefinitionInput" placeholder="e.g. HDMI 1" /></label>
             </div>
             <button class="primary-action authoring-save" @onclick="CreateDefinitionAsync" disabled="@IsBusy">
                 Create and load definition <span>→</span>

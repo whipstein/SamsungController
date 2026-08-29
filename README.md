@@ -16,7 +16,7 @@ The web interface is the recommended way to use the application. A command-line 
 - Interactive terminal console with persistent command history
 - Self-contained macOS, Windows, and Linux downloads for x64 and Arm64 computers
 
-The Samsung S95F is the primary real-TV test target. Basic pairing and remote keys may work with other recent Samsung/Tizen TVs, but menu layouts, key behavior, available queries, and authorization details vary by model and firmware.
+Pairing and basic remote keys may work with many recent Samsung/Tizen TVs, but menu layouts, key behavior, available queries, and authorization details vary by model and firmware. No bundled menu route is presented as verified for a real TV.
 
 ## Before you install
 
@@ -196,7 +196,7 @@ The **Menu** page contains verified destinations only. Click a destination to ca
 
 If the expected position is unknown, run a verified anchor under **Resynchronize**. If a traversal reaches the wrong place, use its failure control. SamsungController captures the attempted keys for diagnosis, marks the prediction uncertain, and tries to return the TV to normal video.
 
-Menu definitions are model-, firmware-, input-, signal-, and picture-mode-sensitive. Do not assume an S95F SDR route is valid in HDR or on a different firmware. See [Menu definitions](docs/menu-model.md) for the data model and confidence rules.
+Menu definitions are model-, firmware-, input-, signal-, and picture-mode-sensitive. Do not assume a route verified in one SDR context is valid in HDR, on another input, or on different firmware. See [Menu definitions](docs/menu-model.md) for the data model and confidence rules.
 
 ### Build & Verify
 
@@ -247,7 +247,7 @@ The examples below show the complete source command. Package users can replace `
 ### Pair and inspect status
 
 ```bash
-dotnet run --project src/SamsungController.Cli -- connect 192.168.1.100
+dotnet run --project src/SamsungController.Cli -- connect 192.0.2.10
 dotnet run --project src/SamsungController.Cli -- status
 ```
 
@@ -256,7 +256,7 @@ Approve the first connection on the TV. Secure port 8002 is the default. Samsung
 For a TV that only supports the non-secure endpoint:
 
 ```bash
-dotnet run --project src/SamsungController.Cli -- connect 192.168.1.100 --insecure
+dotnet run --project src/SamsungController.Cli -- connect 192.0.2.10 --insecure
 ```
 
 ### Send keys
@@ -274,17 +274,19 @@ A `Press` should normally be paired with a `Release`. Use `Click` for ordinary b
 
 ### Validate and run macros
 
-Listing and validation do not connect to the TV:
+In a source checkout, first copy `samples/macros/macros.example.yaml` to
+`user-data/macros.yaml`. The destination is ignored by Git and becomes your
+working catalog. Listing and validation do not connect to the TV:
 
 ```bash
-dotnet run --project src/SamsungController.Cli -- macro validate --macro-file samples/macros/macros.example.yaml
-dotnet run --project src/SamsungController.Cli -- macro list --macro-file samples/macros/macros.example.yaml
+dotnet run --project src/SamsungController.Cli -- macro validate --macro-file user-data/macros.yaml
+dotnet run --project src/SamsungController.Cli -- macro list --macro-file user-data/macros.yaml
 ```
 
 After reviewing the sequence, run a named macro:
 
 ```bash
-dotnet run --project src/SamsungController.Cli -- macro TestNavigation --macro-file samples/macros/macros.example.yaml
+dotnet run --project src/SamsungController.Cli -- macro ExampleSequence --macro-file user-data/macros.yaml
 ```
 
 The successfully used absolute macro path is remembered. Before a path has been selected, the default is `macros.yaml` in the per-user configuration directory. Ctrl+C cancels execution.
@@ -384,7 +386,7 @@ Important contents include:
 | `sessions/*.ndjson` | Complete timestamped protocol messages for connected sessions. Keep private. |
 | `console-history.txt` | Up to 200 retained non-raw console commands. |
 
-Repository ignore rules cover the normal secret and session filenames, but they cannot protect copies or exports saved elsewhere.
+Repository ignore rules cover the normal secret and session filenames, but they cannot protect copies or exports saved elsewhere. In a source checkout, keep TV-specific macros, menu definitions, notes, and exports under the ignored `user-data/` directory. The tracked files under `samples/` are deliberately generic, unverified templates and should never be used as the live working files for a real TV.
 
 ## Troubleshooting
 
@@ -405,7 +407,7 @@ Forget the saved authorization and pair again:
 
 ```bash
 dotnet run --project src/SamsungController.Cli -- forget
-dotnet run --project src/SamsungController.Cli -- connect 192.168.1.100
+dotnet run --project src/SamsungController.Cli -- connect 192.0.2.10
 ```
 
 Use `forget --host <TV-IP>` when tokens for multiple TVs are stored. You may also need to remove SamsungController from the TV's allowed-device list.

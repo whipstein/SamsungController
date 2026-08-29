@@ -1,0 +1,92 @@
+version: 1
+id: generic-picture-menu
+name: Generic Samsung Picture Menu Template
+model: Replace with your TV model
+
+# Replace every context value and visually verify every route on the actual TV.
+# Nothing in this example is marked verified or eligible for execution.
+context:
+  firmware: unrecorded
+  signal: unrecorded
+  pictureMode: unrecorded
+  input: unrecorded
+
+timing:
+  defaultDelay: 300ms
+  screenChangeDelay: 800ms
+  returnDelay: 300ms
+  verified: false
+
+nodes:
+  - id: tv-interface
+    label: TV interface
+    description: Root for modeled TV interface states.
+
+  - id: normal-video
+    label: Normal video
+    parent: tv-interface
+    description: No TV menu is expected to be visible.
+
+  - id: settings
+    label: Settings
+    parent: tv-interface
+    description: Replace this with the settings surface shown by your TV.
+
+  - id: picture
+    label: Picture
+    parent: settings
+
+  - id: expert-settings
+    label: Expert settings
+    parent: picture
+
+  - id: example-setting
+    label: Example setting
+    parent: expert-settings
+    description: Rename or replace this node with a real setting from your TV.
+
+anchors:
+  - id: normal-video
+    label: Return to normal video
+    target: normal-video
+    verified: false
+    description: Example only. Record and verify the correct return sequence for your TV.
+    returnStrategy:
+      menuRoot: settings
+      atMenuRoot:
+        verified: false
+        steps:
+          - key: KEY_RETURN
+      belowMenuRoot:
+        verified: false
+        steps:
+          - key: KEY_RETURN
+    steps:
+      - key: KEY_RETURN
+
+transitions:
+  - id: open-settings
+    from: normal-video
+    to: settings
+    verified: false
+    description: Example only. Record this transition from the browser UI.
+    steps:
+      - key: KEY_MENU
+
+  - id: open-picture
+    from: settings
+    to: picture
+    verified: false
+    description: Example only. Replace with the observed route on your TV.
+    steps:
+      - key: KEY_DOWN
+      - key: KEY_ENTER
+
+  - id: open-expert-settings
+    from: picture
+    to: expert-settings
+    verified: false
+    description: Example only. Replace with the observed route on your TV.
+    steps:
+      - key: KEY_DOWN
+      - key: KEY_ENTER

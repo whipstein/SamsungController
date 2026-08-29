@@ -72,73 +72,40 @@ public sealed class MenuDefinitionParserTests
     }
 
     [Fact]
-    public async Task BundledS95fDefinitionContainsObservedExpertSettingsRoute()
+    public async Task BundledGenericDefinitionContainsNoVerifiedRoutes()
     {
         var path = Path.Combine(
             AppContext.BaseDirectory,
             "menu-definitions",
-            "s95f-draft.yaml");
+            "menu.example.yaml");
 
         var definition = await new MenuDefinitionParser().ParseFileAsync(path);
 
-        Assert.Equal("1296", definition.Context.Firmware);
-        Assert.Equal("SDR", definition.Context.Signal);
-        Assert.Equal("Filmmaker Mode", definition.Context.PictureMode);
-        Assert.Equal("Home Theater System", definition.Context.Input);
-        Assert.Equal(150, definition.Timing.DefaultDelayMilliseconds);
-        Assert.Equal(500, definition.Timing.ScreenChangeDelayMilliseconds);
+        Assert.Equal("generic-picture-menu", definition.Id);
+        Assert.Equal("unrecorded", definition.Context.Firmware);
+        Assert.Equal("unrecorded", definition.Context.Signal);
+        Assert.Equal("unrecorded", definition.Context.PictureMode);
+        Assert.Equal("unrecorded", definition.Context.Input);
+        Assert.Equal(300, definition.Timing.DefaultDelayMilliseconds);
+        Assert.Equal(800, definition.Timing.ScreenChangeDelayMilliseconds);
         Assert.Equal(300, definition.Timing.ReturnDelayMilliseconds);
+        Assert.False(definition.Timing.Verified);
 
         var normalVideo = definition.GetRequiredAnchor("normal-video");
-        Assert.True(normalVideo.Verified);
-        var reset = Assert.Single(normalVideo.Operations);
-        Assert.Equal("KEY_MENU", reset.Key);
-        Assert.Equal(2, reset.Repeat);
+        Assert.False(normalVideo.Verified);
         var returnStrategy = Assert.IsType<MenuReturnStrategy>(normalVideo.ReturnStrategy);
-        Assert.Equal("settings-overlay", returnStrategy.MenuRootNodeId);
-        Assert.True(returnStrategy.AtMenuRoot.Verified);
+        Assert.Equal("settings", returnStrategy.MenuRootNodeId);
+        Assert.False(returnStrategy.AtMenuRoot.Verified);
         Assert.Equal("KEY_RETURN", Assert.Single(returnStrategy.AtMenuRoot.Operations).Key);
         Assert.False(returnStrategy.BelowMenuRoot.Verified);
-        Assert.Collection(
-            returnStrategy.BelowMenuRoot.Operations,
-            operation => Assert.Equal("KEY_MENU", operation.Key),
-            operation => Assert.Equal("KEY_RETURN", operation.Key));
+        Assert.Equal("KEY_RETURN", Assert.Single(returnStrategy.BelowMenuRoot.Operations).Key);
+        Assert.All(definition.Transitions.Values, transition => Assert.False(transition.Verified));
 
-        var picture = definition.Transitions["open-picture"];
-        Assert.True(picture.Verified);
-        Assert.Equal("settings-overlay", picture.FromNodeId);
-        Assert.Equal("picture", picture.ToNodeId);
-        Assert.Collection(
-            picture.Operations,
-            operation => Assert.Equal("KEY_DOWN", operation.Key),
-            operation => Assert.Equal("KEY_ENTER", operation.Key));
-
-        var expertSettings = definition.Transitions["open-expert-settings"];
-        Assert.True(expertSettings.Verified);
-        Assert.Equal("picture", expertSettings.FromNodeId);
-        Assert.Equal("expert-settings", expertSettings.ToNodeId);
-        Assert.Equal(4, expertSettings.Operations[0].Repeat);
-        Assert.Equal("KEY_ENTER", expertSettings.Operations[1].Key);
-
-        var exit = definition.Transitions["exit-expert-settings"];
-        Assert.True(exit.Verified);
-        Assert.Equal("normal-video", exit.ToNodeId);
-        Assert.Equal(2, Assert.Single(exit.Operations).Repeat);
-
-        var forwardPlan = new NavigationPlanner().Plan(
-            definition,
-            "normal-video",
-            "expert-settings");
-        Assert.True(forwardPlan.IsExecutable);
-        Assert.Equal(8, forwardPlan.CommandCount);
-        Assert.Equal(TimeSpan.FromMilliseconds(2250), forwardPlan.EstimatedDelay);
-        var exitPlan = new NavigationPlanner().Plan(
-            definition,
-            "expert-settings",
-            "normal-video");
-        Assert.True(exitPlan.IsExecutable);
-        Assert.Equal(2, exitPlan.CommandCount);
-        Assert.Equal(TimeSpan.FromMilliseconds(1000), exitPlan.EstimatedDelay);
+        Assert.Throws<NavigationPlanningException>(() =>
+            new NavigationPlanner().Plan(
+                definition,
+                "normal-video",
+                "expert-settings"));
     }
 
     private const string ValidYaml =

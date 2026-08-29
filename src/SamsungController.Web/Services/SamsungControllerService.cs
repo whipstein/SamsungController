@@ -98,7 +98,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         _defaultMenuDefinitionPath = Path.Combine(
             AppContext.BaseDirectory,
             "menu-definitions",
-            "s95f-draft.yaml");
+            "menu.example.yaml");
         ProtocolLogPath = Path.Combine(
             _configurationDirectory,
             "sessions",

@@ -47,9 +47,9 @@ SamsungController.Web
   actions. Razor components call that service and contain no Samsung protocol
   construction logic.
 
-The macro automation, web interface, and first data-driven menu-navigation slice
-were introduced after pairing, token reuse, and remote keys were verified
-against the Samsung S95F.
+The macro automation, web interface, and data-driven menu-navigation layer are
+model-independent. Real-TV verification data remains local unless it is
+deliberately sanitized and published as a separate compatibility profile.
 
 ## Predicted menu navigation
 
@@ -279,11 +279,11 @@ Reference files:
 ColorControl is GPLv3. SamsungController does not copy its types, control flow,
 serialization models, or source text.
 
-## S95F verification checklist
+## Device verification checklist
 
-These items remain empirical until tested on the target TV:
+These items remain empirical until tested on each target TV:
 
-- whether the S95F accepts URL-escaped Base64 padding in `name`;
+- whether the TV accepts URL-escaped Base64 padding in `name`;
 - whether port 8002 remains enabled in the current firmware;
 - certificate behavior and whether strict validation can ever be used;
 - exact pairing prompt and timeout behavior;
@@ -294,5 +294,6 @@ These items remain empirical until tested on the target TV:
 - close codes and reconnect timing when the TV sleeps or powers off; and
 - unknown events emitted during menu and picture-setting changes.
 
-Record results in `docs/research-notes.md` without generalizing a single
-observation to all Samsung models or firmware versions.
+Record private results in ignored `user-data/research-notes.md`. Move only
+deliberately sanitized conclusions into tracked documentation, without
+generalizing a single observation to all Samsung models or firmware versions.

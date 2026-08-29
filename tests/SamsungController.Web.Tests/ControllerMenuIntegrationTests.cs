@@ -175,6 +175,9 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     public async Task VerifiedSettingRemovalDeletesItsSubtreeAndRelatedRoutes()
     {
         Directory.CreateDirectory(_directory);
+        var definitionPath = Path.Combine(_directory, "verified-removal-menu.yaml");
+        await File.WriteAllTextAsync(definitionPath, VerifiedRemovalMenuYaml);
+        await WriteSettingsAsync(definitionPath);
         await using var controller = CreateController();
         await controller.InitializeAsync();
 
@@ -198,6 +201,9 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     public async Task VerifiedKnownStateSettingCannotBeRemoved()
     {
         Directory.CreateDirectory(_directory);
+        var definitionPath = Path.Combine(_directory, "known-state-menu.yaml");
+        await File.WriteAllTextAsync(definitionPath, ValidMenuYaml);
+        await WriteSettingsAsync(definitionPath);
         await using var controller = CreateController();
         await controller.InitializeAsync();
 
@@ -1540,6 +1546,56 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
               - key: KEY_DOWN
                 repeat: 2
                 delay: 700ms
+        """;
+
+    private const string VerifiedRemovalMenuYaml =
+        """
+        version: 1
+        id: verified-removal-test
+        name: Verified Removal Test
+        model: Test TV
+        nodes:
+          - id: tv-interface
+            label: TV interface
+          - id: normal-video
+            label: Normal video
+            parent: tv-interface
+          - id: settings-overlay
+            label: Settings overlay
+            parent: tv-interface
+          - id: expert-settings
+            label: Expert settings
+            parent: settings-overlay
+        anchors:
+          - id: normal-video
+            label: Return to normal video
+            target: normal-video
+            verified: true
+            returnStrategy:
+              menuRoot: settings-overlay
+              atMenuRoot:
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+              belowMenuRoot:
+                verified: false
+                steps:
+                  - key: KEY_RETURN
+            steps:
+              - key: KEY_RETURN
+        transitions:
+          - id: open-settings
+            from: normal-video
+            to: settings-overlay
+            verified: true
+            steps:
+              - key: KEY_MENU
+          - id: open-expert
+            from: settings-overlay
+            to: expert-settings
+            verified: true
+            steps:
+              - key: KEY_ENTER
         """;
 
     private const string ReturnStrategyMenuYaml =

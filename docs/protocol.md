@@ -62,9 +62,8 @@ provide two known read/query events using the `ms.channel.emit` envelope:
 }
 ```
 
-The second event is `ed.installedApp.get`. The first connected-session test on
-the S95F produced no observable response to either event; see the research log.
-Support and response shapes remain firmware- and state-dependent hypotheses.
+The second event is `ed.installedApp.get`. Support, response presence, and
+response shapes remain model-, firmware-, and state-dependent hypotheses.
 These envelopes are treated as experimental protocol behavior even though their
 names imply reads.
 
@@ -79,7 +78,7 @@ non-secure profiles use HTTP and port 8001. A configured port override is
 honored, and acceptance of the TV certificate follows the saved connection
 profile.
 
-Each probe has a user-entered state label such as `Powered on`, `Netflix SDR`,
+Each probe has a user-entered state label such as `Powered on`, `Streaming app SDR`,
 or `Standby`. Up to 20 observations remain available for comparison and JSON
 export in the running web session. Successful HTTP responses are also added to
 the protocol stream and NDJSON capture with their exact response body. Network

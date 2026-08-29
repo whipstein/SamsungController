@@ -7,7 +7,7 @@ Each archive contains:
 - the local SamsungController web interface;
 - a double-clickable platform launcher that starts the server and opens the browser;
 - the optional `samsungctl` command-line interface;
-- the sample S95F menu definition; and
+- a generic, unverified menu-definition template; and
 - complete installation, pairing, use, privacy, and troubleshooting documentation.
 
 Choose the download matching both the operating system and processor:

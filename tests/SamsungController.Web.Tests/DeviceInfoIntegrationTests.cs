@@ -33,9 +33,9 @@ public sealed class DeviceInfoIntegrationTests : IDisposable
         var deviceInfoClient = new RecordingDeviceInfoClient();
         await using var controller = CreateController(deviceInfoClient);
 
-        var observation = await controller.ProbeDeviceInfoAsync("Netflix SDR");
+        var observation = await controller.ProbeDeviceInfoAsync("Streaming app SDR");
 
-        Assert.Equal("Netflix SDR", observation.Label);
+        Assert.Equal("Streaming app SDR", observation.Label);
         Assert.Equal(200, observation.StatusCode);
         Assert.True(observation.IsSuccess);
         Assert.Null(observation.Error);

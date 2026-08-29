@@ -1,32 +1,26 @@
 version: 1
 
+# This catalog is intentionally generic and unverified. Copy it to an ignored
+# personal location before adapting it to a real TV.
 variables:
-  navigationDelay: 150ms
-  settleDelay: 500ms
+  shortWait: 300ms
 
 macros:
-  BackToVideo:
-    description: Close open menus and return toward normal video
+  ExampleMenuKey:
+    description: Send one ordinary menu key after reviewing it for your TV
+    confirmBeforeRun: false
+    verified: false
+    verificationPasses: 0
     steps:
+      - key: KEY_MENU
+        delay: ${shortWait}
+
+  ExampleSequence:
+    description: Demonstrate a nested call, explicit wait, and return key
+    confirmBeforeRun: true
+    verified: false
+    verificationPasses: 0
+    steps:
+      - call: ExampleMenuKey
+      - delay: 500ms
       - key: KEY_RETURN
-        repeat: 5
-        delay: ${navigationDelay}
-
-  OpenSettings:
-    description: Return to video and open the normal settings menu
-    steps:
-      - call: BackToVideo
-      - key: KEY_MENU
-      - delay: ${settleDelay}
-
-  TestNavigation:
-    description: Phase 3 repeat, delay, and nesting verification macro
-    steps:
-      - call: BackToVideo
-      - delay: ${settleDelay}
-      - key: KEY_MENU
-      - delay: ${settleDelay}
-      - key: KEY_DOWN
-        repeat: 4
-        delay: ${navigationDelay}
-      - key: KEY_ENTER

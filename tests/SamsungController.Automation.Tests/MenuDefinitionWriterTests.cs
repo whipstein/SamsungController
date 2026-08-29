@@ -16,7 +16,7 @@ public sealed class MenuDefinitionWriterTests : IDisposable
             "test-menu",
             "Owner's Test Menu",
             "Test TV",
-            new MenuDefinitionContext("1296", "SDR", "Filmmaker Mode", "Home Theater System"),
+            new MenuDefinitionContext("example-fw", "SDR", "Movie", "HDMI 1"),
             [
                 new MenuNode("normal-video", "Normal video"),
                 new MenuNode("settings", "Settings", "normal-video", "Owner's settings")

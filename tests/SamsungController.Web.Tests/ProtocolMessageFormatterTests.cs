@@ -76,13 +76,13 @@ public sealed class ProtocolMessageFormatterTests
             """
             {
               "device": {
-                "duid": "uuid:386c3ab5-5bf4-4d84-9e10-134876190ce9",
-                "ip": "192.168.7.50",
+                "duid": "uuid:00000000-1111-4222-8333-444444444444",
+                "ip": "192.0.2.50",
                 "ipv6": "fe80::1",
                 "developerIP": "0.0.0.0",
-                "wifiMac": "80:0d:3f:b9:d3:d5"
+                "wifiMac": "02:00:00:00:00:01"
               },
-              "uri": "https://192.168.7.50:8002/api/v2/"
+              "uri": "https://192.0.2.50:8002/api/v2/"
             }
             """);
 
@@ -91,11 +91,11 @@ public sealed class ProtocolMessageFormatterTests
             revealSensitive: false,
             revealDeviceIdentifiers: false);
 
-        Assert.DoesNotContain("386c3ab5", formatted, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("192.168.7.50", formatted, StringComparison.Ordinal);
+        Assert.DoesNotContain("00000000-1111", formatted, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("192.0.2.50", formatted, StringComparison.Ordinal);
         Assert.DoesNotContain("fe80::1", formatted, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("0.0.0.0", formatted, StringComparison.Ordinal);
-        Assert.DoesNotContain("80:0d:3f", formatted, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("02:00:00", formatted, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("[redacted-uuid]", formatted, StringComparison.Ordinal);
         Assert.Contains("[redacted-mac]", formatted, StringComparison.Ordinal);
         Assert.Contains("[redacted-ip]", formatted, StringComparison.Ordinal);
@@ -108,9 +108,9 @@ public sealed class ProtocolMessageFormatterTests
             """
             {
               "token": "pairing-secret",
-              "duid": "uuid:386c3ab5-5bf4-4d84-9e10-134876190ce9",
-              "ip": "192.168.7.50",
-              "wifiMac": "80:0d:3f:b9:d3:d5"
+              "duid": "uuid:00000000-1111-4222-8333-444444444444",
+              "ip": "192.0.2.50",
+              "wifiMac": "02:00:00:00:00:01"
             }
             """);
 
@@ -120,15 +120,15 @@ public sealed class ProtocolMessageFormatterTests
             revealDeviceIdentifiers: true);
 
         Assert.DoesNotContain("pairing-secret", formatted, StringComparison.Ordinal);
-        Assert.Contains("386c3ab5", formatted, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("192.168.7.50", formatted, StringComparison.Ordinal);
-        Assert.Contains("80:0d:3f", formatted, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("00000000-1111", formatted, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("192.0.2.50", formatted, StringComparison.Ordinal);
+        Assert.Contains("02:00:00", formatted, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public void RedactsIpAddressInProtocolChannelText()
     {
-        const string endpoint = "https://192.168.7.50:8002/api/v2/";
+        const string endpoint = "https://192.0.2.50:8002/api/v2/";
 
         var redacted = ProtocolMessageFormatter.FormatIdentifierText(
             endpoint,
