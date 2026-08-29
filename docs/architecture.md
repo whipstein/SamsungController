@@ -132,14 +132,15 @@ referenced branches must first have their traversal, anchor, or return definitio
 removed.
 
 Nodes also carry interaction metadata: submenu, slider, selection, or switch,
-plus a required declared default for value-bearing controls. Conditional
+plus a required declared default for value-bearing controls. Selections persist
+an ordered, unique option list and require their default to match it. Conditional
 `disabledWhen` rules reference another value-bearing node and retain gray rows in
 their ordered topology. Default-value evaluation is descriptive UI state rather
 than telemetry; it does not alter the planner's explicit recorded operations.
 
 An indented-outline planner can add or synchronize an entire branch in one
 atomic write. It reuses matching stable IDs, previews additions, updates,
-reordering, removals, interaction types, defaults, and disabled rules, and
+reordering, removals, interaction types, defaults, selection options, and disabled rules, and
 refuses to remove nodes referenced by recorded behavior.
 
 Named menu configurations describe settings-dependent visible layouts inside a

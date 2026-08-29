@@ -291,7 +291,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         node.ControlType,
                         node.DefaultValue,
                         node.DisabledWhen ?? [],
-                        IsMenuNodeDisabledByDefault(definition, node)))
+                        IsMenuNodeDisabledByDefault(definition, node),
+                        node.SelectionOptions ?? []))
                     .ToArray();
             var anchors = definition is null
                 ? []
@@ -3752,6 +3753,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 .Select(condition => new MenuNodeDisabledCondition(
                     condition.SettingNodeId.Trim(),
                     condition.EqualsValue.Trim()))
+                .ToArray() ?? [],
+            request.SelectionOptions?
+                .Select(option => option.Trim())
                 .ToArray() ?? []);
 
     private static MenuRecordingRequest NormalizeRecordingRequest(MenuRecordingRequest request) =>

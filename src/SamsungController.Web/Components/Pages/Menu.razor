@@ -228,9 +228,12 @@
             _ => node.ControlType.ToString()
         };
         var defaultValue = node.DefaultValue is null ? string.Empty : $" · default {node.DefaultValue}";
+        var options = node.SelectionOptions.Count == 0
+            ? string.Empty
+            : " · choices " + string.Join(" / ", node.SelectionOptions);
         if (node.DisabledWhen.Count == 0)
         {
-            return control + defaultValue;
+            return control + defaultValue + options;
         }
 
         var rules = node.DisabledWhen.Select(condition =>
@@ -240,7 +243,7 @@
                 StringComparison.OrdinalIgnoreCase));
             return $"{setting?.Label ?? condition.SettingNodeId} = {condition.EqualsValue}";
         });
-        return control + defaultValue
+        return control + defaultValue + options
                + (node.IsDisabledByDefault ? " · disabled by default when " : " · disabled when ")
                + string.Join(" or ", rules);
     }

@@ -32,7 +32,14 @@ public sealed class MenuDefinitionWriterTests : IDisposable
                     "settings",
                     ControlType: MenuControlType.Slider,
                     DefaultValue: "50",
-                    DisabledWhen: [new MenuNodeDisabledCondition("adaptive-picture", "on")])
+                    DisabledWhen: [new MenuNodeDisabledCondition("adaptive-picture", "on")]),
+                new MenuNode(
+                    "picture-mode",
+                    "Picture Mode",
+                    "settings",
+                    ControlType: MenuControlType.Selection,
+                    DefaultValue: "Movie",
+                    SelectionOptions: ["Standard", "Movie", "Filmmaker Mode"])
             ],
             [
                 new MenuTransition(
@@ -95,6 +102,9 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         var disabledCondition = Assert.Single(reparsed.Nodes["brightness"].DisabledWhen!);
         Assert.Equal("adaptive-picture", disabledCondition.SettingNodeId);
         Assert.Equal("on", disabledCondition.EqualsValue);
+        Assert.Equal(
+            ["Standard", "Movie", "Filmmaker Mode"],
+            reparsed.Nodes["picture-mode"].SelectionOptions);
         Assert.True(reparsed.Anchors["normal"].Verified);
         Assert.Equal("standard", reparsed.Anchors["normal"].ConfigurationId);
         Assert.Equal("settings", reparsed.Anchors["normal"].ValidationSourceNodeId);

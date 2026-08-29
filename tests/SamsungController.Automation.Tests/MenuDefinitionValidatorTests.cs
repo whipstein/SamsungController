@@ -62,7 +62,25 @@ public sealed class MenuDefinitionValidatorTests
                     [
                         new MenuNodeDisabledCondition("missing", "on"),
                         new MenuNodeDisabledCondition("menu", "open")
-                    ])
+                    ]),
+                new MenuNode(
+                    "picture-mode",
+                    "Picture Mode",
+                    "menu",
+                    ControlType: MenuControlType.Selection,
+                    DefaultValue: "Filmmaker Mode",
+                    SelectionOptions: ["Standard", "Movie", "movie"]),
+                new MenuNode(
+                    "color-tone",
+                    "Color Tone",
+                    "menu",
+                    ControlType: MenuControlType.Selection,
+                    DefaultValue: "Warm2"),
+                new MenuNode(
+                    "dependent",
+                    "Dependent",
+                    "menu",
+                    DisabledWhen: [new MenuNodeDisabledCondition("picture-mode", "Dynamic")])
             ],
             [],
             []);
@@ -73,5 +91,9 @@ public sealed class MenuDefinitionValidatorTests
         Assert.Contains(errors, error => error.Message.Contains("slider must define", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(errors, error => error.Message.Contains("does not exist", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(errors, error => error.Message.Contains("must be a slider", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(errors, error => error.Message.Contains("must match an available option", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(errors, error => error.Message.Contains("option 'movie' is duplicated", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(errors, error => error.Message.Contains("at least one available option", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(errors, error => error.Message.Contains("not an available option", StringComparison.OrdinalIgnoreCase));
     }
 }

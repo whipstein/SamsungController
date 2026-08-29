@@ -69,6 +69,12 @@ internal static class MenuTopologyOutlinePlanner
             var disabledWhen = entry.DisabledWhenSpecified
                 ? entry.DisabledWhen
                 : existing?.DisabledWhen ?? [];
+            var selectionOptions = entry.SelectionOptionsSpecified
+                ? entry.SelectionOptions
+                : entry.ControlType is not null
+                  && entry.ControlType != MenuControlType.Selection
+                    ? []
+                    : existing?.SelectionOptions ?? [];
             var node = new MenuNode(
                 nodeId,
                 entry.Label,
@@ -76,7 +82,8 @@ internal static class MenuTopologyOutlinePlanner
                 existing?.Description,
                 controlType,
                 defaultValue,
-                disabledWhen);
+                disabledWhen,
+                selectionOptions);
             nodesById[node.Id] = node;
             if (!plannedChildren.TryGetValue(resolvedParentId, out var children))
             {
@@ -100,6 +107,7 @@ internal static class MenuTopologyOutlinePlanner
                      || !string.Equals(existing.ParentId, node.ParentId, StringComparison.OrdinalIgnoreCase)
                      || existing.ControlType != node.ControlType
                      || !string.Equals(existing.DefaultValue, node.DefaultValue, StringComparison.Ordinal)
+                     || !SequenceEqual(existing.SelectionOptions, node.SelectionOptions)
                      || !ConditionsEqual(existing.DisabledWhen, node.DisabledWhen))
             {
                 updatedCount++;
@@ -247,6 +255,8 @@ internal static class MenuTopologyOutlinePlanner
         string? defaultValue = null;
         var disabledWhenSpecified = false;
         IReadOnlyList<MenuNodeDisabledCondition> disabledWhen = [];
+        var selectionOptionsSpecified = false;
+        IReadOnlyList<string> selectionOptions = [];
         if (label.EndsWith('}'))
         {
             var openingBrace = label.LastIndexOf(" {", StringComparison.Ordinal);
@@ -281,6 +291,14 @@ internal static class MenuTopologyOutlinePlanner
                     continue;
                 }
 
+                if (rawPart.StartsWith("options=", StringComparison.OrdinalIgnoreCase))
+                {
+                    selectionOptionsSpecified = true;
+                    selectionOptions = rawPart["options=".Length..]
+                        .Split('|', StringSplitOptions.TrimEntries);
+                    continue;
+                }
+
                 var typeValue = rawPart.StartsWith("type=", StringComparison.OrdinalIgnoreCase)
                     ? rawPart["type=".Length..]
                     : rawPart;
@@ -309,7 +327,9 @@ internal static class MenuTopologyOutlinePlanner
             defaultValueSpecified,
             string.IsNullOrWhiteSpace(defaultValue) ? null : defaultValue,
             disabledWhenSpecified,
-            disabledWhen);
+            disabledWhen,
+            selectionOptionsSpecified,
+            selectionOptions);
     }
 
     private static MenuControlType ParseControlType(string value, int lineNumber)
@@ -641,6 +661,18 @@ internal static class MenuTopologyOutlinePlanner
                        StringComparison.Ordinal));
     }
 
+    private static bool SequenceEqual(
+        IReadOnlyList<string>? left,
+        IReadOnlyList<string>? right)
+    {
+        var leftItems = left ?? [];
+        var rightItems = right ?? [];
+        return leftItems.Count == rightItems.Count
+               && leftItems.Zip(rightItems).All(pair => pair.First.Equals(
+                   pair.Second,
+                   StringComparison.Ordinal));
+    }
+
     private sealed record OutlineEntry(
         int LineNumber,
         int Depth,
@@ -650,5 +682,7 @@ internal static class MenuTopologyOutlinePlanner
         bool DefaultValueSpecified,
         string? DefaultValue,
         bool DisabledWhenSpecified,
-        IReadOnlyList<MenuNodeDisabledCondition> DisabledWhen);
+        IReadOnlyList<MenuNodeDisabledCondition> DisabledWhen,
+        bool SelectionOptionsSpecified,
+        IReadOnlyList<string> SelectionOptions);
 }

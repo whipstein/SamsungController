@@ -166,7 +166,7 @@
                                     }
                                 </div>
                                 <div class="menu-outline-step setup-step-anchor" @ref="TopologyStepElement">
-                                <p>Paste the visible hierarchy using two spaces per level. Add control details as <code>{slider; default=50}</code>, <code>{selection; default=Warm2}</code>, or <code>{switch; default=off}</code>. A disabled rule uses a setting's stable ID: <code>{slider; default=50; disabledWhen=adaptive-picture=on}</code>. Add <code>[stable-id]</code> last only when identity must be explicit.</p>
+                                <p>Paste the visible hierarchy using two spaces per level. Add control details as <code>{slider; default=50}</code>, <code>{selection; default=Warm2; options=Standard|Warm1|Warm2}</code>, or <code>{switch; default=off}</code>. A disabled rule uses a setting's stable ID: <code>{slider; default=50; disabledWhen=adaptive-picture=on}</code>. Add <code>[stable-id]</code> last only when identity must be explicit.</p>
                                 <div class="bulk-topology-controls">
                                     <label>
                                         <span>PLACE OUTLINE UNDER</span>
@@ -186,7 +186,7 @@
                                               @ref="TopologyOutlineElement"
                                               rows="11"
                                               spellcheck="false"
-                                              placeholder="Settings {submenu}&#10;  Picture {submenu}&#10;    Expert Settings {submenu}&#10;      Brightness {slider; default=50}&#10;      Color Tone {selection; default=Warm2}&#10;      Adaptive Picture {switch; default=off}"
+                                              placeholder="Settings {submenu}&#10;  Picture {submenu}&#10;    Expert Settings {submenu}&#10;      Brightness {slider; default=50}&#10;      Color Tone {selection; default=Warm2; options=Standard|Warm1|Warm2}&#10;      Adaptive Picture {switch; default=off}"
                                               disabled="@(!CanEditMenuTree)"></textarea>
                                 </label>
                                 <small class="bulk-topology-indent-note">Enter starts the next line with the same indentation as the current line.</small>
@@ -327,14 +327,58 @@
                                         <option value="@MenuControlType.Switch">Switch</option>
                                     </select>
                                 </label>
-                                @if (NodeEditorControlType != MenuControlType.Submenu)
+                                @if (NodeEditorControlType == MenuControlType.Selection)
+                                {
+                                    <label>
+                                        <span>Default selection</span>
+                                        <select @bind="NodeEditorDefaultValue" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">
+                                            <option value="">Choose an available option</option>
+                                            @foreach (var option in SelectionOptionChoices)
+                                            {
+                                                <option value="@option">@option</option>
+                                            }
+                                        </select>
+                                    </label>
+                                }
+                                else if (NodeEditorControlType == MenuControlType.Switch)
                                 {
                                     <label>
                                         <span>Default setting</span>
-                                        <input @bind="NodeEditorDefaultValue" placeholder="@(NodeEditorControlType == MenuControlType.Switch ? "on or off" : "Value shown initially")" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
+                                        <select @bind="NodeEditorDefaultValue" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">
+                                            <option value="off">Off</option>
+                                            <option value="on">On</option>
+                                        </select>
+                                    </label>
+                                }
+                                else if (NodeEditorControlType == MenuControlType.Slider)
+                                {
+                                    <label>
+                                        <span>Default setting</span>
+                                        <input @bind="NodeEditorDefaultValue" placeholder="Value shown initially" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
                                     </label>
                                 }
                             </div>
+                            @if (NodeEditorControlType == MenuControlType.Selection)
+                            {
+                                <div class="selection-option-editor">
+                                    <header>
+                                        <span><b>AVAILABLE SELECTIONS</b><small>Keep these in the same order shown on the TV. The default must be one of them.</small></span>
+                                        <button type="button" class="secondary-action" @onclick="AddSelectionOption" disabled="@(!CanAddSelectionOption)">+ Add option</button>
+                                    </header>
+                                    @for (var index = 0; index < NodeEditorSelectionOptions.Count; index++)
+                                    {
+                                        var optionIndex = index;
+                                        var option = NodeEditorSelectionOptions[optionIndex];
+                                        <div class="selection-option-row">
+                                            <span>@(optionIndex + 1)</span>
+                                            <input @bind="option.Value" placeholder="Selection name" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
+                                            <button type="button" title="Move option up" aria-label="Move option up" @onclick="() => MoveSelectionOption(optionIndex, -1)" disabled="@(!CanMoveSelectionOption(optionIndex, -1))">↑</button>
+                                            <button type="button" title="Move option down" aria-label="Move option down" @onclick="() => MoveSelectionOption(optionIndex, 1)" disabled="@(!CanMoveSelectionOption(optionIndex, 1))">↓</button>
+                                            <button type="button" class="recorded-step-delete" title="Remove option" aria-label="Remove selection option" @onclick="() => RemoveSelectionOption(optionIndex)" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">×</button>
+                                        </div>
+                                    }
+                                </div>
+                            }
                             <div class="node-disabled-rule-editor">
                                 <header>
                                     <span><b>DISABLED / GRAYED-OUT RULES</b><small>The item remains in menu order. It is disabled when any listed setting equals the specified value.</small></span>
@@ -350,6 +394,7 @@
                                     {
                                         var conditionIndex = index;
                                         var condition = NodeEditorDisabledConditions[conditionIndex];
+                                        var conditionValues = GetDisabledConditionChoices(condition.SettingNodeId);
                                         <div class="node-disabled-rule-row">
                                             <span>Disabled when</span>
                                             <select @bind="condition.SettingNodeId" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">
@@ -360,7 +405,20 @@
                                                 }
                                             </select>
                                             <span>equals</span>
-                                            <input @bind="condition.EqualsValue" placeholder="on" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
+                                            @if (conditionValues.Count > 0)
+                                            {
+                                                <select @bind="condition.EqualsValue" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">
+                                                    <option value="">Choose value</option>
+                                                    @foreach (var value in conditionValues)
+                                                    {
+                                                        <option value="@value">@value</option>
+                                                    }
+                                                </select>
+                                            }
+                                            else
+                                            {
+                                                <input @bind="condition.EqualsValue" placeholder="Value" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
+                                            }
                                             <button type="button" class="recorded-step-delete" aria-label="Remove disabled rule" @onclick="() => RemoveNodeDisabledCondition(conditionIndex)" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">×</button>
                                         </div>
                                     }
@@ -952,6 +1010,7 @@
     private string NodeEditorDescription { get; set; } = string.Empty;
     private MenuControlType NodeEditorControlType { get; set; } = MenuControlType.Submenu;
     private string NodeEditorDefaultValue { get; set; } = string.Empty;
+    private List<SelectionOptionEdit> NodeEditorSelectionOptions { get; } = [];
     private List<NodeDisabledConditionEdit> NodeEditorDisabledConditions { get; } = [];
     private bool ConfirmMenuNodeDelete { get; set; }
     private string CustomKey { get; set; } = "KEY_SOURCE";
@@ -1055,6 +1114,14 @@
             && !node.Id.Equals(EditingNodeId, StringComparison.OrdinalIgnoreCase))
         .OrderBy(node => node.Path, StringComparer.OrdinalIgnoreCase)
         .ToArray();
+    private IReadOnlyList<string> SelectionOptionChoices => NodeEditorSelectionOptions
+        .Select(option => option.Value.Trim())
+        .Where(option => !string.IsNullOrWhiteSpace(option))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+    private bool CanAddSelectionOption => CanEditMenuTree
+        && NodeEditorControlType == MenuControlType.Selection
+        && NodeEditorSelectionOptions.Count < 100;
     private bool CanAddNodeDisabledCondition => CanEditMenuTree
         && NodeEditorDisabledConditions.Count < 20
         && AvailableDisabledConditionSettings.Count > 0;
@@ -1151,6 +1218,7 @@
     private bool CanSaveOrUpdateMenuNode => CanEditMenuTree
         && !string.IsNullOrWhiteSpace(NodeEditorLabel)
         && IsNodeEditorDefaultValid
+        && IsSelectionOptionsValid
         && NodeEditorDisabledConditions.All(condition =>
             !string.IsNullOrWhiteSpace(condition.SettingNodeId)
             && !string.IsNullOrWhiteSpace(condition.EqualsValue))
@@ -1164,8 +1232,18 @@
         MenuControlType.Submenu => string.IsNullOrWhiteSpace(NodeEditorDefaultValue),
         MenuControlType.Switch => NodeEditorDefaultValue.Equals("on", StringComparison.OrdinalIgnoreCase)
             || NodeEditorDefaultValue.Equals("off", StringComparison.OrdinalIgnoreCase),
+        MenuControlType.Selection => SelectionOptionChoices.Any(option => option.Equals(
+            NodeEditorDefaultValue,
+            StringComparison.OrdinalIgnoreCase)),
         _ => !string.IsNullOrWhiteSpace(NodeEditorDefaultValue)
     };
+    private bool IsSelectionOptionsValid => NodeEditorControlType == MenuControlType.Selection
+        ? NodeEditorSelectionOptions.Count > 0
+          && NodeEditorSelectionOptions.All(option =>
+              !string.IsNullOrWhiteSpace(option.Value)
+              && option.Value.Trim().Length <= 100)
+          && SelectionOptionChoices.Count == NodeEditorSelectionOptions.Count
+        : NodeEditorSelectionOptions.Count == 0;
     private bool CanDeleteMenuNode => EditingNodeId is not null && !IsBusy && !Authoring.IsRecording
         && !Navigation.IsRunning && !Snapshot.MacroRunning
         && Navigation.Nodes.FirstOrDefault(node => node.Id.Equals(EditingNodeId, StringComparison.OrdinalIgnoreCase))?.ParentId is not null;
@@ -1679,6 +1757,7 @@
         NodeEditorParentId = retainedParentId;
         NodeEditorControlType = MenuControlType.Submenu;
         NodeEditorDefaultValue = string.Empty;
+        NodeEditorSelectionOptions.Clear();
         NodeEditorDisabledConditions.Clear();
         ConfirmMenuNodeDelete = false;
         LocalError = null;
@@ -1707,6 +1786,7 @@
             NodeEditorDescription = string.Empty;
             NodeEditorControlType = MenuControlType.Submenu;
             NodeEditorDefaultValue = string.Empty;
+            NodeEditorSelectionOptions.Clear();
             NodeEditorDisabledConditions.Clear();
             LocalError = null;
         }
@@ -1723,6 +1803,9 @@
         NodeEditorDescription = node.Description ?? string.Empty;
         NodeEditorControlType = node.ControlType;
         NodeEditorDefaultValue = node.DefaultValue ?? string.Empty;
+        NodeEditorSelectionOptions.Clear();
+        NodeEditorSelectionOptions.AddRange(node.SelectionOptions.Select(option =>
+            new SelectionOptionEdit(option)));
         NodeEditorDisabledConditions.Clear();
         NodeEditorDisabledConditions.AddRange(node.DisabledWhen.Select(condition =>
             new NodeDisabledConditionEdit(condition)));
@@ -1735,12 +1818,23 @@
         if (NodeEditorControlType == MenuControlType.Submenu)
         {
             NodeEditorDefaultValue = string.Empty;
+            NodeEditorSelectionOptions.Clear();
         }
-        else if (NodeEditorControlType == MenuControlType.Switch
-                 && !NodeEditorDefaultValue.Equals("on", StringComparison.OrdinalIgnoreCase)
-                 && !NodeEditorDefaultValue.Equals("off", StringComparison.OrdinalIgnoreCase))
+        else if (NodeEditorControlType == MenuControlType.Selection)
         {
-            NodeEditorDefaultValue = "off";
+            NodeEditorDefaultValue = string.Empty;
+            NodeEditorSelectionOptions.Clear();
+            NodeEditorSelectionOptions.Add(new SelectionOptionEdit(string.Empty));
+        }
+        else
+        {
+            NodeEditorSelectionOptions.Clear();
+            if (NodeEditorControlType == MenuControlType.Switch
+                && !NodeEditorDefaultValue.Equals("on", StringComparison.OrdinalIgnoreCase)
+                && !NodeEditorDefaultValue.Equals("off", StringComparison.OrdinalIgnoreCase))
+            {
+                NodeEditorDefaultValue = "off";
+            }
         }
 
         LocalError = null;
@@ -1757,6 +1851,19 @@
         LocalError = null;
     }
 
+    private IReadOnlyList<string> GetDisabledConditionChoices(string settingNodeId)
+    {
+        var setting = Navigation.Nodes.FirstOrDefault(node => node.Id.Equals(
+            settingNodeId,
+            StringComparison.OrdinalIgnoreCase));
+        return setting?.ControlType switch
+        {
+            MenuControlType.Selection => setting.SelectionOptions,
+            MenuControlType.Switch => ["off", "on"],
+            _ => []
+        };
+    }
+
     private void RemoveNodeDisabledCondition(int index)
     {
         if (index >= 0 && index < NodeEditorDisabledConditions.Count)
@@ -1767,12 +1874,62 @@
         LocalError = null;
     }
 
+    private void AddSelectionOption()
+    {
+        if (CanAddSelectionOption)
+        {
+            NodeEditorSelectionOptions.Add(new SelectionOptionEdit(string.Empty));
+        }
+
+        LocalError = null;
+    }
+
+    private void RemoveSelectionOption(int index)
+    {
+        if (index >= 0 && index < NodeEditorSelectionOptions.Count)
+        {
+            var removed = NodeEditorSelectionOptions[index].Value;
+            NodeEditorSelectionOptions.RemoveAt(index);
+            if (removed.Equals(NodeEditorDefaultValue, StringComparison.OrdinalIgnoreCase))
+            {
+                NodeEditorDefaultValue = string.Empty;
+            }
+        }
+
+        LocalError = null;
+    }
+
+    private bool CanMoveSelectionOption(int index, int direction) =>
+        CanEditMenuTree
+        && NodeEditorControlType == MenuControlType.Selection
+        && index >= 0
+        && index < NodeEditorSelectionOptions.Count
+        && index + direction >= 0
+        && index + direction < NodeEditorSelectionOptions.Count;
+
+    private void MoveSelectionOption(int index, int direction)
+    {
+        if (!CanMoveSelectionOption(index, direction))
+        {
+            return;
+        }
+
+        var destination = index + direction;
+        (NodeEditorSelectionOptions[index], NodeEditorSelectionOptions[destination]) =
+            (NodeEditorSelectionOptions[destination], NodeEditorSelectionOptions[index]);
+        LocalError = null;
+    }
+
     private IReadOnlyList<MenuNodeDisabledCondition> CreateNodeDisabledConditions() =>
         NodeEditorDisabledConditions
             .Select(condition => new MenuNodeDisabledCondition(
                 condition.SettingNodeId,
                 condition.EqualsValue))
             .ToArray();
+
+    private IReadOnlyList<string> CreateSelectionOptions() => NodeEditorSelectionOptions
+        .Select(option => option.Value.Trim())
+        .ToArray();
 
     private bool CanMoveMenuNode(MenuNodeSummary node, int direction)
     {
@@ -1821,7 +1978,8 @@
                 NodeEditorDescription,
                 NodeEditorControlType,
                 NodeEditorDefaultValue,
-                CreateNodeDisabledConditions());
+                CreateNodeDisabledConditions(),
+                CreateSelectionOptions());
             await Controller.UpdateMenuNodeAsync(nodeId, request);
 
             Refresh();
@@ -1842,7 +2000,8 @@
             NodeEditorDescription,
             NodeEditorControlType,
             NodeEditorDefaultValue,
-            CreateNodeDisabledConditions());
+            CreateNodeDisabledConditions(),
+            CreateSelectionOptions());
         await Controller.CreateMenuNodeAsync(request);
 
         Refresh();
@@ -2540,6 +2699,11 @@
             details.Add($"default={node.DefaultValue}");
         }
 
+        if (node.SelectionOptions.Count > 0)
+        {
+            details.Add("options=" + string.Join('|', node.SelectionOptions));
+        }
+
         if (node.DisabledWhen.Count > 0)
         {
             details.Add("disabledWhen=" + string.Join('|', node.DisabledWhen.Select(condition =>
@@ -2571,7 +2735,10 @@
         {
             MenuControlType.Submenu => "Press OK to open this sub-menu.",
             MenuControlType.Slider => "Use Left/Right to change the slider." + defaultSuffix,
-            MenuControlType.Selection => "Press OK to open its choices, then select a value." + defaultSuffix,
+            MenuControlType.Selection => "Press OK to open its choices, then select a value. Available: "
+                                         + string.Join(", ", node.SelectionOptions)
+                                         + "."
+                                         + defaultSuffix,
             MenuControlType.Switch => "Press OK to toggle the switch." + defaultSuffix,
             _ => "Follow the recorded interaction."
         };
@@ -2687,5 +2854,10 @@
         public string SettingNodeId { get; set; }
 
         public string EqualsValue { get; set; }
+    }
+
+    private sealed class SelectionOptionEdit(string value)
+    {
+        public string Value { get; set; } = value;
     }
 }

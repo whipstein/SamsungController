@@ -49,6 +49,15 @@ public sealed class MenuDefinitionWriter
             AppendOptionalScalar(yaml, 4, "description", node.Description);
             AppendScalar(yaml, 4, "controlType", FormatControlType(node.ControlType));
             AppendOptionalScalar(yaml, 4, "defaultValue", node.DefaultValue);
+            if (node.SelectionOptions is { Count: > 0 })
+            {
+                yaml.AppendLine("    options:");
+                foreach (var option in node.SelectionOptions)
+                {
+                    yaml.Append("      - ").AppendLine(Quote(option));
+                }
+            }
+
             if (node.DisabledWhen is { Count: > 0 })
             {
                 yaml.AppendLine("    disabledWhen:");

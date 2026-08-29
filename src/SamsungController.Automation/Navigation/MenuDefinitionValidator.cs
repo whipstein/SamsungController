@@ -182,6 +182,58 @@ public sealed class MenuDefinitionValidator
                 "A switch default value must be 'on' or 'off'."));
         }
 
+        var selectionOptions = node.SelectionOptions ?? [];
+        if (node.ControlType == MenuControlType.Selection)
+        {
+            if (selectionOptions.Count == 0)
+            {
+                errors.Add(new MenuDefinitionValidationError(
+                    location,
+                    "A selection must define at least one available option."));
+            }
+            else if (hasDefaultValue && !selectionOptions.Any(option => option.Equals(
+                         node.DefaultValue,
+                         StringComparison.OrdinalIgnoreCase)))
+            {
+                errors.Add(new MenuDefinitionValidationError(
+                    location,
+                    $"Selection default value '{node.DefaultValue}' must match an available option."));
+            }
+        }
+        else if (selectionOptions.Count > 0)
+        {
+            errors.Add(new MenuDefinitionValidationError(
+                location,
+                "Only a selection can define available options."));
+        }
+
+        if (selectionOptions.Count > 100)
+        {
+            errors.Add(new MenuDefinitionValidationError(
+                location,
+                "A selection can define at most 100 available options."));
+        }
+
+        var uniqueOptions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var index = 0; index < selectionOptions.Count; index++)
+        {
+            var optionLocation = $"{location} option {index + 1}";
+            ValidateRequired(optionLocation, "value", selectionOptions[index], errors);
+            if (selectionOptions[index].Length > 100)
+            {
+                errors.Add(new MenuDefinitionValidationError(
+                    optionLocation,
+                    "A selection option cannot exceed 100 characters."));
+            }
+
+            if (!uniqueOptions.Add(selectionOptions[index]))
+            {
+                errors.Add(new MenuDefinitionValidationError(
+                    optionLocation,
+                    $"Selection option '{selectionOptions[index]}' is duplicated."));
+            }
+        }
+
         var conditions = node.DisabledWhen ?? [];
         if (conditions.Count > 20)
         {
@@ -220,6 +272,23 @@ public sealed class MenuDefinitionValidator
                 errors.Add(new MenuDefinitionValidationError(
                     conditionLocation,
                     $"Setting node '{condition.SettingNodeId}' must be a slider, selection, or switch."));
+            }
+            else if (setting.ControlType == MenuControlType.Selection
+                     && !(setting.SelectionOptions ?? []).Any(option => option.Equals(
+                         condition.EqualsValue,
+                         StringComparison.OrdinalIgnoreCase)))
+            {
+                errors.Add(new MenuDefinitionValidationError(
+                    conditionLocation,
+                    $"Value '{condition.EqualsValue}' is not an available option for selection '{condition.SettingNodeId}'."));
+            }
+            else if (setting.ControlType == MenuControlType.Switch
+                     && !condition.EqualsValue.Equals("on", StringComparison.OrdinalIgnoreCase)
+                     && !condition.EqualsValue.Equals("off", StringComparison.OrdinalIgnoreCase))
+            {
+                errors.Add(new MenuDefinitionValidationError(
+                    conditionLocation,
+                    $"Value '{condition.EqualsValue}' for switch '{condition.SettingNodeId}' must be 'on' or 'off'."));
             }
         }
     }

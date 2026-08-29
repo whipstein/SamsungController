@@ -103,6 +103,16 @@ nodes:
       - setting: adaptive-picture
         equals: on
 
+  - id: picture-mode
+    label: Picture Mode
+    parent: settings
+    controlType: selection
+    defaultValue: Filmmaker Mode
+    options:
+      - Standard
+      - Movie
+      - Filmmaker Mode
+
 anchors:
   - id: normal-video
     label: Return to normal video
@@ -149,10 +159,12 @@ contributes to direct or calculated navigation.
 
 Each node also describes how the highlighted row behaves. `controlType` is
 `submenu`, `slider`, `selection`, or `switch`; older definitions that omit it
-continue to load as `submenu`. Sliders and selections require a human-readable
-`defaultValue`, and switches require `on` or `off`. A submenu has no value.
-These defaults document the expected initial TV setup; SamsungController cannot
-read the live value from the TV.
+continue to load as `submenu`. Sliders require a human-readable `defaultValue`,
+and switches require `on` or `off`. A selection requires an ordered `options`
+list plus a `defaultValue` that matches one of those options; duplicate choices
+are rejected. Keep the list in the same order displayed by the TV. A submenu
+has no value. These defaults document the expected initial TV setup;
+SamsungController cannot read the live value from the TV.
 
 `disabledWhen` documents rows that remain visible and occupy their normal place
 in the menu but become unavailable or gray. Each condition names another
@@ -224,11 +236,12 @@ can be planned or sent.
    labels under the same parent reuse their stable IDs; append `[stable-id]` to a
    line when identity must be explicit. Add behavior metadata in braces before
    the stable ID, for example `Brightness {slider; default=50}`, `Picture Mode
-   {selection; default=Filmmaker Mode}`, or `Adaptive Picture {switch;
-   default=off}`. A dependent gray row can be written as `Brightness {slider;
+   {selection; default=Filmmaker Mode; options=Standard|Movie|Filmmaker Mode}`,
+   or `Adaptive Picture {switch; default=off}`. The option order after
+   `options=` is preserved. A dependent gray row can be written as `Brightness {slider;
    default=50; disabledWhen=adaptive-picture=on}`; separate multiple disabling
-   conditions with `|`. The fine-adjustment editor exposes the same fields as
-   form controls. The safe default preserves unlisted
+   conditions with `|`. The fine-adjustment editor exposes selections as an
+   ordered add/remove/move list and restricts the default to that list. The safe default preserves unlisted
    items. Disable it only to synchronize the complete selected branch; recorded
    references are protected from removal. Applying the outline advances to
    **Record route**. Open **Fine adjustments for individual menu items** only for

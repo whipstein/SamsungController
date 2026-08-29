@@ -16,6 +16,9 @@ public sealed class MenuDefinitionParserTests
         Assert.Equal("Menu / Picture", definition.GetPath("picture"));
         Assert.Equal(MenuControlType.Selection, definition.Nodes["picture"].ControlType);
         Assert.Equal("Movie", definition.Nodes["picture"].DefaultValue);
+        Assert.Equal(
+            ["Standard", "Movie", "Filmmaker Mode"],
+            definition.Nodes["picture"].SelectionOptions);
         var disabledCondition = Assert.Single(definition.Nodes["picture"].DisabledWhen!);
         Assert.Equal("auto-picture", disabledCondition.SettingNodeId);
         Assert.Equal("on", disabledCondition.EqualsValue);
@@ -139,6 +142,10 @@ public sealed class MenuDefinitionParserTests
             parent: menu
             controlType: selection
             defaultValue: Movie
+            options:
+              - Standard
+              - Movie
+              - Filmmaker Mode
             disabledWhen:
               - setting: auto-picture
                 equals: on

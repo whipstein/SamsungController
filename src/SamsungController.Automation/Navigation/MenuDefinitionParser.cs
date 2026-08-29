@@ -16,7 +16,7 @@ public sealed class MenuDefinitionParser
     private static readonly HashSet<string> ConfigurationFields =
         new(["id", "name", "conditions"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> NodeFields =
-        new(["id", "label", "parent", "description", "controlType", "defaultValue", "disabledWhen"], StringComparer.OrdinalIgnoreCase);
+        new(["id", "label", "parent", "description", "controlType", "defaultValue", "options", "disabledWhen"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> DisabledConditionFields =
         new(["setting", "equals"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> AnchorFields =
@@ -185,6 +185,11 @@ public sealed class MenuDefinitionParser
                     ? ParseDisabledConditions(
                         RequireSequence(disabledWhenNode, $"disabledWhen in {context}"),
                         context)
+                    : [],
+                fields.TryGetValue("options", out var optionsNode)
+                    ? ParseSelectionOptions(
+                        RequireSequence(optionsNode, $"options in {context}"),
+                        context)
                     : []));
         }
 
@@ -223,6 +228,21 @@ public sealed class MenuDefinitionParser
         }
 
         return conditions;
+    }
+
+    private static IReadOnlyList<string> ParseSelectionOptions(
+        YamlSequenceNode sequence,
+        string nodeContext)
+    {
+        var options = new List<string>(sequence.Children.Count);
+        for (var index = 0; index < sequence.Children.Count; index++)
+        {
+            options.Add(RequireScalar(
+                sequence.Children[index],
+                $"{nodeContext} option {index + 1}"));
+        }
+
+        return options;
     }
 
     private static IReadOnlyList<MenuAnchor> ParseAnchors(YamlSequenceNode sequence)

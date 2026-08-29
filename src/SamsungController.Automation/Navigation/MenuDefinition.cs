@@ -61,7 +61,8 @@ public sealed record MenuNode(
     string? Description = null,
     MenuControlType ControlType = MenuControlType.Submenu,
     string? DefaultValue = null,
-    IReadOnlyList<MenuNodeDisabledCondition>? DisabledWhen = null);
+    IReadOnlyList<MenuNodeDisabledCondition>? DisabledWhen = null,
+    IReadOnlyList<string>? SelectionOptions = null);
 
 public sealed record MenuOperation(
     string Key,
