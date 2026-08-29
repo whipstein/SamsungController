@@ -179,8 +179,10 @@ can be planned or sent.
 2. Connect in the web interface and open **Build & Verify**.
 3. Follow the highlighted five-step guide. If no definition exists, start with
    **TV profile** and enter the model number and firmware version. The default
-   definition name and file ID are generated from those two values. The YAML is
-   stored in the per-user configuration directory and loaded automatically.
+   definition name uses those two values. The generated file ID also appends
+   signal type, picture mode, and input/source when their value is more specific
+   than `any`. The YAML is stored in the per-user configuration directory and
+   loaded automatically.
 4. In **Configuration**, describe and select the settings-dependent layout that
    is currently visible. In **Menu outline**, load the current branch as an
    indented outline, add the expected menu positions with two spaces

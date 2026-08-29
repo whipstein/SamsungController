@@ -99,7 +99,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task NewDefinitionDefaultsItsNameAndIdFromModelAndFirmware()
+    public async Task NewDefinitionDefaultsItsNameAndIdFromModelFirmwareAndSpecificContext()
     {
         Directory.CreateDirectory(_directory);
         await using var controller = CreateController();
@@ -116,11 +116,37 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
 
         var snapshot = controller.GetMenuNavigationSnapshot();
         Assert.Equal("QN90D · firmware 1296", snapshot.DefinitionName);
+        Assert.EndsWith(
+            "qn90d-1296-sdr-filmmaker-mode-hdmi-1.yaml",
+            snapshot.DefinitionPath,
+            StringComparison.Ordinal);
+
+        var reparsed = await new MenuDefinitionParser().ParseFileAsync(snapshot.DefinitionPath);
+        Assert.Equal("qn90d-1296-sdr-filmmaker-mode-hdmi-1", reparsed.Id);
+        Assert.Equal("QN90D · firmware 1296", reparsed.Name);
+    }
+
+    [Fact]
+    public async Task NewDefinitionFileIdOmitsNonSpecificContextValues()
+    {
+        Directory.CreateDirectory(_directory);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+
+        await controller.CreateMenuDefinitionAsync(new MenuDefinitionCreationRequest(
+            string.Empty,
+            string.Empty,
+            "QN90D",
+            "1296",
+            "any",
+            "unknown",
+            "unrecorded"));
+
+        var snapshot = controller.GetMenuNavigationSnapshot();
         Assert.EndsWith("qn90d-1296.yaml", snapshot.DefinitionPath, StringComparison.Ordinal);
 
         var reparsed = await new MenuDefinitionParser().ParseFileAsync(snapshot.DefinitionPath);
         Assert.Equal("qn90d-1296", reparsed.Id);
-        Assert.Equal("QN90D · firmware 1296", reparsed.Name);
     }
 
     [Fact]
