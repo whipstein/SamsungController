@@ -373,9 +373,22 @@
                 else
                 {
                     <div class="recorded-step-list">
-                        @foreach (var step in Authoring.RecordedSteps)
+                        @for (var index = 0; index < Authoring.RecordedSteps.Count; index++)
                         {
-                            <div><code>@step.Key</code><span>×@step.Repeat · @step.Action · @step.DelayAfter.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture)ms</span></div>
+                            var stepIndex = index;
+                            var step = Authoring.RecordedSteps[stepIndex];
+                            <div class="recorded-step-row">
+                                <code>@step.Key</code>
+                                <div class="recorded-step-details">
+                                    <span>×@step.Repeat · @step.Action · @step.DelayAfter.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture)ms</span>
+                                    <button type="button"
+                                            class="recorded-step-delete"
+                                            title="Delete this captured command"
+                                            aria-label="Delete @step.Key command"
+                                            @onclick="() => Controller.RemoveRecordedMenuCommand(stepIndex)"
+                                            disabled="@(!Authoring.IsRecording || IsBusy || IsSendingKey)">×</button>
+                                </div>
+                            </div>
                         }
                     </div>
                     <div class="recorded-total">@Authoring.RecordedCommandCount button presses captured</div>

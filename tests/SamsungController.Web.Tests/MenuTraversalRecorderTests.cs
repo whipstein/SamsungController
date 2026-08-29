@@ -197,6 +197,60 @@ public sealed class MenuTraversalRecorderTests
         Assert.Equal(1, Assert.Single(recorder.Operations).Repeat);
     }
 
+    [Fact]
+    public void RemoveCommandDeletesTheSelectedCapturedRow()
+    {
+        var recorder = new MenuTraversalRecorder();
+        recorder.Start(new MenuRecordingRequest(
+            MenuAuthoringItemKind.Transition,
+            "open-picture",
+            "Open Picture",
+            "normal-video",
+            "settings",
+            null,
+            null),
+            new MenuTimingProfile());
+        recorder.Record("KEY_DOWN", RemoteKeyAction.Click);
+        recorder.Record("KEY_DOWN", RemoteKeyAction.Click);
+        recorder.Record("KEY_ENTER", RemoteKeyAction.Click);
+        recorder.Record("KEY_RIGHT", RemoteKeyAction.Click);
+
+        recorder.RemoveCommand(1);
+
+        Assert.Collection(
+            recorder.Operations,
+            operation =>
+            {
+                Assert.Equal("KEY_DOWN", operation.Key);
+                Assert.Equal(2, operation.Repeat);
+            },
+            operation => Assert.Equal("KEY_RIGHT", operation.Key));
+    }
+
+    [Fact]
+    public void RemoveCommandUsesTheActiveReturnRecordingPhase()
+    {
+        var recorder = new MenuTraversalRecorder();
+        recorder.Start(new MenuRecordingRequest(
+            MenuAuthoringItemKind.Transition,
+            "open-picture",
+            "Open Picture",
+            "normal-video",
+            "settings",
+            null,
+            null,
+            RecordReturnToVideo: true),
+            new MenuTimingProfile());
+        recorder.Record("KEY_MENU", RemoteKeyAction.Click);
+        recorder.BeginReturnToVideo();
+        recorder.Record("KEY_RETURN", RemoteKeyAction.Click);
+
+        recorder.RemoveCommand(0);
+
+        Assert.Equal("KEY_MENU", Assert.Single(recorder.ForwardOperations).Key);
+        Assert.Empty(recorder.ReturnToVideoOperations);
+    }
+
     private static MenuDefinition CreateDefinition(IReadOnlyList<MenuTransition> transitions) =>
         new(
             "recording-test",

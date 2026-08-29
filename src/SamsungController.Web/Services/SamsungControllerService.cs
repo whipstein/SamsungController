@@ -979,6 +979,16 @@ public sealed class SamsungControllerService : IAsyncDisposable
         NotifyChanged();
     }
 
+    public void RemoveRecordedMenuCommand(int index)
+    {
+        lock (_sync)
+        {
+            _menuRecorder.RemoveCommand(index);
+        }
+
+        NotifyChanged();
+    }
+
     public void ClearRecordedMenuCommands()
     {
         lock (_sync)

@@ -98,6 +98,17 @@ public sealed class MenuTraversalRecorder
         }
     }
 
+    public void RemoveCommand(int index)
+    {
+        var operations = OperationsList;
+        if (!IsRecording || index < 0 || index >= operations.Count)
+        {
+            return;
+        }
+
+        operations.RemoveAt(index);
+    }
+
     public void ClearCommands()
     {
         if (IsRecording)

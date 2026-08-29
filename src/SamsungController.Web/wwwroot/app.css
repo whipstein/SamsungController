@@ -486,9 +486,12 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .capture-empty { min-height: 165px; display: grid; place-items: center; padding: 14px; border: 1px dashed var(--line-strong); border-radius: 7px; color: var(--faint); font-size: 10px; line-height: 1.5; text-align: center; }
 .capture-empty.compact { min-height: 70px; }
 .recorded-step-list { max-height: 300px; overflow: auto; }
-.recorded-step-list div { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.recorded-step-list .recorded-step-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); }
 .recorded-step-list code { color: var(--cyan); font: 9px ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .recorded-step-list span { color: var(--faint); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; white-space: nowrap; }
+.recorded-step-details { display: flex; align-items: center; justify-content: flex-end; gap: 9px; }
+.recorded-step-delete { display: grid; width: 25px; height: 25px; min-width: 25px; padding: 0; place-items: center; border-color: rgba(255,123,123,.26); border-radius: 50%; background: rgba(255,123,123,.06); color: var(--red); font-size: 14px; line-height: 1; }
+.recorded-step-delete:hover:not(:disabled) { border-color: rgba(255,123,123,.65); background: rgba(255,123,123,.13); color: #ffabab; }
 .recorded-total { margin-top: 12px; color: var(--muted); font-size: 9px; }
 .return-strategy-lab { margin-top: 18px; padding: 18px; border: 1px solid rgba(145,178,255,.2); border-radius: 8px; background: rgba(145,178,255,.035); }
 .return-strategy-intro { margin: -4px 0 14px; color: var(--muted); font-size: 10px; line-height: 1.5; }
