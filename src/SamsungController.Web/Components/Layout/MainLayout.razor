@@ -197,8 +197,8 @@
 
     private bool QuickControlsDisabled => Snapshot.ConnectionState != SamsungConnectionState.Connected ||
         Snapshot.MacroRunning || Snapshot.NavigationRunning || Authoring.IsRecording || QuickActionBusy;
-    private bool CanDisconnectFromHeader =>
-        Snapshot.ConnectionState != SamsungConnectionState.Disconnected;
+    private bool CanDisconnectFromHeader => ConnectionStatePresentation.CanDisconnect(
+        Snapshot.ConnectionState);
     private bool HeaderConnectionDisabled => ConnectionControlBusy ||
         Snapshot.MacroRunning || Snapshot.NavigationRunning || Authoring.IsRecording ||
         (!CanDisconnectFromHeader && string.IsNullOrWhiteSpace(Snapshot.Host));

@@ -105,7 +105,8 @@ else if (Snapshot.ConnectionState == SamsungConnectionState.Pairing)
     private string? LocalError { get; set; }
 
     private string? ErrorMessage => LocalError ?? Snapshot.LastError;
-    private bool CanDisconnect => Snapshot.ConnectionState != SamsungConnectionState.Disconnected;
+    private bool CanDisconnect => ConnectionStatePresentation.CanDisconnect(
+        Snapshot.ConnectionState);
     private string TransportLabel => $"{(Secure ? "WSS" : "WS")} : {Port ?? (Secure ? 8002 : 8001)}";
     private string StateClass => Snapshot.ConnectionState switch
     {

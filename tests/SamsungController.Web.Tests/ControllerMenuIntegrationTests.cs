@@ -897,6 +897,30 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task FailedConnectionRetainsTheErrorAndAllowsAnotherConnectAttempt()
+    {
+        Directory.CreateDirectory(_directory);
+        var transport = new RecordingSamsungTransport
+        {
+            ConnectFailure = new IOException("Simulated unreachable TV.")
+        };
+        await using var controller = CreateController(transport);
+        await controller.InitializeAsync();
+
+        var exception = await Assert.ThrowsAsync<SamsungConnectionException>(() =>
+            controller.ConnectAsync(new TvConnectionRequest(
+                "Test TV",
+                "192.0.2.10",
+                Secure: true,
+                Port: null)));
+
+        var snapshot = controller.GetSnapshot();
+        Assert.Equal(SamsungConnectionState.Faulted, snapshot.ConnectionState);
+        Assert.Equal(exception.Message, snapshot.LastError);
+        Assert.False(ConnectionStatePresentation.CanDisconnect(snapshot.ConnectionState));
+    }
+
+    [Fact]
     public async Task QuickAccessDefaultsToReturnToVideo()
     {
         Directory.CreateDirectory(_directory);
@@ -1241,12 +1265,19 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
 
         public List<string> SentMessages { get; } = [];
 
+        public Exception? ConnectFailure { get; init; }
+
         public Task ConnectAsync(
             Uri endpoint,
             TimeSpan timeout,
             bool allowUntrustedCertificate,
             CancellationToken cancellationToken = default)
         {
+            if (ConnectFailure is not null)
+            {
+                return Task.FromException(ConnectFailure);
+            }
+
             IsConnected = true;
             Interlocked.Increment(ref _generation);
             _inbound.Writer.TryWrite(JsonSerializer.Serialize(new
