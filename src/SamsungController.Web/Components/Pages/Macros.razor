@@ -16,13 +16,14 @@
             <ol>
                 <li>Load an existing YAML catalog, or select <strong>New macro</strong> to create the missing default catalog.</li>
                 <li>Select the verified TV state where the macro begins, then use <strong>Prepare selected start</strong> before capturing. Replay visibly prepares that state before the first saved button.</li>
-                <li>While editing, use the compact remote to send buttons live and append every successful send. Set the captured-key wait to control replay timing.</li>
+                <li>While editing, use the compact remote or the verified-menu list to execute commands live and append every successful action. Set the captured-key wait to control replay timing.</li>
+                <li>Use <strong>Pause capture</strong> when you need to reposition the TV without adding those keys or menu calls to the draft, then resume capture.</li>
                 <li>Add or edit key, wait, nested-macro, and verified menu-destination steps. Reorder them to match the exact sequence you expect.</li>
                 <li>Save before testing. Any behavioral edit resets only that macro's verification count.</li>
                 <li>Connect to the TV and select <strong>Replay test</strong>. If the observed result is correct, select <strong>Count pass</strong>.</li>
                 <li>Three accepted runs mark the macro verified in YAML. A failed run resets that macro to 0/3.</li>
             </ol>
-            <p class="help-callout">The declared starting state is an explicit planned operation shown in replay progress. It uses verified routes and may run a verified anchor when the current state is unknown. A menu-item call uses the same planner later in the macro.</p>
+            <p class="help-callout">The declared starting state is an explicit planned operation shown in replay progress. It uses verified routes and may run a verified anchor when the current state is unknown. Selecting a verified menu item beside the remote executes it immediately and records one high-level menu call unless capture is paused.</p>
         </HelpBubble>
         <div class="page-state @(Snapshot.MacroRunning ? "working" : "")"><span></span>@(Snapshot.MacroRunning ? "Running" : "Ready")</div>
     </div>
@@ -203,10 +204,11 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
                     <input type="number" min="1" max="86400000" @bind="CaptureWaitMilliseconds" disabled="@IsSendingCapturedKey" />
                 </label>
                 <div class="macro-capture-actions">
+                    <button class="secondary-action macro-capture-pause @(IsCapturePaused ? "paused" : "")" @onclick="ToggleCapturePause" disabled="@(!CanToggleCapturePause)">@(IsCapturePaused ? "Resume capture" : "Pause capture") <span>@(IsCapturePaused ? "▶" : "Ⅱ")</span></button>
                     <button class="secondary-action" @onclick="UndoLastEditorStep" disabled="@(IsBusy || IsSendingCapturedKey || EditorSteps.Count == 0)">Undo last step</button>
                     <button class="secondary-action danger-action" @onclick="ClearEditorSteps" disabled="@(IsBusy || IsSendingCapturedKey || EditorSteps.Count == 0)">Clear steps</button>
                 </div>
-                <small>@(CanCaptureKey ? "Ready · buttons are sent live and captured." : "Connect to the TV to enable live capture. You can still edit steps manually.")</small>
+                <small class="@(IsCapturePaused ? "capture-paused-note" : "")">@(IsCapturePaused && Snapshot.ConnectionState == SamsungConnectionState.Connected ? "Capture paused · remote keys and menu selections still execute, but are not added." : IsCapturePaused ? "Capture paused · connect to send live actions without recording them." : CanCaptureKey ? "Ready · successful remote keys and menu selections are captured." : "Connect to the TV to enable live capture. You can still edit steps manually.")</small>
                 <small>Preparing the start moves the TV through verified navigation but does not append those preparation keys to the draft.</small>
                 <small>Undo and clear change the draft only; they do not reverse buttons already sent to the TV. Clear the wait field to capture without an automatic pause.</small>
             </div>
@@ -234,8 +236,33 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
                             <option value="@action">@action</option>
                         }
                     </select>
-                    <button class="secondary-action" @onclick="SendAndCaptureCustomKeyAsync" disabled="@(!CanCaptureKey || string.IsNullOrWhiteSpace(CaptureCustomKey))">Send + add</button>
+                    <button class="secondary-action" @onclick="SendAndCaptureCustomKeyAsync" disabled="@(!CanCaptureKey || string.IsNullOrWhiteSpace(CaptureCustomKey))">@(IsCapturePaused ? "Send only" : "Send + add")</button>
                 </div>
+            </div>
+            <div class="macro-live-menu">
+                <div class="macro-live-menu-heading">
+                    <span class="eyebrow">VERIFIED MENU ITEMS</span>
+                    <strong>Select, execute, and @(IsCapturePaused ? "do not record" : "record").</strong>
+                    <small>Each successful selection becomes one menu-call step. The verified planner supplies the traversal during replay.</small>
+                </div>
+                @if (VerifiedMenuItems.Count == 0)
+                {
+                    <div class="macro-live-menu-empty">No verified menu items are available.</div>
+                }
+                else
+                {
+                    <div class="macro-live-menu-list">
+                        @foreach (var menuItem in VerifiedMenuItems)
+                        {
+                            <button class="@(Navigation.State.NodeId?.Equals(menuItem.Id, StringComparison.OrdinalIgnoreCase) == true ? "current" : "")"
+                                    @onclick="() => SendAndCaptureMenuAsync(menuItem)" disabled="@(!CanCaptureKey)">
+                                <strong>@menuItem.Label</strong>
+                                <small>@menuItem.Path</small>
+                                <span>@(IsCapturePaused ? "Run" : "Run + add")</span>
+                            </button>
+                        }
+                    </div>
+                }
             </div>
         </div>
 
@@ -390,6 +417,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
     private string CaptureCustomKey { get; set; } = string.Empty;
     private RemoteKeyAction CaptureCustomAction { get; set; } = RemoteKeyAction.Click;
     private int? CaptureWaitMilliseconds { get; set; } = 300;
+    private bool IsCapturePaused { get; set; }
 
     private bool IsLocked => IsBusy || Run.IsRunning || Snapshot.NavigationRunning || IsEditing;
     private bool CanRun => Snapshot.ConnectionState == SamsungConnectionState.Connected
@@ -398,6 +426,8 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
         && SelectedSummary?.Verified == true && !string.IsNullOrWhiteSpace(SelectedMacro);
     private bool CanCaptureKey => IsEditing
         && Snapshot.ConnectionState == SamsungConnectionState.Connected
+        && !IsBusy && !IsSendingCapturedKey && !Run.IsRunning && !Snapshot.NavigationRunning;
+    private bool CanToggleCapturePause => IsEditing
         && !IsBusy && !IsSendingCapturedKey && !Run.IsRunning && !Snapshot.NavigationRunning;
     private bool CanPrepareEditorStart => IsEditing
         && Snapshot.ConnectionState == SamsungConnectionState.Connected
@@ -439,11 +469,10 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
             CatalogMacros = savePath
                 ? await Controller.SetMacroFileAsync(MacroPath)
                 : await Controller.LoadMacrosAsync();
-            SelectedMacro = CatalogMacros.Any(macro => macro.Name == SelectedMacro)
-                ? SelectedMacro
-                : CatalogMacros.FirstOrDefault()?.Name;
+            SelectedMacro = null;
+            SelectedDetails = null;
+            AwaitingValidationName = null;
             MacroPath = Controller.GetSnapshot().MacroFilePath;
-            await LoadSelectedDetailsAsync();
             CancelEdit();
         }
         catch (FileNotFoundException)
@@ -468,6 +497,17 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
 
     private async Task SelectMacroAsync(string name)
     {
+        if (SelectedMacro?.Equals(name, StringComparison.OrdinalIgnoreCase) == true)
+        {
+            SelectedMacro = null;
+            SelectedDetails = null;
+            AwaitingValidationName = null;
+            ErrorMessage = null;
+            StatusMessage = null;
+            CancelEdit();
+            return;
+        }
+
         SelectedMacro = name;
         AwaitingValidationName = null;
         ErrorMessage = null;
@@ -489,6 +529,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
         EditorName = string.Empty;
         EditorDescription = string.Empty;
         EditorStartingNodeId = GetPreferredStartingNodeId();
+        IsCapturePaused = false;
         EditorSteps.Clear();
         DeleteConfirmation = false;
         IsEditing = true;
@@ -508,6 +549,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
         EditorName = SelectedDetails.Name;
         EditorDescription = SelectedDetails.Description ?? string.Empty;
         EditorStartingNodeId = SelectedDetails.StartingNodeId ?? GetPreferredStartingNodeId();
+        IsCapturePaused = false;
         EditorSteps.Clear();
         EditorSteps.AddRange(SelectedDetails.Steps.Select(MacroStepDraft.FromStep));
         DeleteConfirmation = false;
@@ -528,6 +570,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
         EditorName = CreateCopyName(SelectedDetails.Name);
         EditorDescription = SelectedDetails.Description ?? string.Empty;
         EditorStartingNodeId = SelectedDetails.StartingNodeId ?? GetPreferredStartingNodeId();
+        IsCapturePaused = false;
         EditorSteps.Clear();
         EditorSteps.AddRange(SelectedDetails.Steps.Select(MacroStepDraft.FromStep));
         DeleteConfirmation = false;
@@ -569,6 +612,20 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
         StatusMessage = $"Starting TV state prepared: {GetMenuPath(EditorStartingNodeId)}. Capture the first macro button when ready.";
     });
 
+    private void ToggleCapturePause()
+    {
+        if (!CanToggleCapturePause)
+        {
+            return;
+        }
+
+        IsCapturePaused = !IsCapturePaused;
+        StatusMessage = IsCapturePaused
+            ? "Capture paused. Live actions will still be sent to the TV without changing the draft."
+            : "Capture resumed. The next successful live action will be appended to the draft.";
+        ErrorMessage = null;
+    }
+
     private async Task SendAndCaptureKeyAsync(
         string key,
         RemoteKeyAction action = RemoteKeyAction.Click)
@@ -578,7 +635,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
             return;
         }
 
-        if (CaptureWaitMilliseconds is <= 0 or > 86_400_000)
+        if (!IsCapturePaused && CaptureWaitMilliseconds is <= 0 or > 86_400_000)
         {
             ErrorMessage = "Captured-key wait must be from 1 through 86,400,000 ms.";
             return;
@@ -590,11 +647,50 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
         {
             var normalizedKey = key.Trim();
             await Controller.SendKeyAsync(normalizedKey, action);
-            EditorSteps.Add(MacroStepDraft.CreateCapturedKey(
-                normalizedKey,
-                action,
-                CaptureWaitMilliseconds));
-            StatusMessage = $"Sent and captured {action} {normalizedKey} as step {EditorSteps.Count}.";
+            if (IsCapturePaused)
+            {
+                StatusMessage = $"Sent {action} {normalizedKey}; capture is paused, so the draft was not changed.";
+            }
+            else
+            {
+                EditorSteps.Add(MacroStepDraft.CreateCapturedKey(
+                    normalizedKey,
+                    action,
+                    CaptureWaitMilliseconds));
+                StatusMessage = $"Sent and captured {action} {normalizedKey} as step {EditorSteps.Count}.";
+            }
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = exception.Message;
+        }
+        finally
+        {
+            IsSendingCapturedKey = false;
+        }
+    }
+
+    private async Task SendAndCaptureMenuAsync(MenuNodeSummary menuItem)
+    {
+        if (!CanCaptureKey)
+        {
+            return;
+        }
+
+        IsSendingCapturedKey = true;
+        ErrorMessage = null;
+        try
+        {
+            await Controller.NavigateToMenuNodeAsync(menuItem.Id);
+            if (IsCapturePaused)
+            {
+                StatusMessage = $"Navigated to {menuItem.Path}; capture is paused, so the draft was not changed.";
+            }
+            else
+            {
+                EditorSteps.Add(MacroStepDraft.CreateMenu(menuItem.Id));
+                StatusMessage = $"Navigated to {menuItem.Path} and captured it as step {EditorSteps.Count}.";
+            }
         }
         catch (Exception exception)
         {
@@ -647,6 +743,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
             SelectedMacro = saved.Name;
             await LoadSelectedDetailsAsync();
             IsEditing = false;
+            IsCapturePaused = false;
             OriginalName = null;
             EditorSteps.Clear();
             AwaitingValidationName = null;
@@ -689,6 +786,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
         EditorName = string.Empty;
         EditorDescription = string.Empty;
         EditorStartingNodeId = string.Empty;
+        IsCapturePaused = false;
         EditorSteps.Clear();
     }
 
@@ -704,7 +802,7 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
         {
             await Controller.DeleteMacroAsync(deleted);
             CatalogMacros = await Controller.LoadMacrosAsync();
-            SelectedMacro = CatalogMacros.FirstOrDefault()?.Name;
+            SelectedMacro = null;
             await LoadSelectedDetailsAsync();
             CancelEdit();
             AwaitingValidationName = null;
@@ -911,6 +1009,12 @@ else if (!string.IsNullOrWhiteSpace(StatusMessage))
             Key = key,
             Action = action,
             DelayMilliseconds = delayMilliseconds
+        };
+
+        public static MacroStepDraft CreateMenu(string menuNodeId) => new()
+        {
+            Kind = MacroStepKind.Menu,
+            MenuNodeId = menuNodeId
         };
 
         public static MacroStepDraft FromStep(MacroStep step) => step switch

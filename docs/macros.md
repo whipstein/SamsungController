@@ -94,8 +94,13 @@ typed. Missing variables and variable cycles are errors.
 ## Browser editing and behavioral verification
 
 The web **Macros** page can create, duplicate, edit, delete, load, and download
-catalogs without hand-editing YAML. Its compact remote sends keys to the TV and
-appends a key step only after a successful send. **Prepare selected start** moves
+catalogs without hand-editing YAML. Catalogs open with no default macro
+selection, and selecting the active macro card again clears its selection and
+details. Its compact remote sends keys to the TV and appends a key step only
+after a successful send. The adjacent verified-menu list executes a selected
+destination immediately and appends one `menu` step after successful
+navigation. **Pause capture** leaves both surfaces live while suppressing new
+draft steps until capture resumes. **Prepare selected start** moves
 the TV to the declared start through verified navigation before live capture;
 those preparation keys are not appended because replay derives them from the
 saved `start`. A configurable captured-key

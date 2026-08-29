@@ -53,6 +53,7 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 - [x] Capture successfully sent remote buttons directly into a macro draft with configurable replay waits.
 - [x] Call verified menu destinations from macros through the current-state-aware navigation planner.
 - [x] Declare and visibly prepare verified starting TV states for root and nested macros.
+- [x] Launch and capture verified menu calls beside the macro remote, with pause/resume capture for unrecorded repositioning.
 
 ### Local web control surface
 
