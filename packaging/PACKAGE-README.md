@@ -42,6 +42,17 @@ Choose `linux-x64` for most Intel/AMD PCs or `linux-arm64` for an Arm64/aarch64 
 
 The launcher and server bind only to this computer. Closing the launcher window or pressing Ctrl+C stops the server. TV settings, tokens, macros, menu definitions, and logs remain in the normal per-user configuration directory when the package is replaced with a newer version.
 
+## If the TV connection times out
+
+VPNs and network filters can allow the TV to appear on the network while blocking its control connection. Before removing the saved pairing token:
+
+1. Open `http://<TV-IP>:8001/api/v2/` in a browser on the same computer. A timeout indicates a network path or TV-service problem, not a rejected token.
+2. Temporarily disconnect the VPN and retry SamsungController.
+3. If that works, enable the VPN's LAN-access exception. In Proton VPN for macOS, use **Settings > Connection > Allow LAN connections**, then reconnect the VPN.
+4. Check filters such as LuLu, Little Snitch, or endpoint-security software for a rule blocking SamsungController or the TV address.
+
+See the included `README.md` for the full connection troubleshooting sequence.
+
 ## Optional command line
 
 The package also includes the complete `samsungctl` CLI.

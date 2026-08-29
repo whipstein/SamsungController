@@ -409,6 +409,18 @@ Use `forget --host <TV-IP>` when tokens for multiple TVs are stored. You may als
 - Close another SamsungController process temporarily if the TV is refusing additional channels.
 - Review the Connection error and the newest session log for the exact failure.
 
+### The TV is discoverable but ports 8001 and 8002 time out
+
+A VPN or network filter can allow Bonjour discovery while blocking the direct local TCP connection SamsungController needs. In this condition, deleting the pairing token will not help because the connection fails before authorization.
+
+1. On the TV, enable **Settings > All Settings > Connection > Network > Expert Settings > IP Remote** and **Power On With Mobile**.
+2. Open `http://<TV-IP>:8001/api/v2/` in a browser on the same computer. Device JSON confirms that the TV's local API is reachable; a timeout confirms that traffic is still being filtered or the TV service is unavailable.
+3. Temporarily disconnect any VPN and retry. If that works, enable the VPN client's LAN exception before reconnecting the VPN.
+4. In Proton VPN for macOS, open **Settings > Connection**, enable **Allow LAN connections**, and let Proton reconnect to apply the change. See [Proton VPN's LAN instructions](https://protonvpn.com/support/lan-connections).
+5. If the failure remains, review local network filters such as LuLu, Little Snitch, or endpoint-security software for a rule blocking `SamsungController.Web`, the browser, or the TV address.
+
+This exact pattern was verified on macOS with Proton VPN WireGuard: the TV advertised `_samsungmsf._tcp` normally, but `/api/v2/` and both control ports timed out until **Allow LAN connections** was enabled.
+
 ### The web address does not open
 
 - Keep the `dotnet run` terminal open and wait for `Now listening on: http://127.0.0.1:5050`.
