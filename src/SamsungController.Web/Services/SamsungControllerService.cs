@@ -610,6 +610,127 @@ public sealed class SamsungControllerService : IAsyncDisposable
         return GetMenuDefinitionVerificationSnapshot();
     }
 
+    public async Task<MenuDefinitionVerificationTestResult> RunMenuDefinitionVerificationTestAsync(
+        string checkId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(checkId);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("run a menu-file verification test");
+        EnsureNoMenuRecording("run a menu-file verification test");
+        if (_client.State != SamsungConnectionState.Connected)
+        {
+            throw new InvalidOperationException(
+                "Connect to the TV before running an automated verification test.");
+        }
+
+        MenuDefinition definition;
+        MenuDefinitionVerificationCheck check;
+        Dictionary<string, string> effectiveValues;
+        MenuControlVerificationSnapshot controlVerification;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+            check = MenuDefinitionVerificationPlanner.Create(definition).Checks
+                .FirstOrDefault(item => item.Id.Equals(
+                    checkId.Trim(),
+                    StringComparison.OrdinalIgnoreCase))
+                ?? throw new InvalidOperationException(
+                    $"Verification check '{checkId.Trim()}' is no longer required by the loaded menu definition.");
+            effectiveValues = CreateEffectivePictureControlValues(
+                definition,
+                _menuControlValues);
+            controlVerification = GetMenuControlVerificationSnapshot();
+        }
+
+        if (check.TargetNodeId is null)
+        {
+            throw new InvalidOperationException(
+                $"'{check.Label}' does not have an automated TV target.");
+        }
+
+        return check.Kind switch
+        {
+            MenuVerificationCheckKind.SliderBehavior =>
+                await RunAdjustableMenuDefinitionVerificationTestAsync(
+                        definition,
+                        check,
+                        SelectMenuDefinitionVerificationControl(
+                            definition,
+                            check,
+                            effectiveValues,
+                            controlVerification.ConfirmedSliderNodeIds),
+                        effectiveValues,
+                        cancellationToken)
+                    .ConfigureAwait(false),
+            MenuVerificationCheckKind.Selection
+                or MenuVerificationCheckKind.Switch =>
+                await RunAdjustableMenuDefinitionVerificationTestAsync(
+                        definition,
+                        check,
+                        SelectMenuDefinitionVerificationControl(
+                            definition,
+                            check,
+                            effectiveValues,
+                            []),
+                        effectiveValues,
+                        cancellationToken)
+                    .ConfigureAwait(false),
+            MenuVerificationCheckKind.Confirmation =>
+                await RunConfirmationMenuDefinitionVerificationTestAsync(
+                        definition,
+                        check,
+                        SelectMenuDefinitionVerificationControl(
+                            definition,
+                            check,
+                            effectiveValues,
+                            []),
+                        effectiveValues,
+                        cancellationToken)
+                    .ConfigureAwait(false),
+            MenuVerificationCheckKind.ConditionalVisibility =>
+                await RunConditionalMenuDefinitionVerificationTestAsync(
+                        definition,
+                        check,
+                        effectiveValues,
+                        cancellationToken)
+                    .ConfigureAwait(false),
+            _ => throw new InvalidOperationException(
+                $"'{check.Label}' is verified through its existing Build & Verify workflow rather than an automated control adjustment.")
+        };
+    }
+
+    public async Task<string> ReturnMenuDefinitionVerificationToKnownStateAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("return menu-file verification to a known state");
+        EnsureNoMenuRecording("return menu-file verification to a known state");
+        if (_client.State != SamsungConnectionState.Connected)
+        {
+            throw new InvalidOperationException(
+                "Connect to the TV before returning verification to a known state.");
+        }
+
+        MenuDefinition definition;
+        MenuAnchor anchor;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+            var returnAnchor = FindReturnToVideoAnchor(definition);
+            anchor = returnAnchor?.Verified == true
+                ? returnAnchor
+                : FindPreferredKnownStateAnchor(definition)
+                  ?? throw new InvalidOperationException(
+                      "No verified known-state anchor is available for verification recovery.");
+        }
+
+        await RunMenuAnchorAsync(anchor.Id, cancellationToken).ConfigureAwait(false);
+        return definition.GetPath(anchor.TargetNodeId);
+    }
+
     public MenuControlProfileSnapshot GetMenuControlProfileSnapshot()
     {
         lock (_sync)
@@ -4806,6 +4927,288 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
         operations.AddRange(plan.Transitions.SelectMany(transition => transition.Operations));
         return CoalesceOperations(ExpandOperations(operations));
+    }
+
+    private static MenuNode SelectMenuDefinitionVerificationControl(
+        MenuDefinition definition,
+        MenuDefinitionVerificationCheck check,
+        IReadOnlyDictionary<string, string> effectiveValues,
+        IReadOnlyList<string> previouslyConfirmedNodeIds)
+    {
+        var plannedTarget = definition.GetRequiredNode(check.TargetNodeId!);
+        var expectedType = MenuControlBehaviorClassifier.GetEffectiveControlType(plannedTarget);
+        var effectiveDefinition = CreateVisibilityAdjustedDefinition(
+            definition,
+            effectiveValues);
+        var confirmed = previouslyConfirmedNodeIds.ToHashSet(
+            StringComparer.OrdinalIgnoreCase);
+        var candidates = definition.Nodes.Values
+            .Where(node => check.Kind switch
+            {
+                MenuVerificationCheckKind.SliderBehavior =>
+                    node.ControlType == MenuControlType.Slider,
+                MenuVerificationCheckKind.Selection =>
+                    MenuControlBehaviorClassifier.GetEffectiveControlType(node) == expectedType,
+                MenuVerificationCheckKind.Switch =>
+                    node.ControlType == MenuControlType.Switch,
+                MenuVerificationCheckKind.Confirmation =>
+                    node.ControlType == MenuControlType.Confirmation,
+                _ => false
+            })
+            .Where(node => !IsMenuNodePermanentlyDisabled(definition, node)
+                && !IsMenuNodeOrAncestorDisabled(definition, node, effectiveValues)
+                && !IsMenuNodeOrAncestorHidden(definition, node, effectiveValues))
+            .Where(node => HasVerifiedPictureControlRoute(effectiveDefinition, node.Id)
+                || HasConditionalAncestorWithVerifiedParent(definition, node))
+            .OrderBy(node => confirmed.Contains(node.Id))
+            .ThenBy(node => !node.Id.Equals(
+                plannedTarget.Id,
+                StringComparison.OrdinalIgnoreCase))
+            .ThenBy(node => definition.GetDepth(node.Id))
+            .ThenBy(node => node.Id, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        return candidates.FirstOrDefault()
+            ?? throw new InvalidOperationException(
+                $"No currently available, verified {check.Label.ToLowerInvariant()} representative can be adjusted automatically.");
+    }
+
+    private async Task<MenuDefinitionVerificationTestResult>
+        RunAdjustableMenuDefinitionVerificationTestAsync(
+            MenuDefinition definition,
+            MenuDefinitionVerificationCheck check,
+            MenuNode node,
+            Dictionary<string, string> effectiveValues,
+            CancellationToken cancellationToken)
+    {
+        if (!effectiveValues.TryGetValue(node.Id, out var currentValue))
+        {
+            throw new InvalidOperationException(
+                $"'{definition.GetPath(node.Id)}' does not have a predicted value for automated verification.");
+        }
+
+        var nextValue = SelectAlternateMenuControlValue(node, currentValue);
+        await ApplyMenuControlValuesAsync(
+                [new MenuControlValueUpdate(node.Id, currentValue, nextValue)],
+                effectiveValues,
+                returnToNormalVideo: false,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return new MenuDefinitionVerificationTestResult(
+            check.Id,
+            node.Id,
+            definition.GetPath(node.Id),
+            MenuControlBehaviorClassifier.GetEffectiveControlType(node),
+            $"Changed {node.Label} from {currentValue} to {nextValue}. Confirm the displayed value and interaction before counting the pass.");
+    }
+
+    private async Task<MenuDefinitionVerificationTestResult>
+        RunConfirmationMenuDefinitionVerificationTestAsync(
+            MenuDefinition definition,
+            MenuDefinitionVerificationCheck check,
+            MenuNode node,
+            IReadOnlyDictionary<string, string> effectiveValues,
+            CancellationToken cancellationToken)
+    {
+        var safeChoice = (node.SelectionOptions ?? []).FirstOrDefault(option =>
+            option.Equals("Cancel", StringComparison.OrdinalIgnoreCase));
+        if (safeChoice is null)
+        {
+            throw new InvalidOperationException(
+                $"Confirmation '{definition.GetPath(node.Id)}' does not define a Cancel choice, so it cannot be tested automatically without risking an action.");
+        }
+
+        MenuStateTracker tracker;
+        lock (_sync)
+        {
+            tracker = _menuStateTracker
+                ?? throw new InvalidOperationException("No menu state tracker is available.");
+        }
+
+        var operations = CreateConfirmationOperations(node, safeChoice);
+        await RunNavigationAsync(
+                $"Verify confirmation · {definition.GetPath(node.Id)}",
+                async (_, token) =>
+                {
+                    await PreparePictureControlAsync(
+                            definition,
+                            tracker,
+                            node,
+                            effectiveValues,
+                            token)
+                        .ConfigureAwait(false);
+                    await ExecutePictureControlOperationsAsync(
+                            $"Choose safe cancel · {definition.GetPath(node.Id)}",
+                            definition.GetPath(node.Id),
+                            definition.GetPath(node.Id),
+                            operations,
+                            definition.Timing,
+                            token)
+                        .ConfigureAwait(false);
+                    tracker.ConfirmNode(
+                        node.Id,
+                        $"Confirmation '{definition.GetPath(node.Id)}' opened and used its safe Cancel path.");
+                },
+                clearPlanOnSuccess: true,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return new MenuDefinitionVerificationTestResult(
+            check.Id,
+            node.Id,
+            definition.GetPath(node.Id),
+            MenuControlType.Confirmation,
+            $"Opened {node.Label} and selected Cancel. Confirm that the dialog opened and closed without applying the action.");
+    }
+
+    private async Task<MenuDefinitionVerificationTestResult>
+        RunConditionalMenuDefinitionVerificationTestAsync(
+            MenuDefinition definition,
+            MenuDefinitionVerificationCheck check,
+            Dictionary<string, string> effectiveValues,
+            CancellationToken cancellationToken)
+    {
+        if (check.Id.Equals(
+                "condition:always-disabled-behavior",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            var affected = definition.Nodes.Values
+                .Where(node => node.Disabled)
+                .OrderBy(node => !string.Equals(
+                    node.ParentId,
+                    check.TargetNodeId,
+                    StringComparison.OrdinalIgnoreCase))
+                .ThenBy(node => definition.GetDepth(node.Id))
+                .ThenBy(node => node.Id, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault()
+                ?? throw new InvalidOperationException(
+                    "No permanently disabled representative remains in this verification group.");
+            var viewNodeId = affected.ParentId ?? check.TargetNodeId!;
+            await NavigateToMenuNodeAsync(viewNodeId, cancellationToken).ConfigureAwait(false);
+            return new MenuDefinitionVerificationTestResult(
+                check.Id,
+                affected.Id,
+                definition.GetPath(affected.Id),
+                null,
+                $"Opened {definition.GetPath(viewNodeId)}. Confirm that {affected.Label} remains visible, gray, and unavailable.");
+        }
+
+        var hidden = check.Id.Equals(
+            "condition:hidden-behavior",
+            StringComparison.OrdinalIgnoreCase);
+        var affectedConditions = definition.Nodes.Values
+            .SelectMany(node => hidden
+                ? (node.HiddenWhen ?? []).Select(condition => (
+                    Node: node,
+                    condition.SettingNodeId,
+                    condition.EqualsValue))
+                : (node.DisabledWhen ?? []).Select(condition => (
+                    Node: node,
+                    condition.SettingNodeId,
+                    condition.EqualsValue)))
+            .Where(item => item.SettingNodeId.Equals(
+                check.TargetNodeId,
+                StringComparison.OrdinalIgnoreCase))
+            .OrderBy(item => definition.GetDepth(item.Node.Id))
+            .ThenBy(item => item.Node.Id, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var affectedCondition = affectedConditions.FirstOrDefault();
+        if (affectedCondition.Node is null)
+        {
+            throw new InvalidOperationException(
+                $"No representative rule controlled by '{check.TargetNodeId}' remains in this verification group.");
+        }
+
+        var controller = definition.GetRequiredNode(affectedCondition.SettingNodeId);
+        if (!effectiveValues.TryGetValue(controller.Id, out var currentValue))
+        {
+            throw new InvalidOperationException(
+                $"'{definition.GetPath(controller.Id)}' does not have a predicted value for automated verification.");
+        }
+
+        var expectedValue = affectedCondition.EqualsValue;
+        if (currentValue.Equals(expectedValue, StringComparison.OrdinalIgnoreCase))
+        {
+            var comparisonValue = SelectAlternateMenuControlValue(controller, currentValue);
+            await ApplyMenuControlValuesAsync(
+                    [new MenuControlValueUpdate(controller.Id, currentValue, comparisonValue)],
+                    effectiveValues,
+                    returnToNormalVideo: false,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            effectiveValues[controller.Id] = comparisonValue;
+            currentValue = comparisonValue;
+        }
+
+        await ApplyMenuControlValuesAsync(
+                [new MenuControlValueUpdate(controller.Id, currentValue, expectedValue)],
+                effectiveValues,
+                returnToNormalVideo: false,
+                cancellationToken)
+            .ConfigureAwait(false);
+        effectiveValues[controller.Id] = expectedValue;
+        if (!string.IsNullOrWhiteSpace(affectedCondition.Node.ParentId))
+        {
+            await NavigateToMenuNodeAsync(
+                    affectedCondition.Node.ParentId,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        var expectedBehavior = hidden ? "absent" : "visible but gray and unavailable";
+        return new MenuDefinitionVerificationTestResult(
+            check.Id,
+            affectedCondition.Node.Id,
+            definition.GetPath(affectedCondition.Node.Id),
+            null,
+            $"Set {controller.Label} to {expectedValue}. Confirm that {affectedCondition.Node.Label} is {expectedBehavior}.");
+    }
+
+    private static string SelectAlternateMenuControlValue(
+        MenuNode node,
+        string currentValue)
+    {
+        switch (node.ControlType)
+        {
+            case MenuControlType.Slider:
+                var current = decimal.Parse(currentValue, CultureInfo.InvariantCulture);
+                if (node.MaximumValue is { } maximum && current + 1 <= maximum)
+                {
+                    return (current + 1).ToString("G29", CultureInfo.InvariantCulture);
+                }
+
+                if (node.MinimumValue is { } minimum && current - 1 >= minimum)
+                {
+                    return (current - 1).ToString("G29", CultureInfo.InvariantCulture);
+                }
+
+                throw new InvalidOperationException(
+                    $"Slider '{node.Label}' has no adjacent value available for an automated test.");
+
+            case MenuControlType.Switch:
+                return currentValue.Equals("on", StringComparison.OrdinalIgnoreCase)
+                    ? "off"
+                    : "on";
+
+            case MenuControlType.Selection:
+            case MenuControlType.SubmenuSelection:
+            case MenuControlType.IndexedSelection:
+                var options = node.SelectionOptions ?? [];
+                var currentIndex = options.ToList().FindIndex(option => option.Equals(
+                    currentValue,
+                    StringComparison.OrdinalIgnoreCase));
+                if (currentIndex < 0 || options.Count < 2)
+                {
+                    throw new InvalidOperationException(
+                        $"Selection '{node.Label}' needs at least two choices for an automated test.");
+                }
+
+                return currentIndex + 1 < options.Count
+                    ? options[currentIndex + 1]
+                    : options[currentIndex - 1];
+
+            default:
+                throw new InvalidOperationException(
+                    $"'{node.Label}' is not an automatically adjustable verification control.");
+        }
     }
 
     private static MenuAnchor? FindPreferredKnownStateAnchor(

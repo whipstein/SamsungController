@@ -17,8 +17,8 @@
             <ol>
                 <li>Confirm the physical display and viewing combination shown below.</li>
                 <li>Carry forward routes and controls already verified elsewhere in the app.</li>
-                <li>Use <strong>Open on TV</strong> and the verification remote for each remaining representative behavior.</li>
-                <li>Count a check only after the TV behaves exactly as described.</li>
+                <li>Use <strong>Run guided test</strong> for each remaining representative behavior. The app opens the right menu and makes a safe, visible adjustment for you.</li>
+                <li>Count or fail the result on that same line. Use the remote only if the TV needs a manual correction.</li>
             </ol>
             <p class="help-callout safe">Equivalent controls and conditional effects are covered by representative behavior classes. Each class is fingerprinted inside the YAML or JSON file, so a relevant edit reopens that class without restoring a per-row checklist.</p>
         </HelpBubble>
@@ -98,9 +98,18 @@
                                     {
                                         <small class="verification-evidence">Recorded @verifiedAt.ToLocalTime().ToString("g")</small>
                                     }
+                                    @if (IsPendingVisualTest(check))
+                                    {
+                                        <small class="verification-test-result">@PendingVisualTest!.ActionDescription</small>
+                                    }
                                 </div>
                                 <div class="verification-check-actions">
-                                    @if (check.AwaitingValidationConfirmation)
+                                    @if (IsPendingVisualTest(check))
+                                    {
+                                        <button class="primary-action" @onclick="() => ConfirmGuidedTestAsync(check, true)" disabled="@IsBusy">Count pass</button>
+                                        <button class="quiet-action" @onclick="() => ConfirmGuidedTestAsync(check, false)" disabled="@IsBusy">Failed</button>
+                                    }
+                                    else if (check.AwaitingValidationConfirmation)
                                     {
                                         <button class="primary-action" @onclick="() => ConfirmRouteAsync(check, true)" disabled="@IsBusy">Count pass</button>
                                         <button class="quiet-action" @onclick="() => ConfirmRouteAsync(check, false)" disabled="@IsBusy">Failed</button>
@@ -114,7 +123,15 @@
                                     {
                                         <button class="secondary-action" disabled>Select @check.ConfigurationId layout above</button>
                                     }
-                                    else if (CanOpenOnTv(check))
+                                    else if (!check.Verified && !check.ExistingEvidenceReady && CanRunGuidedTest(check))
+                                    {
+                                        <button class="primary-action" @onclick="() => RunGuidedTestAsync(check)" disabled="@TvActionsDisabled">Run guided test</button>
+                                    }
+                                    else if (!check.Verified && !check.IsForActiveConfiguration && IsGuidedVisualCheck(check))
+                                    {
+                                        <button class="secondary-action" disabled>Select @check.ConfigurationId layout above</button>
+                                    }
+                                    else if (check.Verified && CanOpenOnTv(check))
                                     {
                                         <button class="secondary-action" @onclick="() => OpenOnTvAsync(check)" disabled="@TvActionsDisabled">Open on TV</button>
                                     }
@@ -122,11 +139,11 @@
                                     {
                                         <button class="quiet-action" @onclick="() => ReopenAsync(check)" disabled="@IsBusy">Reopen</button>
                                     }
-                                    else if (!check.AwaitingValidationConfirmation && (check.ExistingEvidenceReady || check.AuthoringItemId is null) && CanConfirm(check))
+                                    else if (!check.AwaitingValidationConfirmation && (check.ExistingEvidenceReady || check.Kind == MenuVerificationCheckKind.Display) && CanConfirm(check))
                                     {
                                         <button class="primary-action" @onclick="() => ConfirmAsync(check)" disabled="@IsBusy">@ConfirmationLabel(check)</button>
                                     }
-                                    else if (!check.AwaitingValidationConfirmation && check.AuthoringItemId is null)
+                                    else if (!check.AwaitingValidationConfirmation && check.AuthoringItemId is null && RequiresBuildVerification(check))
                                     {
                                         <a class="secondary-action" href="menu/build">Go to Build &amp; Verify</a>
                                     }
@@ -139,8 +156,8 @@
         </div>
 
         <aside class="verification-remote-panel">
-            <div class="panel-label"><span>VISUAL TEST REMOTE</span><span>EXPLICIT KEYS</span></div>
-            <p>Open the displayed representative, exercise its interaction, then count the shared behavior check.</p>
+            <div class="panel-label"><span>MANUAL CORRECTION REMOTE</span><span>EXPLICIT KEYS</span></div>
+            <p>The guided test handles normal verification. Use these keys only to correct the TV before counting or failing the active result.</p>
             <div class="verification-remote-top">
                 <button @onclick='() => SendKeyAsync("KEY_MENU")' disabled="@TvActionsDisabled">☰<small>Menu</small></button>
                 <button @onclick='() => SendKeyAsync("KEY_HOME")' disabled="@TvActionsDisabled">⌂<small>Home</small></button>
@@ -162,6 +179,8 @@
     private ControllerSnapshot ControllerState { get; set; } = null!;
     private MenuAuthoringSnapshot Authoring { get; set; } = null!;
     private MenuDefinitionVerificationSnapshot VerificationState { get; set; } = null!;
+    private MenuControlVerificationSnapshot ControlVerification { get; set; } = null!;
+    private MenuDefinitionVerificationTestResult? PendingVisualTest { get; set; }
     private bool IsBusy { get; set; }
     private string? StatusMessage { get; set; }
     private string? ErrorMessage { get; set; }
@@ -193,6 +212,7 @@
 
     private async Task CarryForwardAsync() => await RunAsync(async () =>
     {
+        PendingVisualTest = null;
         VerificationState = await Controller.CarryForwardExistingMenuVerificationAsync();
         StatusMessage = "Existing verified timing, routes, slider behavior, and selections were fingerprinted into this menu definition.";
     });
@@ -207,6 +227,7 @@
 
     private async Task ReopenAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
     {
+        PendingVisualTest = null;
         VerificationState = await Controller.ReopenMenuDefinitionVerificationCheckAsync(check.Id);
         StatusMessage = $"{check.Label} reopened for another visual check.";
     });
@@ -214,7 +235,63 @@
     private async Task OpenOnTvAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
     {
         await Controller.NavigateToMenuNodeAsync(check.TargetNodeId!);
-        StatusMessage = $"Opened {check.Label}. Use the visual test remote, then count the result.";
+        StatusMessage = $"Opened {check.Label} without changing its recorded verification result.";
+    });
+
+    private async Task RunGuidedTestAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
+    {
+        PendingVisualTest = await Controller.RunMenuDefinitionVerificationTestAsync(check.Id);
+        StatusMessage = PendingVisualTest.ActionDescription;
+    });
+
+    private async Task ConfirmGuidedTestAsync(
+        MenuDefinitionVerificationCheckSummary check,
+        bool passed) => await RunAsync(async () =>
+    {
+        var test = PendingVisualTest;
+        if (test is null || !test.CheckId.Equals(check.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Run this guided test before counting its result.");
+        }
+
+        if (!passed)
+        {
+            var failedTarget = test.TargetPath;
+            PendingVisualTest = null;
+            var recoveryState = await Controller.ReturnMenuDefinitionVerificationToKnownStateAsync();
+            StatusMessage = $"{failedTarget} was not counted. The TV returned to {recoveryState}; rerun the guided test after correcting the definition or timing.";
+            return;
+        }
+
+        var behaviorComplete = true;
+        if (test.ControlType == MenuControlType.Slider)
+        {
+            ControlVerification = await Controller.ConfirmMenuSliderBehaviorAsync(test.TargetNodeId);
+            behaviorComplete = ControlVerification.SlidersVerified;
+        }
+        else if (test.ControlType is MenuControlType.Selection
+                     or MenuControlType.SubmenuSelection
+                     or MenuControlType.IndexedSelection)
+        {
+            ControlVerification = await Controller.ConfirmMenuSelectionBehaviorAsync(test.TargetNodeId);
+        }
+
+        if (behaviorComplete)
+        {
+            VerificationState = await Controller.ConfirmMenuDefinitionVerificationCheckAsync(check.Id);
+        }
+
+        PendingVisualTest = null;
+        var knownState = await Controller.ReturnMenuDefinitionVerificationToKnownStateAsync();
+        if (!behaviorComplete)
+        {
+            StatusMessage = $"Slider pass counted ({ControlVerification.ConfirmedSliderCount}/{ControlVerification.RequiredSliderCount}). The TV returned to {knownState}; run this line again for the next representative slider.";
+            return;
+        }
+
+        StatusMessage = VerificationState.FullyVerified
+            ? $"{check.Label} passed. The file is fully verified, and the TV returned to {knownState}."
+            : $"{check.Label} passed and was recorded in the file. The TV returned to {knownState}.";
     });
 
     private async Task PrepareRouteAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
@@ -290,6 +367,7 @@
         ControllerState = Controller.GetSnapshot();
         Authoring = Controller.GetMenuAuthoringSnapshot();
         VerificationState = Controller.GetMenuDefinitionVerificationSnapshot();
+        ControlVerification = Controller.GetMenuControlVerificationSnapshot();
     }
 
     private void HandleControllerChanged()
@@ -311,6 +389,20 @@
         check.TargetNodeId is not null
         && check.IsForActiveConfiguration
         && check.Kind is (MenuVerificationCheckKind.Selection
+            or MenuVerificationCheckKind.Switch
+            or MenuVerificationCheckKind.Confirmation
+            or MenuVerificationCheckKind.ConditionalVisibility
+            or MenuVerificationCheckKind.SliderBehavior);
+
+    private bool IsPendingVisualTest(MenuDefinitionVerificationCheckSummary check) =>
+        PendingVisualTest?.CheckId.Equals(check.Id, StringComparison.OrdinalIgnoreCase) == true;
+
+    private static bool CanRunGuidedTest(MenuDefinitionVerificationCheckSummary check) =>
+        CanOpenOnTv(check)
+        && IsGuidedVisualCheck(check);
+
+    private static bool IsGuidedVisualCheck(MenuDefinitionVerificationCheckSummary check) =>
+        check.Kind is (MenuVerificationCheckKind.Selection
             or MenuVerificationCheckKind.Switch
             or MenuVerificationCheckKind.Confirmation
             or MenuVerificationCheckKind.ConditionalVisibility

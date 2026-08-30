@@ -190,6 +190,13 @@ public sealed record MenuDefinitionVerificationSnapshot(
     public int RemainingCount => Math.Max(0, RequiredCount - VerifiedCount);
 }
 
+public sealed record MenuDefinitionVerificationTestResult(
+    string CheckId,
+    string TargetNodeId,
+    string TargetPath,
+    MenuControlType? ControlType,
+    string ActionDescription);
+
 public sealed record MenuAnchorSummary(
     string Id,
     string Label,

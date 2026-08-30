@@ -990,6 +990,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .verification-check-copy small { display: block; margin-top: 5px; font-size: 7px; }
 .verification-prerequisite { color: var(--amber); }
 .verification-evidence { color: var(--cyan); }
+.verification-test-result { padding: 6px 8px; border-left: 2px solid var(--cyan); background: var(--cyan-soft); color: var(--ink); line-height: 1.5; }
 .verification-route-progress { color: var(--ink); font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .05em; }
 .verification-check-actions { display: flex; align-items: center; justify-content: end; gap: 6px; }
 .verification-check-actions .primary-action, .verification-check-actions .secondary-action, .verification-check-actions .quiet-action { padding: 7px 9px; white-space: nowrap; font-size: 7px; text-decoration: none; }

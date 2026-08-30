@@ -2488,6 +2488,207 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task FileVerificationGuidedSliderTestsAutomaticallyUseDistinctRepresentatives()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: guided-slider-verification
+            name: Guided Slider Verification
+            model: Test TV
+            nodes:
+              - id: normal-video
+                label: Normal video
+                children:
+                  - id: brightness
+                    label: Brightness
+                    controlType: slider
+                    defaultValue: 25
+                    minimumValue: 0
+                    maximumValue: 50
+                  - id: contrast
+                    label: Contrast
+                    controlType: slider
+                    defaultValue: 25
+                    minimumValue: 0
+                    maximumValue: 50
+                  - id: color
+                    label: Color
+                    controlType: slider
+                    defaultValue: 25
+                    minimumValue: 0
+                    maximumValue: 50
+            anchors:
+              - id: normal
+                label: Return to normal video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            transitions:
+              - id: open-brightness
+                from: normal-video
+                to: brightness
+                verified: true
+                steps:
+                  - key: KEY_MENU
+              - id: open-contrast
+                from: normal-video
+                to: contrast
+                verified: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_DOWN
+              - id: open-color
+                from: normal-video
+                to: color
+                verified: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_DOWN
+                    repeat: 2
+            """;
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            var testedNodeIds = new List<string>();
+            for (var index = 0; index < 3; index++)
+            {
+                var result = await controller.RunMenuDefinitionVerificationTestAsync(
+                    "control:slider-behavior");
+                testedNodeIds.Add(result.TargetNodeId);
+                Assert.Equal(MenuControlType.Slider, result.ControlType);
+                Assert.Contains("Changed", result.ActionDescription, StringComparison.Ordinal);
+
+                var verification = await controller.ConfirmMenuSliderBehaviorAsync(
+                    result.TargetNodeId);
+                Assert.Equal(index + 1, verification.ConfirmedSliderCount);
+            }
+
+            Assert.Equal(3, testedNodeIds.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+            Assert.True(controller.GetMenuControlVerificationSnapshot().SlidersVerified);
+            Assert.Equal(3, GetSentKeys(transport).Count(key => key == "KEY_RIGHT"));
+
+            var knownState = await controller.ReturnMenuDefinitionVerificationToKnownStateAsync();
+
+            Assert.Equal("Normal video", knownState);
+            Assert.Equal("normal-video", controller.GetMenuNavigationSnapshot().State.NodeId);
+            Assert.Equal("KEY_RETURN", GetSentKeys(transport).Last());
+        }
+    }
+
+    [Fact]
+    public async Task FileVerificationGuidedConfirmationAlwaysUsesSafeCancelChoice()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: guided-confirmation-verification
+            name: Guided Confirmation Verification
+            model: Test TV
+            nodes:
+              - id: normal-video
+                label: Normal video
+                children:
+                  - id: reset-picture
+                    label: Reset Picture
+                    controlType: confirmation
+                    defaultValue: Reset
+                    options: [Reset, Cancel]
+            anchors:
+              - id: normal
+                label: Return to normal video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            transitions:
+              - id: open-reset-picture
+                from: normal-video
+                to: reset-picture
+                verified: true
+                steps:
+                  - key: KEY_MENU
+            """;
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            var result = await controller.RunMenuDefinitionVerificationTestAsync(
+                "control:confirmation-behavior");
+
+            Assert.Equal("reset-picture", result.TargetNodeId);
+            Assert.Equal(MenuControlType.Confirmation, result.ControlType);
+            Assert.Contains("selected Cancel", result.ActionDescription, StringComparison.Ordinal);
+            Assert.Equal(
+                ["KEY_MENU", "KEY_ENTER", "KEY_DOWN", "KEY_ENTER"],
+                GetSentKeys(transport));
+        }
+    }
+
+    [Fact]
+    public async Task FileVerificationGuidedConditionalTestSetsControllerAndOpensAffectedMenu()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: guided-condition-verification
+            name: Guided Condition Verification
+            model: Test TV
+            nodes:
+              - id: normal-video
+                label: Normal video
+                children:
+                  - id: settings
+                    label: Settings
+                    children:
+                      - id: autorun
+                        label: Autorun
+                        controlType: selection
+                        defaultValue: Off
+                        options: [Off, On]
+                      - id: dependent-row
+                        label: Dependent Row
+                        controlType: action
+                        disabledWhen:
+                          - setting: autorun
+                            equals: On
+            anchors:
+              - id: normal
+                label: Return to normal video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            transitions:
+              - id: open-settings
+                from: normal-video
+                to: settings
+                verified: true
+                steps:
+                  - key: KEY_MENU
+              - id: open-autorun
+                from: normal-video
+                to: autorun
+                verified: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_ENTER
+            """;
+        var (controller, _) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            var result = await controller.RunMenuDefinitionVerificationTestAsync(
+                "condition:disabled-behavior");
+
+            Assert.Equal("dependent-row", result.TargetNodeId);
+            Assert.Contains("visible but gray", result.ActionDescription, StringComparison.Ordinal);
+            var navigation = controller.GetMenuNavigationSnapshot();
+            Assert.Equal("On", navigation.ControlValues["autorun"]);
+            Assert.Equal("settings", navigation.State.NodeId);
+        }
+    }
+
+    [Fact]
     public async Task YamlVerificationPersistsAndOnlyReopensChangedCheck()
     {
         const string yaml =
