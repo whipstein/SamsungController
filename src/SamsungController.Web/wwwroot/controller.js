@@ -45,6 +45,20 @@ window.samsungController = {
             element.dispatchEvent(new Event("input", { bubbles: true }));
         });
     },
+    bindOutlineLineNumbers: function (element, lineNumbers) {
+        if (!element || !lineNumbers) {
+            return;
+        }
+
+        if (element.dataset.lineNumbersBound !== "true") {
+            element.dataset.lineNumbersBound = "true";
+            element.addEventListener("scroll", function () {
+                lineNumbers.scrollTop = element.scrollTop;
+            });
+        }
+
+        lineNumbers.scrollTop = element.scrollTop;
+    },
     bindMenuTree: function (element) {
         if (!element || element.dataset.keyboardNavigationBound === "true") {
             return;

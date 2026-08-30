@@ -568,8 +568,12 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .bulk-topology-controls select { width: 100%; padding: 9px 10px; font-size: 9px; }
 .bulk-topology-controls .secondary-action { min-height: 34px; }
 .bulk-topology-outline { display: block; margin-top: 10px; }
-.bulk-topology-outline textarea { width: 100%; min-height: 185px; resize: vertical; padding: 11px 12px; border: 1px solid var(--line); border-radius: 6px; background: #071019; color: var(--ink); font: 10px/1.65 ui-monospace, "SFMono-Regular", Consolas, monospace; tab-size: 2; }
-.bulk-topology-outline textarea:focus { border-color: rgba(124,231,220,.55); outline: 0; box-shadow: 0 0 0 2px rgba(124,231,220,.08); }
+.bulk-topology-code-editor { position: relative; min-height: 350px; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: #071019; }
+.bulk-topology-code-editor:focus-within { border-color: rgba(124,231,220,.55); box-shadow: 0 0 0 2px rgba(124,231,220,.08); }
+.bulk-topology-line-numbers { position: absolute; z-index: 1; inset: 0 auto 0 0; width: 42px; overflow: hidden; padding: 11px 8px 11px 5px; border-right: 1px solid var(--line); background: #09151e; color: var(--faint); font: 10px/1.65 ui-monospace, "SFMono-Regular", Consolas, monospace; text-align: right; user-select: none; }
+.bulk-topology-line-numbers span { display: block; height: 1.65em; }
+.bulk-topology-outline textarea { display: block; width: 100%; min-height: 350px; resize: vertical; padding: 11px 12px 11px 54px; border: 0; border-radius: 0; background: transparent; color: var(--ink); font: 10px/1.65 ui-monospace, "SFMono-Regular", Consolas, monospace; tab-size: 2; white-space: pre; }
+.bulk-topology-outline textarea:focus { border: 0; outline: 0; box-shadow: none; }
 .bulk-topology-indent-note { display: block; margin-top: 5px; color: var(--faint); font-size: 8px; }
 .bulk-topology-keep { display: flex; align-items: flex-start; gap: 9px; margin-top: 10px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 6px; background: #09151e; cursor: pointer; }
 .bulk-topology-keep input { width: 15px; height: 15px; margin: 1px 0 0; accent-color: var(--cyan); }
@@ -577,7 +581,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .bulk-topology-keep strong { font-size: 9px; }
 .bulk-topology-keep small { margin-top: 3px; color: var(--muted); font-size: 8px; line-height: 1.45; }
 .bulk-topology-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
-.bulk-topology-actions .primary-action { width: auto; }
+.bulk-topology-actions .primary-action, .bulk-topology-actions .secondary-action { width: auto; }
 .bulk-topology-save-note { display: block; margin-top: 6px; color: var(--faint); font-size: 8px; line-height: 1.45; text-align: right; }
 .bulk-topology-save-note strong { color: var(--cyan); }
 .bulk-topology-preview { margin-top: 11px; padding: 11px 12px; border: 1px solid rgba(124,231,220,.25); border-radius: 6px; background: rgba(124,231,220,.035); }

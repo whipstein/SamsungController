@@ -21,7 +21,7 @@
                 <ol>
                     <li><strong>TV profile:</strong> enter the model number and firmware. The definition name and file ID are generated for you.</li>
                     <li><strong>Configuration:</strong> describe the settings-dependent layout currently shown on the TV.</li>
-                    <li><strong>Menu outline:</strong> paste the visible hierarchy using indentation. Use fine adjustments only when needed.</li>
+                    <li><strong>Menu outline:</strong> paste the visible hierarchy using indentation. Preview it, then save while continuing to edit or advance to recording. Use fine adjustments only when needed.</li>
                     <li><strong>Record:</strong> select a source and target, then use the embedded remote. Successful buttons control the TV and enter the draft.</li>
                     <li><strong>Timing:</strong> test common waits system-wide, then override only the steps that need special pacing.</li>
                     <li><strong>Verify:</strong> prepare the source, replay the draft, and confirm three separate visual passes.</li>
@@ -195,14 +195,23 @@
                                 </div>
                                 <label class="bulk-topology-outline">
                                     <span>MENU OUTLINE</span>
-                                    <textarea value="@TopologyOutline"
-                                              @oninput="HandleTopologyOutlineChanged"
-                                              @ref="TopologyOutlineElement"
-                                              aria-describedby="menu-outline-guidance menu-outline-error"
-                                              rows="11"
-                                              spellcheck="false"
-                                              placeholder="Settings {submenu}&#10;  Picture {submenu}&#10;    Expert Settings {submenu}&#10;      Brightness {slider; default=50; min=0; max=100}&#10;      Color Tone {selection; default=Warm2; options=Standard|Warm1|Warm2}&#10;      Adaptive Picture {switch; default=off}&#10;      Reset Picture {confirmation; default=Cancel; options=Reset|Cancel}"
-                                              disabled="@(!CanEditMenuTree)"></textarea>
+                                    <div class="bulk-topology-code-editor">
+                                        <div class="bulk-topology-line-numbers" @ref="TopologyLineNumbersElement" aria-hidden="true">
+                                            @for (var lineNumber = 1; lineNumber <= TopologyOutlineLineCount; lineNumber++)
+                                            {
+                                                <span>@lineNumber</span>
+                                            }
+                                        </div>
+                                        <textarea value="@TopologyOutline"
+                                                  @oninput="HandleTopologyOutlineChanged"
+                                                  @ref="TopologyOutlineElement"
+                                                  aria-describedby="menu-outline-guidance menu-outline-error"
+                                                  rows="20"
+                                                  wrap="off"
+                                                  spellcheck="false"
+                                                  placeholder="Settings {submenu}&#10;  Picture {submenu}&#10;    Expert Settings {submenu}&#10;      Brightness {slider; default=50; min=0; max=100}&#10;      Color Tone {selection; default=Warm2; options=Standard|Warm1|Warm2}&#10;      Adaptive Picture {switch; default=off}&#10;      Reset Picture {confirmation; default=Cancel; options=Reset|Cancel}"
+                                                  disabled="@(!CanEditMenuTree)"></textarea>
+                                    </div>
                                 </label>
                                 <small id="menu-outline-guidance" class="bulk-topology-indent-note">Enter starts the next line with the same indentation as the current line.</small>
                                 @if (!string.IsNullOrWhiteSpace(TopologyOutlineError))
@@ -221,9 +230,10 @@
                                 </label>
                                 <div class="bulk-topology-actions">
                                     <button class="secondary-action" @onclick="PreviewTopologyOutline" disabled="@(!CanPreviewTopology)">Preview changes</button>
-                                    <button class="primary-action" @onclick="ApplyTopologyOutlineAsync" disabled="@(!CanApplyTopology)">Save outline to YAML <span>→</span></button>
+                                    <button class="secondary-action" @onclick="() => ApplyTopologyOutlineAsync(false)" disabled="@(!CanApplyTopology)">Save &amp; keep editing</button>
+                                    <button class="primary-action" @onclick="() => ApplyTopologyOutlineAsync(true)" disabled="@(!CanApplyTopology)">Save &amp; continue <span>→</span></button>
                                 </div>
-                                <small class="bulk-topology-save-note">Saving is two-step: preview the current text, then choose <strong>Save outline to YAML</strong>. Editing the text requires a new preview. Deleted lines appear as removals in the preview.</small>
+                                <small class="bulk-topology-save-note">Saving is two-step: preview the current text, then save and remain here or continue to recording. Editing the text requires a new preview. Deleted lines appear as removals in the preview.</small>
                                 @if (TopologyPreview is not null)
                                 {
                                     <div class="bulk-topology-preview @(TopologyPreview.HasChanges ? "" : "no-changes")">
@@ -1092,6 +1102,7 @@
     private ElementReference ConfigurationStepElement { get; set; }
     private ElementReference TopologyStepElement { get; set; }
     private ElementReference TopologyOutlineElement { get; set; }
+    private ElementReference TopologyLineNumbersElement { get; set; }
     private ElementReference RecordingStepElement { get; set; }
     private ElementReference ValidationStepElement { get; set; }
     private MenuSetupStep? PendingSetupScroll { get; set; }
@@ -1250,6 +1261,7 @@
         && !string.IsNullOrWhiteSpace(TopologyParentId)
         && !string.IsNullOrWhiteSpace(TopologyOutline);
     private bool CanApplyTopology => CanPreviewTopology && TopologyPreview is not null;
+    private int TopologyOutlineLineCount => TopologyOutline.Count(character => character == '\n') + 1;
     private bool CanSaveMenuConfiguration => CanEditMenuTree
         && ShowMenuConfigurationEditor
         && !string.IsNullOrWhiteSpace(MenuConfigurationName)
@@ -1403,6 +1415,10 @@
                 await JavaScript.InvokeVoidAsync(
                     "samsungController.bindAutoIndent",
                     TopologyOutlineElement);
+                await JavaScript.InvokeVoidAsync(
+                    "samsungController.bindOutlineLineNumbers",
+                    TopologyOutlineElement,
+                    TopologyLineNumbersElement);
             }
         }
         catch (JSDisconnectedException)
@@ -1774,7 +1790,7 @@
         }
     }
 
-    private async Task ApplyTopologyOutlineAsync()
+    private async Task ApplyTopologyOutlineAsync(bool continueToRecording)
     {
         IsBusy = true;
         LocalError = null;
@@ -1785,8 +1801,16 @@
             Refresh();
             LoadCurrentTopologyOutline();
             InitializeNodeDefaults(force: true);
-            MenuTreeExpanded = false;
-            PendingSetupScroll = MenuSetupStep.Record;
+            if (continueToRecording)
+            {
+                MenuTreeExpanded = false;
+                PendingSetupScroll = MenuSetupStep.Record;
+            }
+            else
+            {
+                MenuTreeExpanded = true;
+                BulkTopologyExpanded = true;
+            }
         }
         catch (OperationCanceledException)
         {

@@ -247,10 +247,11 @@ can be planned or sent.
    immediately.
 4. In **Configuration**, describe and select the settings-dependent layout that
    is currently visible. **Menu outline** automatically loads the selected YAML
-   branch as an indented outline; edit it directly or use **Reload branch from
-   YAML** to discard unsaved text. Add the expected menu positions with two spaces
-   per level, choose **Preview changes**, and then choose **Save outline to
-   YAML**. Any text edit invalidates the preview and requires a new one. Invalid
+   branch as an indented outline in a 20-line editor with synchronized line numbers;
+   edit it directly or use **Reload branch from YAML** to discard unsaved text.
+   Add the expected menu positions with two spaces per level, choose **Preview
+   changes**, and then choose **Save & keep editing** or **Save & continue** to
+   advance to recording. Any text edit invalidates the preview and requires a new one. Invalid
    formatting is reported beside the editor with the affected outline line.
    Matching
    labels under the same parent reuse their stable IDs; append `[stable-id]` to a
