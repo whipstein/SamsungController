@@ -2401,6 +2401,94 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task NamedTvStatesPersistAndLoadAsPredictionBaselineWithoutSendingKeys()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: saved-tv-state
+            name: Saved TV State
+            model: Test TV
+            nodes:
+              - id: normal-video
+                label: Normal video
+                children:
+                  - id: brightness
+                    label: Brightness
+                    controlType: slider
+                    defaultValue: 25
+                    minimumValue: 0
+                    maximumValue: 50
+                  - id: contrast-enhancer
+                    label: Contrast Enhancer
+                    controlType: switch
+                    defaultValue: off
+            anchors:
+              - id: normal
+                label: Return to normal video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            transitions:
+              - id: open-brightness
+                from: normal-video
+                to: brightness
+                verified: true
+                steps:
+                  - key: KEY_MENU
+              - id: open-contrast-enhancer
+                from: normal-video
+                to: contrast-enhancer
+                verified: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_DOWN
+            """;
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        string stateId;
+        await using (controller)
+        {
+            var state = await controller.SaveCurrentMenuControlStateAsync(
+                "Calibrated night",
+                [
+                    new MenuControlProfileValue("brightness", "17"),
+                    new MenuControlProfileValue("contrast-enhancer", "on")
+                ]);
+            stateId = state.Id;
+
+            Assert.Empty(GetSentKeys(transport));
+            Assert.Equal("17", controller.GetMenuNavigationSnapshot().ControlValues["brightness"]);
+            Assert.Equal("on", controller.GetMenuNavigationSnapshot().ControlValues["contrast-enhancer"]);
+            var summary = Assert.Single(controller.GetSavedMenuControlStates());
+            Assert.Equal("Calibrated night", summary.Name);
+            Assert.Equal(2, summary.ValueCount);
+
+            await controller.ApplyMenuControlValuesAsync(
+                [new MenuControlValueUpdate("brightness", "17", "18")],
+                new Dictionary<string, string>
+                {
+                    ["brightness"] = "17",
+                    ["contrast-enhancer"] = "on"
+                },
+                returnToNormalVideo: false);
+            transport.SentMessages.Clear();
+
+            var loaded = await controller.LoadMenuControlStateAsync(stateId);
+
+            Assert.Equal("Calibrated night", loaded.Name);
+            Assert.Equal("17", controller.GetMenuNavigationSnapshot().ControlValues["brightness"]);
+            Assert.Empty(GetSentKeys(transport));
+        }
+
+        await using var reloaded = CreateController();
+        await reloaded.InitializeAsync();
+        Assert.Equal(stateId, Assert.Single(reloaded.GetSavedMenuControlStates()).Id);
+        await reloaded.DeleteMenuControlStateAsync(stateId);
+        Assert.Empty(reloaded.GetSavedMenuControlStates());
+    }
+
+    [Fact]
     public async Task SelectionBehaviorVerificationTracksEachInteractionTypeAndPersists()
     {
         const string yaml =
@@ -2560,6 +2648,9 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 Assert.Equal(MenuControlType.Slider, result.ControlType);
                 Assert.Contains("Changed", result.ActionDescription, StringComparison.Ordinal);
 
+                Assert.Equal(
+                    1,
+                    await controller.RestoreMenuDefinitionVerificationTestAsync(result));
                 var verification = await controller.ConfirmMenuSliderBehaviorAsync(
                     result.TargetNodeId);
                 Assert.Equal(index + 1, verification.ConfirmedSliderCount);
@@ -2595,11 +2686,11 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                     controlType: confirmation
                     defaultValue: Start Now
                     options: [Start Now, Start After TV Off]
-                  - id: reset-picture
-                    label: Reset Picture
+                  - id: discard-changes
+                    label: Discard Changes
                     controlType: confirmation
-                    defaultValue: Reset
-                    options: [Reset, Cancel]
+                    defaultValue: Apply
+                    options: [Apply, Cancel]
             anchors:
               - id: normal
                 label: Return to normal video
@@ -2614,9 +2705,9 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 verified: true
                 steps:
                   - key: KEY_HOME
-              - id: open-reset-picture
+              - id: open-discard-changes
                 from: normal-video
-                to: reset-picture
+                to: discard-changes
                 verified: true
                 steps:
                   - key: KEY_MENU
@@ -2627,12 +2718,69 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             var result = await controller.RunMenuDefinitionVerificationTestAsync(
                 "control:confirmation-behavior");
 
-            Assert.Equal("reset-picture", result.TargetNodeId);
+            Assert.Equal("discard-changes", result.TargetNodeId);
             Assert.Equal(MenuControlType.Confirmation, result.ControlType);
             Assert.Contains("selected Cancel", result.ActionDescription, StringComparison.Ordinal);
             Assert.Equal(
                 ["KEY_MENU", "KEY_ENTER", "KEY_DOWN", "KEY_ENTER"],
                 GetSentKeys(transport));
+        }
+    }
+
+    [Fact]
+    public async Task FileVerificationDoesNotRequireResetOrDestructiveConfirmations()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: destructive-confirmations
+            name: Destructive Confirmations
+            model: Test TV
+            nodes:
+              - id: normal-video
+                label: Normal video
+                children:
+                  - id: reset-picture
+                    label: Reset Picture
+                    controlType: confirmation
+                    defaultValue: Reset
+                    options: [Reset, Cancel]
+                  - id: pixel-refresh
+                    label: Pixel Refresh
+                    controlType: confirmation
+                    defaultValue: Start Now
+                    options: [Start Now, Start After TV Off]
+            anchors:
+              - id: normal
+                label: Return to normal video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            transitions:
+              - id: open-reset-picture
+                from: normal-video
+                to: reset-picture
+                verified: true
+                steps:
+                  - key: KEY_MENU
+              - id: open-pixel-refresh
+                from: normal-video
+                to: pixel-refresh
+                verified: true
+                steps:
+                  - key: KEY_HOME
+            """;
+        var (controller, _) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            var checks = controller.GetMenuDefinitionVerificationSnapshot().Checks;
+            Assert.DoesNotContain(
+                checks,
+                check => check.Kind == MenuVerificationCheckKind.Confirmation);
+            Assert.DoesNotContain(
+                checks,
+                check => check.TargetNodeId is "reset-picture" or "pixel-refresh");
         }
     }
 
@@ -2701,6 +2849,13 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             Assert.Equal("10%", navigation.ControlValues["interval"]);
             Assert.Contains("KEY_ENTER", GetSentKeys(transport));
             Assert.Contains("KEY_DOWN", GetSentKeys(transport));
+
+            Assert.Equal(
+                2,
+                await controller.RestoreMenuDefinitionVerificationTestAsync(result));
+            navigation = controller.GetMenuNavigationSnapshot();
+            Assert.Equal("off", navigation.ControlValues["twenty-point-enabled"]);
+            Assert.Equal("5%", navigation.ControlValues["interval"]);
         }
     }
 
@@ -2779,11 +2934,18 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             Assert.Equal("on", navigation.ControlValues["master"]);
             Assert.Equal("On", navigation.ControlValues["autorun"]);
             Assert.Equal("settings", navigation.State.NodeId);
+
+            Assert.Equal(
+                2,
+                await controller.RestoreMenuDefinitionVerificationTestAsync(result));
+            navigation = controller.GetMenuNavigationSnapshot();
+            Assert.Equal("off", navigation.ControlValues["master"]);
+            Assert.Equal("Off", navigation.ControlValues["autorun"]);
         }
     }
 
     [Fact]
-    public async Task YamlVerificationPersistsAndOnlyReopensChangedCheck()
+    public async Task LocalVerificationSidecarPersistsAndOnlyReopensChangedCheck()
     {
         const string yaml =
             """
@@ -2841,6 +3003,14 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             Assert.True(complete.FullyVerified);
             Assert.Equal(complete.RequiredCount, complete.VerifiedCount);
 
+            var exportPath = Path.Combine(
+                _directory,
+                "repository-menu-definitions",
+                "complete-verification.yaml");
+            await controller.ExportMenuStructureAsync(exportPath);
+            var exported = await new MenuDefinitionParser().ParseFileAsync(exportPath);
+            Assert.Null(exported.Verification);
+
             await controller.UpdateMenuNodeAsync(
                 "picture-mode",
                 new MenuNodeEditRequest(
@@ -2863,9 +3033,19 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
 
         var definitionPath = Path.Combine(_directory, "explicit-validation-menu.yaml");
         var reparsed = await new MenuDefinitionParser().ParseFileAsync(definitionPath);
-        Assert.NotNull(reparsed.Verification);
-        Assert.Equal("S95F", reparsed.Verification.Display.Model);
-        Assert.Contains(reparsed.Verification.Checks, check => check.Id == "display");
+        Assert.Null(reparsed.Verification);
+        var sidecarPath = new MenuVerificationStore(_directory).GetPath(
+            "complete-verification");
+        Assert.True(File.Exists(sidecarPath));
+
+        await using var reloaded = CreateController();
+        await reloaded.InitializeAsync();
+        var restored = reloaded.GetMenuDefinitionVerificationSnapshot();
+        Assert.False(restored.FullyVerified);
+        Assert.Equal(
+            "control:selection-behavior",
+            Assert.Single(restored.Checks, check => !check.Verified).Id);
+        Assert.True(restored.Checks.Single(check => check.Id == "display").Verified);
     }
 
     [Fact]

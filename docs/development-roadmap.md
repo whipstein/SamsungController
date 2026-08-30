@@ -114,7 +114,11 @@ Status was reconciled with the repository on 2026-08-30. A checked box means the
 - [x] Persist a local desired-value profile and reapply it after an explicitly confirmed verified factory-reset command.
 - [x] Derive a compact verification checklist using topology branches, shared control behaviors, and representative disabled/hidden behavior classes instead of per-control line items.
 - [x] Bind verification evidence to the exact display/context combination with per-check fingerprints and reopen only checks affected by a later definition edit.
-- [x] Provide one File Verification workspace and an always-visible app status that clearly distinguish fully verified from verification-required profiles.
+- [x] Provide one Display Verification workspace and an always-visible app status that clearly distinguish fully verified from verification-required profiles.
+- [x] Restore guided verification adjustments and prerequisite controls to their prior values before exiting the menu.
+- [x] Exclude reset/destructive confirmations from required representative verification.
+- [x] Save and load named current-TV value states locally without sending TV commands.
+- [x] Keep distributable menu structures in a tracked repository catalog while storing display verification and saved TV states locally.
 
 ### Read-only protocol research
 

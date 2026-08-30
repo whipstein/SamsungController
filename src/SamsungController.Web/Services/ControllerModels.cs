@@ -148,6 +148,19 @@ public sealed record MenuControlProfileSnapshot(
     string? DefinitionId,
     IReadOnlyList<MenuControlProfileValue> Values);
 
+public sealed record SavedMenuControlState(
+    string Id,
+    string Name,
+    string DefinitionId,
+    DateTimeOffset SavedAtUtc,
+    IReadOnlyList<MenuControlProfileValue> Values);
+
+public sealed record SavedMenuControlStateSummary(
+    string Id,
+    string Name,
+    DateTimeOffset SavedAtUtc,
+    int ValueCount);
+
 public sealed record MenuControlVerificationSnapshot(
     int ConfirmedSliderCount,
     int RequiredSliderCount,
@@ -195,7 +208,8 @@ public sealed record MenuDefinitionVerificationTestResult(
     string TargetNodeId,
     string TargetPath,
     MenuControlType? ControlType,
-    string ActionDescription);
+    string ActionDescription,
+    IReadOnlyList<MenuControlValueUpdate> AppliedUpdates);
 
 public sealed record MenuAnchorSummary(
     string Id,

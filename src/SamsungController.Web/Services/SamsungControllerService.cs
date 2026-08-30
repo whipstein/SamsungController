@@ -35,6 +35,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private readonly string _configurationDirectory;
     private readonly string _settingsPath;
     private readonly string _tokenPath;
+    private readonly MenuVerificationStore _menuVerificationStore;
     private readonly string _defaultMenuDefinitionPath;
     private readonly JsonFileSamsungTokenStore _tokenStore;
     private readonly NdjsonProtocolLogger _logger;
@@ -99,6 +100,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             ?? WebApplicationPaths.GetDefaultConfigurationDirectory());
         _settingsPath = Path.Combine(_configurationDirectory, "settings.json");
         _tokenPath = Path.Combine(_configurationDirectory, "tokens.json");
+        _menuVerificationStore = new MenuVerificationStore(_configurationDirectory);
         _defaultMenuDefinitionPath = Path.Combine(
             AppContext.BaseDirectory,
             "menu-definitions",
@@ -525,10 +527,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
 
         var updated = AddVerificationRecords(definition, plan, [check]);
-        await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
+        await PersistActiveMenuVerificationAsync(updated, cancellationToken).ConfigureAwait(false);
         lock (_sync)
         {
-            _menuAuthoringStatus = $"File verification recorded · {check.Label}";
+            _menuAuthoringStatus = $"Display verification recorded · {check.Label}";
             _menuAuthoringError = null;
         }
 
@@ -564,10 +566,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
 
         var updated = AddVerificationRecords(definition, plan, ready);
-        await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
+        await PersistActiveMenuVerificationAsync(updated, cancellationToken).ConfigureAwait(false);
         lock (_sync)
         {
-            _menuAuthoringStatus = $"Carried {ready.Length} existing verification checks into the menu-file manifest";
+            _menuAuthoringStatus = $"Carried {ready.Length} existing verification checks into the local display-verification record";
             _menuAuthoringError = null;
         }
 
@@ -605,7 +607,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             definition,
             verification: manifest,
             replaceVerification: true);
-        await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
+        await PersistActiveMenuVerificationAsync(updated, cancellationToken).ConfigureAwait(false);
         NotifyChanged();
         return GetMenuDefinitionVerificationSnapshot();
     }
@@ -616,8 +618,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(checkId);
         await InitializeAsync(cancellationToken).ConfigureAwait(false);
-        EnsureNoAutomationRunning("run a menu-file verification test");
-        EnsureNoMenuRecording("run a menu-file verification test");
+        EnsureNoAutomationRunning("run a display-verification test");
+        EnsureNoMenuRecording("run a display-verification test");
         if (_client.State != SamsungConnectionState.Connected)
         {
             throw new InvalidOperationException(
@@ -705,8 +707,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         await InitializeAsync(cancellationToken).ConfigureAwait(false);
-        EnsureNoAutomationRunning("return menu-file verification to a known state");
-        EnsureNoMenuRecording("return menu-file verification to a known state");
+        EnsureNoAutomationRunning("return display verification to a known state");
+        EnsureNoMenuRecording("return display verification to a known state");
         if (_client.State != SamsungConnectionState.Connected)
         {
             throw new InvalidOperationException(
@@ -729,6 +731,63 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
         await RunMenuAnchorAsync(anchor.Id, cancellationToken).ConfigureAwait(false);
         return definition.GetPath(anchor.TargetNodeId);
+    }
+
+    public async Task<int> RestoreMenuDefinitionVerificationTestAsync(
+        MenuDefinitionVerificationTestResult test,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(test);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("restore display-verification values");
+        EnsureNoMenuRecording("restore display-verification values");
+        if (_client.State != SamsungConnectionState.Connected)
+        {
+            throw new InvalidOperationException(
+                "Connect to the TV before restoring verification values.");
+        }
+
+        MenuDefinition definition;
+        Dictionary<string, string> effectiveValues;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+            effectiveValues = CreateEffectivePictureControlValues(
+                definition,
+                _menuControlValues);
+        }
+
+        var restoredCount = 0;
+        foreach (var applied in test.AppliedUpdates.Reverse())
+        {
+            var node = definition.GetRequiredNode(applied.NodeId);
+            if (!effectiveValues.TryGetValue(node.Id, out var currentValue))
+            {
+                throw new InvalidOperationException(
+                    $"'{definition.GetPath(node.Id)}' no longer has a predicted value for restoration.");
+            }
+
+            if (!currentValue.Equals(applied.ToValue, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"Cannot safely restore '{definition.GetPath(node.Id)}': its predicted value changed from '{applied.ToValue}' to '{currentValue}' after the test.");
+            }
+
+            await ApplyMenuControlValuesAsync(
+                    [new MenuControlValueUpdate(
+                        node.Id,
+                        currentValue,
+                        applied.FromValue)],
+                    effectiveValues,
+                    returnToNormalVideo: false,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            effectiveValues[node.Id] = applied.FromValue;
+            restoredCount++;
+        }
+
+        return restoredCount;
     }
 
     public MenuControlProfileSnapshot GetMenuControlProfileSnapshot()
@@ -762,25 +821,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 ?? throw new InvalidOperationException("No menu definition is loaded.");
         }
 
-        if (values.Count > 5000)
-        {
-            throw new InvalidOperationException("A menu-control profile can store at most 5,000 values.");
-        }
-
-        var normalized = values.Select(value => NormalizeMenuControlProfileValue(
-                definition,
-                value))
-            .ToArray();
-        var uniqueKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var value in normalized)
-        {
-            var key = $"{value.SelectorNodeId}\u001f{value.SelectorValue}\u001f{value.NodeId}";
-            if (!uniqueKeys.Add(key))
-            {
-                throw new InvalidOperationException(
-                    $"Menu-control profile value '{key}' is duplicated.");
-            }
-        }
+        var normalized = NormalizeMenuControlProfileValues(definition, values);
 
         await UpdateSettingsAsync(
                 current => current with
@@ -790,6 +831,162 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 },
                 cancellationToken)
             .ConfigureAwait(false);
+        NotifyChanged();
+    }
+
+    public IReadOnlyList<SavedMenuControlStateSummary> GetSavedMenuControlStates()
+    {
+        lock (_sync)
+        {
+            if (_menuDefinition is null)
+            {
+                return [];
+            }
+
+            return (_settings.SavedMenuControlStates ?? [])
+                .Where(state => state.DefinitionId.Equals(
+                    _menuDefinition.Id,
+                    StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(state => state.SavedAtUtc)
+                .Select(state => new SavedMenuControlStateSummary(
+                    state.Id,
+                    state.Name,
+                    state.SavedAtUtc,
+                    state.Values.Count))
+                .ToArray();
+        }
+    }
+
+    public async Task<SavedMenuControlState> SaveCurrentMenuControlStateAsync(
+        string name,
+        IReadOnlyList<MenuControlProfileValue> values,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentNullException.ThrowIfNull(values);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        var normalizedName = name.Trim();
+        if (normalizedName.Length > 80)
+        {
+            throw new InvalidOperationException(
+                "A saved TV-state name can contain at most 80 characters.");
+        }
+
+        MenuDefinition definition;
+        SavedMenuControlState? existing;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+            existing = (_settings.SavedMenuControlStates ?? []).FirstOrDefault(state =>
+                state.DefinitionId.Equals(definition.Id, StringComparison.OrdinalIgnoreCase)
+                && state.Name.Equals(normalizedName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var normalized = NormalizeMenuControlProfileValues(definition, values);
+        var saved = new SavedMenuControlState(
+            existing?.Id ?? Guid.NewGuid().ToString("N"),
+            normalizedName,
+            definition.Id,
+            DateTimeOffset.UtcNow,
+            normalized);
+        await UpdateSettingsAsync(
+                current =>
+                {
+                    var states = (current.SavedMenuControlStates ?? [])
+                        .Where(state => !state.Id.Equals(
+                            saved.Id,
+                            StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+                    if (states.Count(state => state.DefinitionId.Equals(
+                            definition.Id,
+                            StringComparison.OrdinalIgnoreCase)) >= 25)
+                    {
+                        throw new InvalidOperationException(
+                            "A menu definition can store at most 25 named TV states. Delete an older state first.");
+                    }
+
+                    states.Add(saved);
+                    return current with { SavedMenuControlStates = states };
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+        lock (_sync)
+        {
+            SeedMenuControlValuesFromState(definition, saved);
+        }
+
+        NotifyChanged();
+        return saved;
+    }
+
+    public async Task<SavedMenuControlState> LoadMenuControlStateAsync(
+        string stateId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(stateId);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        MenuDefinition definition;
+        SavedMenuControlState state;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+            state = (_settings.SavedMenuControlStates ?? []).FirstOrDefault(candidate =>
+                    candidate.Id.Equals(stateId.Trim(), StringComparison.OrdinalIgnoreCase)
+                    && candidate.DefinitionId.Equals(
+                        definition.Id,
+                        StringComparison.OrdinalIgnoreCase))
+                ?? throw new KeyNotFoundException(
+                    $"Saved TV state '{stateId.Trim()}' was not found for this menu definition.");
+        }
+
+        var normalized = state with
+        {
+            Values = NormalizeMenuControlProfileValues(definition, state.Values)
+        };
+        lock (_sync)
+        {
+            SeedMenuControlValuesFromState(definition, normalized);
+        }
+
+        NotifyChanged();
+        return normalized;
+    }
+
+    public async Task DeleteMenuControlStateAsync(
+        string stateId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(stateId);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        MenuDefinition definition;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+        }
+
+        var removed = false;
+        await UpdateSettingsAsync(
+                current =>
+                {
+                    var states = (current.SavedMenuControlStates ?? []).ToList();
+                    removed = states.RemoveAll(state =>
+                        state.Id.Equals(stateId.Trim(), StringComparison.OrdinalIgnoreCase)
+                        && state.DefinitionId.Equals(
+                            definition.Id,
+                            StringComparison.OrdinalIgnoreCase)) > 0;
+                    return current with { SavedMenuControlStates = states };
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (!removed)
+        {
+            throw new KeyNotFoundException(
+                $"Saved TV state '{stateId.Trim()}' was not found for this menu definition.");
+        }
+
         NotifyChanged();
     }
 
@@ -1215,6 +1412,41 @@ public sealed class SamsungControllerService : IAsyncDisposable
         {
             _menuDefinitionGate.Release();
         }
+    }
+
+    public async Task<string> ExportMenuStructureAsync(
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("export the menu structure");
+        EnsureNoMenuRecording("export the menu structure");
+        MenuDefinition definition;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+        }
+
+        var fullPath = Path.GetFullPath(path.Trim());
+        var extension = Path.GetExtension(fullPath);
+        if (!extension.Equals(".yaml", StringComparison.OrdinalIgnoreCase)
+            && !extension.Equals(".yml", StringComparison.OrdinalIgnoreCase)
+            && !extension.Equals(".json", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "A distributable menu structure must use a .yaml, .yml, or .json filename.");
+        }
+
+        var topology = CopyMenuDefinition(
+            definition,
+            verification: null,
+            replaceVerification: true);
+        await new MenuDefinitionWriter()
+            .WriteFileAsync(fullPath, topology, cancellationToken)
+            .ConfigureAwait(false);
+        return fullPath;
     }
 
     public MenuDefinitionCreationPreview PreviewMenuDefinitionCreation(
@@ -4993,7 +5225,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
 
         var nextValue = SelectAlternateMenuControlValue(node, currentValue);
-        await ApplyMenuDefinitionVerificationValueAsync(
+        var appliedUpdates = await ApplyMenuDefinitionVerificationValueAsync(
                 definition,
                 node,
                 currentValue,
@@ -5006,7 +5238,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             node.Id,
             definition.GetPath(node.Id),
             MenuControlBehaviorClassifier.GetEffectiveControlType(node),
-            $"Changed {node.Label} from {currentValue} to {nextValue}. Confirm the displayed value and interaction before counting the pass.");
+            $"Changed {node.Label} from {currentValue} to {nextValue}. Confirm the displayed value and interaction before counting the pass; the prior value will be restored before the menu exits.",
+            appliedUpdates);
     }
 
     private async Task<MenuDefinitionVerificationTestResult>
@@ -5064,7 +5297,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             node.Id,
             definition.GetPath(node.Id),
             MenuControlType.Confirmation,
-            $"Opened {node.Label} and selected Cancel. Confirm that the dialog opened and closed without applying the action.");
+            $"Opened {node.Label} and selected Cancel. Confirm that the dialog opened and closed without applying the action.",
+            []);
     }
 
     private async Task<MenuDefinitionVerificationTestResult>
@@ -5096,7 +5330,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 affected.Id,
                 definition.GetPath(affected.Id),
                 null,
-                $"Opened {definition.GetPath(viewNodeId)}. Confirm that {affected.Label} remains visible, gray, and unavailable.");
+                $"Opened {definition.GetPath(viewNodeId)}. Confirm that {affected.Label} remains visible, gray, and unavailable.",
+                []);
         }
 
         var hidden = check.Id.Equals(
@@ -5133,28 +5368,29 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
 
         var expectedValue = affectedCondition.EqualsValue;
+        var appliedUpdates = new List<MenuControlValueUpdate>();
         if (currentValue.Equals(expectedValue, StringComparison.OrdinalIgnoreCase))
         {
             var comparisonValue = SelectAlternateMenuControlValue(controller, currentValue);
-            await ApplyMenuDefinitionVerificationValueAsync(
+            appliedUpdates.AddRange(await ApplyMenuDefinitionVerificationValueAsync(
                     definition,
                     controller,
                     currentValue,
                     comparisonValue,
                     effectiveValues,
                     cancellationToken)
-                .ConfigureAwait(false);
+                .ConfigureAwait(false));
             currentValue = comparisonValue;
         }
 
-        await ApplyMenuDefinitionVerificationValueAsync(
+        appliedUpdates.AddRange(await ApplyMenuDefinitionVerificationValueAsync(
                 definition,
                 controller,
                 currentValue,
                 expectedValue,
                 effectiveValues,
                 cancellationToken)
-            .ConfigureAwait(false);
+            .ConfigureAwait(false));
         if (!string.IsNullOrWhiteSpace(affectedCondition.Node.ParentId))
         {
             await NavigateToMenuNodeAsync(
@@ -5169,10 +5405,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
             affectedCondition.Node.Id,
             definition.GetPath(affectedCondition.Node.Id),
             null,
-            $"Set {controller.Label} to {expectedValue}. Confirm that {affectedCondition.Node.Label} is {expectedBehavior}.");
+            $"Set {controller.Label} to {expectedValue}. Confirm that {affectedCondition.Node.Label} is {expectedBehavior}; prior values will be restored before the menu exits.",
+            CollapseMenuControlUpdates(appliedUpdates));
     }
 
-    private async Task ApplyMenuDefinitionVerificationValueAsync(
+    private async Task<IReadOnlyList<MenuControlValueUpdate>> ApplyMenuDefinitionVerificationValueAsync(
         MenuDefinition definition,
         MenuNode node,
         string currentValue,
@@ -5196,6 +5433,36 @@ public sealed class SamsungControllerService : IAsyncDisposable
         {
             effectiveValues[update.NodeId] = update.ToValue;
         }
+
+        return updates;
+    }
+
+    private static IReadOnlyList<MenuControlValueUpdate> CollapseMenuControlUpdates(
+        IEnumerable<MenuControlValueUpdate> updates)
+    {
+        var collapsed = new List<MenuControlValueUpdate>();
+        foreach (var update in updates)
+        {
+            var existingIndex = collapsed.FindIndex(candidate => candidate.NodeId.Equals(
+                update.NodeId,
+                StringComparison.OrdinalIgnoreCase));
+            if (existingIndex < 0)
+            {
+                collapsed.Add(update);
+                continue;
+            }
+
+            collapsed[existingIndex] = collapsed[existingIndex] with
+            {
+                ToValue = update.ToValue
+            };
+        }
+
+        return collapsed
+            .Where(update => !update.FromValue.Equals(
+                update.ToValue,
+                StringComparison.OrdinalIgnoreCase))
+            .ToArray();
     }
 
     private static bool CanAutomaticallyMakeMenuNodeAvailable(
@@ -5903,8 +6170,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 StringComparison.Ordinal)
                 ? GetAvailableUserDefinitionPath(definition.Id)
                 : currentPath;
+            var distributableTopology = CopyMenuDefinition(
+                definition,
+                verification: null,
+                replaceVerification: true);
             await new MenuDefinitionWriter()
-                .WriteFileAsync(path, definition, cancellationToken)
+                .WriteFileAsync(path, distributableTopology, cancellationToken)
                 .ConfigureAwait(false);
             if (!path.Equals(currentPath, StringComparison.Ordinal))
             {
@@ -5914,7 +6185,43 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     .ConfigureAwait(false);
             }
 
+            if (definition.Verification is not null)
+            {
+                await _menuVerificationStore.SaveAsync(
+                        definition.Id,
+                        definition.Verification,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             InstallMenuDefinition(definition, preserveValidationProgress: true);
+        }
+        finally
+        {
+            _menuDefinitionGate.Release();
+        }
+    }
+
+    private async Task PersistActiveMenuVerificationAsync(
+        MenuDefinition definition,
+        CancellationToken cancellationToken)
+    {
+        var reconciled = MenuDefinitionVerificationReconciler.Reconcile(definition);
+        var manifest = reconciled.Verification
+            ?? throw new InvalidOperationException(
+                "The active menu definition does not contain a display-verification record.");
+        await _menuDefinitionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _menuVerificationStore.SaveAsync(
+                    reconciled.Id,
+                    manifest,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            lock (_sync)
+            {
+                _menuDefinition = reconciled;
+            }
         }
         finally
         {
@@ -6871,6 +7178,49 @@ public sealed class SamsungControllerService : IAsyncDisposable
             definition,
             new MenuControlValueUpdate(value.NodeId, value.Value, value.Value));
         return new MenuControlProfileValue(update.NodeId, update.ToValue);
+    }
+
+    private static IReadOnlyList<MenuControlProfileValue> NormalizeMenuControlProfileValues(
+        MenuDefinition definition,
+        IReadOnlyList<MenuControlProfileValue> values)
+    {
+        if (values.Count > 5000)
+        {
+            throw new InvalidOperationException(
+                "A menu-control value set can store at most 5,000 values.");
+        }
+
+        var normalized = values
+            .Select(value => NormalizeMenuControlProfileValue(definition, value))
+            .ToArray();
+        var uniqueKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in normalized)
+        {
+            var key = $"{value.SelectorNodeId}\u001f{value.SelectorValue}\u001f{value.NodeId}";
+            if (!uniqueKeys.Add(key))
+            {
+                throw new InvalidOperationException(
+                    $"Menu-control value '{key}' is duplicated.");
+            }
+        }
+
+        return normalized;
+    }
+
+    private void SeedMenuControlValuesFromState(
+        MenuDefinition definition,
+        SavedMenuControlState state)
+    {
+        ResetMenuControlValues(definition);
+        foreach (var value in state.Values.Where(value =>
+                     string.IsNullOrWhiteSpace(value.SelectorNodeId)))
+        {
+            var node = definition.GetRequiredNode(value.NodeId);
+            _menuControlValues[node.Id] = NormalizePictureControlValue(
+                definition,
+                node,
+                value.Value);
+        }
     }
 
     private static IReadOnlyList<MenuNode> GetIndexedSliderNodes(
@@ -8146,16 +8496,56 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
     }
 
-    private static async Task<MenuDefinition> LoadValidatedMenuDefinitionAsync(
+    private async Task<MenuDefinition> LoadValidatedMenuDefinitionAsync(
         string path,
         CancellationToken cancellationToken)
     {
         var parsed = await new MenuDefinitionParser()
             .ParseFileAsync(path, cancellationToken)
             .ConfigureAwait(false);
-        var definition = MenuDefinitionVerificationReconciler.Reconcile(
-            TopologyRouteGenerator.Regenerate(
-                MigrateLegacyReturnReplacement(NormalizeInitialMenuTiming(parsed))));
+        var embeddedVerification = parsed.Verification;
+        var topology = CopyMenuDefinition(
+            parsed,
+            verification: null,
+            replaceVerification: true);
+        topology = TopologyRouteGenerator.Regenerate(
+            MigrateLegacyReturnReplacement(NormalizeInitialMenuTiming(topology)));
+        var display = MenuDefinitionVerificationPlanner.Create(topology).Display;
+        var localVerification = await _menuVerificationStore.LoadAsync(
+                topology.Id,
+                display,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var definition = CopyMenuDefinition(
+            topology,
+            verification: localVerification ?? embeddedVerification,
+            replaceVerification: true);
+        definition = MenuDefinitionVerificationReconciler.Reconcile(definition);
+        if (localVerification is null && embeddedVerification is not null)
+        {
+            await _menuVerificationStore.SaveAsync(
+                    definition.Id,
+                    definition.Verification ?? embeddedVerification,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            try
+            {
+                await new MenuDefinitionWriter()
+                    .WriteFileAsync(path, topology, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Installed or repository-provided topology may be read-only. The local
+                // sidecar remains authoritative even if the legacy block cannot be removed.
+            }
+            catch (IOException)
+            {
+                // Keep loading from the migrated local sidecar if the topology file is
+                // temporarily unavailable for a cleanup rewrite.
+            }
+        }
+
         try
         {
             new MenuDefinitionValidator().ValidateAndThrow(definition);

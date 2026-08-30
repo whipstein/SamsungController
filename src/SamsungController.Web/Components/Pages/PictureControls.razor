@@ -20,6 +20,7 @@
                 <li>Interval percentages and Custom Color choices appear as fixed grid rows, so every RGB value can be staged together without manually changing the selector.</li>
                 <li><strong>Immediate</strong> sends one changed control at a time. <strong>Apply button</strong> can stage a controller and its newly enabled settings together.</li>
                 <li><strong>Save profile</strong> stores desired values locally. <strong>Reset &amp; apply all</strong> runs a verified reset confirmation, restores known defaults, and reapplies that profile.</li>
+                <li>Use <strong>Saved current TV states</strong> to record values already visible on the TV and later load them as the prediction baseline. Saving or loading a state sends no remote commands.</li>
                 <li>Confirm three different sliders visually to verify the shared slider behavior for this TV. Later slider changes no longer require individual confirmation.</li>
                 <li>Confirm each selection control once. A submenu selection also sends Return after choosing its value.</li>
             </ul>
@@ -129,6 +130,33 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
         }
     </div>
     <p class="field-note">Values are predictions based on menu-definition defaults and changes sent during this page session. Controls changed elsewhere can make those predictions inaccurate.</p>
+    <div class="saved-tv-state-manager">
+        <div>
+            <span>SAVED CURRENT TV STATES</span>
+            <strong>Load an observed baseline without changing the TV</strong>
+            <small>Stage the values currently shown by the TV, name that state, then save it. Loading a state makes relative adjustments start from those saved values and sends no keys.</small>
+        </div>
+        <label>
+            <span>STATE NAME</span>
+            <input @bind="SavedStateName" maxlength="80" placeholder="Current calibrated state" disabled="@IsBusy" />
+        </label>
+        <button class="secondary-action" @onclick="SaveCurrentTvStateAsync" disabled="@(!CanSaveCurrentTvState)">Save staged values as current</button>
+        <label>
+            <span>SAVED STATE</span>
+            <select @bind="SelectedSavedStateId" disabled="@(IsBusy || SavedTvStates.Count == 0)">
+                @if (SavedTvStates.Count == 0)
+                {
+                    <option value="">No saved states</option>
+                }
+                @foreach (var state in SavedTvStates)
+                {
+                    <option value="@state.Id">@state.Name · @state.SavedAtUtc.ToLocalTime().ToString("g")</option>
+                }
+            </select>
+        </label>
+        <button class="primary-action" @onclick="LoadCurrentTvStateAsync" disabled="@(!CanUseSavedTvState)">Load as current values</button>
+        <button class="quiet-action" @onclick="DeleteCurrentTvStateAsync" disabled="@(!CanUseSavedTvState)">Delete</button>
+    </div>
     @if (ConfirmFactoryReset)
     {
         <div class="factory-reset-confirmation" role="alert">
@@ -329,6 +357,7 @@ else
     private MenuNavigationSnapshot Navigation { get; set; } = null!;
     private MenuControlVerificationSnapshot Verification { get; set; } = null!;
     private MenuControlProfileSnapshot Profile { get; set; } = null!;
+    private IReadOnlyList<SavedMenuControlStateSummary> SavedTvStates { get; set; } = [];
     private List<PictureControlEdit> Controls { get; } = [];
     private List<IndexedControlGroupEdit> IndexedGroups { get; } = [];
     private PictureUpdateMode UpdateMode { get; set; } = PictureUpdateMode.Staged;
@@ -341,6 +370,8 @@ else
     private bool ConfirmFactoryReset { get; set; }
     private string SelectedFactoryResetNodeId { get; set; } = string.Empty;
     private string SelectedFactoryResetChoice { get; set; } = string.Empty;
+    private string SavedStateName { get; set; } = "Current TV state";
+    private string SelectedSavedStateId { get; set; } = string.Empty;
 
     private int PendingCount => Controls.Count(control =>
             control.Pending
@@ -377,6 +408,15 @@ else
         && !Navigation.IsRunning;
     private bool CanSaveControlProfile => !IsBusy
         && Controls.Count > 0
+        && !Snapshot.MacroRunning
+        && !Navigation.IsRunning;
+    private bool CanSaveCurrentTvState => CanSaveControlProfile
+        && !string.IsNullOrWhiteSpace(SavedStateName);
+    private bool CanUseSavedTvState => !IsBusy
+        && !string.IsNullOrWhiteSpace(SelectedSavedStateId)
+        && SavedTvStates.Any(state => state.Id.Equals(
+            SelectedSavedStateId,
+            StringComparison.OrdinalIgnoreCase))
         && !Snapshot.MacroRunning
         && !Navigation.IsRunning;
 
@@ -649,6 +689,143 @@ else
         {
             IsBusy = false;
         }
+    }
+
+    private async Task SaveCurrentTvStateAsync()
+    {
+        IsBusy = true;
+        LocalError = null;
+        LocalStatus = null;
+        try
+        {
+            var state = await Controller.SaveCurrentMenuControlStateAsync(
+                SavedStateName,
+                CreateControlProfileValues());
+            ApplySavedTvState(state);
+            SavedTvStates = Controller.GetSavedMenuControlStates();
+            SelectedSavedStateId = state.Id;
+            SavedStateName = state.Name;
+            LocalStatus = $"Saved '{state.Name}' with {state.Values.Count} observed values and loaded it as the current prediction baseline. No TV commands were sent.";
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task LoadCurrentTvStateAsync()
+    {
+        IsBusy = true;
+        LocalError = null;
+        LocalStatus = null;
+        try
+        {
+            var state = await Controller.LoadMenuControlStateAsync(SelectedSavedStateId);
+            ApplySavedTvState(state);
+            SavedStateName = state.Name;
+            LocalStatus = $"Loaded '{state.Name}' as the current prediction baseline. No TV commands were sent.";
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task DeleteCurrentTvStateAsync()
+    {
+        IsBusy = true;
+        LocalError = null;
+        LocalStatus = null;
+        try
+        {
+            var removed = SavedTvStates.First(state => state.Id.Equals(
+                SelectedSavedStateId,
+                StringComparison.OrdinalIgnoreCase));
+            await Controller.DeleteMenuControlStateAsync(removed.Id);
+            SavedTvStates = Controller.GetSavedMenuControlStates();
+            SelectedSavedStateId = SavedTvStates.FirstOrDefault()?.Id ?? string.Empty;
+            LocalStatus = $"Deleted saved TV state '{removed.Name}'.";
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void ApplySavedTvState(SavedMenuControlState state)
+    {
+        foreach (var control in Controls.Where(control => !IsIndexedControl(control.Node.Id)))
+        {
+            var savedValue = state.Values.FirstOrDefault(value =>
+                string.IsNullOrWhiteSpace(value.SelectorNodeId)
+                && value.NodeId.Equals(control.Node.Id, StringComparison.OrdinalIgnoreCase));
+            if (savedValue is null)
+            {
+                continue;
+            }
+
+            var normalized = NormalizeControlValueWithoutError(
+                control.Node,
+                savedValue.Value);
+            if (normalized is null)
+            {
+                continue;
+            }
+
+            control.AppliedValue = normalized;
+            control.DesiredValue = normalized;
+            control.AwaitingConfirmation = false;
+            control.Confirmed = false;
+        }
+
+        foreach (var group in IndexedGroups)
+        {
+            foreach (var row in group.Rows)
+            {
+                foreach (var cell in row.Cells)
+                {
+                    var savedValue = state.Values.FirstOrDefault(value =>
+                        value.NodeId.Equals(cell.Slider.Id, StringComparison.OrdinalIgnoreCase)
+                        && value.SelectorNodeId?.Equals(
+                            group.Selector.Id,
+                            StringComparison.OrdinalIgnoreCase) == true
+                        && value.SelectorValue?.Equals(
+                            row.SelectorValue,
+                            StringComparison.OrdinalIgnoreCase) == true);
+                    if (savedValue is null)
+                    {
+                        continue;
+                    }
+
+                    var normalized = NormalizeControlValueWithoutError(
+                        cell.Slider,
+                        savedValue.Value);
+                    if (normalized is null)
+                    {
+                        continue;
+                    }
+
+                    cell.AppliedValue = normalized;
+                    cell.DesiredValue = normalized;
+                }
+            }
+
+            group.AwaitingConfirmation = false;
+        }
+
+        ClearPendingValuesThatBecameUnavailable();
     }
 
     private IReadOnlyList<MenuControlProfileValue> CreateControlProfileValues() => Controls
@@ -1217,6 +1394,13 @@ else
         Navigation = Controller.GetMenuNavigationSnapshot();
         Verification = Controller.GetMenuControlVerificationSnapshot();
         Profile = Controller.GetMenuControlProfileSnapshot();
+        SavedTvStates = Controller.GetSavedMenuControlStates();
+        if (!SavedTvStates.Any(state => state.Id.Equals(
+                SelectedSavedStateId,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            SelectedSavedStateId = SavedTvStates.FirstOrDefault()?.Id ?? string.Empty;
+        }
     }
 
     private void ReconcileControls()

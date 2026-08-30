@@ -49,6 +49,8 @@ internal sealed record SamsungWebSettings
 
     public IReadOnlyList<MenuControlProfileValue>? MenuControlProfileValues { get; init; }
 
+    public IReadOnlyList<SavedMenuControlState>? SavedMenuControlStates { get; init; }
+
     public IReadOnlyList<QuickAccessAction>? QuickAccess { get; init; }
 
     public static async Task<SamsungWebSettings> LoadAsync(

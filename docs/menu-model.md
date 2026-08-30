@@ -70,18 +70,8 @@ context:
   pictureMode: unrecorded
   input: unrecorded
 
-# Added and maintained by the File Verification page after visual testing.
-verification:
-  display:
-    model: S95F
-    firmware: "1296"
-    signal: SDR
-    pictureMode: Filmmaker Mode
-    input: Home Theater System
-  checks:
-    - id: display
-      fingerprint: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-      verifiedAt: "2026-08-30T15:30:00.0000000+00:00"
+# Display Verification stores its fingerprints in a local sidecar rather than
+# adding display-bound evidence to this distributable structure.
 
 configurations:
   - id: standard
@@ -203,16 +193,15 @@ transitions:
       - key: KEY_MENU
 ```
 
-The `verification` mapping is optional until the profile is tested. Do not copy
-its records between definitions or edit fingerprints by hand. The complete
-verification workspace derives the required checks from the current definition and
-stores a result only after visual confirmation. Each fingerprint includes the
+The distributable structure never needs a `verification` mapping. Display
+Verification derives the required checks from the current structure and stores
+results in a local sidecar only after visual confirmation. Each fingerprint includes the
 declared display context plus the relevant route, timing, control options,
-bounds, or condition. A later file edit therefore invalidates only records whose
+bounds, or condition. A later structure edit therefore invalidates only records whose
 behavior changed. Equivalent control types share one representative check, and
 conditional rows are sampled by disabled, hidden, or combined behavior class.
 The fingerprint for each class still includes every declared rule and affected
-node. The persistent header reports the file as fully verified only when every
+node. The persistent header reports the structure/display combination as fully verified only when every
 derived representative check has a matching record.
 
 `configurations` keeps alternate layouts in one TV model file. Use `hiddenWhen`
@@ -474,11 +463,11 @@ manually from Menu Controls. Selections require one successful representative
 confirmation for each interaction type present: ordinary selection, submenu
 selection, and indexed selection. Controls of the same type then share that
 TV-specific behavior evidence. Their individual option lists remain in the
-menu-file verification fingerprint, so edits still reopen the shared behavior
+local display-verification fingerprint, so edits still reopen the shared behavior
 group. Selection verification resets for a different TV, when system-wide menu
 delays change, or from Menu Controls. Switches are not promoted by either routine
 coverage type and continue to request visual confirmation during normal updates;
-File Verification uses one shared switch-behavior check.
+Display Verification uses one shared switch-behavior check.
 
 ### Saved profile and factory-reset synchronization
 

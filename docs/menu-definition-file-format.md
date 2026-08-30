@@ -35,31 +35,33 @@ sends any key. Raw editing is useful for bulk generation or review:
    reference to it and should normally be done through the UI.
 3. Load the file with **Build & Verify > Load & validate**. Parse and validation
    errors are shown without sending TV commands.
-4. Review the recalculated checklist on **File Verification**. A behavioral
+4. Review the recalculated checklist on **Display Verification**. A behavioral
    edit invalidates only representative groups whose fingerprints changed.
 
-Never copy a `verification` block from another file or manufacture its
-fingerprints. It is evidence for one exact file/display combination, not a flag
-that should be forced to true.
+Display-verification evidence and named current-TV states do not belong in this
+file. The application stores evidence in local `menu-verifications/` sidecars
+and saved values in local application settings. **Export & use structure** always
+produces a portable file without either kind of local state and makes the copy
+the active authoring source.
 
 ## The topology in one picture
 
 ```text
-menu definition
+menu structure
 ├── identity and display context
 ├── configurations (optional alternate menu layouts)
 ├── timing (system-wide waits)
 ├── nodes (ordered on-screen tree and control behavior)
 ├── anchors (known-state recovery and return behavior)
-├── transitions (explicit or generated key routes)
-└── verification (display-bound evidence maintained by the app)
+└── transitions (explicit or generated key routes)
 ```
 
 `nodes` are a recursive tree. Each submenu stores its immediately visible rows
 in a `children` array, in the same order they appear on the TV. A child's
 position in that array determines the generated Up/Down offset. Nesting alone
 does not prove that a route works. Anchors and transitions supply the executable
-keys, and verification records the visually tested behavior. The containing
+keys. Local display-verification sidecars record visually tested behavior
+without making the structure display-specific. The containing
 array is the only way to declare a parent; a separate `parent` field is not part
 of the schema.
 
@@ -304,7 +306,6 @@ allowed.
 | `name` | Yes | Human-readable profile name. |
 | `model` | Yes | TV model or model family. |
 | `context` | No | Firmware, signal, picture mode, and input for which routes were observed. |
-| `verification` | No | App-maintained display and behavioral fingerprints. |
 | `configurations` | No | Named alternate menu layouts. |
 | `timing` | No | Default waits; omitted fields use built-in defaults. |
 | `nodes` | Yes | At least one ordered root topology node; submenu descendants are nested under `children`. |
@@ -326,8 +327,8 @@ when a TV label changes.
 | `input` | `any` | Input/source observed during verification. |
 
 Use `any` only when behavior was actually verified as independent of that
-dimension. The complete verification page binds the file to a recorded display
-combination.
+dimension. Display Verification binds this structure to a recorded combination
+in a local sidecar without modifying the structure file.
 
 ### `configurations`
 
@@ -500,34 +501,21 @@ Treat them as generated metadata. Do not add or change them manually. Editing
 the tree or seed route causes SamsungController to regenerate the affected
 routes and verification plan.
 
-## Verification manifest
+## Local display-verification sidecars
 
-After visual verification the app writes a block shaped like this in either
-format:
+Display Verification writes local JSON under the platform configuration
+directory's `menu-verifications/` folder. A sidecar is keyed by the stable menu
+structure ID and can contain separate profiles for multiple model, firmware,
+signal, picture-mode, and input combinations. Each check stores an app-defined
+ID, a SHA-256 fingerprint, and an ISO-8601 timestamp.
 
-```yaml
-verification:
-  display:
-    model: S95F
-    firmware: "1296"
-    signal: SDR
-    pictureMode: Filmmaker Mode
-    input: HDMI 1
-  checks:
-    - id: display
-      fingerprint: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-      verifiedAt: "2026-08-30T15:30:00.0000000+00:00"
-```
-
-`display` requires all five fields. Each check has an app-defined ID, a
-64-character SHA-256 hexadecimal fingerprint, and an ISO-8601 timestamp.
-Fingerprints include the display combination and the relevant behavior. Controls
-sharing an interaction type are fingerprinted as one representative group.
-Conditional rows are fingerprinted in permanent-disabled, conditional-disabled,
-and hidden behavior classes; each class fingerprint still includes every affected
-node and exact rule. Changing only a slider's bounds, for example,
-reopens the shared slider check without invalidating unrelated routes or
-restoring one check for every slider.
+Fingerprints include the display combination and relevant structure behavior.
+Controls sharing an interaction type are fingerprinted as one representative
+group. Conditional rows use permanent-disabled, conditional-disabled, and
+hidden behavior classes. Changing only a slider's bounds reopens the shared
+slider check without invalidating unrelated routes. Sidecars are local evidence:
+do not add them to the repository menu catalog or distribute them as proof for
+another physical display.
 
 ## YAML and JSON differences
 

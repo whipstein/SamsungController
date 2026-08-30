@@ -108,6 +108,8 @@ public static class MenuDefinitionVerificationPlanner
                      .Where(item => (!item.GeneratedFromTopology || item.IsValidationRoute)
                          && !IsPermanentlyDisabled(
                              definition,
+                             definition.GetRequiredNode(item.ToNodeId))
+                         && !IsUnsafeConfirmationTarget(
                              definition.GetRequiredNode(item.ToNodeId)))
                      .OrderBy(item => item.ConfigurationId, StringComparer.OrdinalIgnoreCase)
                      .ThenBy(item => definition.GetDepth(item.ToNodeId))
@@ -208,7 +210,9 @@ public static class MenuDefinitionVerificationPlanner
             var nodes = definition.Nodes.Values
                 .Where(node => MenuControlBehaviorClassifier.GetEffectiveControlType(node)
                     == controlType
-                    && !IsPermanentlyDisabled(definition, node))
+                    && !IsPermanentlyDisabled(definition, node)
+                    && (controlType != MenuControlType.Confirmation
+                        || IsSafelyVerifiableConfirmation(node)))
                 .OrderBy(node => node.Id, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
             if (nodes.Length == 0)
@@ -357,6 +361,20 @@ public static class MenuDefinitionVerificationPlanner
 
         return false;
     }
+
+    private static bool IsSafelyVerifiableConfirmation(MenuNode node) =>
+        (node.SelectionOptions ?? []).Contains(
+            "Cancel",
+            StringComparer.OrdinalIgnoreCase)
+        && !node.Id.Contains("reset", StringComparison.OrdinalIgnoreCase)
+        && !node.Label.Contains("reset", StringComparison.OrdinalIgnoreCase)
+        && !(node.SelectionOptions ?? []).Any(option =>
+            option.Contains("reset", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsUnsafeConfirmationTarget(MenuNode node) =>
+        MenuControlBehaviorClassifier.GetEffectiveControlType(node)
+            == MenuControlType.Confirmation
+        && !IsSafelyVerifiableConfirmation(node);
 
     private static string ControlTypeLabel(MenuControlType controlType) => controlType switch
     {

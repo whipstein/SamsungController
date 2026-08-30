@@ -4,14 +4,14 @@
 @using SamsungController.Automation.Navigation
 @using SamsungController.Core.Connection
 
-<PageTitle>File Verification · SamsungController</PageTitle>
+<PageTitle>Display Verification · SamsungController</PageTitle>
 
 <section class="verification-page">
     <header class="page-heading verification-heading">
         <div>
-            <span class="eyebrow">DISPLAY-BOUND PROFILE</span>
-            <h1>Complete menu-file verification</h1>
-            <p>A compact representative checklist for the routes, interaction types, and conditional rules carried by the loaded file.</p>
+            <span class="eyebrow">LOCAL DISPLAY PROFILE</span>
+            <h1>Verify this menu structure on this display</h1>
+            <p>A compact representative checklist for the loaded distributable structure and the current model, firmware, signal, picture mode, and input.</p>
         </div>
         <HelpBubble Title="How complete verification works">
             <ol>
@@ -20,7 +20,7 @@
                 <li>Use <strong>Run guided test</strong> for each remaining representative behavior. The app opens the right menu and makes a safe, visible adjustment for you.</li>
                 <li>Count or fail the result on that same line. Use the remote only if the TV needs a manual correction.</li>
             </ol>
-            <p class="help-callout safe">Equivalent controls and conditional effects are covered by representative behavior classes. Each class is fingerprinted inside the YAML or JSON file, so a relevant edit reopens that class without restoring a per-row checklist.</p>
+            <p class="help-callout safe">Equivalent controls and conditional effects are covered by representative behavior classes. Each class is fingerprinted in a local display-verification sidecar, so YAML and JSON structure files remain portable. A relevant structure edit reopens only the affected class.</p>
         </HelpBubble>
     </header>
 
@@ -30,8 +30,8 @@
             <span>/ @VerificationState.RequiredCount</span>
         </div>
         <div>
-            <span>@(VerificationState.FullyVerified ? "FILE FULLY VERIFIED" : "VERIFICATION REQUIRED")</span>
-            <h2>@(VerificationState.FullyVerified ? "This file matches the recorded display combination." : $"{VerificationState.RemainingCount} check{(VerificationState.RemainingCount == 1 ? "" : "s")} remain before this file is trusted.")</h2>
+            <span>@(VerificationState.FullyVerified ? "DISPLAY PROFILE FULLY VERIFIED" : "DISPLAY VERIFICATION REQUIRED")</span>
+            <h2>@(VerificationState.FullyVerified ? "This structure matches the recorded display combination." : $"{VerificationState.RemainingCount} check{(VerificationState.RemainingCount == 1 ? "" : "s")} remain before this structure is trusted on this display.")</h2>
             <p>@VerificationState.CurrentDisplay</p>
             @if (VerificationState.RecordedDisplay is { } recordedDisplay)
             {
@@ -50,7 +50,7 @@
     @if (VerificationState.StaleRecordCount > 0)
     {
         <div class="verification-change-alert" role="status">
-            <strong>Menu-file changes detected</strong>
+            <strong>Menu-structure changes detected</strong>
             <span>@VerificationState.StaleRecordCount previous result@((VerificationState.StaleRecordCount == 1 ? " no longer matches" : "s no longer match")); the affected checks are open below.</span>
         </div>
     }
@@ -221,7 +221,7 @@
     {
         PendingVisualTest = null;
         VerificationState = await Controller.CarryForwardExistingMenuVerificationAsync();
-        StatusMessage = "Existing verified timing, routes, slider behavior, and selections were fingerprinted into this menu definition.";
+        StatusMessage = "Existing verified timing, routes, slider behavior, and selections were recorded for this display and menu structure.";
     });
 
     private async Task ConfirmAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
@@ -277,12 +277,14 @@
         if (!passed)
         {
             var failedTarget = test.TargetPath;
+            var restoredCount = await Controller.RestoreMenuDefinitionVerificationTestAsync(test);
             PendingVisualTest = null;
             var recoveryState = await Controller.ReturnMenuDefinitionVerificationToKnownStateAsync();
-            StatusMessage = $"{failedTarget} was not counted. The TV returned to {recoveryState}; rerun the guided test after correcting the definition or timing.";
+            StatusMessage = $"{failedTarget} was not counted. Restored {restoredCount} temporary value{(restoredCount == 1 ? string.Empty : "s")} and returned the TV to {recoveryState}; rerun the guided test after correcting the definition or timing.";
             return;
         }
 
+        var restoredValues = await Controller.RestoreMenuDefinitionVerificationTestAsync(test);
         var behaviorComplete = true;
         if (test.ControlType == MenuControlType.Slider)
         {
@@ -305,13 +307,13 @@
         var knownState = await Controller.ReturnMenuDefinitionVerificationToKnownStateAsync();
         if (!behaviorComplete)
         {
-            StatusMessage = $"Slider pass counted ({ControlVerification.ConfirmedSliderCount}/{ControlVerification.RequiredSliderCount}). The TV returned to {knownState}; run this line again for the next representative slider.";
+            StatusMessage = $"Slider pass counted ({ControlVerification.ConfirmedSliderCount}/{ControlVerification.RequiredSliderCount}). Restored {restoredValues} temporary value{(restoredValues == 1 ? string.Empty : "s")} and returned the TV to {knownState}; run this line again for the next representative slider.";
             return;
         }
 
         StatusMessage = VerificationState.FullyVerified
-            ? $"{check.Label} passed. The file is fully verified, and the TV returned to {knownState}."
-            : $"{check.Label} passed and was recorded in the file. The TV returned to {knownState}.";
+            ? $"{check.Label} passed. Restored {restoredValues} temporary value{(restoredValues == 1 ? string.Empty : "s")}; the file is fully verified, and the TV returned to {knownState}."
+            : $"{check.Label} passed and was recorded. Restored {restoredValues} temporary value{(restoredValues == 1 ? string.Empty : "s")} before returning the TV to {knownState}.";
     });
 
     private async Task PrepareRouteAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
@@ -348,7 +350,7 @@
         StatusMessage = !passed
             ? $"{check.Label} failed. Its route pass count returned to zero."
             : current?.ExistingEvidenceReady == true
-                ? $"{check.Label} completed 3/3 and was fingerprinted into this menu definition."
+                ? $"{check.Label} completed 3/3 and was recorded for this display and menu structure."
                 : $"Pass counted for {check.Label}. Prepare its displayed start for the next run.";
     });
 

@@ -21,6 +21,7 @@
             <p>A route is valid only in the configuration where it was recorded. SamsungController cannot detect external setting changes, so choose the matching configuration explicitly.</p>
             <p>When you add or edit menu items later, the list is recalculated. Unchanged branches keep their verification; only affected coverage returns to the list.</p>
             <p>New profiles use YAML by default. Choose JSON in the profile form when another tool will generate or consume the menu file; both formats have identical fields and validation.</p>
+            <p><strong>Menu structure files are distributable.</strong> Display-verification results and saved TV values stay in local application data and are never written into an exported structure.</p>
             <p>Do not approve a failed pass. Manually restore the TV if needed, correct the topology, add an explicit exception, or adjust the waits and replay it.</p>
         </HelpBubble>
         <a class="secondary-action menu-authoring-link" href="menu">View verified menus <span>→</span></a>
@@ -31,9 +32,13 @@
 {
     <div class="notice danger" role="alert"><strong>Menu definition needs attention</strong><span class="definition-error-detail">@ErrorMessage</span></div>
 }
+else if (!string.IsNullOrWhiteSpace(LocalStatus))
+{
+    <div class="notice" role="status"><strong>Menu structure</strong><span>@LocalStatus</span></div>
+}
 
 <section class="panel definition-workspace">
-    <div class="panel-label"><span>MENU DEFINITION</span><span>AUTHORING SOURCE</span></div>
+    <div class="panel-label"><span>MENU STRUCTURE</span><span>DISTRIBUTABLE AUTHORING SOURCE</span></div>
     <div class="definition-profile">
         <div><span>Definition</span><strong>@(Navigation.DefinitionName ?? "Not loaded")</strong></div>
         <div><span>Model</span><strong>@(Navigation.Model ?? "—")</strong></div>
@@ -47,10 +52,18 @@
     </div>
     <div class="definition-editor">
         <label>
-            <span>Menu definition YAML or JSON</span>
+            <span>Active menu structure YAML or JSON</span>
             <input @bind="DefinitionPath" disabled="@Navigation.IsRunning" />
         </label>
         <button class="secondary-action" @onclick="LoadDefinitionAsync" disabled="@(Navigation.IsRunning || IsLoading)">@(IsLoading ? "Validating…" : "Load & validate")</button>
+    </div>
+    <div class="definition-editor structure-export-editor">
+        <label>
+            <span>Repository/distribution copy</span>
+            <input @bind="StructureExportPath" disabled="@(Navigation.IsRunning || IsExporting)" />
+        </label>
+        <button class="secondary-action" @onclick="ExportStructureAsync" disabled="@(Navigation.IsRunning || IsExporting || string.IsNullOrWhiteSpace(StructureExportPath))">@(IsExporting ? "Exporting…" : "Export & use structure")</button>
+        <small>Exports topology, controls, routes, and conditions, then makes that copy the active authoring source. Display verification and saved TV states remain local.</small>
     </div>
 </section>
 
@@ -61,7 +74,10 @@
     private string DefinitionPath { get; set; } = string.Empty;
     private string? LastObservedDefinitionPath { get; set; }
     private string? LocalError { get; set; }
+    private string? LocalStatus { get; set; }
     private bool IsLoading { get; set; }
+    private bool IsExporting { get; set; }
+    private string StructureExportPath { get; set; } = string.Empty;
 
     private string? ErrorMessage => LocalError ?? Navigation.Error;
     private string ContextLabel => Navigation.Context is null
@@ -90,6 +106,7 @@
     {
         IsLoading = true;
         LocalError = null;
+        LocalStatus = null;
         try
         {
             await Controller.SetMenuDefinitionAsync(DefinitionPath);
@@ -102,6 +119,30 @@
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    private async Task ExportStructureAsync()
+    {
+        IsExporting = true;
+        LocalError = null;
+        LocalStatus = null;
+        try
+        {
+            var exportedPath = await Controller.ExportMenuStructureAsync(
+                StructureExportPath);
+            await Controller.SetMenuDefinitionAsync(exportedPath);
+            StructureExportPath = exportedPath;
+            Refresh();
+            LocalStatus = $"Exported and activated the distributable menu structure at {exportedPath}. Local display verification and saved TV states were not included.";
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            IsExporting = false;
         }
     }
 
@@ -122,6 +163,14 @@
 
         LastObservedDefinitionPath = navigation.DefinitionPath;
         Navigation = navigation;
+        if (string.IsNullOrWhiteSpace(StructureExportPath)
+            && !string.IsNullOrWhiteSpace(navigation.DefinitionPath))
+        {
+            StructureExportPath = Path.Combine(
+                Directory.GetCurrentDirectory(),
+                "menu-definitions",
+                Path.GetFileName(navigation.DefinitionPath));
+        }
     }
 
     public void Dispose()

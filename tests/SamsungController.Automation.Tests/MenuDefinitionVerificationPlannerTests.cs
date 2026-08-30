@@ -47,7 +47,7 @@ public sealed class MenuDefinitionVerificationPlannerTests
                 new MenuNode("mode", "Mode", "settings", ControlType: MenuControlType.Selection, DefaultValue: "Movie", SelectionOptions: ["Standard", "Movie"]),
                 new MenuNode("interval", "Interval", "settings", ControlType: MenuControlType.Selection, DefaultValue: "5%", SelectionOptions: ["5%", "10%"]),
                 new MenuNode("enhancer", "Enhancer", "settings", ControlType: MenuControlType.Switch, DefaultValue: "off"),
-                new MenuNode("reset", "Reset", "settings", ControlType: MenuControlType.Confirmation, DefaultValue: "Cancel", SelectionOptions: ["Reset", "Cancel"]),
+                new MenuNode("apply-changes", "Apply Changes", "settings", ControlType: MenuControlType.Confirmation, DefaultValue: "Cancel", SelectionOptions: ["Apply", "Cancel"]),
                 new MenuNode("smart-calibration", "Smart Calibration", "settings", ControlType: MenuControlType.Action),
                 new MenuNode("conditional", "Conditional", "settings", DisabledWhen: [new MenuNodeDisabledCondition("enhancer", "off")])
             ],
