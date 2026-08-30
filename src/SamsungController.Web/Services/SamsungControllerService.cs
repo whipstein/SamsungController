@@ -4783,13 +4783,31 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private static IReadOnlyList<MenuReturnTestNodeSummary> GetDeepReturnTestNodes(
         MenuDefinition definition,
         ReturnStrategyContext context) =>
-        definition.Nodes.Values
-            .Where(node => definition.IsDescendantOf(
-                node.Id,
+        definition.ApplicableTransitions
+            .Where(transition => transition.FromNodeId.Equals(
+                context.Anchor.TargetNodeId,
+                StringComparison.OrdinalIgnoreCase))
+            .Where(transition => definition.IsDescendantOf(
+                transition.ToNodeId,
                 context.Strategy.MenuRootNodeId))
-            .OrderByDescending(node => definition.GetDepth(node.Id))
-            .ThenBy(node => definition.GetPath(node.Id), StringComparer.OrdinalIgnoreCase)
-            .Select(node => new MenuReturnTestNodeSummary(node.Id, definition.GetPath(node.Id)))
+            .GroupBy(transition => transition.ToNodeId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderByDescending(transition => transition.IsValidationRoute)
+                .ThenByDescending(transition => transition.Verified)
+                .ThenBy(transition => transition.Operations.Sum(operation => operation.Repeat))
+                .First())
+            .OrderByDescending(transition => transition.IsValidationRoute)
+            .ThenByDescending(transition =>
+                definition.GetRequiredNode(transition.ToNodeId).ControlType
+                != MenuControlType.Confirmation)
+            .ThenByDescending(transition => definition.GetDepth(transition.ToNodeId))
+            .ThenByDescending(transition => transition.Operations.Sum(operation => operation.Repeat))
+            .ThenBy(
+                transition => definition.GetPath(transition.ToNodeId),
+                StringComparer.OrdinalIgnoreCase)
+            .Select(transition => new MenuReturnTestNodeSummary(
+                transition.ToNodeId,
+                definition.GetPath(transition.ToNodeId)))
             .ToArray();
 
     private static MenuReturnScript UpdateReturnScript(

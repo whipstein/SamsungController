@@ -308,6 +308,27 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 defaultValue: 25
                 minimumValue: 0
                 maximumValue: 50
+              - id: captions-enabled
+                label: Captions
+                parent: picture
+                controlType: switch
+                defaultValue: off
+              - id: digital-caption-options
+                label: Digital Caption Options
+                parent: picture
+                controlType: submenu
+                disabledWhen:
+                  - setting: captions-enabled
+                    equals: off
+              - id: background-color
+                label: Background Color
+                parent: digital-caption-options
+                controlType: selection
+                defaultValue: Default
+                options: [Default, Black]
+                disabledWhen:
+                  - setting: captions-enabled
+                    equals: off
               - id: sound
                 label: Sound
                 parent: settings
@@ -346,6 +367,9 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             Assert.True(planned.HasEntryRoute);
             Assert.Equal("KEY_MENU", planned.EntryScript);
             Assert.Equal(2, controller.GetMenuAuthoringSnapshot().DraftCandidates.Count);
+            Assert.Contains(planned.DeepTestNodes, node => node.Id == "brightness");
+            Assert.DoesNotContain(planned.DeepTestNodes, node =>
+                node.Id is "digital-caption-options" or "background-color");
 
             transport.SentMessages.Clear();
             await controller.PrepareMenuReturnStrategyTestSourceAsync(
