@@ -237,15 +237,15 @@ can be planned or sent.
 
 1. Record the TV firmware, input, SDR/HDR state, and picture mode.
 2. Connect in the web interface and open **Build & Verify**.
-3. Follow the highlighted five-step guide. If no definition exists, start with
-   **TV profile** and enter the model number and firmware version. The default
+3. Follow the highlighted three-stage guide. In **Define menu**, create the TV
+   profile and enter the model number and firmware version. The default
    definition name uses those two values. The generated file ID also appends
    signal type, picture mode, and input/source when their value is more specific
    than `any`. The YAML is stored in the per-user configuration directory and
    loaded automatically. Reusing an existing file ID opens a destructive
    replacement confirmation instead of failing silently or overwriting it
    immediately.
-4. In **Configuration**, describe and select the settings-dependent layout that
+4. Still in **Define menu**, describe and select the settings-dependent layout that
    is currently visible. **Menu outline** automatically loads the selected YAML
    branch as an indented outline in a 20-line editor with synchronized line numbers.
    Tree-aware vertical guides appear only inside populated indentation branches and
@@ -270,7 +270,7 @@ can be planned or sent.
    selected branch, so deleting a line previews and saves that item as a removal.
    Enable partial-outline mode only when unlisted items should remain; recorded
    references are protected from removal in either mode. Applying the outline advances to
-   **Record route**. Open **Fine adjustments for individual menu items** only for
+   **Define anchor**. Open **Fine adjustments for individual menu items** only for
    precise corrections and descriptions. Choose **Custom · TV
    order** and move siblings up or down to match the on-screen menu; switch to
    **Alphabetical** when that view is more useful. Display names and parents remain
@@ -288,40 +288,42 @@ can be planned or sent.
    matching configuration before recording, validation, or everyday navigation.
    Nodes may exist only as topology documentation; only destinations with a
    route verified in the active configuration appear on the ordinary Menu page.
-5. Record the exceptional entry behavior: normally a `normal-video` anchor and
-   one transition from Normal video into Settings. When an explicit transition
-   enters a modeled submenu, the writer derives absolute descendant routes from
+5. In **Define anchor**, choose the base menu, normally Settings. Define the
+   root return script (`KEY_RETURN` on the observed TV) and the deeper-menu
+   return script (`KEY_MENU, KEY_RETURN`). Save them as one anchor definition.
+   Place the TV on normal video, start the entry recorder, and capture only the
+   keys that open the base menu. When this entry transition
+   reaches a modeled submenu, the writer derives absolute descendant routes from
    sibling order. Each edge moves Down to the child index and presses Enter only
    when that child is a submenu; a leaf route stops on the selected row. Rows
    disabled under declared defaults are neither targeted nor counted in the
    directional offset. Explicit transitions to descendants override generated
-   ones. To define a target-specific return exception, check **Also record return
-   to normal video** and capture its forward and return phases together.
+   ones. A state-specific anchor exception remains available in the collapsed
+   advanced section when one exact state cannot use the root/deeper rule.
 6. Use the embedded remote. Every successfully sent button controls the TV and
    is captured; failed sends are not recorded. The system timing profile supplies
    waits unless a button has a custom override in the timing lab.
-7. Stop the recording. The UI atomically adds it to the active YAML and generates
-   descendant routes. Generated transitions retain their seed and validation-group
-   metadata in YAML so they can be regenerated after topology edits.
+7. Stop the recording. The UI atomically adds it to the active YAML, generates
+   descendant routes, and opens **Verify coverage**. Generated transitions retain
+   their seed and validation-group metadata in YAML so they can be regenerated
+   after topology edits.
 8. Edit the **System-wide timing** profile, select a traversal, and
    place the TV at that traversal's source before choosing **Test system
    profile**. The test sends only the displayed traversal and ignores its
    per-button overrides. Confirm three successful visual runs to persist
    `timing.verified: true`.
-9. In **Return to normal video scripts**, edit the Settings-root and deeper-menu
-   key sequences independently. Place the TV at the named starting position,
-   then choose **Save + test**. It sends only the proposed script and asks for
-   visual confirmation. Add an exact-state override when one menu position needs
-   different keys; **Prepare start** is an explicit, separate positioning action.
-   Three successful runs mark each script verified in the YAML.
-10. Open a draft or topology-coverage card's **Timing lab**, enable custom waits only for exceptional
+9. **Verify coverage** is the complete automatically calculated checklist. It
+   first displays unverified base-menu and deeper-menu return rules. Place the TV
+   on normal video and choose the line item's explicit **Prepare start** action,
+   or place it at the stated start manually, then run the return rule three
+   times. Any unverified state-specific return exception appears as another
+   calculated line item. Preparation sends only the displayed route. The checklist
+   then lists one representative traversal for each affected top-level branch.
+10. Open a topology-coverage card's **Timing lab**, enable custom waits only for exceptional
    button presses, then choose **Save + replay**.
-   Use **Prepare source** when desired, or place the TV at the displayed source
-   manually. For a traversal with integrated return keys, Prepare source sends
-   those keys first and then follows any verified route to the forward source;
-   if preparation is wrong or incomplete, adjust the TV manually. **Replay
-   test** sends the forward keys. Both operations stay on the same draft card
-   and retain one validation count.
+   Use **Prepare source** after the deeper anchor return is verified, or place
+   the TV at normal video manually. **Replay test** sends the generated route
+   shown by that coverage card and retains its independent validation count.
 11. Visually confirm the target after every run. Topology-generated routes expose
    only one longest representative card per top-level branch. Three confirmed
    passes verify its recorded seed and every generated route in that group; the
@@ -330,10 +332,15 @@ can be planned or sent.
    switches between cards. Every successful
    confirmation immediately synchronizes the
    current-menu indicator to the confirmed target, including after the third
-   pass reloads the YAML; that third accepted pass then runs Return to video
-   automatically. While that exact target remains synchronized, the
-   normal-video anchor may use its recorded return even before the traversal
-   reaches 3/3; otherwise draft return keys remain unavailable.
+   pass reloads the YAML; that third accepted pass then runs the verified anchor
+   return automatically.
+
+After initial verification, editing the outline or fine-adjustment tree runs the
+same generator again. A group whose generated key sequences and membership are
+unchanged retains verification. A newly added top-level branch contributes one
+new coverage line item; an insertion, move, type change, or new descendant inside
+an existing branch reopens only that affected branch. The verification panel
+expands automatically whenever its calculated line-item count increases.
 
 Explicit draft cards can be replayed, re-recorded under the same identifier, or
 deleted entirely in the UI. Generated coverage cards are regenerated from their

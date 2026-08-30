@@ -128,6 +128,45 @@ public sealed class TopologyRouteGeneratorTests
         Assert.Equal(1, sound.Operations[1].Repeat);
     }
 
+    [Fact]
+    public void AddingOneMenuItemInvalidatesOnlyItsAffectedCoverageBranch()
+    {
+        var initial = TopologyRouteGenerator.Regenerate(CreateDefinition());
+        var fullyVerified = Copy(
+            initial,
+            initial.Nodes.Values,
+            initial.Transitions.Values.Select(transition => transition with { Verified = true }));
+        var withNewPictureItem = Copy(
+            fullyVerified,
+            fullyVerified.Nodes.Values.Append(new MenuNode(
+                "color",
+                "Color",
+                "picture",
+                ControlType: MenuControlType.Slider,
+                DefaultValue: "25",
+                MinimumValue: 0,
+                MaximumValue: 50)),
+            fullyVerified.Transitions.Values);
+
+        var regenerated = TopologyRouteGenerator.Regenerate(withNewPictureItem);
+        var generated = regenerated.Transitions.Values
+            .Where(transition => transition.GeneratedFromTopology)
+            .ToArray();
+
+        Assert.All(
+            generated.Where(transition => transition.ValidationGroupId == "topology-open-settings-picture"),
+            transition => Assert.False(transition.Verified));
+        Assert.All(
+            generated.Where(transition => transition.ValidationGroupId == "topology-open-settings-sound"),
+            transition => Assert.True(transition.Verified));
+        Assert.Single(generated, transition =>
+            transition.ValidationGroupId == "topology-open-settings-picture"
+            && transition.IsValidationRoute);
+        Assert.DoesNotContain(
+            generated.Where(transition => !transition.Verified),
+            transition => transition.ValidationGroupId == "topology-open-settings-sound");
+    }
+
     private static MenuDefinition CreateDefinition() => new(
         "topology-test",
         "Topology Test",

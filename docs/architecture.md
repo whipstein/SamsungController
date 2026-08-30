@@ -155,6 +155,12 @@ first child below the seed target; only the longest route in each group appears
 as a visual coverage test. Three passes promote the group and its seed together.
 Regeneration preserves verified groups while their structural key sequences are
 unchanged and invalidates only groups affected by topology or seed changes.
+The web authoring workflow creates the normal-video anchor as one guided unit:
+its selected menu root, entry seed, exact-root return script, and descendant
+return script. The verification view merges pending return checks with generated
+coverage groups into one calculated line-item count. Adding a node to an existing
+branch invalidates that branch group; adding an independent top-level branch
+creates a new group without disturbing verified siblings.
 
 Named menu configurations describe settings-dependent visible layouts inside a
 single model YAML. Routes and anchors may be configuration-scoped; planning,

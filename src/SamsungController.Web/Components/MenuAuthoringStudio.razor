@@ -13,21 +13,18 @@
 
     <div class="authoring-intro">
         <div>
-            <strong>Follow one guided path from TV profile to verified menu.</strong>
-            <p>The highlighted step is the next recommended action. Successful saves automatically open and move to the next part of setup.</p>
+            <strong>One workflow: define the menu, define its anchor, verify the generated coverage plan.</strong>
+            <p>The highlighted stage is the next action. Adding or moving menu items later automatically recalculates only the affected verification requirements.</p>
         </div>
         <div class="authoring-intro-actions">
             <HelpBubble Title="Menu-authoring workflow" ButtonText="Workflow help">
                 <ol>
-                    <li><strong>TV profile:</strong> enter the model number and firmware. The definition name and file ID are generated for you.</li>
-                    <li><strong>Configuration:</strong> the initial Default layout is ready automatically. Add and describe alternatives only when TV settings change which rows are visible or their order.</li>
-                    <li><strong>Menu outline:</strong> paste the visible hierarchy using indentation. Preview it, then save while continuing to edit or advance to recording. Use fine adjustments only when needed.</li>
-                    <li><strong>Record:</strong> capture the normal-video anchor and exceptional entry traversals, normally Normal video to Settings. Successful buttons control the TV and enter the draft; ordered descendants are generated automatically.</li>
-                    <li><strong>Timing:</strong> recording starts with an assumed-valid 800 ms screen-change wait. Test and tune common waits after a route exists, then override only steps that need special pacing.</li>
-                    <li><strong>Verify:</strong> replay one generated representative per top-level branch and confirm three visual passes. A completed coverage card promotes all routes in that branch.</li>
+                    <li><strong>Define menu:</strong> identify the TV and enter the complete visible hierarchy in its on-screen order. Add a configuration only when settings change which rows exist or where they appear.</li>
+                    <li><strong>Define anchor:</strong> choose the base menu such as Settings, define how root and deeper positions return to normal video, then record the keys that open that menu from normal video.</li>
+                    <li><strong>Verify coverage:</strong> SamsungController selects the smallest representative set it can infer from the topology. Confirm each displayed line item three times; covered routes are promoted together.</li>
                 </ol>
-                <p class="help-callout safe">The source/target pair identifies a transition automatically. Recording the same pair replaces its existing draft instead of creating a duplicate ID.</p>
-                <p>Use <strong>Also record return to normal video</strong> when that target needs a specific return sequence. Forward and return keys then share one verification count.</p>
+                <p class="help-callout safe">You do not record every menu item. The anchor entry plus ordered topology generates the routes. Record an explicit exception only when a branch cannot follow that topology.</p>
+                <p>When the menu changes later, unchanged branches remain verified. A new or structurally changed branch returns to the coverage list only when another visual check is needed.</p>
             </HelpBubble>
             <button class="secondary-action" @onclick="ToggleDefinitionForm" disabled="@(Authoring.IsRecording || Navigation.IsRunning)">
                 @(ShowDefinitionForm ? "Close TV profile" : "Create TV profile")
@@ -35,27 +32,21 @@
         </div>
     </div>
 
-    <nav class="menu-setup-guide" aria-label="Menu setup progress">
-        <button type="button" class="@GetSetupStepClass(MenuSetupStep.Profile)" @onclick="() => GoToSetupStepAsync(MenuSetupStep.Profile)">
-            <span>1</span><strong>TV profile</strong><small>@GetSetupStepStatus(MenuSetupStep.Profile)</small>
+    <nav class="menu-setup-guide simplified" aria-label="Menu setup progress">
+        <button type="button" class="@GetWorkflowStageClass(MenuWorkflowStage.DefineMenu)" @onclick="() => GoToWorkflowStageAsync(MenuWorkflowStage.DefineMenu)">
+            <span>1</span><strong>Define menu</strong><small>@GetWorkflowStageStatus(MenuWorkflowStage.DefineMenu)</small>
         </button>
-        <button type="button" class="@GetSetupStepClass(MenuSetupStep.Configuration)" @onclick="() => GoToSetupStepAsync(MenuSetupStep.Configuration)" disabled="@(Navigation.DefinitionName is null)">
-            <span>2</span><strong>Configuration</strong><small>@GetSetupStepStatus(MenuSetupStep.Configuration)</small>
+        <button type="button" class="@GetWorkflowStageClass(MenuWorkflowStage.DefineAnchor)" @onclick="() => GoToWorkflowStageAsync(MenuWorkflowStage.DefineAnchor)" disabled="@(!MenuDefinitionComplete)">
+            <span>2</span><strong>Define anchor</strong><small>@GetWorkflowStageStatus(MenuWorkflowStage.DefineAnchor)</small>
         </button>
-        <button type="button" class="@GetSetupStepClass(MenuSetupStep.Outline)" @onclick="() => GoToSetupStepAsync(MenuSetupStep.Outline)" disabled="@(Navigation.DefinitionName is null)">
-            <span>3</span><strong>Menu outline</strong><small>@GetSetupStepStatus(MenuSetupStep.Outline)</small>
-        </button>
-        <button type="button" class="@GetSetupStepClass(MenuSetupStep.Record)" @onclick="() => GoToSetupStepAsync(MenuSetupStep.Record)" disabled="@(Navigation.DefinitionName is null || Navigation.Nodes.Count <= 2)">
-            <span>4</span><strong>Record route</strong><small>@GetSetupStepStatus(MenuSetupStep.Record)</small>
-        </button>
-        <button type="button" class="@GetSetupStepClass(MenuSetupStep.Verify)" @onclick="() => GoToSetupStepAsync(MenuSetupStep.Verify)" disabled="@(Authoring.DraftCandidates.Count == 0)">
-            <span>5</span><strong>Verify</strong><small>@GetSetupStepStatus(MenuSetupStep.Verify)</small>
+        <button type="button" class="@GetWorkflowStageClass(MenuWorkflowStage.VerifyCoverage)" @onclick="() => GoToWorkflowStageAsync(MenuWorkflowStage.VerifyCoverage)" disabled="@(!AnchorDefinitionComplete)">
+            <span>3</span><strong>Verify coverage</strong><small>@GetWorkflowStageStatus(MenuWorkflowStage.VerifyCoverage)</small>
         </button>
     </nav>
     <div class="menu-setup-next">
         <span>NEXT</span>
-        <strong>@RecommendedSetupMessage</strong>
-        <button type="button" class="secondary-action" @onclick="() => GoToSetupStepAsync(RecommendedSetupStep)">Go to next step <span>→</span></button>
+        <strong>@RecommendedWorkflowMessage</strong>
+        <button type="button" class="secondary-action" @onclick="() => GoToWorkflowStageAsync(RecommendedWorkflowStage)">Go to stage <span>→</span></button>
     </div>
 
     @if (!string.IsNullOrWhiteSpace(ErrorMessage))
@@ -246,7 +237,7 @@
                                     <button class="secondary-action" @onclick="() => ApplyTopologyOutlineAsync(false)" disabled="@(!CanApplyTopology)">Save &amp; keep editing</button>
                                     <button class="primary-action" @onclick="() => ApplyTopologyOutlineAsync(true)" disabled="@(!CanApplyTopology)">Save &amp; continue <span>→</span></button>
                                 </div>
-                                <small class="bulk-topology-save-note">Saving is two-step: preview the current text, then save and remain here or continue to recording. Editing the text requires a new preview. Deleted lines appear as removals in the preview.</small>
+                                <small class="bulk-topology-save-note">Saving is two-step: preview the current text, then save and remain here or continue. If the anchor already exists, SamsungController recalculates the affected coverage line items automatically. Editing the text requires a new preview.</small>
                                 @if (TopologyPreview is not null)
                                 {
                                     <div class="bulk-topology-preview @(TopologyPreview.HasChanges ? "" : "no-changes")">
@@ -566,107 +557,84 @@
 
     @if (Navigation.DefinitionName is not null)
     {
-        <div class="authoring-workflow-grid setup-step-anchor" @ref="RecordingStepElement">
+        <div class="menu-anchor-definition setup-step-anchor" @ref="RecordingStepElement">
+            <div class="authoring-section-title"><span>02</span><strong>Define the menu anchor</strong></div>
+            <p class="field-note">The anchor joins three facts into one definition: the base menu, how it opens from normal video, and how root versus deeper positions return to normal video.</p>
+            @if (AnchorRootCandidates.Count == 0)
+            {
+                <div class="capture-empty compact">Add a top-level submenu beneath Normal video before defining the anchor.</div>
+            }
+            else
+            {
+                <div class="anchor-definition-grid">
+                    <label>
+                        <span>BASE MENU</span>
+                        <select @bind="AnchorMenuRootNodeId" @bind:after="HandleAnchorRootChanged" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">
+                            @foreach (var node in AnchorRootCandidates)
+                            {
+                                <option value="@node.Id">@node.Path</option>
+                            }
+                        </select>
+                        <small>Usually Settings. Every generated route starts from Normal video and enters this submenu.</small>
+                    </label>
+                    <label>
+                        <span>RETURN FROM BASE MENU</span>
+                        <input @bind="AtMenuRootScript" @bind:after="MarkReturnScriptsDirty" placeholder="KEY_RETURN" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
+                        <small>Sent only when the expected state is exactly the base menu.</small>
+                    </label>
+                    <label>
+                        <span>RETURN FROM ANY DEEPER MENU</span>
+                        <input @bind="BelowMenuRootScript" @bind:after="MarkReturnScriptsDirty" placeholder="KEY_MENU, KEY_RETURN" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
+                        <small>Sent when the expected state is below the base menu.</small>
+                    </label>
+                </div>
+                <div class="anchor-definition-actions">
+                    <button class="primary-action" @onclick="SaveAnchorDefinitionAsync" disabled="@(!CanSaveAnchorDefinition)">
+                        @(Authoring.ReturnStrategy is null ? "Save anchor definition" : "Update anchor definition") <span>→</span>
+                    </button>
+                    @if (Authoring.ReturnStrategy is { } anchorStrategy)
+                    {
+                        <span class="anchor-definition-state">
+                            <b>RETURN RULES SAVED</b>
+                            <small>@(anchorStrategy.HasEntryRoute ? $"Entry recorded · {anchorStrategy.EntryScript}" : "Next: record the menu-entry keys below")</small>
+                        </span>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="authoring-workflow-grid">
             <div class="authoring-config">
-                <div class="authoring-section-title"><span>01</span><strong>Describe the recording</strong></div>
+                <div class="authoring-section-title"><span>02A</span><strong>Record the anchor entry</strong></div>
                 <div class="recording-configuration-badge">
-                    <span>ROUTE VALID ONLY FOR</span>
-                    <strong>@(ActiveMenuConfiguration?.Name ?? "Default menu configuration")</strong>
-                    <small>@(ActiveMenuConfiguration?.Conditions ?? "Add a named configuration when visible rows can change.")</small>
+                    <span>@(IsRecordingExplicitException ? "EXPLICIT EXCEPTION" : "FIXED START → MENU ROOT")</span>
+                    <strong>@(IsRecordingExplicitException ? $"{GetNodePath(SourceNodeId)} → {GetNodePath(ExistingTargetId)}" : $"Normal video → {SelectedAnchorRoot?.Label ?? "Choose a base menu"}")</strong>
+                    <small>@(IsRecordingExplicitException ? "This replaces a manually recorded exception that topology could not infer." : "Only the keys that open the base menu are recorded. Descendant routes come from the topology.")</small>
                 </div>
                 <div class="authoring-form-grid compact">
-                    <label>
-                        <span>Record as</span>
-                        <select @bind="RecordingKind" disabled="@Authoring.IsRecording">
-                            <option value="@MenuAuthoringItemKind.Transition">Transition</option>
-                            <option value="@MenuAuthoringItemKind.Anchor">Anchor</option>
-                        </select>
-                    </label>
-                    @if (RecordingKind == MenuAuthoringItemKind.Anchor)
-                    {
-                        <label><span>Anchor ID</span><input @bind="RecordingId" disabled="@Authoring.IsRecording" /></label>
-                        <label class="wide-field"><span>Label / intent</span><input @bind="RecordingLabel" disabled="@Authoring.IsRecording" /></label>
-                    }
-                    else
-                    {
-                        <label>
-                            <span>Source control</span>
-                            <select @bind="SourceNodeId" disabled="@Authoring.IsRecording">
-                                @foreach (var node in Navigation.Nodes)
-                                {
-                                    <option value="@node.Id">@node.Path</option>
-                                }
-                            </select>
-                        </label>
-                        <div class="auto-route-identity wide-field">
-                            <span>AUTOMATIC TRAVERSAL</span>
-                            <strong>Identified by source and target</strong>
-                            <small>An existing draft for the same route is replaced automatically.</small>
-                        </div>
-                    }
-                    <label class="wide-field">
-                        <span>Target node</span>
-                        <select @bind="ExistingTargetId" disabled="@(Authoring.IsRecording || SelectableRecordingTargets.Count == 0)">
-                            @if (SelectableRecordingTargets.Count == 0)
-                            {
-                                <option value="">No unrecorded targets</option>
-                            }
-                            @foreach (var node in SelectableRecordingTargets)
-                            {
-                                var isPreparedRerecordTarget = !IsUnrecordedRecordingTarget(node);
-                                <option value="@node.Id" disabled="@isPreparedRerecordTarget">
-                                    @node.Path@(isPreparedRerecordTarget ? " · selected for re-recording" : string.Empty)
-                                </option>
-                            }
-                        </select>
-                        <small class="field-note">Only red, unrecorded menu positions are available. Use Re-record on an existing draft to edit it explicitly.</small>
-                    </label>
-                    @if (SelectedRecordingTarget is { } recordingTarget)
-                    {
-                        <div class="recording-target-behavior wide-field @(recordingTarget.IsDisabledByDefault ? "disabled-default" : "")">
-                            <span>@FormatControlType(recordingTarget.ControlType)</span>
-                            <strong>@GetControlInteractionGuidance(recordingTarget)</strong>
-                            @if (recordingTarget.DisabledWhen.Count > 0)
-                            {
-                                <small>@FormatDisabledConditions(recordingTarget)</small>
-                            }
-                        </div>
-                    }
+                    <div class="auto-route-identity wide-field">
+                        <span>SOURCE</span><strong>@(IsRecordingExplicitException ? GetNodePath(SourceNodeId) : "Normal video")</strong>
+                        <small>Place the TV at this state before starting.</small>
+                    </div>
+                    <div class="auto-route-identity wide-field">
+                        <span>TARGET</span><strong>@(IsRecordingExplicitException ? GetNodePath(ExistingTargetId) : SelectedAnchorRoot?.Path ?? "Define the anchor above")</strong>
+                        <small>@(IsRecordingExplicitException ? "Use the remote to reproduce this exceptional traversal." : AnchorEntryRecorded ? "This entry is already recorded. Topology changes reuse it automatically." : "Use the remote to open this base menu, then save.")</small>
+                    </div>
                 </div>
-                @if (RecordingKind == MenuAuthoringItemKind.Transition && ReturnToVideoAnchor is not null)
-                {
-                    <label class="return-recording-toggle integrated-return-toggle">
-                        <input type="checkbox" @bind="RecordReturnToVideo" disabled="@Authoring.IsRecording" />
-                        <span>
-                            <strong>Also record return to normal video</strong>
-                            <small>After recording the forward traversal, capture the return keys as phase two of this same command and verify both with one 3-pass count.</small>
-                        </span>
-                    </label>
-                }
 
                 @if (!Authoring.IsRecording)
                 {
                     <div class="authoring-start-actions">
-                        @if (RecordingKind == MenuAuthoringItemKind.Transition)
-                        {
-                            <button class="secondary-action" @onclick="PrepareSourceAsync" disabled="@(!CanPrepareSource)">Prepare source</button>
-                        }
+                        <button class="secondary-action" @onclick="PrepareSourceAsync" disabled="@(!CanPrepareSource)">@(IsRecordingExplicitException ? "Prepare source" : "Prepare normal video")</button>
                         <button class="primary-action" @onclick="StartRecordingAsync" disabled="@(!CanStartRecording)">
-                            @(IsConnected ? "Start live recording" : "Connect + start live recording") <span>●</span>
+                            @(IsRecordingExplicitException ? "Start exception re-recording" : AnchorEntryRecorded ? "Entry already recorded" : IsConnected ? "Start entry recording" : "Connect + record entry") <span>●</span>
                         </button>
                     </div>
                     @if (!CanStartRecording && RecordingUnavailableReason is { } recordingUnavailableReason)
                     {
                         <p class="field-note" role="status"><strong>Recording unavailable:</strong> @recordingUnavailableReason</p>
                     }
-                    @if (RecordingKind == MenuAuthoringItemKind.Transition && RecordReturnToVideo)
-                    {
-                        <p class="field-note">Recording has two phases: navigate to the target, then record how that target returns to normal video. Validation keeps them together as one draft.</p>
-                    }
-                    else
-                    {
-                        <p class="field-note">Record exceptional entry traversals such as Normal video → Settings. The ordered topology then generates descendant routes and a small set of branch coverage tests automatically.</p>
-                    }
+                    <p class="field-note">@(IsRecordingExplicitException ? "This replaces only the selected exceptional route." : "This is the only route normally recorded by hand. Saving it generates the required verification line items automatically.")</p>
                 }
                 else
                 {
@@ -755,58 +723,14 @@
         {
             <div class="return-strategy-lab collapsible-authoring-section @(ReturnScriptsExpanded ? "" : "collapsed")">
                 <button type="button" class="authoring-section-title authoring-section-toggle" @onclick="ToggleReturnScripts" aria-expanded="@(ReturnScriptsExpanded ? "true" : "false")">
-                    <span>04</span><strong>Return to normal video scripts</strong>
-                    <b class="timing-profile-state @(ReturnScriptsNeedValidation ? "unverified" : "verified")">
-                        @(ReturnScriptsNeedValidation ? "NEEDS VALIDATION" : "VERIFIED")
-                    </b>
+                    <span>ADV</span><strong>State-specific anchor exceptions</strong>
+                    <b>@returnStrategy.NodeOverrides.Count DEFINED</b>
                     <i aria-hidden="true">@(ReturnScriptsExpanded ? "−" : "+")</i>
                 </button>
                 @if (ReturnScriptsExpanded)
                 {
                     <div class="authoring-section-body">
-                        <p class="return-strategy-intro">An exact verified state override is tried first. Otherwise the verified menu-root or deeper-menu default is used, followed by the existing unknown-position anchor. Tests send only the script shown—prepare or place the TV at the named start first.</p>
-                        <div class="return-script-grid">
-                    <article class="return-script-card">
-                        <header>
-                            <div><span>AT MENU ROOT</span><strong>@returnStrategy.MenuRootPath</strong></div>
-                            <b class="timing-profile-state @(returnStrategy.AtMenuRoot.Verified ? "verified" : "unverified")">@(returnStrategy.AtMenuRoot.Verified ? "VERIFIED" : "NEEDS VALIDATION")</b>
-                        </header>
-                        <label><span>KEY SCRIPT</span><input @bind="AtMenuRootScript" @bind:after="MarkReturnScriptsDirty" disabled="@(IsBusy || Navigation.IsRunning)" /></label>
-                        <small>Place the TV at this menu first. Test sends only <code>@AtMenuRootScript</code>.</small>
-                        <div class="return-script-actions">
-                            @if (returnStrategy.ActiveValidationKind == MenuReturnScriptKind.AtMenuRoot)
-                            {
-                                <b>@returnStrategy.ValidationPasses/@returnStrategy.RequiredValidationPasses passed</b>
-                            }
-                            <button class="primary-action" @onclick="TestAtMenuRootReturnAsync" disabled="@(!CanTestAtMenuRootReturn)">Save + test <span>▶</span></button>
-                        </div>
-                    </article>
-
-                    <article class="return-script-card">
-                        <header>
-                            <div><span>DEEPER MENU</span><strong>Any node below @returnStrategy.MenuRootPath</strong></div>
-                            <b class="timing-profile-state @(returnStrategy.BelowMenuRoot.Verified ? "verified" : "unverified")">@(returnStrategy.BelowMenuRoot.Verified ? "VERIFIED" : "NEEDS VALIDATION")</b>
-                        </header>
-                        <label><span>KEY SCRIPT</span><input @bind="BelowMenuRootScript" @bind:after="MarkReturnScriptsDirty" disabled="@(IsBusy || Navigation.IsRunning)" /></label>
-                        <small>Place the TV at the selected deeper menu first. Test sends only <code>@BelowMenuRootScript</code>.</small>
-                        <label>
-                            <span>EXPECTED START</span>
-                            <select @bind="DeepReturnTestNodeId" disabled="@(IsBusy || Navigation.IsRunning)">
-                                @foreach (var node in returnStrategy.DeepTestNodes)
-                                {
-                                    <option value="@node.Id">@node.Path</option>
-                                }
-                            </select>
-                        </label>
-                        <div class="return-script-actions">
-                            @if (returnStrategy.ActiveValidationKind == MenuReturnScriptKind.BelowMenuRoot)
-                            {
-                                <b>@returnStrategy.ValidationPasses/@returnStrategy.RequiredValidationPasses passed</b>
-                            }
-                            <button class="primary-action" @onclick="TestBelowMenuRootReturnAsync" disabled="@(!CanTestBelowMenuRootReturn)">Save + test <span>▶</span></button>
-                        </div>
-                    </article>
-                </div>
+                        <p class="return-strategy-intro">Use an override only when one exact menu position cannot use the base-menu or deeper-menu anchor rule defined above.</p>
                 <div class="return-override-lab">
                     <header>
                         <div>
@@ -860,18 +784,8 @@
                 <div class="return-fallback-row">
                     <div><span>UNKNOWN POSITION FALLBACK</span><strong>@returnStrategy.AnchorLabel</strong></div>
                     <code>@returnStrategy.FallbackScript</code>
-                    <small>This existing verified anchor remains the fallback when the predicted menu position is unavailable.</small>
-                    <button class="secondary-action" @onclick="SaveReturnScriptsAsync" disabled="@(!CanSaveReturnScripts)">Save scripts</button>
+                    <small>The deeper-menu rule is also the conservative fallback when the predicted position is unavailable.</small>
                 </div>
-
-                @if (returnStrategy.AwaitingValidationConfirmation)
-                {
-                    <div class="validation-confirmation return-validation-confirmation">
-                        <div><span>RETURN SCRIPT CONFIRMATION</span><strong>Did the TV return to @returnStrategy.ExpectedTargetPath?</strong></div>
-                        <button class="secondary-action danger-action" @onclick="() => ConfirmReturnScriptAsync(false)" disabled="@IsBusy">No — reset passes</button>
-                        <button class="primary-action" @onclick="() => ConfirmReturnScriptAsync(true)" disabled="@IsBusy">Yes — count pass <span>✓</span></button>
-                    </div>
-                }
                     </div>
                 }
             </div>
@@ -953,22 +867,119 @@
 
         <div id="draft-validation" class="validation-studio collapsible-authoring-section setup-step-anchor @(DraftValidationExpanded ? "" : "collapsed")" @ref="ValidationStepElement">
             <button type="button" class="authoring-section-title authoring-section-toggle" @onclick="ToggleDraftValidation" aria-expanded="@(DraftValidationExpanded ? "true" : "false")">
-                <span>06</span><strong>Timing lab and visual validation</strong>
+                <span>03</span><strong>Automatically required verification</strong>
                 @if (DraftValidationNeedsAttention)
                 {
-                    <b class="timing-profile-state unverified">@Authoring.DraftCandidates.Count NEED VALIDATION</b>
+                    <b class="timing-profile-state unverified">@RequiredVerificationLineCount LINE ITEMS</b>
+                }
+                else
+                {
+                    <b class="timing-profile-state verified">COMPLETE</b>
                 }
                 <i aria-hidden="true">@(DraftValidationExpanded ? "−" : "+")</i>
             </button>
             @if (DraftValidationExpanded)
             {
                 <div class="authoring-section-body">
-                    <p class="field-note">Topology coverage cards replay a representative route for an entire branch. Three accepted passes promote every generated route shown on that card together. Manually recorded exceptions retain their own validation when topology cannot infer them.</p>
-            @if (Authoring.DraftCandidates.Count == 0)
+                    <p class="field-note">This is the complete verification plan calculated from the anchor and topology. Return behavior is checked first; each remaining coverage card represents an entire affected branch. Nothing else needs individual recording.</p>
+            @if (Authoring.ReturnStrategy is { } verificationAnchor
+                && (!verificationAnchor.AtMenuRoot.Verified
+                    || !verificationAnchor.BelowMenuRoot.Verified
+                    || verificationAnchor.NodeOverrides.Any(item => !item.Verified)))
             {
-                <div class="capture-empty compact">No draft anchors or transitions are waiting for validation.</div>
+                <div class="validation-list anchor-validation-list">
+                    @if (!verificationAnchor.AtMenuRoot.Verified)
+                    {
+                        <article class="validation-card @(verificationAnchor.ActiveValidationKind == MenuReturnScriptKind.AtMenuRoot ? "active" : "")">
+                            <div>
+                                <span>ANCHOR RETURN</span>
+                                <strong>Return from @verificationAnchor.MenuRootPath</strong>
+                                <small><code>@verificationAnchor.AtMenuRoot.Script</code> · validates the exact base-menu state</small>
+                            </div>
+                            <div class="validation-card-actions">
+                                <b>@GetReturnValidationPasses(MenuReturnScriptKind.AtMenuRoot)/@verificationAnchor.RequiredValidationPasses passed</b>
+                                @if (verificationAnchor.ActiveValidationKind == MenuReturnScriptKind.AtMenuRoot
+                                    && verificationAnchor.AwaitingValidationConfirmation)
+                                {
+                                    <span class="validation-inline-prompt">Did the TV return to normal video?</span>
+                                    <button class="secondary-action danger-action" @onclick="() => ConfirmReturnScriptAsync(false)" disabled="@IsBusy">No — reset passes</button>
+                                    <button class="primary-action" @onclick="() => ConfirmReturnScriptAsync(true)" disabled="@IsBusy">Yes — count pass <span>✓</span></button>
+                                }
+                                else
+                                {
+                                    <button class="secondary-action" @onclick="() => PrepareAnchorReturnSourceAsync(MenuReturnScriptKind.AtMenuRoot)" disabled="@(!CanPrepareAnchorReturnSource)">Prepare start</button>
+                                    <button class="primary-action" @onclick="TestAtMenuRootReturnAsync" disabled="@(!CanTestAtMenuRootReturn)">Test line item <span>▶</span></button>
+                                }
+                            </div>
+                        </article>
+                    }
+                    @if (!verificationAnchor.BelowMenuRoot.Verified)
+                    {
+                        <article class="validation-card @(verificationAnchor.ActiveValidationKind == MenuReturnScriptKind.BelowMenuRoot ? "active" : "")">
+                            <div>
+                                <span>ANCHOR RETURN</span>
+                                <strong>Return from below @verificationAnchor.MenuRootPath</strong>
+                                <small><code>@verificationAnchor.BelowMenuRoot.Script</code> · validates every deeper expected state</small>
+                            </div>
+                            <div class="validation-card-actions anchor-deep-validation-actions">
+                                <label>
+                                    <span>TEST FROM</span>
+                                    <select @bind="DeepReturnTestNodeId" disabled="@(IsBusy || Navigation.IsRunning)">
+                                        @foreach (var node in verificationAnchor.DeepTestNodes)
+                                        {
+                                            <option value="@node.Id">@node.Path</option>
+                                        }
+                                    </select>
+                                </label>
+                                <b>@GetReturnValidationPasses(MenuReturnScriptKind.BelowMenuRoot)/@verificationAnchor.RequiredValidationPasses passed</b>
+                                @if (verificationAnchor.ActiveValidationKind == MenuReturnScriptKind.BelowMenuRoot
+                                    && verificationAnchor.AwaitingValidationConfirmation)
+                                {
+                                    <span class="validation-inline-prompt">Did the TV return to normal video?</span>
+                                    <button class="secondary-action danger-action" @onclick="() => ConfirmReturnScriptAsync(false)" disabled="@IsBusy">No — reset passes</button>
+                                    <button class="primary-action" @onclick="() => ConfirmReturnScriptAsync(true)" disabled="@IsBusy">Yes — count pass <span>✓</span></button>
+                                }
+                                else
+                                {
+                                    <button class="secondary-action" @onclick="() => PrepareAnchorReturnSourceAsync(MenuReturnScriptKind.BelowMenuRoot)" disabled="@(!CanPrepareAnchorReturnSource)">Prepare start</button>
+                                    <button class="primary-action" @onclick="TestBelowMenuRootReturnAsync" disabled="@(!CanTestBelowMenuRootReturn)">Test line item <span>▶</span></button>
+                                }
+                            </div>
+                        </article>
+                    }
+                    @foreach (var returnOverride in verificationAnchor.NodeOverrides.Where(item => !item.Verified))
+                    {
+                        var overrideIsActive = verificationAnchor.ActiveValidationKind == MenuReturnScriptKind.NodeOverride
+                            && verificationAnchor.ActiveValidationNodeId?.Equals(returnOverride.NodeId, StringComparison.OrdinalIgnoreCase) == true;
+                        <article class="validation-card @(overrideIsActive ? "active" : "")">
+                            <div>
+                                <span>ANCHOR EXCEPTION</span>
+                                <strong>Return from @returnOverride.Path</strong>
+                                <small><code>@returnOverride.Script</code> · validates this exact state-specific exception</small>
+                            </div>
+                            <div class="validation-card-actions">
+                                <b>@GetReturnOverrideValidationPasses(returnOverride.NodeId)/@verificationAnchor.RequiredValidationPasses passed</b>
+                                @if (overrideIsActive && verificationAnchor.AwaitingValidationConfirmation)
+                                {
+                                    <span class="validation-inline-prompt">Did the TV return to normal video?</span>
+                                    <button class="secondary-action danger-action" @onclick="() => ConfirmReturnScriptAsync(false)" disabled="@IsBusy">No — reset passes</button>
+                                    <button class="primary-action" @onclick="() => ConfirmReturnScriptAsync(true)" disabled="@IsBusy">Yes — count pass <span>✓</span></button>
+                                }
+                                else
+                                {
+                                    <button class="secondary-action" @onclick="() => PrepareReturnOverrideStartAsync(returnOverride.NodeId)" disabled="@(!CanPrepareReturnOverrideNode(returnOverride.NodeId))">Prepare start</button>
+                                    <button class="primary-action" @onclick="() => RunReturnOverrideValidationAsync(returnOverride.NodeId)" disabled="@(!CanRunValidation)">Test line item <span>▶</span></button>
+                                }
+                            </div>
+                        </article>
+                    }
+                </div>
             }
-            else
+            @if (RequiredVerificationLineCount == 0)
+            {
+                <div class="capture-empty compact">The complete defined menu is verified. If you add, remove, move, or redefine an item, SamsungController will place only affected coverage line items here.</div>
+            }
+            @if (Authoring.DraftCandidates.Count > 0)
             {
                 <div class="validation-list">
                     @foreach (var candidate in Authoring.DraftCandidates)
@@ -1003,7 +1014,7 @@
                                 }
                                 else
                                 {
-                                    <button class="secondary-action" @onclick="() => RunValidationAsync(candidate)" disabled="@(!CanRunValidation || Authoring.AwaitingValidationConfirmation)">Replay test</button>
+                                    <button class="secondary-action" @onclick="() => RunValidationAsync(candidate)" disabled="@(!CanRunCoverageValidation || Authoring.AwaitingValidationConfirmation)">@(AnchorReturnBehaviorVerified ? "Replay test" : "Verify anchor returns first")</button>
                                 }
                                 @if (!candidate.GeneratedFromTopology)
                                 {
@@ -1069,7 +1080,9 @@
     private string RecordingLabel { get; set; } = "Return to known state";
     private string SourceNodeId { get; set; } = string.Empty;
     private string ExistingTargetId { get; set; } = string.Empty;
+    private string AnchorMenuRootNodeId { get; set; } = string.Empty;
     private string? PreparedRerecordTargetId { get; set; }
+    private bool IsRecordingExplicitException { get; set; }
     private bool RecordReturnToVideo { get; set; }
     private string? EditingNodeId { get; set; }
     private string NodeEditorId { get; set; } = string.Empty;
@@ -1167,6 +1180,13 @@
     private IReadOnlyList<MenuNodeSummary> VerifiedSettings => Navigation.Nodes
         .Where(node => node.HasVerifiedRoute)
         .ToArray();
+    private IReadOnlyList<MenuNodeSummary> AnchorRootCandidates => Navigation.Nodes
+        .Where(node => node.ControlType == MenuControlType.Submenu
+            && node.ParentId?.Equals("normal-video", StringComparison.OrdinalIgnoreCase) == true)
+        .OrderBy(node => node.Path, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+    private MenuNodeSummary? SelectedAnchorRoot => AnchorRootCandidates.FirstOrDefault(node =>
+        node.Id.Equals(AnchorMenuRootNodeId, StringComparison.OrdinalIgnoreCase));
     private MenuAnchorSummary? ReturnToVideoAnchor => Navigation.Anchors
         .Where(anchor => !anchor.Id.Equals(
             SamsungControllerService.ReturnToVideoReplacementAnchorId,
@@ -1177,6 +1197,19 @@
         .ThenByDescending(anchor => anchor.Verified)
         .FirstOrDefault();
     private bool IsConnected => Snapshot.ConnectionState == SamsungConnectionState.Connected;
+    private bool MenuDefinitionComplete => Navigation.DefinitionName is not null
+        && ActiveMenuConfigurationIsDescribed
+        && Navigation.Nodes.Count > 2
+        && AnchorRootCandidates.Count > 0;
+    private bool AnchorDefinitionComplete => Authoring.ReturnStrategy?.HasEntryRoute == true;
+    private bool AnchorEntryRecorded => Authoring.ReturnStrategy?.HasEntryRoute == true;
+    private int PendingAnchorVerificationCount => Authoring.ReturnStrategy is not { } strategy
+        ? 0
+        : (strategy.AtMenuRoot.Verified ? 0 : 1)
+          + (strategy.BelowMenuRoot.Verified ? 0 : 1)
+          + strategy.NodeOverrides.Count(item => !item.Verified);
+    private int RequiredVerificationLineCount =>
+        PendingAnchorVerificationCount + Authoring.DraftCandidates.Count;
     private IReadOnlyList<MenuNodeSummary> UnrecordedRecordingTargets => Navigation.Nodes
         .Where(IsUnrecordedRecordingTarget)
         .ToArray();
@@ -1209,10 +1242,13 @@
         && SelectableRecordingTargets.Any(node => node.Id.Equals(
             ExistingTargetId,
             StringComparison.OrdinalIgnoreCase))
-        && (RecordingKind == MenuAuthoringItemKind.Transition
+        && RecordingKind == MenuAuthoringItemKind.Transition
+        && (IsRecordingExplicitException
             ? !string.IsNullOrWhiteSpace(SourceNodeId)
-              && (!RecordReturnToVideo || ReturnToVideoAnchor is not null)
-            : !string.IsNullOrWhiteSpace(RecordingId) && !string.IsNullOrWhiteSpace(RecordingLabel));
+            : !AnchorEntryRecorded
+              && Authoring.ReturnStrategy is not null
+              && SourceNodeId.Equals("normal-video", StringComparison.OrdinalIgnoreCase)
+              && ExistingTargetId.Equals(AnchorMenuRootNodeId, StringComparison.OrdinalIgnoreCase));
     private bool CanConnectForRecording => Snapshot.ConnectionState is SamsungConnectionState.Disconnected
             or SamsungConnectionState.Faulted
         && !string.IsNullOrWhiteSpace(Snapshot.Host);
@@ -1220,6 +1256,16 @@
     {
         get
         {
+            if (AnchorEntryRecorded && !IsRecordingExplicitException)
+            {
+                return "The anchor entry is recorded. Menu routes and future verification requirements are now generated from the topology.";
+            }
+
+            if (Authoring.ReturnStrategy is null && !IsRecordingExplicitException)
+            {
+                return "Save the anchor definition above before recording its entry keys.";
+            }
+
             if (IsBusy)
             {
                 return "Wait for the current action to finish.";
@@ -1290,23 +1336,19 @@
         && CanGenerateDefinitionIdentity
         && !string.IsNullOrWhiteSpace(DefinitionName)
         && !string.IsNullOrWhiteSpace(DefinitionId);
-    private MenuSetupStep RecommendedSetupStep => Navigation.DefinitionName is null
-        ? MenuSetupStep.Profile
-        : !ActiveMenuConfigurationIsDescribed
-            ? MenuSetupStep.Configuration
-            : Navigation.Nodes.Count <= 2
-                ? MenuSetupStep.Outline
-                : Authoring.DraftCandidates.Count > 0
-                    ? MenuSetupStep.Verify
-                    : MenuSetupStep.Record;
-    private string RecommendedSetupMessage => RecommendedSetupStep switch
+    private MenuWorkflowStage RecommendedWorkflowStage => !MenuDefinitionComplete
+        ? MenuWorkflowStage.DefineMenu
+        : !AnchorDefinitionComplete
+            ? MenuWorkflowStage.DefineAnchor
+            : MenuWorkflowStage.VerifyCoverage;
+    private string RecommendedWorkflowMessage => RecommendedWorkflowStage switch
     {
-        MenuSetupStep.Profile => "Enter the TV model number and firmware version.",
-        MenuSetupStep.Configuration => "Describe and select the menu layout currently visible on the TV.",
-        MenuSetupStep.Outline => "Paste the on-screen hierarchy and apply it to this TV profile.",
-        MenuSetupStep.Verify => $"Replay and visually approve {Authoring.DraftCandidates.Count} saved draft{(Authoring.DraftCandidates.Count == 1 ? string.Empty : "s")}.",
-        _ when UnrecordedRecordingTargets.Count > 0 => $"Record a route to one of {UnrecordedRecordingTargets.Count} unrecorded menu positions.",
-        _ => "All defined menu positions are recorded. Review routes or add more menu items when needed."
+        MenuWorkflowStage.DefineMenu when Navigation.DefinitionName is null => "Create the TV profile, then enter its complete menu topology.",
+        MenuWorkflowStage.DefineMenu => "Finish the ordered menu topology and its active configuration.",
+        MenuWorkflowStage.DefineAnchor when Authoring.ReturnStrategy is null => "Choose the base menu and save its root/deeper return rules.",
+        MenuWorkflowStage.DefineAnchor => "Record the keys that open the base menu from normal video.",
+        _ when RequiredVerificationLineCount > 0 => $"Complete the {RequiredVerificationLineCount} automatically required verification line item{(RequiredVerificationLineCount == 1 ? string.Empty : "s")}.",
+        _ => "The complete defined menu is verified. Add or edit menu items whenever needed."
     };
     private IReadOnlyList<MenuNodeSummary> AvailableParentNodes
     {
@@ -1420,10 +1462,16 @@
         && Navigation.Nodes.FirstOrDefault(node => node.Id.Equals(EditingNodeId, StringComparison.OrdinalIgnoreCase))?.ParentId is not null;
     private bool RecordButtonsDisabled => !Authoring.IsRecording || !IsConnected || IsSendingKey || Navigation.IsRunning;
     private bool CanPrepareSource => RecordingKind == MenuAuthoringItemKind.Transition && IsConnected && !IsBusy &&
-        !Authoring.IsRecording && !Navigation.IsRunning && !Snapshot.MacroRunning && !string.IsNullOrWhiteSpace(SourceNodeId);
+        !Authoring.IsRecording && !Navigation.IsRunning && !Snapshot.MacroRunning
+        && !string.IsNullOrWhiteSpace(SourceNodeId)
+        && ReturnToVideoAnchor?.Verified == true;
     private bool CanRunValidation => IsConnected && !IsBusy && !Authoring.IsRecording && !Navigation.IsRunning
         && !Snapshot.MacroRunning && !Authoring.AwaitingTimingValidationConfirmation
         && Authoring.ReturnStrategy?.AwaitingValidationConfirmation != true;
+    private bool AnchorReturnBehaviorVerified => Authoring.ReturnStrategy is { } strategy
+        && strategy.AtMenuRoot.Verified
+        && strategy.BelowMenuRoot.Verified;
+    private bool CanRunCoverageValidation => CanRunValidation && AnchorReturnBehaviorVerified;
     private bool TimingProfileValid => IsValidWait(DefaultDelayMilliseconds)
         && IsValidWait(ScreenChangeDelayMilliseconds)
         && IsValidWait(ReturnDelayMilliseconds);
@@ -1441,16 +1489,20 @@
         && Authoring.Timing.Verified
         && Authoring.Timing.HasSameDelays(CreateTimingProfile());
     private bool ReturnScriptsNeedValidation => Authoring.ReturnStrategy is { } returnStrategy
-        && (ReturnScriptsDirty
-            || !returnStrategy.AtMenuRoot.Verified
-            || !returnStrategy.BelowMenuRoot.Verified
-            || returnStrategy.NodeOverrides.Any(item => !item.Verified));
-    private bool DraftValidationNeedsAttention => Authoring.DraftCandidates.Count > 0;
+        && returnStrategy.NodeOverrides.Any(item => !item.Verified);
+    private bool DraftValidationNeedsAttention => RequiredVerificationLineCount > 0;
     private bool CanSaveCandidateTiming => CanSaveSystemTiming && TimingEditorKind is not null
         && TimingEditorId is not null && TimingSteps.Count > 0 && TimingOverridesValid;
-    private bool CanSaveAndReplayTiming => CanSaveCandidateTiming && CanRunValidation;
+    private bool CanSaveAndReplayTiming => CanSaveCandidateTiming && CanRunCoverageValidation;
     private bool ReturnScriptsValid => TryParseKeyScript(AtMenuRootScript, out _)
         && TryParseKeyScript(BelowMenuRootScript, out _);
+    private bool CanSaveAnchorDefinition => AnchorRootCandidates.Any(node => node.Id.Equals(
+            AnchorMenuRootNodeId,
+            StringComparison.OrdinalIgnoreCase))
+        && ReturnScriptsValid
+        && !IsBusy && !Authoring.IsRecording && !Navigation.IsRunning && !Snapshot.MacroRunning
+        && !Authoring.AwaitingValidationConfirmation && !Authoring.AwaitingTimingValidationConfirmation
+        && Authoring.ReturnStrategy?.AwaitingValidationConfirmation != true;
     private bool CanSaveReturnScripts => Authoring.ReturnStrategy is not null && ReturnScriptsValid
         && !IsBusy && !Authoring.IsRecording && !Navigation.IsRunning && !Snapshot.MacroRunning
         && !Authoring.AwaitingValidationConfirmation && !Authoring.AwaitingTimingValidationConfirmation
@@ -1459,6 +1511,8 @@
     private bool CanTestBelowMenuRootReturn => CanSaveReturnScripts && IsConnected
         && Authoring.ReturnStrategy!.DeepTestNodes.Any(node =>
             node.Id.Equals(DeepReturnTestNodeId, StringComparison.OrdinalIgnoreCase));
+    private bool CanPrepareAnchorReturnSource => AnchorDefinitionComplete && IsConnected
+        && !IsBusy && !Authoring.IsRecording && !Navigation.IsRunning && !Snapshot.MacroRunning;
     private IReadOnlyList<MenuNodeSummary> ReturnOverrideNodes => Authoring.ReturnStrategy is not { } strategy
         ? []
         : Navigation.Nodes
@@ -1476,6 +1530,9 @@
     private bool CanTestReturnOverride => CanSaveReturnOverride && IsConnected;
     private bool CanPrepareReturnOverride => IsConnected && !IsBusy && !Authoring.IsRecording
         && !Navigation.IsRunning && !Snapshot.MacroRunning && !string.IsNullOrWhiteSpace(OverrideReturnNodeId);
+    private bool CanPrepareReturnOverrideNode(string nodeId) => IsConnected && !IsBusy
+        && !Authoring.IsRecording && !Navigation.IsRunning && !Snapshot.MacroRunning
+        && !string.IsNullOrWhiteSpace(nodeId);
     private long TimingDurationMilliseconds => TimingSteps.Sum(step =>
         (long)(step.UseCustomDelay
             ? step.DelayAfterMilliseconds
@@ -1553,6 +1610,18 @@
 
     private void ToggleDraftValidation() => DraftValidationExpanded = !DraftValidationExpanded;
 
+    private Task GoToWorkflowStageAsync(MenuWorkflowStage stage) => stage switch
+    {
+        MenuWorkflowStage.DefineMenu when Navigation.DefinitionName is null =>
+            GoToSetupStepAsync(MenuSetupStep.Profile),
+        MenuWorkflowStage.DefineMenu when !ActiveMenuConfigurationIsDescribed =>
+            GoToSetupStepAsync(MenuSetupStep.Configuration),
+        MenuWorkflowStage.DefineMenu => GoToSetupStepAsync(MenuSetupStep.Outline),
+        MenuWorkflowStage.DefineAnchor => GoToSetupStepAsync(MenuSetupStep.Record),
+        MenuWorkflowStage.VerifyCoverage => GoToSetupStepAsync(MenuSetupStep.Verify),
+        _ => Task.CompletedTask
+    };
+
     private async Task GoToSetupStepAsync(MenuSetupStep step)
     {
         LocalError = null;
@@ -1599,15 +1668,15 @@
         _ => RecordingStepElement
     };
 
-    private string GetSetupStepClass(MenuSetupStep step)
+    private string GetWorkflowStageClass(MenuWorkflowStage stage)
     {
         var classes = new List<string> { "menu-setup-guide-step" };
-        if (IsSetupStepComplete(step))
+        if (IsWorkflowStageComplete(stage))
         {
             classes.Add("complete");
         }
 
-        if (step == RecommendedSetupStep)
+        if (stage == RecommendedWorkflowStage)
         {
             classes.Add("current");
         }
@@ -1615,30 +1684,26 @@
         return string.Join(' ', classes);
     }
 
-    private bool IsSetupStepComplete(MenuSetupStep step) => step switch
+    private bool IsWorkflowStageComplete(MenuWorkflowStage stage) => stage switch
     {
-        MenuSetupStep.Profile => Navigation.DefinitionName is not null,
-        MenuSetupStep.Configuration => ActiveMenuConfigurationIsDescribed,
-        MenuSetupStep.Outline => Navigation.Nodes.Count > 2,
-        MenuSetupStep.Record => Navigation.Nodes.Any(node => node.HasDraftRoute || node.HasVerifiedRoute),
-        MenuSetupStep.Verify => Navigation.Nodes.Any(node => node.HasVerifiedRoute)
-            && Authoring.DraftCandidates.Count == 0,
+        MenuWorkflowStage.DefineMenu => MenuDefinitionComplete,
+        MenuWorkflowStage.DefineAnchor => AnchorDefinitionComplete,
+        MenuWorkflowStage.VerifyCoverage => AnchorDefinitionComplete
+            && RequiredVerificationLineCount == 0,
         _ => false
     };
 
-    private string GetSetupStepStatus(MenuSetupStep step) => step switch
+    private string GetWorkflowStageStatus(MenuWorkflowStage stage) => stage switch
     {
-        MenuSetupStep.Profile when Navigation.DefinitionName is not null => Navigation.DefinitionName,
-        MenuSetupStep.Profile => "Required",
-        MenuSetupStep.Configuration when ActiveMenuConfigurationIsDescribed => ActiveMenuConfiguration!.Name,
-        MenuSetupStep.Configuration => "Describe layout",
-        MenuSetupStep.Outline when Navigation.Nodes.Count > 2 => $"{Navigation.Nodes.Count - 2} menu items",
-        MenuSetupStep.Outline => "Add hierarchy",
-        MenuSetupStep.Record when UnrecordedRecordingTargets.Count > 0 => $"{UnrecordedRecordingTargets.Count} remaining",
-        MenuSetupStep.Record => "Routes recorded",
-        MenuSetupStep.Verify when Authoring.DraftCandidates.Count > 0 => $"{Authoring.DraftCandidates.Count} waiting",
-        MenuSetupStep.Verify when IsSetupStepComplete(MenuSetupStep.Verify) => "Complete",
-        _ => "No draft yet"
+        MenuWorkflowStage.DefineMenu when MenuDefinitionComplete => $"{Navigation.Nodes.Count - 2} menu items",
+        MenuWorkflowStage.DefineMenu when Navigation.DefinitionName is null => "Create profile",
+        MenuWorkflowStage.DefineMenu => "Finish topology",
+        MenuWorkflowStage.DefineAnchor when AnchorDefinitionComplete => "Entry recorded",
+        MenuWorkflowStage.DefineAnchor when Authoring.ReturnStrategy is not null => "Record entry",
+        MenuWorkflowStage.DefineAnchor => "Choose root + returns",
+        MenuWorkflowStage.VerifyCoverage when RequiredVerificationLineCount > 0 => $"{RequiredVerificationLineCount} required",
+        MenuWorkflowStage.VerifyCoverage when AnchorDefinitionComplete => "Complete",
+        _ => "Waiting for anchor"
     };
 
     private void HandleDefinitionModelChanged(ChangeEventArgs args)
@@ -1904,7 +1969,9 @@
             if (continueToRecording)
             {
                 MenuTreeExpanded = false;
-                PendingSetupScroll = MenuSetupStep.Record;
+                PendingSetupScroll = AnchorDefinitionComplete
+                    ? MenuSetupStep.Verify
+                    : MenuSetupStep.Record;
             }
             else
             {
@@ -2361,6 +2428,7 @@
     {
         await Controller.StopAndSaveMenuRecordingAsync();
         PreparedRerecordTargetId = null;
+        IsRecordingExplicitException = false;
         Refresh();
         InitializeNodeDefaults(force: true);
         DraftValidationExpanded = true;
@@ -2388,6 +2456,7 @@
         {
             Controller.CancelMenuRecording();
             PreparedRerecordTargetId = null;
+            IsRecordingExplicitException = false;
             Refresh();
             InitializeNodeDefaults(force: true);
         }
@@ -2516,6 +2585,7 @@
     private void PrepareRerecord(MenuAuthoringCandidateSummary candidate)
     {
         LocalError = null;
+        IsRecordingExplicitException = true;
         RecordReturnToVideo = candidate.ReturnCommandCount > 0;
         RecordingKind = candidate.Kind;
         if (candidate.Kind == MenuAuthoringItemKind.Anchor)
@@ -2527,6 +2597,7 @@
         SourceNodeId = candidate.SourceNodeId ?? SourceNodeId;
         PreparedRerecordTargetId = candidate.TargetNodeId;
         ExistingTargetId = candidate.TargetNodeId;
+        PendingSetupScroll = MenuSetupStep.Record;
     }
 
     private Task DeleteDraftAsync(MenuAuthoringCandidateSummary candidate) =>
@@ -2535,9 +2606,7 @@
             await Controller.DeleteMenuAuthoringDraftAsync(candidate.Kind, candidate.Id);
             Refresh();
             InitializeNodeDefaults(force: true);
-            PendingSetupScroll = Authoring.DraftCandidates.Count > 0
-                ? MenuSetupStep.Verify
-                : MenuSetupStep.Record;
+            PendingSetupScroll = MenuSetupStep.Verify;
         });
 
     private bool IsKnownStateSetting(MenuNodeSummary setting) => Navigation.Anchors.Any(anchor =>
@@ -2588,9 +2657,7 @@
         if (completesCandidate)
         {
             InitializeNodeDefaults(force: true);
-            PendingSetupScroll = Authoring.DraftCandidates.Count > 0
-                ? MenuSetupStep.Verify
-                : MenuSetupStep.Record;
+            PendingSetupScroll = MenuSetupStep.Verify;
         }
     });
 
@@ -2602,6 +2669,33 @@
         ReturnScriptsDirty = true;
         UpdateAttentionSections();
     }
+
+    private void HandleAnchorRootChanged()
+    {
+        SourceNodeId = "normal-video";
+        ExistingTargetId = AnchorMenuRootNodeId;
+        ReturnScriptsDirty = true;
+        LocalError = null;
+    }
+
+    private Task SaveAnchorDefinitionAsync() => RunBusyAsync(async () =>
+    {
+        if (!TryParseKeyScript(AtMenuRootScript, out var atMenuRootKeys)
+            || !TryParseKeyScript(BelowMenuRootScript, out var belowMenuRootKeys))
+        {
+            throw new InvalidOperationException(
+                "Each anchor return rule must contain one or more comma-separated KEY_ commands.");
+        }
+
+        await Controller.DefineMenuAnchorAsync(
+            AnchorMenuRootNodeId,
+            atMenuRootKeys,
+            belowMenuRootKeys);
+        ReturnScriptsDirty = false;
+        Refresh();
+        SourceNodeId = "normal-video";
+        ExistingTargetId = AnchorMenuRootNodeId;
+    });
 
     private Task SaveReturnScriptsAsync() => RunBusyAsync(async () =>
     {
@@ -2615,8 +2709,24 @@
     private Task TestBelowMenuRootReturnAsync() =>
         SaveAndTestReturnScriptAsync(MenuReturnScriptKind.BelowMenuRoot);
 
+    private Task PrepareAnchorReturnSourceAsync(MenuReturnScriptKind kind) =>
+        RunBusyAsync(() => Controller.PrepareMenuReturnStrategyTestSourceAsync(
+            kind,
+            kind == MenuReturnScriptKind.BelowMenuRoot ? DeepReturnTestNodeId : null));
+
     private Task PrepareReturnOverrideStartAsync() =>
         RunBusyAsync(() => Controller.PrepareMenuRecordingSourceAsync(OverrideReturnNodeId));
+
+    private Task PrepareReturnOverrideStartAsync(string nodeId) =>
+        RunBusyAsync(() => Controller.PrepareMenuRecordingSourceAsync(nodeId));
+
+    private Task RunReturnOverrideValidationAsync(string nodeId) => RunBusyAsync(async () =>
+    {
+        await Controller.RunMenuReturnStrategyTestAsync(
+            MenuReturnScriptKind.NodeOverride,
+            nodeId);
+        Refresh();
+    });
 
     private Task SaveReturnOverrideAsync() => RunBusyAsync(async () =>
     {
@@ -2708,6 +2818,19 @@
     private Task ConfirmReturnScriptAsync(bool passed) =>
         RunBusyAsync(() => Controller.ConfirmMenuReturnStrategyTestAsync(passed));
 
+    private int GetReturnValidationPasses(MenuReturnScriptKind kind) =>
+        Authoring.ReturnStrategy?.ActiveValidationKind == kind
+            ? Authoring.ReturnStrategy.ValidationPasses
+            : 0;
+
+    private int GetReturnOverrideValidationPasses(string nodeId) =>
+        Authoring.ReturnStrategy?.ActiveValidationKind == MenuReturnScriptKind.NodeOverride
+        && Authoring.ReturnStrategy.ActiveValidationNodeId?.Equals(
+            nodeId,
+            StringComparison.OrdinalIgnoreCase) == true
+            ? Authoring.ReturnStrategy.ValidationPasses
+            : 0;
+
     private async Task RunBusyAsync(Func<Task> action)
     {
         IsBusy = true;
@@ -2752,6 +2875,26 @@
 
         LastObservedTiming = authoring.Timing;
         Authoring = authoring;
+        var anchorRootId = Authoring.ReturnStrategy?.MenuRootNodeId;
+        if ((!ReturnScriptsDirty && !string.IsNullOrWhiteSpace(anchorRootId))
+            || string.IsNullOrWhiteSpace(AnchorMenuRootNodeId)
+            || AnchorRootCandidates.All(node => !node.Id.Equals(
+                AnchorMenuRootNodeId,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            AnchorMenuRootNodeId = anchorRootId
+                ?? AnchorRootCandidates.FirstOrDefault()?.Id
+                ?? string.Empty;
+        }
+
+        if (!IsRecordingExplicitException && !string.IsNullOrWhiteSpace(AnchorMenuRootNodeId))
+        {
+            RecordingKind = MenuAuthoringItemKind.Transition;
+            SourceNodeId = "normal-video";
+            ExistingTargetId = AnchorMenuRootNodeId;
+            RecordReturnToVideo = false;
+        }
+
         if (PreparedRerecordTargetId is not null
             && Authoring.DraftCandidates.All(candidate => !candidate.TargetNodeId.Equals(
                 PreparedRerecordTargetId,
@@ -2822,7 +2965,7 @@
     {
         var returnScriptsNeedValidation = ReturnScriptsNeedValidation;
         var systemTimingNeedsValidation = !SystemTimingIsVerified;
-        var draftValidationCount = Authoring.DraftCandidates.Count;
+        var draftValidationCount = RequiredVerificationLineCount;
 
         if (!AttentionStateInitialized)
         {
@@ -2966,6 +3109,10 @@
     private string GetTargetLabel(string targetId) => Navigation.Nodes.FirstOrDefault(node =>
             node.Id.Equals(targetId, StringComparison.OrdinalIgnoreCase))?.Label
         ?? targetId;
+
+    private string GetNodePath(string nodeId) => Navigation.Nodes.FirstOrDefault(node =>
+            node.Id.Equals(nodeId, StringComparison.OrdinalIgnoreCase))?.Path
+        ?? nodeId;
 
     private bool IsUnrecordedRecordingTarget(MenuNodeSummary node) =>
         !node.Id.Equals("tv-interface", StringComparison.OrdinalIgnoreCase)
@@ -3144,6 +3291,13 @@
         Outline,
         Record,
         Verify
+    }
+
+    private enum MenuWorkflowStage
+    {
+        DefineMenu,
+        DefineAnchor,
+        VerifyCoverage
     }
 
     private sealed class TimingStepEdit(MenuAuthoringReplayStepSummary step)

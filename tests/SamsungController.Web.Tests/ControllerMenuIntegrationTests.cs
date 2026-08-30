@@ -281,6 +281,114 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task GuidedAnchorDefinitionCreatesEntryAndReturnVerificationPlan()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: guided-anchor
+            name: Guided Anchor
+            model: Test TV
+            nodes:
+              - id: tv-interface
+                label: TV interface
+              - id: normal-video
+                label: Normal video
+                parent: tv-interface
+              - id: settings
+                label: Settings
+                parent: normal-video
+              - id: picture
+                label: Picture
+                parent: settings
+              - id: brightness
+                label: Brightness
+                parent: picture
+                controlType: slider
+                defaultValue: 25
+                minimumValue: 0
+                maximumValue: 50
+              - id: sound
+                label: Sound
+                parent: settings
+            anchors: []
+            transitions: []
+            """;
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            await controller.DefineMenuAnchorAsync(
+                "settings",
+                ["KEY_RETURN"],
+                ["KEY_MENU", "KEY_RETURN"]);
+
+            var defined = Assert.IsType<MenuReturnStrategySummary>(
+                controller.GetMenuAuthoringSnapshot().ReturnStrategy);
+            Assert.Equal("settings", defined.MenuRootNodeId);
+            Assert.False(defined.HasEntryRoute);
+            Assert.False(defined.AtMenuRoot.Verified);
+            Assert.False(defined.BelowMenuRoot.Verified);
+            Assert.Empty(controller.GetMenuAuthoringSnapshot().DraftCandidates);
+
+            controller.StartMenuRecording(new MenuRecordingRequest(
+                MenuAuthoringItemKind.Transition,
+                string.Empty,
+                "Settings",
+                "normal-video",
+                "settings",
+                null,
+                null));
+            await controller.SendKeyAsync("KEY_MENU");
+            await controller.StopAndSaveMenuRecordingAsync();
+
+            var planned = Assert.IsType<MenuReturnStrategySummary>(
+                controller.GetMenuAuthoringSnapshot().ReturnStrategy);
+            Assert.True(planned.HasEntryRoute);
+            Assert.Equal("KEY_MENU", planned.EntryScript);
+            Assert.Equal(2, controller.GetMenuAuthoringSnapshot().DraftCandidates.Count);
+
+            transport.SentMessages.Clear();
+            await controller.PrepareMenuReturnStrategyTestSourceAsync(
+                MenuReturnScriptKind.AtMenuRoot,
+                null);
+            Assert.Equal(["KEY_MENU"], GetSentKeys(transport));
+
+            transport.SentMessages.Clear();
+            await controller.PrepareMenuReturnStrategyTestSourceAsync(
+                MenuReturnScriptKind.BelowMenuRoot,
+                "picture");
+            Assert.Equal(["KEY_MENU", "KEY_ENTER"], GetSentKeys(transport));
+
+            for (var pass = 0; pass < 3; pass++)
+            {
+                transport.SentMessages.Clear();
+                await controller.RunMenuReturnStrategyTestAsync(
+                    MenuReturnScriptKind.AtMenuRoot,
+                    null);
+                Assert.Equal(["KEY_RETURN"], GetSentKeys(transport));
+                await controller.ConfirmMenuReturnStrategyTestAsync(passed: true);
+            }
+
+            for (var pass = 0; pass < 3; pass++)
+            {
+                transport.SentMessages.Clear();
+                await controller.RunMenuReturnStrategyTestAsync(
+                    MenuReturnScriptKind.BelowMenuRoot,
+                    "picture");
+                Assert.Equal(["KEY_MENU", "KEY_RETURN"], GetSentKeys(transport));
+                await controller.ConfirmMenuReturnStrategyTestAsync(passed: true);
+            }
+
+            var persisted = await new MenuDefinitionParser().ParseFileAsync(
+                controller.GetMenuNavigationSnapshot().DefinitionPath);
+            var anchor = Assert.Single(persisted.Anchors.Values);
+            Assert.True(anchor.Verified);
+            Assert.True(anchor.ReturnStrategy!.AtMenuRoot.Verified);
+            Assert.True(anchor.ReturnStrategy.BelowMenuRoot.Verified);
+        }
+    }
+
+    [Fact]
     public async Task ExistingDefinitionRequiresConfirmationAndCanBeReplaced()
     {
         Directory.CreateDirectory(_directory);

@@ -348,7 +348,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             var candidates = definition is null
                 ? []
                 : definition.ApplicableAnchors
-                    .Where(anchor => !anchor.Verified)
+                    .Where(anchor => !anchor.Verified && anchor.ReturnStrategy is null)
                     .Select(anchor => new MenuAuthoringCandidateSummary(
                         MenuAuthoringItemKind.Anchor,
                         anchor.Id,
@@ -1729,7 +1729,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
             context.Strategy.NodeOverrides);
         var anchors = definition.Anchors.Values
             .Select(anchor => anchor.Id.Equals(context.Anchor.Id, StringComparison.OrdinalIgnoreCase)
-                ? anchor with { ReturnStrategy = strategy }
+                ? anchor with
+                {
+                    Operations = belowMenuRoot.Operations,
+                    Verified = belowMenuRoot.Verified,
+                    ReturnStrategy = strategy
+                }
                 : anchor)
             .ToArray();
         var updated = CopyMenuDefinition(definition, anchors: anchors);
@@ -1750,6 +1755,114 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _menuAuthoringStatus = atMenuRootChanged || belowMenuRootChanged
                 ? "Return-to-video scripts saved to YAML · changed scripts require 3/3 validation"
                 : "Return-to-video scripts saved to YAML";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
+    }
+
+    public async Task DefineMenuAnchorAsync(
+        string menuRootNodeId,
+        IReadOnlyList<string> atMenuRootKeys,
+        IReadOnlyList<string> belowMenuRootKeys,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(menuRootNodeId);
+        ArgumentNullException.ThrowIfNull(atMenuRootKeys);
+        ArgumentNullException.ThrowIfNull(belowMenuRootKeys);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("define the menu anchor");
+        EnsureNoMenuRecording("define the menu anchor");
+
+        MenuDefinition definition;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+        }
+
+        var normalVideo = definition.Nodes.TryGetValue("normal-video", out var namedNormalVideo)
+            ? namedNormalVideo
+            : throw new InvalidOperationException(
+                "The menu definition does not contain the required 'normal-video' starting state.");
+        var normalizedRootId = menuRootNodeId.Trim();
+        var menuRoot = definition.GetRequiredNode(normalizedRootId);
+        if (menuRoot.ParentId?.Equals(normalVideo.Id, StringComparison.OrdinalIgnoreCase) != true)
+        {
+            throw new InvalidOperationException(
+                $"'{definition.GetPath(normalizedRootId)}' is not a top-level menu directly below Normal video.");
+        }
+
+        if (menuRoot.ControlType != MenuControlType.Submenu)
+        {
+            throw new InvalidOperationException("The menu anchor root must be a submenu.");
+        }
+
+        var normalizedAtRoot = NormalizeReturnScriptKeys(atMenuRootKeys);
+        var normalizedBelowRoot = NormalizeReturnScriptKeys(belowMenuRootKeys);
+        var existingAnchor = FindReturnToVideoAnchor(definition);
+        var existingStrategy = existingAnchor?.ReturnStrategy;
+        var sameRoot = existingStrategy?.MenuRootNodeId.Equals(
+            normalizedRootId,
+            StringComparison.OrdinalIgnoreCase) == true;
+        var atRoot = UpdateReturnScript(
+            sameRoot
+                ? existingStrategy!.AtMenuRoot
+                : new MenuReturnScript(CreateKeyOperations(normalizedAtRoot)),
+            normalizedAtRoot);
+        var belowRoot = UpdateReturnScript(
+            sameRoot
+                ? existingStrategy!.BelowMenuRoot
+                : new MenuReturnScript(CreateKeyOperations(normalizedBelowRoot)),
+            normalizedBelowRoot);
+        var strategy = new MenuReturnStrategy(
+            normalizedRootId,
+            atRoot,
+            belowRoot,
+            sameRoot ? existingStrategy!.NodeOverrides : []);
+        var anchor = existingAnchor is null
+            ? new MenuAnchor(
+                CreateMenuAnchorId(definition),
+                "Return to normal video",
+                normalVideo.Id,
+                belowRoot.Operations,
+                belowRoot.Verified,
+                "Defined by the guided menu-anchor workflow.",
+                strategy,
+                normalizedRootId,
+                definition.ActiveConfigurationId)
+            : existingAnchor with
+            {
+                Operations = belowRoot.Operations,
+                Verified = belowRoot.Verified,
+                ReturnStrategy = strategy,
+                ValidationSourceNodeId = normalizedRootId
+            };
+        var anchors = definition.Anchors.Values
+            .Where(candidate => !candidate.Id.Equals(anchor.Id, StringComparison.OrdinalIgnoreCase))
+            .Append(anchor)
+            .ToArray();
+        var transitions = !sameRoot && existingStrategy is not null
+            ? definition.Transitions.Values.Where(transition =>
+                    transition.GeneratedFromTopology
+                    || !transition.FromNodeId.Equals(normalVideo.Id, StringComparison.OrdinalIgnoreCase)
+                    || !transition.ToNodeId.Equals(
+                        existingStrategy.MenuRootNodeId,
+                        StringComparison.OrdinalIgnoreCase))
+                .ToArray()
+            : definition.Transitions.Values.ToArray();
+        var updated = CopyMenuDefinition(
+            definition,
+            transitions: transitions,
+            anchors: anchors);
+        new MenuDefinitionValidator().ValidateAndThrow(updated);
+        await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
+        lock (_sync)
+        {
+            _menuReturnValidation = null;
+            _menuAuthoringStatus = sameRoot
+                ? "Menu anchor saved · changed return scripts require 3/3 validation"
+                : $"Menu anchor defined at {definition.GetPath(normalizedRootId)} · record the entry keys next";
             _menuAuthoringError = null;
         }
 
@@ -1949,6 +2062,71 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 context,
                 script,
                 session,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task PrepareMenuReturnStrategyTestSourceAsync(
+        MenuReturnScriptKind kind,
+        string? deepStartNodeId,
+        CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("prepare an anchor-return verification start");
+        EnsureNoMenuRecording("prepare an anchor-return verification start");
+
+        MenuDefinition definition;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+        }
+
+        var context = GetRequiredReturnStrategyContext(definition);
+        var targetNodeId = kind switch
+        {
+            MenuReturnScriptKind.AtMenuRoot => context.Strategy.MenuRootNodeId,
+            MenuReturnScriptKind.BelowMenuRoot =>
+                NormalizeDeepReturnTestNode(definition, context, deepStartNodeId),
+            _ => throw new InvalidOperationException(
+                "Only the base-menu and deeper-menu anchor checks have generated preparation routes.")
+        };
+        var route = definition.ApplicableTransitions
+            .Where(transition => transition.FromNodeId.Equals(
+                context.Anchor.TargetNodeId,
+                StringComparison.OrdinalIgnoreCase))
+            .Where(transition => transition.ToNodeId.Equals(
+                targetNodeId,
+                StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(transition => transition.Verified)
+            .ThenBy(transition => transition.Operations.Sum(operation => operation.Repeat))
+            .FirstOrDefault()
+            ?? throw new InvalidOperationException(
+                $"No generated route from normal video to '{definition.GetPath(targetNodeId)}' is available yet.");
+
+        await RunNavigationAsync(
+                $"Prepare anchor verification · {definition.GetPath(targetNodeId)}",
+                async (_, token) =>
+                {
+                    MenuStateTracker tracker;
+                    lock (_sync)
+                    {
+                        tracker = _menuStateTracker
+                            ?? throw new InvalidOperationException(
+                                "No menu state tracker is available.");
+                    }
+
+                    await ExecuteAuthoringOperationsAsync(
+                            "Prepare anchor return line item",
+                            definition.GetPath(context.Anchor.TargetNodeId),
+                            definition.GetPath(targetNodeId),
+                            route.Operations,
+                            definition.Timing,
+                            token)
+                        .ConfigureAwait(false);
+                    tracker.ApplyTransition(route);
+                },
+                clearPlanOnSuccess: true,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -2586,7 +2764,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
         ConfirmMenuAuthoringTarget(targetNodeId, session.ItemId);
         NotifyChanged();
-        if (returnAnchor is not null
+        if (returnAnchor?.Verified == true
             && !targetNodeId.Equals(
                 returnAnchor.TargetNodeId,
                 StringComparison.OrdinalIgnoreCase))
@@ -4459,6 +4637,16 @@ public sealed class SamsungControllerService : IAsyncDisposable
             return null;
         }
 
+        var entryTransition = definition.ApplicableTransitions
+            .Where(transition => !transition.GeneratedFromTopology)
+            .Where(transition => transition.FromNodeId.Equals(
+                context.Anchor.TargetNodeId,
+                StringComparison.OrdinalIgnoreCase))
+            .Where(transition => transition.ToNodeId.Equals(
+                context.Strategy.MenuRootNodeId,
+                StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(transition => transition.Verified)
+            .FirstOrDefault();
         return new MenuReturnStrategySummary(
             context.Anchor.Id,
             context.Anchor.Label,
@@ -4493,7 +4681,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
             validation?.Passes ?? 0,
             MenuReturnValidationSession.RequiredPasses,
             validation?.AwaitingConfirmation ?? false,
-            validation?.ExpectedTargetPath);
+            validation?.ExpectedTargetPath,
+            entryTransition is not null,
+            entryTransition?.Id,
+            entryTransition is null ? null : FormatKeyScript(entryTransition.Operations),
+            entryTransition?.Verified == true);
     }
 
     private static ReturnStrategyContext GetRequiredReturnStrategyContext(
@@ -4589,6 +4781,37 @@ public sealed class SamsungControllerService : IAsyncDisposable
             .Select(key => new MenuOperation(key))
             .ToArray());
         return new MenuReturnScript(operations, Verified: false);
+    }
+
+    private static IReadOnlyList<MenuOperation> CreateKeyOperations(
+        IReadOnlyList<string> keys) => CoalesceOperations(keys
+        .Select(key => new MenuOperation(key))
+        .ToArray());
+
+    private static string CreateMenuAnchorId(MenuDefinition definition)
+    {
+        var configurationSuffix = string.IsNullOrWhiteSpace(definition.ActiveConfigurationId)
+            ? null
+            : $"-{definition.ActiveConfigurationId}";
+        var preferred = definition.Anchors.ContainsKey("normal-video")
+            || definition.Transitions.ContainsKey("normal-video")
+                ? $"normal-video{configurationSuffix ?? "-anchor"}"
+                : "normal-video";
+        if (!definition.Anchors.ContainsKey(preferred)
+            && !definition.Transitions.ContainsKey(preferred))
+        {
+            return preferred;
+        }
+
+        for (var suffix = 2; ; suffix++)
+        {
+            var candidate = $"{preferred}-{suffix}";
+            if (!definition.Anchors.ContainsKey(candidate)
+                && !definition.Transitions.ContainsKey(candidate))
+            {
+                return candidate;
+            }
+        }
     }
 
     private static string[] NormalizeReturnScriptKeys(IReadOnlyList<string> keys)
@@ -4706,7 +4929,14 @@ public sealed class SamsungControllerService : IAsyncDisposable
         };
         var anchors = definition.Anchors.Values
             .Select(anchor => anchor.Id.Equals(context.Anchor.Id, StringComparison.OrdinalIgnoreCase)
-                ? anchor with { ReturnStrategy = strategy }
+                ? anchor with
+                {
+                    Operations = strategy.BelowMenuRoot.Operations,
+                    Verified = kind == MenuReturnScriptKind.BelowMenuRoot
+                        ? verified
+                        : anchor.Verified,
+                    ReturnStrategy = strategy
+                }
                 : anchor)
             .ToArray();
         return CopyMenuDefinition(definition, anchors: anchors);

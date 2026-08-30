@@ -393,7 +393,11 @@ public sealed record MenuReturnStrategySummary(
     int ValidationPasses,
     int RequiredValidationPasses,
     bool AwaitingValidationConfirmation,
-    string? ExpectedTargetPath);
+    string? ExpectedTargetPath,
+    bool HasEntryRoute = false,
+    string? EntryTransitionId = null,
+    string? EntryScript = null,
+    bool EntryVerified = false);
 
 public sealed record MenuAuthoringSnapshot(
     bool IsRecording,
