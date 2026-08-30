@@ -45,19 +45,25 @@ window.samsungController = {
             element.dispatchEvent(new Event("input", { bubbles: true }));
         });
     },
-    bindOutlineLineNumbers: function (element, lineNumbers) {
-        if (!element || !lineNumbers) {
+    bindOutlineEditorGuides: function (element, lineNumbers, indentGuides) {
+        if (!element || !lineNumbers || !indentGuides) {
             return;
         }
 
-        if (element.dataset.lineNumbersBound !== "true") {
-            element.dataset.lineNumbersBound = "true";
-            element.addEventListener("scroll", function () {
-                lineNumbers.scrollTop = element.scrollTop;
-            });
+        element.samsungOutlineLineNumbers = lineNumbers;
+        element.samsungOutlineIndentGuides = indentGuides;
+        const synchronize = function () {
+            element.samsungOutlineLineNumbers.scrollTop = element.scrollTop;
+            element.samsungOutlineIndentGuides.style.transform =
+                `translate3d(${-element.scrollLeft}px, ${-element.scrollTop}px, 0)`;
+        };
+
+        if (element.dataset.outlineGuidesBound !== "true") {
+            element.dataset.outlineGuidesBound = "true";
+            element.addEventListener("scroll", synchronize);
         }
 
-        lineNumbers.scrollTop = element.scrollTop;
+        synchronize();
     },
     bindMenuTree: function (element) {
         if (!element || element.dataset.keyboardNavigationBound === "true") {

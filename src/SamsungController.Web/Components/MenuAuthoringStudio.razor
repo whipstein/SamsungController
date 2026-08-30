@@ -202,6 +202,19 @@
                                                 <span>@lineNumber</span>
                                             }
                                         </div>
+                                        <div class="bulk-topology-indent-guide-viewport" aria-hidden="true">
+                                            <div class="bulk-topology-indent-guide-content" @ref="TopologyIndentGuidesElement">
+                                                @foreach (var guideDepth in TopologyOutlineGuideDepths)
+                                                {
+                                                    <span>
+                                                        @for (var indentLevel = 1; indentLevel <= guideDepth; indentLevel++)
+                                                        {
+                                                            <i style="@GetIndentGuideStyle(indentLevel)"></i>
+                                                        }
+                                                    </span>
+                                                }
+                                            </div>
+                                        </div>
                                         <textarea value="@TopologyOutline"
                                                   @oninput="HandleTopologyOutlineChanged"
                                                   @ref="TopologyOutlineElement"
@@ -213,7 +226,7 @@
                                                   disabled="@(!CanEditMenuTree)"></textarea>
                                     </div>
                                 </label>
-                                <small id="menu-outline-guidance" class="bulk-topology-indent-note">Enter starts the next line with the same indentation as the current line. Vertical guides mark every two-space menu level.</small>
+                                <small id="menu-outline-guidance" class="bulk-topology-indent-note">Enter starts the next line with the same indentation as the current line. Tree guides appear only within populated indentation branches and stop when the outline returns to a shallower level.</small>
                                 @if (!string.IsNullOrWhiteSpace(TopologyOutlineError))
                                 {
                                     <div id="menu-outline-error" class="bulk-topology-error" role="alert">
@@ -1103,6 +1116,7 @@
     private ElementReference TopologyStepElement { get; set; }
     private ElementReference TopologyOutlineElement { get; set; }
     private ElementReference TopologyLineNumbersElement { get; set; }
+    private ElementReference TopologyIndentGuidesElement { get; set; }
     private ElementReference RecordingStepElement { get; set; }
     private ElementReference ValidationStepElement { get; set; }
     private MenuSetupStep? PendingSetupScroll { get; set; }
@@ -1262,6 +1276,8 @@
         && !string.IsNullOrWhiteSpace(TopologyOutline);
     private bool CanApplyTopology => CanPreviewTopology && TopologyPreview is not null;
     private int TopologyOutlineLineCount => TopologyOutline.Count(character => character == '\n') + 1;
+    private IReadOnlyList<int> TopologyOutlineGuideDepths =>
+        MenuTopologyIndentGuidePlanner.CreateLineDepths(TopologyOutline);
     private bool CanSaveMenuConfiguration => CanEditMenuTree
         && ShowMenuConfigurationEditor
         && !string.IsNullOrWhiteSpace(MenuConfigurationName)
@@ -1416,9 +1432,10 @@
                     "samsungController.bindAutoIndent",
                     TopologyOutlineElement);
                 await JavaScript.InvokeVoidAsync(
-                    "samsungController.bindOutlineLineNumbers",
+                    "samsungController.bindOutlineEditorGuides",
                     TopologyOutlineElement,
-                    TopologyLineNumbersElement);
+                    TopologyLineNumbersElement,
+                    TopologyIndentGuidesElement);
             }
         }
         catch (JSDisconnectedException)
@@ -2972,6 +2989,9 @@
             ? normalized
             : $"node-{normalized}";
     }
+
+    private static string GetIndentGuideStyle(int indentLevel) =>
+        $"left: calc(54px + {(indentLevel * 2) - 1}ch);";
 
     private static IReadOnlyList<MenuNodeSummary> FlattenTreeNodes(
         IReadOnlyList<MenuNodeSummary> nodes,
