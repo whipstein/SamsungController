@@ -77,7 +77,7 @@ timing:
   defaultDelay: 300ms
   screenChangeDelay: 800ms
   returnDelay: 300ms
-  verified: false
+  verified: true
 
 nodes:
   - id: normal-video

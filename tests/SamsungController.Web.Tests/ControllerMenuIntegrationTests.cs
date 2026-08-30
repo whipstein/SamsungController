@@ -94,8 +94,33 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
 
         var reparsed = await new MenuDefinitionParser().ParseFileAsync(snapshot.DefinitionPath);
         Assert.Equal("new-tv", reparsed.Id);
+        Assert.Equal(800, reparsed.Timing.ScreenChangeDelayMilliseconds);
+        Assert.True(reparsed.Timing.Verified);
         Assert.Empty(reparsed.Anchors);
         Assert.Empty(reparsed.Transitions);
+    }
+
+    [Fact]
+    public async Task InitializationUpgradesLegacyDefaultTimingForImmediateRecording()
+    {
+        Directory.CreateDirectory(_directory);
+        var definitionPath = Path.Combine(_directory, "legacy-default-timing.yaml");
+        var yaml = ValidMenuYaml.Replace(
+            "  defaultDelay: 125ms\n  screenChangeDelay: 600ms",
+            "  defaultDelay: 150ms\n  screenChangeDelay: 500ms",
+            StringComparison.Ordinal);
+        await File.WriteAllTextAsync(definitionPath, yaml);
+        await WriteSettingsAsync(definitionPath);
+        await using var controller = CreateController();
+
+        await controller.InitializeAsync();
+
+        var timing = controller.GetMenuAuthoringSnapshot().Timing;
+        Assert.Equal(150, timing.DefaultDelayMilliseconds);
+        Assert.Equal(800, timing.ScreenChangeDelayMilliseconds);
+        Assert.Equal(300, timing.ReturnDelayMilliseconds);
+        Assert.True(timing.Verified);
+        Assert.Equal(3, controller.GetMenuAuthoringSnapshot().TimingValidationPasses);
     }
 
     [Fact]
@@ -589,7 +614,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             ]);
 
         var reparsed = await new MenuDefinitionParser().ParseFileAsync(definitionPath);
-        Assert.Equal(new MenuTimingProfile(175, 650, 325), reparsed.Timing);
+        Assert.Equal(new MenuTimingProfile(175, 650, 325, false), reparsed.Timing);
         var operations = reparsed.Transitions["open-settings"].Operations;
         Assert.Collection(
             operations,
@@ -610,7 +635,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             });
 
         var snapshot = controller.GetMenuAuthoringSnapshot();
-        Assert.Equal(new MenuTimingProfile(175, 650, 325), snapshot.Timing);
+        Assert.Equal(new MenuTimingProfile(175, 650, 325, false), snapshot.Timing);
         Assert.Equal(0, snapshot.ValidationPasses);
         Assert.Contains("validation restarted", snapshot.Status, StringComparison.OrdinalIgnoreCase);
     }
@@ -628,7 +653,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         await controller.UpdateMenuTimingProfileAsync(new MenuTimingProfile(225, 750, 400));
 
         var reparsed = await new MenuDefinitionParser().ParseFileAsync(definitionPath);
-        Assert.Equal(new MenuTimingProfile(225, 750, 400), reparsed.Timing);
+        Assert.Equal(new MenuTimingProfile(225, 750, 400, false), reparsed.Timing);
         Assert.Equal(TimeSpan.FromMilliseconds(700), reparsed.Transitions["open-settings"].Operations[1].DelayAfter);
     }
 

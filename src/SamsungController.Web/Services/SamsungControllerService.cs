@@ -413,7 +413,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 returnStrategy,
                 timingTestRoutes,
                 _menuTimingValidation?.TransitionId,
-                _menuTimingValidation?.Passes ?? 0,
+                _menuTimingValidation?.Passes
+                    ?? (definition?.Timing.Verified == true
+                        ? MenuTimingValidationSession.RequiredPasses
+                        : 0),
                 MenuTimingValidationSession.RequiredPasses,
                 _menuTimingValidation?.AwaitingConfirmation ?? false,
                 _menuTimingValidation?.ExpectedTargetPath,
@@ -5240,9 +5243,28 @@ public sealed class SamsungControllerService : IAsyncDisposable
         var parsed = await new MenuDefinitionParser()
             .ParseFileAsync(path, cancellationToken)
             .ConfigureAwait(false);
-        var definition = MigrateLegacyReturnReplacement(parsed);
+        var definition = MigrateLegacyReturnReplacement(MigrateLegacyDefaultTiming(parsed));
         new MenuDefinitionValidator().ValidateAndThrow(definition);
         return definition;
+    }
+
+    private static MenuDefinition MigrateLegacyDefaultTiming(MenuDefinition definition)
+    {
+        var timing = definition.Timing;
+        if (timing.DefaultDelayMilliseconds != 150
+            || timing.ScreenChangeDelayMilliseconds != 500
+            || timing.ReturnDelayMilliseconds != 300)
+        {
+            return definition;
+        }
+
+        return CopyMenuDefinition(
+            definition,
+            timing: timing with
+            {
+                ScreenChangeDelayMilliseconds = 800,
+                Verified = true
+            });
     }
 
     private static MenuDefinition MigrateLegacyReturnReplacement(

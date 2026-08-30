@@ -23,7 +23,7 @@
                     <li><strong>Configuration:</strong> describe the settings-dependent layout currently shown on the TV.</li>
                     <li><strong>Menu outline:</strong> paste the visible hierarchy using indentation. Preview it, then save while continuing to edit or advance to recording. Use fine adjustments only when needed.</li>
                     <li><strong>Record:</strong> select a source and target, then use the embedded remote. Successful buttons control the TV and enter the draft.</li>
-                    <li><strong>Timing:</strong> test common waits system-wide, then override only the steps that need special pacing.</li>
+                    <li><strong>Timing:</strong> recording starts with an assumed-valid 800 ms screen-change wait. Test and tune common waits after a route exists, then override only steps that need special pacing.</li>
                     <li><strong>Verify:</strong> prepare the source, replay the draft, and confirm three separate visual passes.</li>
                 </ol>
                 <p class="help-callout safe">The source/target pair identifies a transition automatically. Recording the same pair replaces its existing draft instead of creating a duplicate ID.</p>
@@ -928,7 +928,7 @@
             </div>
             @if (Authoring.TimingTestRoutes.Count == 0)
             {
-                <p class="field-note">Create a traversal before testing the system profile.</p>
+                <p class="field-note">The default profile is ready for recording. After creating a traversal, you can use it here to test and tune the system waits if needed.</p>
             }
             else
             {

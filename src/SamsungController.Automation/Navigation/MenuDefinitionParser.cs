@@ -105,7 +105,7 @@ public sealed class MenuDefinitionParser
             ParseTimingMilliseconds(fields, "defaultDelay", defaults.DefaultDelayMilliseconds),
             ParseTimingMilliseconds(fields, "screenChangeDelay", defaults.ScreenChangeDelayMilliseconds),
             ParseTimingMilliseconds(fields, "returnDelay", defaults.ReturnDelayMilliseconds),
-            OptionalBoolean(fields, "verified", "timing"));
+            OptionalBoolean(fields, "verified", "timing", defaults.Verified));
     }
 
     private static IReadOnlyList<MenuConfiguration> ParseConfigurations(YamlSequenceNode sequence)
@@ -454,12 +454,13 @@ public sealed class MenuDefinitionParser
     private static bool OptionalBoolean(
         IReadOnlyDictionary<string, YamlNode> fields,
         string name,
-        string context)
+        string context,
+        bool defaultValue = false)
     {
         var value = OptionalScalar(fields, name);
         if (value is null)
         {
-            return false;
+            return defaultValue;
         }
 
         return bool.TryParse(value, out var result)

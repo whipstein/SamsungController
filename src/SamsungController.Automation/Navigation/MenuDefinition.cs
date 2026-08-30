@@ -16,9 +16,9 @@ public sealed record MenuConfiguration(
 
 public sealed record MenuTimingProfile(
     int DefaultDelayMilliseconds = 150,
-    int ScreenChangeDelayMilliseconds = 500,
+    int ScreenChangeDelayMilliseconds = 800,
     int ReturnDelayMilliseconds = 300,
-    bool Verified = false)
+    bool Verified = true)
 {
     public bool HasSameDelays(MenuTimingProfile other)
     {

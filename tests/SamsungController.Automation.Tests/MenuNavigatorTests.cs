@@ -302,13 +302,13 @@ public sealed class MenuNavigatorTests
         var operation = Assert.Single(plan.CalculatedLeg!.Operations);
         Assert.Equal("KEY_RETURN", operation.Key);
         Assert.Equal(2, operation.Repeat);
-        Assert.Equal(TimeSpan.FromMilliseconds(500), operation.DelayAfter);
+        Assert.Equal(TimeSpan.FromMilliseconds(800), operation.DelayAfter);
 
         await navigator.ExecutePlanAsync(plan);
 
         Assert.Equal(["KEY_RETURN", "KEY_RETURN"], target.Keys);
         Assert.Equal(
-            [TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(500)],
+            [TimeSpan.FromMilliseconds(800), TimeSpan.FromMilliseconds(800)],
             delay.Delays);
         Assert.Equal("settings", tracker.Current.NodeId);
     }

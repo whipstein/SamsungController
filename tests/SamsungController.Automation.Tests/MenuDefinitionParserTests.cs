@@ -85,6 +85,25 @@ public sealed class MenuDefinitionParserTests
     }
 
     [Fact]
+    public void MissingTimingValuesUseReadyToRecordDefaults()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: default-timing-test
+            name: Default Timing Test
+            model: Test TV
+            nodes:
+              - id: normal-video
+                label: Normal video
+            """;
+
+        var definition = new MenuDefinitionParser().Parse(yaml);
+
+        Assert.Equal(new MenuTimingProfile(150, 800, 300, true), definition.Timing);
+    }
+
+    [Fact]
     public async Task BundledGenericDefinitionContainsNoVerifiedRoutes()
     {
         var path = Path.Combine(
@@ -102,7 +121,7 @@ public sealed class MenuDefinitionParserTests
         Assert.Equal(300, definition.Timing.DefaultDelayMilliseconds);
         Assert.Equal(800, definition.Timing.ScreenChangeDelayMilliseconds);
         Assert.Equal(300, definition.Timing.ReturnDelayMilliseconds);
-        Assert.False(definition.Timing.Verified);
+        Assert.True(definition.Timing.Verified);
 
         var normalVideo = definition.GetRequiredAnchor("normal-video");
         Assert.False(normalVideo.Verified);
