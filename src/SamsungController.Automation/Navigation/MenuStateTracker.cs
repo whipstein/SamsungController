@@ -115,6 +115,19 @@ public sealed class MenuStateTracker
             DateTimeOffset.UtcNow));
     }
 
+    public void AssumeNode(string nodeId, string reason)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(nodeId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        _definition.GetRequiredNode(nodeId);
+        SetState(new MenuState(
+            nodeId,
+            _definition.GetPath(nodeId),
+            MenuStateConfidence.Probable,
+            reason,
+            DateTimeOffset.UtcNow));
+    }
+
     public void ObserveCommand(string key, RemoteKeyAction action)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);

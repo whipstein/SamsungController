@@ -491,7 +491,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 _hasToken = _client.Token is not null;
             }
 
-            await SynchronizeMenuAfterConnectAsync(cancellationToken).ConfigureAwait(false);
+            AssumeNormalVideoAfterConnect();
             NotifyChanged();
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -3518,49 +3518,32 @@ public sealed class SamsungControllerService : IAsyncDisposable
         NotifyChanged();
     }
 
-    private async Task SynchronizeMenuAfterConnectAsync(CancellationToken cancellationToken)
+    private void AssumeNormalVideoAfterConnect()
     {
-        MenuAnchor? anchor;
+        MenuStateTracker? tracker;
+        string? normalVideoNodeId;
         lock (_sync)
         {
-            anchor = _menuDefinition?.ApplicableAnchors
-                .Where(candidate => candidate.Verified)
-                .OrderBy(candidate =>
-                    candidate.Id.Equals("normal-video", StringComparison.OrdinalIgnoreCase)
-                    || candidate.TargetNodeId.Equals("normal-video", StringComparison.OrdinalIgnoreCase)
-                        ? 0
-                        : 1)
-                .ThenBy(candidate => candidate.Label, StringComparer.OrdinalIgnoreCase)
-                .FirstOrDefault();
-            if (anchor is null)
-            {
-                _navigationStatus = "Connected · no verified known-state anchor is available";
-                _navigationError = null;
-            }
+            tracker = _menuStateTracker;
+            normalVideoNodeId = _menuDefinition?.Nodes.Keys.FirstOrDefault(nodeId =>
+                nodeId.Equals("normal-video", StringComparison.OrdinalIgnoreCase));
+            _navigationStatus = normalVideoNodeId is null
+                ? "Connected · the menu definition has no normal-video state"
+                : "Connected · Normal video assumed · no menu commands sent";
+            _navigationError = null;
         }
 
-        if (anchor is null)
+        if (tracker is null || normalVideoNodeId is null)
         {
-            _menuStateTracker?.MarkUnknown(
-                "The TV connected, but no verified anchor is available to establish a known menu state.");
+            tracker?.MarkUnknown(
+                "The TV connected, but the active menu definition has no normal-video state to assume.");
             NotifyChanged();
             return;
         }
 
-        try
-        {
-            await RunMenuAnchorAsync(anchor.Id, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            lock (_sync)
-            {
-                _lastError =
-                    $"Connected, but automatic menu synchronization failed: {exception.Message}";
-            }
-
-            NotifyChanged();
-        }
+        tracker.AssumeNode(
+            normalVideoNodeId,
+            "Normal video is assumed when the TV first connects; no menu commands were sent.");
     }
 
     private async Task RunNavigationAsync(

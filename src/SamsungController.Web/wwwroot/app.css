@@ -805,6 +805,11 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .validation-card span { color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; }
 .validation-card strong { margin-top: 4px; font-size: 11px; }
 .validation-card small { margin-top: 5px; color: var(--muted); font-size: 8px; }
+.validation-route { display: grid; grid-template-columns: minmax(130px, 1fr) auto minmax(130px, 1fr); gap: 10px; align-items: center; margin-top: 10px; padding: 9px 10px; border: 1px solid rgba(124,231,220,.14); border-radius: 6px; background: rgba(124,231,220,.035); }
+.validation-route > div { min-width: 0; }
+.validation-card .validation-route span { color: var(--cyan); font-size: 7px; letter-spacing: .09em; }
+.validation-card .validation-route strong { overflow-wrap: anywhere; margin-top: 4px; color: var(--text); font-size: 9px; line-height: 1.35; }
+.validation-route > i { color: var(--cyan); font: normal 13px ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .validation-card-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .validation-card-actions b { color: var(--amber); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .validation-card-actions .validation-inline-prompt { max-width: 230px; color: var(--amber); font: 8px/1.35 ui-monospace, "SFMono-Regular", Consolas, monospace; text-align: right; text-transform: none; }

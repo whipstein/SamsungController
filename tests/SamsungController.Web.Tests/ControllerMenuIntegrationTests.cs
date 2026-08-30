@@ -1464,16 +1464,20 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task SuccessfulConnectionAutomaticallyRunsThePreferredVerifiedAnchor()
+    public async Task SuccessfulConnectionAssumesNormalVideoWithoutSendingMenuCommands()
     {
         var (controller, transport) = await CreateConnectedControllerAsync(
             clearSentMessages: false);
         await using (controller)
         {
-            Assert.Equal(["KEY_EXIT", "KEY_EXIT"], GetSentKeys(transport));
+            Assert.Empty(GetSentKeys(transport));
             var snapshot = controller.GetSnapshot();
             Assert.Equal("Normal video", snapshot.MenuLabel);
-            Assert.Equal(MenuStateConfidence.Synchronized, snapshot.MenuConfidence);
+            Assert.Equal(MenuStateConfidence.Probable, snapshot.MenuConfidence);
+            Assert.Contains(
+                "assumed",
+                controller.GetMenuNavigationSnapshot().State.Reason,
+                StringComparison.OrdinalIgnoreCase);
         }
     }
 

@@ -881,7 +881,7 @@
             @if (DraftValidationExpanded)
             {
                 <div class="authoring-section-body">
-                    <p class="field-note">This is the complete verification plan calculated from the anchor and topology. Return behavior is checked first; each remaining coverage card represents an entire affected branch. Nothing else needs individual recording.</p>
+                    <p class="field-note"><strong>Read START AT before every test.</strong> “Prepare start/source” moves the TV there with explicit commands; otherwise place it there manually. Return behavior is checked first, then each coverage card validates an entire affected branch.</p>
             @if (Authoring.ReturnStrategy is { } verificationAnchor
                 && (!verificationAnchor.AtMenuRoot.Verified
                     || !verificationAnchor.BelowMenuRoot.Verified
@@ -894,6 +894,11 @@
                             <div>
                                 <span>ANCHOR RETURN</span>
                                 <strong>Return from @verificationAnchor.MenuRootPath</strong>
+                                <div class="validation-route">
+                                    <div><span>START AT</span><strong>@verificationAnchor.MenuRootPath</strong></div>
+                                    <i aria-hidden="true">→</i>
+                                    <div><span>EXPECTED AFTER TEST</span><strong>@verificationAnchor.TargetPath</strong></div>
+                                </div>
                                 <small><code>@verificationAnchor.AtMenuRoot.Script</code> · validates the exact base-menu state</small>
                             </div>
                             <div class="validation-card-actions">
@@ -919,6 +924,11 @@
                             <div>
                                 <span>ANCHOR RETURN</span>
                                 <strong>Return from below @verificationAnchor.MenuRootPath</strong>
+                                <div class="validation-route">
+                                    <div><span>START AT</span><strong>@GetNodePath(DeepReturnTestNodeId)</strong></div>
+                                    <i aria-hidden="true">→</i>
+                                    <div><span>EXPECTED AFTER TEST</span><strong>@verificationAnchor.TargetPath</strong></div>
+                                </div>
                                 <small><code>@verificationAnchor.BelowMenuRoot.Script</code> · validates every deeper expected state</small>
                             </div>
                             <div class="validation-card-actions anchor-deep-validation-actions">
@@ -955,6 +965,11 @@
                             <div>
                                 <span>ANCHOR EXCEPTION</span>
                                 <strong>Return from @returnOverride.Path</strong>
+                                <div class="validation-route">
+                                    <div><span>START AT</span><strong>@returnOverride.Path</strong></div>
+                                    <i aria-hidden="true">→</i>
+                                    <div><span>EXPECTED AFTER TEST</span><strong>@verificationAnchor.TargetPath</strong></div>
+                                </div>
                                 <small><code>@returnOverride.Script</code> · validates this exact state-specific exception</small>
                             </div>
                             <div class="validation-card-actions">
@@ -989,7 +1004,12 @@
                             <div>
                                 <span>@(candidate.GeneratedFromTopology ? "TOPOLOGY COVERAGE" : candidate.Kind)</span>
                                 <strong>@candidate.Label</strong>
-                                <small>@(candidate.SourcePath is null ? candidate.TargetPath : $"{candidate.SourcePath} → {candidate.TargetPath}") · @candidate.CommandCount forward@(candidate.ReturnCommandCount > 0 ? $" + {candidate.ReturnCommandCount} return" : string.Empty) commands@(candidate.GeneratedFromTopology ? $" · validates {candidate.CoveredRouteCount} generated routes" : string.Empty)</small>
+                                <div class="validation-route">
+                                    <div><span>START AT</span><strong>@(candidate.SourcePath ?? "Current predicted state")</strong></div>
+                                    <i aria-hidden="true">→</i>
+                                    <div><span>EXPECTED AFTER TEST</span><strong>@candidate.TargetPath</strong></div>
+                                </div>
+                                <small>@candidate.CommandCount forward@(candidate.ReturnCommandCount > 0 ? $" + {candidate.ReturnCommandCount} return" : string.Empty) commands@(candidate.GeneratedFromTopology ? $" · validates {candidate.CoveredRouteCount} generated routes" : string.Empty)</small>
                             </div>
                             <div class="validation-card-actions">
                                 <b>@candidate.ValidationPasses/@Authoring.RequiredValidationPasses passed</b>
