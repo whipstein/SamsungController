@@ -615,12 +615,13 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                   Contrast
                   Reset Picture {confirmation; default=Cancel; options=Reset|Cancel}
               Sound
+                Sound Output {submenu-selection; default=TV Speaker; options=TV Speaker|Receiver|Bluetooth Speaker}
             """;
         var request = new MenuTopologyOutlineRequest("tv-interface", outline);
         var preview = controller.PreviewMenuTopologyOutline(request);
 
-        Assert.Equal(10, preview.OutlineNodeCount);
-        Assert.Equal(9, preview.AddedNodeCount);
+        Assert.Equal(11, preview.OutlineNodeCount);
+        Assert.Equal(10, preview.AddedNodeCount);
         Assert.Equal(0, preview.RemovedNodeCount);
         await controller.ApplyMenuTopologyOutlineAsync(request);
 
@@ -628,7 +629,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         Assert.Equal(
             [
                 "tv-interface", "normal-video", "settings", "picture",
-                "expert-settings", "adaptive-picture", "brightness", "color-tone", "contrast", "reset-picture", "sound"
+                "expert-settings", "adaptive-picture", "brightness", "color-tone", "contrast", "reset-picture", "sound", "sound-output"
             ],
             snapshot.Nodes.Select(node => node.Id));
         Assert.Equal("expert-settings", snapshot.Nodes.Single(node => node.Id == "brightness").ParentId);
@@ -652,6 +653,12 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         Assert.Equal(MenuControlType.Confirmation, resetPicture.ControlType);
         Assert.Equal("Cancel", resetPicture.DefaultValue);
         Assert.Equal(["Reset", "Cancel"], resetPicture.SelectionOptions);
+        var soundOutput = snapshot.Nodes.Single(node => node.Id == "sound-output");
+        Assert.Equal(MenuControlType.SubmenuSelection, soundOutput.ControlType);
+        Assert.Equal("TV Speaker", soundOutput.DefaultValue);
+        Assert.Equal(
+            ["TV Speaker", "Receiver", "Bluetooth Speaker"],
+            soundOutput.SelectionOptions);
         Assert.All(snapshot.Nodes.Where(node => node.Id != "tv-interface"), node =>
             Assert.False(node.HasVerifiedRoute));
 
@@ -1663,6 +1670,69 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             var result = controller.GetSnapshot();
             Assert.Equal("Red", result.MenuLabel);
             Assert.Equal(MenuStateConfidence.Synchronized, result.MenuConfidence);
+        }
+    }
+
+    [Fact]
+    public async Task SubmenuSelectionChoosesValueAndReturnsToContainingMenu()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: submenu-selection
+            name: Submenu Selection
+            model: Test TV
+            timing:
+              defaultDelay: 50ms
+              screenChangeDelay: 50ms
+              returnDelay: 50ms
+            nodes:
+              - id: normal-video
+                label: Normal video
+              - id: sound-output
+                label: Sound Output
+                parent: normal-video
+                controlType: submenu-selection
+                defaultValue: TV Speaker
+                options: [TV Speaker, Receiver, Bluetooth Speaker]
+            anchors:
+              - id: normal
+                label: Return to normal video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            transitions:
+              - id: open-sound-output
+                from: normal-video
+                to: sound-output
+                verified: true
+                steps:
+                  - key: KEY_MENU
+            """;
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            var verification = controller.GetMenuControlVerificationSnapshot();
+            Assert.Equal(1, verification.RequiredSelectionCount);
+
+            await controller.ApplyMenuControlValuesAsync(
+                [new MenuControlValueUpdate("sound-output", "TV Speaker", "Bluetooth Speaker")],
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["sound-output"] = "TV Speaker"
+                },
+                returnToNormalVideo: false);
+
+            Assert.Equal(
+                ["KEY_MENU", "KEY_ENTER", "KEY_DOWN", "KEY_DOWN", "KEY_ENTER", "KEY_RETURN"],
+                GetSentKeys(transport));
+            var navigation = controller.GetMenuNavigationSnapshot();
+            Assert.Equal("Bluetooth Speaker", navigation.ControlValues["sound-output"]);
+            Assert.Equal("sound-output", navigation.State.NodeId);
+
+            verification = await controller.ConfirmMenuSelectionBehaviorAsync("sound-output");
+            Assert.True(verification.SelectionsVerified);
         }
     }
 

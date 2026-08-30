@@ -77,6 +77,7 @@ internal static class MenuTopologyOutlinePlanner
                 ? entry.SelectionOptions
                 : entry.ControlType is not null
                   && entry.ControlType is not MenuControlType.Selection
+                      and not MenuControlType.SubmenuSelection
                       and not MenuControlType.Confirmation
                     ? []
                     : existing?.SelectionOptions ?? [];
@@ -415,7 +416,7 @@ internal static class MenuTopologyOutlinePlanner
                && Enum.IsDefined(result)
             ? result
             : throw new InvalidOperationException(
-                $"Outline line {lineNumber} control type must be submenu, slider, selection, switch, or confirmation.");
+                $"Outline line {lineNumber} control type must be submenu, slider, selection, submenu-selection, switch, or confirmation.");
     }
 
     private static IReadOnlyList<MenuNodeDisabledCondition> ParseDisabledConditions(

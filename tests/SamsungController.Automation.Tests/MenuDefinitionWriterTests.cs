@@ -49,7 +49,14 @@ public sealed class MenuDefinitionWriterTests : IDisposable
                     "settings",
                     ControlType: MenuControlType.Confirmation,
                     DefaultValue: "Cancel",
-                    SelectionOptions: ["Reset", "Cancel"])
+                    SelectionOptions: ["Reset", "Cancel"]),
+                new MenuNode(
+                    "sound-output",
+                    "Sound Output",
+                    "settings",
+                    ControlType: MenuControlType.SubmenuSelection,
+                    DefaultValue: "Receiver",
+                    SelectionOptions: ["TV Speaker", "Receiver", "Bluetooth Speaker"])
             ],
             [
                 new MenuTransition(
@@ -123,6 +130,13 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Assert.Equal(MenuControlType.Confirmation, reparsed.Nodes["reset-picture"].ControlType);
         Assert.Equal("Cancel", reparsed.Nodes["reset-picture"].DefaultValue);
         Assert.Equal(["Reset", "Cancel"], reparsed.Nodes["reset-picture"].SelectionOptions);
+        Assert.Equal(
+            MenuControlType.SubmenuSelection,
+            reparsed.Nodes["sound-output"].ControlType);
+        Assert.Equal("Receiver", reparsed.Nodes["sound-output"].DefaultValue);
+        Assert.Equal(
+            ["TV Speaker", "Receiver", "Bluetooth Speaker"],
+            reparsed.Nodes["sound-output"].SelectionOptions);
         Assert.True(reparsed.Anchors["normal"].Verified);
         Assert.Equal("standard", reparsed.Anchors["normal"].ConfigurationId);
         Assert.Equal("settings", reparsed.Anchors["normal"].ValidationSourceNodeId);

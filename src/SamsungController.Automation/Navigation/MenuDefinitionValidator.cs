@@ -191,7 +191,7 @@ public sealed class MenuDefinitionValidator
         {
             errors.Add(new MenuDefinitionValidationError(
                 location,
-                "Control type must be Submenu, Slider, Selection, Switch, or Confirmation."));
+                "Control type must be Submenu, Slider, Selection, SubmenuSelection, Switch, or Confirmation."));
         }
 
         var hasDefaultValue = !string.IsNullOrWhiteSpace(node.DefaultValue);
@@ -264,6 +264,7 @@ public sealed class MenuDefinitionValidator
 
         var selectionOptions = node.SelectionOptions ?? [];
         var isChoiceControl = node.ControlType is MenuControlType.Selection
+            or MenuControlType.SubmenuSelection
             or MenuControlType.Confirmation;
         if (isChoiceControl)
         {
@@ -274,7 +275,7 @@ public sealed class MenuDefinitionValidator
                     location,
                     node.ControlType == MenuControlType.Confirmation
                         ? "A confirmation must define at least two available choices."
-                        : "A selection must define at least one available option."));
+                        : $"A {FormatChoiceControlName(node.ControlType).ToLowerInvariant()} must define at least one available option."));
             }
             if (hasDefaultValue && !selectionOptions.Any(option => option.Equals(
                     node.DefaultValue,
@@ -282,23 +283,23 @@ public sealed class MenuDefinitionValidator
             {
                 errors.Add(new MenuDefinitionValidationError(
                     location,
-                    node.ControlType == MenuControlType.Selection
-                        ? $"Selection default value '{node.DefaultValue}' must match an available option."
-                        : $"Confirmation default value '{node.DefaultValue}' must match an available choice."));
+                    node.ControlType == MenuControlType.Confirmation
+                        ? $"Confirmation default value '{node.DefaultValue}' must match an available choice."
+                        : $"{FormatChoiceControlName(node.ControlType)} default value '{node.DefaultValue}' must match an available option."));
             }
         }
         else if (selectionOptions.Count > 0)
         {
             errors.Add(new MenuDefinitionValidationError(
                 location,
-                "Only a selection or confirmation can define available choices."));
+                "Only a selection, submenu selection, or confirmation can define available choices."));
         }
 
         if (selectionOptions.Count > 100)
         {
             errors.Add(new MenuDefinitionValidationError(
                 location,
-                "A selection or confirmation can define at most 100 available choices."));
+                "A selection, submenu selection, or confirmation can define at most 100 available choices."));
         }
 
         var uniqueOptions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -388,9 +389,10 @@ public sealed class MenuDefinitionValidator
             {
                 errors.Add(new MenuDefinitionValidationError(
                     conditionLocation,
-                    $"Setting node '{condition.SettingNodeId}' must be a slider, selection, or switch."));
+                    $"Setting node '{condition.SettingNodeId}' must be a slider, selection, submenu selection, or switch."));
             }
-            else if (setting.ControlType == MenuControlType.Selection
+            else if (setting.ControlType is MenuControlType.Selection
+                         or MenuControlType.SubmenuSelection
                      && !(setting.SelectionOptions ?? []).Any(option => option.Equals(
                          condition.EqualsValue,
                          StringComparison.OrdinalIgnoreCase)))
@@ -409,6 +411,13 @@ public sealed class MenuDefinitionValidator
             }
         }
     }
+
+    private static string FormatChoiceControlName(MenuControlType controlType) => controlType switch
+    {
+        MenuControlType.Selection => "Selection",
+        MenuControlType.SubmenuSelection => "Submenu selection",
+        _ => controlType.ToString()
+    };
 
     private static void ValidateConfigurationReference(
         MenuDefinition definition,

@@ -127,6 +127,16 @@ nodes:
       - Reset
       - Cancel
 
+  - id: sound-output
+    label: Sound Output
+    parent: settings
+    controlType: submenu-selection
+    defaultValue: TV Speaker
+    options:
+      - TV Speaker
+      - Receiver
+      - Bluetooth Speaker
+
 anchors:
   - id: normal-video
     label: Return to normal video
@@ -174,11 +184,16 @@ the active configuration. A verified route from another configuration never
 contributes to direct or calculated navigation.
 
 Each node also describes how the highlighted row behaves. `controlType` is
-`submenu`, `slider`, `selection`, `switch`, or `confirmation`; older definitions
+`submenu`, `slider`, `selection`, `submenu-selection`, `switch`, or
+`confirmation`; older definitions
 that omit it continue to load as `submenu`. Sliders require numeric
 `minimumValue` and `maximumValue` boundaries plus a numeric `defaultValue` inside
-that range. Switches require `on` or `off`. A selection requires an ordered
-`options` list plus a `defaultValue` that matches one option. A confirmation is
+that range. Switches require `on` or `off`. A selection and a submenu selection
+each require an ordered `options` list plus a `defaultValue` that matches one
+option. A normal selection opens its choices and choosing a value returns to the
+setting row automatically. A submenu selection opens a full value submenu;
+after choosing the value, SamsungController sends `KEY_RETURN` to return to the
+containing menu. A confirmation is
 an action dialog rather than a persistent setting; it requires at least two
 ordered `options`, and its `defaultValue` records the initially highlighted
 choice. Duplicate choices are rejected. Keep lists in the same order displayed
@@ -270,13 +285,14 @@ can be planned or sent.
    line when identity must be explicit. Add behavior metadata in braces before
    the stable ID, for example `Brightness {slider; default=50; min=0; max=100}`, `Picture Mode
    {selection; default=Filmmaker Mode; options=Standard|Movie|Filmmaker Mode}`,
+   `Sound Output {submenu-selection; default=TV Speaker; options=TV Speaker|Receiver|Bluetooth Speaker}`,
    `Adaptive Picture {switch; default=off}`, or `Reset Picture {confirmation;
    default=Cancel; options=Reset|Cancel}`. The option order after
    `options=` is preserved. A dependent gray row can be written as `Brightness {slider;
    default=50; min=0; max=100; disabledWhen=adaptive-picture=on}`. A row that
    disappears can use `Game HDR {submenu; hiddenWhen=game-mode=off}`. Separate
    multiple conditions with `|`. The fine-adjustment editor exposes disabled and
-   hidden rules, selection and
+   hidden rules, selection, submenu-selection, and
    confirmation choices as an ordered add/remove/move list, and exposes slider
    boundaries as numeric fields. By default the outline synchronizes the complete
    selected branch, so deleting a line previews and saves that item as a removal.
@@ -352,10 +368,12 @@ press Left or Right during that route test: the coverage result verifies only
 that the generated route reaches the correct control. After the route is
 verified, use **Menu Controls** to exercise the value behavior. That page
 collects adjustable controls from every menu area, separates them into tabs by
-top-level menu, and groups sliders, switches, and selections by their immediate
+top-level menu, and groups sliders, switches, selections, and submenu selections by their immediate
 menu parent. It
 sends one Left or Right key per whole-number slider step, Select for a switch,
-and Select plus ordered Up/Down movement for a selection. It then asks for
+and Select plus ordered Up/Down movement for a selection. A submenu selection
+adds Return after choosing the value so the TV is back in the containing menu.
+It then asks for
 visual confirmation of the predicted value. The value confirmation is
 deliberately separate from the three-pass route count because the TV does not
 return its setting value. Changes made with a physical remote or another
@@ -382,8 +400,9 @@ promote the profile; subsequent slider updates no longer request confirmation.
 Repeating one slider does not increase coverage. The profile is persisted for
 the saved TV address, resets automatically when a different TV address is saved,
 resets when system-wide menu delays change, and can be reset manually from Menu
-Controls. Selections are verified individually because each declares a different
-ordered option list. After one successful value confirmation, that selection's
+Controls. Selections and submenu selections are verified individually because
+each declares a different ordered option list and exit behavior. After one
+successful value confirmation, that selection control's
 verification is persisted for the saved TV address and later changes no longer
 request routine confirmation. Selection verification resets for a different TV,
 when system-wide menu delays change, or from Menu Controls. Switches are not

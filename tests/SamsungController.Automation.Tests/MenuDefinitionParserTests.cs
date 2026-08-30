@@ -24,6 +24,12 @@ public sealed class MenuDefinitionParserTests
         Assert.Equal(100m, definition.Nodes["brightness"].MaximumValue);
         Assert.Equal(MenuControlType.Confirmation, definition.Nodes["reset-picture"].ControlType);
         Assert.Equal(["Reset", "Cancel"], definition.Nodes["reset-picture"].SelectionOptions);
+        Assert.Equal(
+            MenuControlType.SubmenuSelection,
+            definition.Nodes["sound-output"].ControlType);
+        Assert.Equal(
+            ["TV Speaker", "Receiver", "Bluetooth Speaker"],
+            definition.Nodes["sound-output"].SelectionOptions);
         var disabledCondition = Assert.Single(definition.Nodes["picture"].DisabledWhen!);
         Assert.Equal("auto-picture", disabledCondition.SettingNodeId);
         Assert.Equal("on", disabledCondition.EqualsValue);
@@ -194,6 +200,15 @@ public sealed class MenuDefinitionParserTests
             options:
               - Reset
               - Cancel
+          - id: sound-output
+            label: Sound Output
+            parent: menu
+            controlType: submenu-selection
+            defaultValue: Receiver
+            options:
+              - TV Speaker
+              - Receiver
+              - Bluetooth Speaker
         anchors:
           - id: normal
             label: Back to video

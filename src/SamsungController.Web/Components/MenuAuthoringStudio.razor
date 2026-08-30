@@ -361,11 +361,12 @@
                                         <option value="@MenuControlType.Submenu">Sub-menu</option>
                                         <option value="@MenuControlType.Slider">Slider</option>
                                         <option value="@MenuControlType.Selection">Selection</option>
+                                        <option value="@MenuControlType.SubmenuSelection">Submenu selection</option>
                                         <option value="@MenuControlType.Switch">Switch</option>
                                         <option value="@MenuControlType.Confirmation">Confirmation dialog</option>
                                     </select>
                                 </label>
-                                @if (NodeEditorControlType is MenuControlType.Selection or MenuControlType.Confirmation)
+                                @if (NodeEditorControlType is MenuControlType.Selection or MenuControlType.SubmenuSelection or MenuControlType.Confirmation)
                                 {
                                     <label>
                                         <span>@(NodeEditorControlType == MenuControlType.Confirmation ? "Initially highlighted choice" : "Default selection")</span>
@@ -404,13 +405,13 @@
                                     </label>
                                 }
                             </div>
-                            @if (NodeEditorControlType is MenuControlType.Selection or MenuControlType.Confirmation)
+                            @if (NodeEditorControlType is MenuControlType.Selection or MenuControlType.SubmenuSelection or MenuControlType.Confirmation)
                             {
                                 <div class="selection-option-editor">
                                     <header>
                                         <span>
                                             <b>@(NodeEditorControlType == MenuControlType.Confirmation ? "CONFIRMATION CHOICES" : "AVAILABLE SELECTIONS")</b>
-                                            <small>@(NodeEditorControlType == MenuControlType.Confirmation ? "List the dialog buttons in TV order. The initially highlighted choice must be one of them." : "Keep these in the same order shown on the TV. The default must be one of them.")</small>
+                                            <small>@(NodeEditorControlType == MenuControlType.Confirmation ? "List the dialog buttons in TV order. The initially highlighted choice must be one of them." : NodeEditorControlType == MenuControlType.SubmenuSelection ? "Keep these in TV order. After choosing a value, SamsungController sends Return to leave the value submenu." : "Keep these in the same order shown on the TV. The default must be one of them.")</small>
                                         </span>
                                         <button type="button" class="secondary-action" @onclick="AddSelectionOption" disabled="@(!CanAddSelectionOption)">+ Add option</button>
                                     </header>
@@ -1298,7 +1299,9 @@
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .ToArray();
     private bool CanAddSelectionOption => CanEditMenuTree
-        && NodeEditorControlType is MenuControlType.Selection or MenuControlType.Confirmation
+        && NodeEditorControlType is MenuControlType.Selection
+            or MenuControlType.SubmenuSelection
+            or MenuControlType.Confirmation
         && NodeEditorSelectionOptions.Count < 100;
     private bool CanAddNodeDisabledCondition => CanEditMenuTree
         && NodeEditorDisabledConditions.Count < 20
@@ -1515,6 +1518,9 @@
         MenuControlType.Selection => SelectionOptionChoices.Any(option => option.Equals(
             NodeEditorDefaultValue,
             StringComparison.OrdinalIgnoreCase)),
+        MenuControlType.SubmenuSelection => SelectionOptionChoices.Any(option => option.Equals(
+            NodeEditorDefaultValue,
+            StringComparison.OrdinalIgnoreCase)),
         MenuControlType.Confirmation => SelectionOptionChoices.Any(option => option.Equals(
             NodeEditorDefaultValue,
             StringComparison.OrdinalIgnoreCase)),
@@ -1533,6 +1539,7 @@
           && defaultValue <= maximum
         : NodeEditorMinimumValue is null && NodeEditorMaximumValue is null;
     private bool IsSelectionOptionsValid => NodeEditorControlType is MenuControlType.Selection
+        or MenuControlType.SubmenuSelection
         or MenuControlType.Confirmation
         ? NodeEditorSelectionOptions.Count >= (NodeEditorControlType == MenuControlType.Confirmation ? 2 : 1)
           && NodeEditorSelectionOptions.All(option =>
@@ -2241,7 +2248,9 @@
             NodeEditorDefaultValue = string.Empty;
             NodeEditorSelectionOptions.Clear();
         }
-        else if (NodeEditorControlType is MenuControlType.Selection or MenuControlType.Confirmation)
+        else if (NodeEditorControlType is MenuControlType.Selection
+                 or MenuControlType.SubmenuSelection
+                 or MenuControlType.Confirmation)
         {
             NodeEditorDefaultValue = string.Empty;
             NodeEditorSelectionOptions.Clear();
@@ -2284,6 +2293,7 @@
         return setting?.ControlType switch
         {
             MenuControlType.Selection => setting.SelectionOptions,
+            MenuControlType.SubmenuSelection => setting.SelectionOptions,
             MenuControlType.Switch => ["off", "on"],
             _ => []
         };
@@ -2347,7 +2357,9 @@
 
     private bool CanMoveSelectionOption(int index, int direction) =>
         CanEditMenuTree
-        && NodeEditorControlType is MenuControlType.Selection or MenuControlType.Confirmation
+        && NodeEditorControlType is MenuControlType.Selection
+            or MenuControlType.SubmenuSelection
+            or MenuControlType.Confirmation
         && index >= 0
         && index < NodeEditorSelectionOptions.Count
         && index + direction >= 0
@@ -3259,6 +3271,7 @@
         MenuControlType.Submenu => "Sub-menu",
         MenuControlType.Slider => "Slider",
         MenuControlType.Selection => "Selection",
+        MenuControlType.SubmenuSelection => "Submenu selection",
         MenuControlType.Switch => "Switch",
         MenuControlType.Confirmation => "Confirmation",
         _ => controlType.ToString()
@@ -3268,7 +3281,9 @@
     {
         var details = new List<string>
         {
-            node.ControlType.ToString().ToLowerInvariant()
+            node.ControlType == MenuControlType.SubmenuSelection
+                ? "submenu-selection"
+                : node.ControlType.ToString().ToLowerInvariant()
         };
         if (!string.IsNullOrWhiteSpace(node.DefaultValue))
         {
@@ -3336,6 +3351,10 @@
                                          + string.Join(", ", node.SelectionOptions)
                                          + "."
                                          + defaultSuffix,
+            MenuControlType.SubmenuSelection => "Press OK to open its value submenu, select a value, then press Return to leave it. Available: "
+                                                + string.Join(", ", node.SelectionOptions)
+                                                + "."
+                                                + defaultSuffix,
             MenuControlType.Switch => "Press OK to toggle the switch." + defaultSuffix,
             MenuControlType.Confirmation => "Press OK to open the confirmation dialog. Choices: "
                                             + string.Join(", ", node.SelectionOptions)

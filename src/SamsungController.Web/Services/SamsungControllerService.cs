@@ -3234,10 +3234,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
             var definition = _menuDefinition
                 ?? throw new InvalidOperationException("No menu definition is loaded.");
             var node = definition.GetRequiredNode(nodeId.Trim());
-            if (node.ControlType != MenuControlType.Selection)
+            if (node.ControlType is not MenuControlType.Selection
+                and not MenuControlType.SubmenuSelection)
             {
                 throw new InvalidOperationException(
-                    $"'{definition.GetPath(node.Id)}' is not defined as a selection.");
+                    $"'{definition.GetPath(node.Id)}' is not defined as a selection control.");
             }
 
             normalizedNodeId = node.Id;
@@ -5551,6 +5552,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 return normalized.ToLowerInvariant();
 
             case MenuControlType.Selection:
+            case MenuControlType.SubmenuSelection:
                 var option = (node.SelectionOptions ?? []).FirstOrDefault(candidate =>
                     candidate.Equals(normalized, StringComparison.OrdinalIgnoreCase));
                 return option ?? throw new InvalidOperationException(
@@ -5558,7 +5560,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
             default:
                 throw new InvalidOperationException(
-                    $"'{definition.GetPath(node.Id)}' is not an adjustable slider, switch, or selection.");
+                    $"'{definition.GetPath(node.Id)}' is not an adjustable slider, switch, selection, or submenu selection.");
         }
     }
 
@@ -5571,6 +5573,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                      node.ControlType is MenuControlType.Slider
                          or MenuControlType.Switch
                          or MenuControlType.Selection
+                         or MenuControlType.SubmenuSelection
                      && !string.IsNullOrWhiteSpace(node.DefaultValue)))
         {
             values[node.Id] = NormalizePictureControlValue(
@@ -5600,6 +5603,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                      node.ControlType is MenuControlType.Slider
                          or MenuControlType.Switch
                          or MenuControlType.Selection
+                         or MenuControlType.SubmenuSelection
                      && !string.IsNullOrWhiteSpace(node.DefaultValue)))
         {
             _menuControlValues[node.Id] = NormalizePictureControlValue(
@@ -5863,7 +5867,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
 
         return definition.Nodes.Values
-            .Where(node => node.ControlType == MenuControlType.Selection
+            .Where(node => node.ControlType is MenuControlType.Selection
+                    or MenuControlType.SubmenuSelection
                 && !string.IsNullOrWhiteSpace(node.DefaultValue)
                 && node.SelectionOptions is { Count: > 0 })
             .Where(node => HasVerifiedPictureControlRoute(definition, node.Id)
@@ -6046,7 +6051,14 @@ public sealed class SamsungControllerService : IAsyncDisposable
         {
             MenuControlType.Slider => CreateSliderValueOperations(update),
             MenuControlType.Switch => [new MenuOperation("KEY_ENTER")],
-            MenuControlType.Selection => CreateSelectionValueOperations(node, update),
+            MenuControlType.Selection => CreateSelectionValueOperations(
+                node,
+                update,
+                returnToContainingMenu: false),
+            MenuControlType.SubmenuSelection => CreateSelectionValueOperations(
+                node,
+                update,
+                returnToContainingMenu: true),
             _ => throw new InvalidOperationException(
                 $"'{definition.GetPath(node.Id)}' is not an adjustable menu control.")
         };
@@ -6074,7 +6086,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
     private static IReadOnlyList<MenuOperation> CreateSelectionValueOperations(
         MenuNode node,
-        MenuControlValueUpdate update)
+        MenuControlValueUpdate update,
+        bool returnToContainingMenu)
     {
         var options = node.SelectionOptions ?? [];
         var fromIndex = options.ToList().FindIndex(option =>
@@ -6087,12 +6100,18 @@ public sealed class SamsungControllerService : IAsyncDisposable
             return [];
         }
 
-        return
-        [
+        var operations = new List<MenuOperation>
+        {
             new MenuOperation("KEY_ENTER"),
             new MenuOperation(difference > 0 ? "KEY_DOWN" : "KEY_UP", Repeat: Math.Abs(difference)),
             new MenuOperation("KEY_ENTER")
-        ];
+        };
+        if (returnToContainingMenu)
+        {
+            operations.Add(new MenuOperation("KEY_RETURN"));
+        }
+
+        return operations;
     }
 
     private async Task ExecutePictureControlOperationsAsync(

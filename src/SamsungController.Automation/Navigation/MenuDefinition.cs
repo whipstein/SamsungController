@@ -47,6 +47,7 @@ public enum MenuControlType
     Submenu,
     Slider,
     Selection,
+    SubmenuSelection,
     Switch,
     Confirmation
 }

@@ -15,11 +15,11 @@
         <HelpBubble Title="Menu control behavior" ButtonText="Page help">
             <ul>
                 <li>Choose a top-level menu tab, then search or adjust controls grouped by their immediate TV menu section.</li>
-                <li>Switches and selections use predicted values and dynamically apply declared <code>disabledWhen</code> and <code>hiddenWhen</code> rules.</li>
+                <li>Switches, selections, and submenu selections use predicted values and dynamically apply declared <code>disabledWhen</code> and <code>hiddenWhen</code> rules.</li>
                 <li>Turning on 20 Point enables its Interval and RGB controls. Choosing Custom Color Space enables its Color and RGB controls.</li>
                 <li><strong>Immediate</strong> sends one changed control at a time. <strong>Apply button</strong> can stage a controller and its newly enabled settings together.</li>
                 <li>Confirm three different sliders visually to verify the shared slider behavior for this TV. Later slider changes no longer require individual confirmation.</li>
-                <li>Confirm each selection dropdown once. Its option list and ordering are stored separately from other selections.</li>
+                <li>Confirm each selection control once. A submenu selection also sends Return after choosing its value.</li>
             </ul>
             <p class="help-callout">A conditionally enabled or visible control uses its verified containing-section route and the recalculated menu order after its controller has changed.</p>
         </HelpBubble>
@@ -94,8 +94,8 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
         {
             <div class="selection-verification-summary @(Verification.SelectionsVerified ? "verified" : "unverified")">
                 <span>SELECTION VERIFICATION</span>
-                <strong>@(Verification.SelectionsVerified ? "All selections verified" : $"{Verification.ConfirmedSelectionCount}/{Verification.RequiredSelectionCount} selection dropdowns")</strong>
-                <small>@(Verification.SelectionsVerified ? "Future updates use the verified option order." : "Each dropdown needs one visual confirmation.")</small>
+                <strong>@(Verification.SelectionsVerified ? "All selections verified" : $"{Verification.ConfirmedSelectionCount}/{Verification.RequiredSelectionCount} selection controls")</strong>
+                <small>@(Verification.SelectionsVerified ? "Future updates use the verified option order and exit behavior." : "Each selection control needs one visual confirmation.")</small>
             </div>
         }
         @if (Verification.ConfirmedSliderCount > 0 || Verification.ConfirmedSelectionCount > 0)
@@ -198,7 +198,8 @@ else
                                     <span class="picture-switch-track" aria-hidden="true"><i></i></span>
                                 </label>
                             }
-                            else if (control.Node.ControlType == MenuControlType.Selection)
+                            else if (control.Node.ControlType is MenuControlType.Selection
+                                     or MenuControlType.SubmenuSelection)
                             {
                                 <label class="picture-selection-control">
                                     <span>SELECTED VALUE</span>
@@ -331,7 +332,7 @@ else
                 control.AppliedValue = control.DesiredValue;
                 var behaviorIsVerified = control.Node.ControlType == MenuControlType.Slider
                         && Verification.SlidersVerified
-                    || control.Node.ControlType == MenuControlType.Selection
+                    || IsSelectionControl(control.Node.ControlType)
                         && IsSelectionVerified(control);
                 control.AwaitingConfirmation = !behaviorIsVerified;
                 control.Confirmed = behaviorIsVerified;
@@ -365,7 +366,7 @@ else
             {
                 Verification = await Controller.ConfirmMenuSliderBehaviorAsync(control.Node.Id);
             }
-            else if (control.Node.ControlType == MenuControlType.Selection)
+            else if (IsSelectionControl(control.Node.ControlType))
             {
                 Verification = await Controller.ConfirmMenuSelectionBehaviorAsync(control.Node.Id);
             }
@@ -387,9 +388,9 @@ else
             {
                 LocalStatus = $"{control.Node.Label} confirmed at {control.AppliedValue} · {Verification.ConfirmedSliderCount}/{Verification.RequiredSliderCount} different sliders verified.";
             }
-            else if (control.Node.ControlType == MenuControlType.Selection)
+            else if (IsSelectionControl(control.Node.ControlType))
             {
-                LocalStatus = $"{control.Node.Label} confirmed at {control.AppliedValue} · {Verification.ConfirmedSelectionCount}/{Verification.RequiredSelectionCount} selection dropdowns verified.";
+                LocalStatus = $"{control.Node.Label} confirmed at {control.AppliedValue} · {Verification.ConfirmedSelectionCount}/{Verification.RequiredSelectionCount} selection controls verified.";
             }
             else
             {
@@ -442,13 +443,13 @@ else
             await Controller.ResetMenuSelectionBehaviorVerificationAsync();
             Verification = Controller.GetMenuControlVerificationSnapshot();
             foreach (var selection in Controls.Where(control =>
-                         control.Node.ControlType == MenuControlType.Selection))
+                         IsSelectionControl(control.Node.ControlType)))
             {
                 selection.AwaitingConfirmation = false;
                 selection.Confirmed = false;
             }
 
-            LocalStatus = "Selection verification reset. Confirm each dropdown after changing it on the TV.";
+            LocalStatus = "Selection verification reset. Confirm each selection control after changing it on the TV.";
         }
         catch (Exception exception)
         {
@@ -721,7 +722,7 @@ else
 
         EnsureSelectedMenuArea();
         foreach (var selection in Controls.Where(control =>
-                     control.Node.ControlType == MenuControlType.Selection))
+                     IsSelectionControl(control.Node.ControlType)))
         {
             if (IsSelectionVerified(selection))
             {
@@ -774,6 +775,8 @@ else
         MenuControlType.Switch => !string.IsNullOrWhiteSpace(node.DefaultValue),
         MenuControlType.Selection => !string.IsNullOrWhiteSpace(node.DefaultValue)
             && node.SelectionOptions.Count > 0,
+        MenuControlType.SubmenuSelection => !string.IsNullOrWhiteSpace(node.DefaultValue)
+            && node.SelectionOptions.Count > 0,
         _ => false
     };
 
@@ -811,6 +814,7 @@ else
         MenuControlType.Slider => "SLIDER",
         MenuControlType.Switch => "SWITCH",
         MenuControlType.Selection => "SELECTION",
+        MenuControlType.SubmenuSelection => "SUBMENU SELECTION",
         _ => type.ToString().ToUpperInvariant()
     };
 
@@ -822,11 +826,11 @@ else
                 ? "VERIFY"
                 : control.Node.ControlType == MenuControlType.Slider && Verification.SlidersVerified
                     ? "SLIDER VERIFIED"
-                    : control.Node.ControlType == MenuControlType.Selection && IsSelectionVerified(control)
+                    : IsSelectionControl(control.Node.ControlType) && IsSelectionVerified(control)
                         ? "SELECTION VERIFIED"
                         : control.Confirmed
                             ? "CONFIRMED"
-                            : control.Node.ControlType == MenuControlType.Selection
+                            : IsSelectionControl(control.Node.ControlType)
                                 ? "NEEDS VERIFICATION"
                                 : control.Node.HasVerifiedRoute
                                     ? "VERIFIED"
@@ -835,7 +839,7 @@ else
     private string GetControlCssClass(PictureControlEdit control, bool disabled)
     {
         var confirmed = control.Confirmed
-            || control.Node.ControlType == MenuControlType.Selection
+            || IsSelectionControl(control.Node.ControlType)
             && IsSelectionVerified(control);
         return $"{(disabled ? "disabled" : string.Empty)} {(control.Pending ? "pending" : string.Empty)} {(control.AwaitingConfirmation ? "awaiting-confirmation" : confirmed ? "confirmed" : string.Empty)}";
     }
@@ -844,6 +848,9 @@ else
         Verification.ConfirmedSelectionNodeIds.Contains(
             control.Node.Id,
             StringComparer.OrdinalIgnoreCase);
+
+    private static bool IsSelectionControl(MenuControlType controlType) =>
+        controlType is MenuControlType.Selection or MenuControlType.SubmenuSelection;
 
     private static bool IsOn(string value) => value.Equals("on", StringComparison.OrdinalIgnoreCase);
 
