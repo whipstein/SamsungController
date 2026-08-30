@@ -367,6 +367,9 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                     null);
                 Assert.Equal(["KEY_RETURN"], GetSentKeys(transport));
                 await controller.ConfirmMenuReturnStrategyTestAsync(passed: true);
+                var confirmed = controller.GetSnapshot();
+                Assert.Equal("Normal video", confirmed.MenuLabel);
+                Assert.Equal(MenuStateConfidence.Synchronized, confirmed.MenuConfidence);
             }
 
             for (var pass = 0; pass < 3; pass++)
@@ -377,6 +380,9 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                     "picture");
                 Assert.Equal(["KEY_MENU", "KEY_RETURN"], GetSentKeys(transport));
                 await controller.ConfirmMenuReturnStrategyTestAsync(passed: true);
+                var confirmed = controller.GetSnapshot();
+                Assert.Equal("Normal video", confirmed.MenuLabel);
+                Assert.Equal(MenuStateConfidence.Synchronized, confirmed.MenuConfidence);
             }
 
             var persisted = await new MenuDefinitionParser().ParseFileAsync(
@@ -1091,6 +1097,39 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             var snapshot = controller.GetSnapshot();
             Assert.Equal("Normal video", snapshot.MenuLabel);
             Assert.Equal(MenuStateConfidence.Synchronized, snapshot.MenuConfidence);
+        }
+    }
+
+    [Fact]
+    public async Task FailedAutomaticReturnPreservesTheJustVerifiedTargetState()
+    {
+        var (controller, transport) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            for (var pass = 1; pass <= 3; pass++)
+            {
+                await controller.RunMenuAuthoringValidationAsync(
+                    MenuAuthoringItemKind.Transition,
+                    "open-picture-draft");
+                if (pass == 3)
+                {
+                    transport.SendFailure = new IOException("Simulated return failure.");
+                    var exception = await Assert.ThrowsAsync<IOException>(() =>
+                        controller.ConfirmMenuAuthoringValidationAsync(passed: true));
+                    Assert.Contains("return failure", exception.Message, StringComparison.OrdinalIgnoreCase);
+                    break;
+                }
+
+                await controller.ConfirmMenuAuthoringValidationAsync(passed: true);
+            }
+
+            var snapshot = controller.GetSnapshot();
+            Assert.Equal("Picture", snapshot.MenuLabel);
+            Assert.Equal(MenuStateConfidence.Synchronized, snapshot.MenuConfidence);
+            Assert.Contains(
+                "current state remains",
+                controller.GetMenuAuthoringSnapshot().Status,
+                StringComparison.OrdinalIgnoreCase);
         }
     }
 
@@ -2318,6 +2357,8 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
 
         public Exception? ConnectFailure { get; init; }
 
+        public Exception? SendFailure { get; set; }
+
         public TimeSpan LastKeepAliveInterval { get; private set; }
 
         public TimeSpan LastKeepAliveTimeout { get; private set; }
@@ -2352,7 +2393,9 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             CancellationToken cancellationToken = default)
         {
             SentMessages.Add(rawJson);
-            return Task.CompletedTask;
+            return SendFailure is null
+                ? Task.CompletedTask
+                : Task.FromException(SendFailure);
         }
 
         public async IAsyncEnumerable<string> ReceiveAsync(

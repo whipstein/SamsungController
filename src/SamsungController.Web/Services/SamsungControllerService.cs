@@ -2209,6 +2209,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 _menuAuthoringError = null;
             }
 
+            ConfirmMenuReturnTarget(context.Anchor.TargetNodeId, session.Kind);
             NotifyChanged();
             return;
         }
@@ -2234,6 +2235,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _menuAuthoringError = null;
         }
 
+        ConfirmMenuReturnTarget(context.Anchor.TargetNodeId, session.Kind);
         NotifyChanged();
     }
 
@@ -2769,7 +2771,22 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 returnAnchor.TargetNodeId,
                 StringComparison.OrdinalIgnoreCase))
         {
-            await RunMenuAnchorAsync(returnAnchor.Id, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await RunMenuAnchorAsync(returnAnchor.Id, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                ConfirmMenuAuthoringTarget(targetNodeId, session.ItemId);
+                lock (_sync)
+                {
+                    _menuAuthoringStatus =
+                        $"Verification saved · automatic return to normal video failed; current state remains {definition.GetPath(targetNodeId)}";
+                }
+
+                NotifyChanged();
+                throw;
+            }
         }
     }
 
@@ -4292,6 +4309,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
         _menuStateTracker?.ConfirmNode(
             targetNodeId,
             $"The user confirmed that menu validation '{itemId}' reached its target.");
+
+    private void ConfirmMenuReturnTarget(string targetNodeId, MenuReturnScriptKind kind) =>
+        _menuStateTracker?.ConfirmNode(
+            targetNodeId,
+            $"The user confirmed that return-script validation '{kind}' reached normal video.");
 
     private static MenuDefinition SetAuthoringItemVerified(
         MenuDefinition definition,
