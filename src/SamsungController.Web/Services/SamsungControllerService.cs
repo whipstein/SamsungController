@@ -834,6 +834,18 @@ public sealed class SamsungControllerService : IAsyncDisposable
         NotifyChanged();
     }
 
+    public IReadOnlyList<MenuControlProfileValue> ValidateMenuControlProfileValues(
+        IReadOnlyList<MenuControlProfileValue> values)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+        lock (_sync)
+        {
+            var definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+            return NormalizeMenuControlProfileValues(definition, values);
+        }
+    }
+
     public IReadOnlyList<SavedMenuControlStateSummary> GetSavedMenuControlStates()
     {
         lock (_sync)
@@ -3861,7 +3873,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
         IReadOnlyList<MenuControlValueUpdate> updates,
         IReadOnlyDictionary<string, string> knownValues,
         bool returnToNormalVideo,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<MenuControlValueUpdate>? valueApplied = null)
     {
         ArgumentNullException.ThrowIfNull(updates);
         ArgumentNullException.ThrowIfNull(knownValues);
@@ -3963,6 +3976,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                             tracker.ConfirmNode(
                                 update.NodeId,
                                 $"Menu control '{definition.GetPath(update.NodeId)}' was adjusted to the predicted value '{update.ToValue}'.");
+                            valueApplied?.Invoke(update);
                         }
                         catch
                         {
@@ -3997,7 +4011,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
         IReadOnlyList<MenuIndexedControlValueUpdate> updates,
         IReadOnlyDictionary<string, string> knownValues,
         bool returnToNormalVideo,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<MenuIndexedControlValueUpdate>? valueApplied = null)
     {
         ArgumentNullException.ThrowIfNull(updates);
         ArgumentNullException.ThrowIfNull(knownValues);
@@ -4148,6 +4163,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                                 tracker.ConfirmNode(
                                     node.Id,
                                     $"Indexed value '{row.Key} / {node.Label}' was adjusted to '{update.ToValue}'.");
+                                valueApplied?.Invoke(update);
                                 lastTargetNodeId = node.Id;
                             }
                         }

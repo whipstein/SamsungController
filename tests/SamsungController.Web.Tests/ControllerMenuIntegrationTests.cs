@@ -3762,6 +3762,79 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task CancellingActiveMenuUpdateStopsBeforeTheNextRemoteKey()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: cancellable-picture-update
+            name: Cancellable Picture Update
+            model: Test TV
+            nodes:
+              - id: normal-video
+                label: Normal video
+              - id: settings
+                label: Settings
+                children:
+                  - id: brightness
+                    label: Brightness
+                    controlType: slider
+                    defaultValue: "50"
+                    minimumValue: 0
+                    maximumValue: 100
+            anchors:
+              - id: normal
+                label: Normal video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            transitions:
+              - id: open-brightness
+                from: normal-video
+                to: brightness
+                verified: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_DOWN
+                  - key: KEY_ENTER
+            """;
+        Directory.CreateDirectory(_directory);
+        var definitionPath = Path.Combine(_directory, "cancellable-picture-update.yaml");
+        await File.WriteAllTextAsync(definitionPath, yaml);
+        await WriteSettingsAsync(definitionPath);
+        var transport = new RecordingSamsungTransport();
+        var delay = new BlockingMenuDelay();
+        await using var controller = CreateController(transport, delay);
+        await controller.InitializeAsync();
+        await controller.ConnectAsync(new TvConnectionRequest(
+            "Test TV",
+            "192.0.2.10",
+            Secure: true,
+            Port: null,
+            PostConnectWarmupMilliseconds: 0,
+            ReconnectAfterIdleSeconds: 0));
+        transport.SentMessages.Clear();
+
+        var apply = controller.ApplyMenuControlValuesAsync(
+            [new MenuControlValueUpdate("brightness", "50", "55")],
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["brightness"] = "50"
+            },
+            returnToNormalVideo: false);
+        await delay.FirstDelayStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        controller.CancelNavigation();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => apply);
+        Assert.Equal(["KEY_MENU"], GetSentKeys(transport));
+        Assert.Equal(
+            MenuStateConfidence.Unknown,
+            controller.GetMenuNavigationSnapshot().State.Confidence);
+    }
+
     private async Task<(SamsungControllerService Controller, RecordingSamsungTransport Transport)>
         CreateConnectedControllerAsync(
             string? definitionYaml = null,
@@ -3823,6 +3896,19 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             })
             .Build();
         return new SamsungControllerService(configuration, transport, ImmediateMenuDelay.Instance);
+    }
+
+    private SamsungControllerService CreateController(
+        RecordingSamsungTransport transport,
+        IMenuDelay menuDelay)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["SamsungController:ConfigurationDirectory"] = _directory
+            })
+            .Build();
+        return new SamsungControllerService(configuration, transport, menuDelay);
     }
 
     private async Task WriteSettingsAsync(string definitionPath)
@@ -4084,6 +4170,20 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         public Task DelayAsync(
             TimeSpan duration,
             CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class BlockingMenuDelay : IMenuDelay
+    {
+        public TaskCompletionSource FirstDelayStarted { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task DelayAsync(
+            TimeSpan duration,
+            CancellationToken cancellationToken = default)
+        {
+            FirstDelayStarted.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        }
     }
 
     private sealed class RecordingSamsungTransport : ISamsungTransport

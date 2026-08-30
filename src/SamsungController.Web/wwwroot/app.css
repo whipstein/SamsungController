@@ -873,6 +873,24 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .menu-workspace-tabs span, .menu-workspace-tabs small { display: block; }
 .menu-workspace-tabs span { font-size: 11px; font-weight: 700; }
 .menu-workspace-tabs small { color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .04em; }
+.active-tv-update { position: sticky; top: 86px; z-index: 35; display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 12px; padding: 13px 14px; border: 1px solid rgba(255,119,119,.55); border-radius: 8px; background: rgba(34,9,13,.97); box-shadow: 0 12px 36px rgba(0,0,0,.3); backdrop-filter: blur(12px); }
+.active-tv-update span, .active-tv-update strong, .active-tv-update small { display: block; }
+.active-tv-update span { color: var(--danger); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .11em; }
+.active-tv-update strong { margin-top: 4px; font-size: 11px; }
+.active-tv-update small { margin-top: 4px; color: var(--muted); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.cancel-active-update { flex: 0 0 auto; min-width: 190px; background: rgba(255,119,119,.08); font-weight: 700; }
+.target-calibration-panel { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(180px, .42fr) auto minmax(190px, .45fr); gap: 12px; align-items: end; margin-bottom: 12px; padding: 13px 14px; border-color: rgba(124,231,220,.22); }
+.target-calibration-copy span, .target-calibration-copy strong, .target-calibration-copy small, .target-calibration-name > span, .target-calibration-file > span { display: block; }
+.target-calibration-copy span { color: var(--cyan); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .1em; }
+.target-calibration-copy strong { margin-top: 4px; font-size: 10px; }
+.target-calibration-copy small { max-width: 760px; margin-top: 4px; color: var(--muted); font-size: 7px; line-height: 1.45; }
+.target-calibration-name > span, .target-calibration-file > span { margin-bottom: 5px; color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .09em; }
+.target-calibration-name input { width: 100%; }
+.target-calibration-panel button { white-space: nowrap; }
+.target-calibration-file { min-width: 0; }
+.target-calibration-file input[type="file"] { width: 100%; max-width: 100%; color: var(--muted); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.target-calibration-file input[type="file"]::file-selector-button { margin-right: 7px; padding: 9px 10px; border: 1px solid var(--line-strong); border-radius: 5px; background: #0a151e; color: var(--ink); cursor: pointer; }
+.target-calibration-file.disabled { opacity: .5; }
 .picture-control-toolbar { margin-bottom: 12px; }
 .compact-update-panel { padding: 0; overflow: hidden; }
 .compact-update-panel > summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 11px 14px; cursor: pointer; list-style-position: inside; }
@@ -1229,6 +1247,9 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .macro-confirm-actions { grid-template-columns: 1fr; }
     .menu-workspace-tabs { grid-template-columns: 1fr; }
     .menu-workspace-tabs button { align-items: flex-start; flex-direction: column; gap: 4px; }
+    .active-tv-update { top: 76px; align-items: flex-start; flex-direction: column; }
+    .cancel-active-update { width: 100%; }
+    .target-calibration-panel { grid-template-columns: 1fr; }
     .compact-update-panel > summary { grid-template-columns: minmax(0, 1fr) auto; }
     .compact-update-panel > summary small { grid-column: 1 / -1; grid-row: 2; }
     .pending-target-explanation { grid-template-columns: 1fr; }

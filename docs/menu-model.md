@@ -465,6 +465,21 @@ and slider node, so all 20 Point percentages or Custom Color rows survive an
 application restart. These personal target values are not written to the shared
 TV topology file.
 
+The Menu page can also export those desired values as a portable, versioned
+`.samsung-calibration.json` document with the menu-definition ID, model, display
+context, and ordinary/indexed values. Import validates the complete document and
+stages its values without sending remote commands or changing the separately
+recorded current-TV baseline. A file for another menu-definition ID is rejected.
+Relative Samsung controls still require an accurate current-TV baseline or a
+verified reset to declared defaults before Apply.
+
+Apply and reset/apply expose a persistent cancellation control. Cancellation is
+propagated through navigation and individual key delays, so no later command or
+return anchor is sent after the stop takes effect. Already transmitted keys
+cannot be recalled. Completed values are retained when known; the interrupted
+menu state and partial indexed rows must be visually reconciled before another
+batch.
+
 **Reset & apply all** lists verified confirmation nodes whose ID or label contains
 `reset`, preferring `reset-picture`. After explicit user confirmation it
 navigates to that node, opens its confirmation dialog, selects the chosen reset

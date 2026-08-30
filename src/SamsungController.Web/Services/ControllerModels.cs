@@ -148,6 +148,16 @@ public sealed record MenuControlProfileSnapshot(
     string? DefinitionId,
     IReadOnlyList<MenuControlProfileValue> Values);
 
+public sealed record MenuControlTargetProfile(
+    int Version,
+    string Name,
+    string DefinitionId,
+    string? DefinitionName,
+    string? Model,
+    MenuDefinitionContext? Context,
+    DateTimeOffset ExportedAtUtc,
+    IReadOnlyList<MenuControlProfileValue> Values);
+
 public sealed record SavedMenuControlState(
     string Id,
     string Name,

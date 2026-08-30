@@ -1,6 +1,7 @@
 @page "/menu"
 @implements IDisposable
 @inject SamsungControllerService Controller
+@inject IJSRuntime JavaScript
 
 <PageTitle>Menu · SamsungController</PageTitle>
 
@@ -20,6 +21,8 @@
                 <li>Every 20pt percentage and Custom Color choice groups three full RGB sliders with minus/plus buttons and a raw number input, so all values can be staged together without manually changing the selector.</li>
                 <li><strong>Adjust TV</strong> sends or stages commands. <strong>Enter current settings</strong> uses an independent local draft and never sends commands to the TV.</li>
                 <li><strong>Immediate</strong> sends one changed control at a time. <strong>Apply button</strong> can stage a controller and its newly enabled settings together.</li>
+                <li><strong>Cancel active update</strong> stops a large Apply or reset/apply batch before the next key. It never sends cleanup keys after cancellation.</li>
+                <li>A target-calibration JSON file contains desired values. Loading one stages and saves those targets without changing the current-TV baseline or sending commands.</li>
                 <li><strong>Save profile</strong> stores desired values locally. <strong>Reset &amp; apply all</strong> runs a verified reset confirmation, restores known defaults, and reapplies that profile.</li>
                 <li>Use <strong>Enter current settings</strong> to record values already visible on the TV and later load them as the prediction baseline. Saving or loading a state sends no remote commands.</li>
                 <li>This page unlocks only after Display Verification is complete for the selected menu structure, TV, signal, picture mode, input, and configurations.</li>
@@ -71,6 +74,30 @@ else
     </button>
 </nav>
 
+@if (HasActiveTvUpdate)
+{
+    <section class="active-tv-update" role="alert" aria-live="assertive">
+        <div>
+            <span>@(ActiveUpdateSource!.IsCancellationRequested ? "STOP REQUESTED" : "TV UPDATE IN PROGRESS")</span>
+            <strong>@(Navigation.Progress?.Phase ?? ActiveUpdateLabel)</strong>
+            @if (Navigation.Progress is { } progress)
+            {
+                <small>Command @progress.CommandNumber of @progress.CommandCount · @progress.Key · @progress.TargetPath</small>
+            }
+            else
+            {
+                <small>The stop button prevents the next remote key; a key already in flight cannot be recalled.</small>
+            }
+        </div>
+        <button type="button"
+                class="secondary-action danger-action cancel-active-update"
+                @onclick="CancelActiveUpdate"
+                disabled="@ActiveUpdateSource!.IsCancellationRequested">
+            @(ActiveUpdateSource.IsCancellationRequested ? "Stopping…" : "Cancel active update")
+        </button>
+    </section>
+}
+
 @if (WorkspaceMode == MenuWorkspaceMode.CurrentState)
 {
     <section class="panel current-state-workspace">
@@ -109,6 +136,29 @@ else
 }
 else
 {
+    <section class="panel target-calibration-panel">
+        <div class="target-calibration-copy">
+            <span>PORTABLE TARGET CALIBRATION</span>
+            <strong>Load desired values separately from the TV's current baseline.</strong>
+            <small>Loading stages values and saves the local target profile; it sends no TV commands. Before Apply, load a matching current-TV state or use the verified reset/apply workflow—relative Samsung controls cannot recover from an incorrect starting value.</small>
+        </div>
+        <label class="target-calibration-name">
+            <span>FILE NAME</span>
+            <input @bind="TargetCalibrationName" maxlength="80" disabled="@IsBusy" />
+        </label>
+        <button class="secondary-action"
+                @onclick="DownloadTargetCalibrationAsync"
+                disabled="@(!CanExportTargetCalibration)">
+            Download targets
+        </button>
+        <label class="target-calibration-file @(IsBusy ? "disabled" : string.Empty)">
+            <span>LOAD TARGET JSON</span>
+            <InputFile @key="TargetFileInputKey"
+                       OnChange="LoadTargetCalibrationAsync"
+                       accept=".json,application/json"
+                       disabled="@IsBusy" />
+        </label>
+    </section>
     <details class="panel picture-control-toolbar compact-update-panel">
         <summary>
             <span>Update behavior</span>
@@ -498,6 +548,10 @@ else
     private string SelectedFactoryResetChoice { get; set; } = string.Empty;
     private string SavedStateName { get; set; } = "Current TV state";
     private string SelectedSavedStateId { get; set; } = string.Empty;
+    private string TargetCalibrationName { get; set; } = "Calibration target";
+    private int TargetFileInputKey { get; set; }
+    private CancellationTokenSource? ActiveUpdateSource { get; set; }
+    private string ActiveUpdateLabel { get; set; } = "Applying menu values";
 
     private int PendingCount => Controls.Count(control =>
             control.Pending
@@ -532,6 +586,11 @@ else
             GetPendingControlSummaries().Take(4).Select(pending =>
                 $"{pending.Label}: {pending.AppliedValue} → {pending.DesiredValue}"));
     private bool MenuIsAvailable => DisplayVerification.FullyVerified;
+    private bool HasActiveTvUpdate => ActiveUpdateSource is not null;
+    private bool CanExportTargetCalibration => !IsBusy
+        && MenuIsAvailable
+        && Controls.Count > 0
+        && !string.IsNullOrWhiteSpace(Profile.DefinitionId);
     private bool CanApplyPending => PendingCount > 0
         && MenuIsAvailable
         && !IsBusy
@@ -582,6 +641,7 @@ else
         await Controller.InitializeAsync();
         Refresh();
         ReconcileControls();
+        TargetCalibrationName = $"{Navigation.DefinitionName ?? Navigation.Model ?? "TV"} calibration";
     }
 
     private async Task ChangeControlAsync(PictureControlEdit control, string? rawValue)
@@ -674,15 +734,16 @@ else
         }
 
         IsBusy = true;
+        var updateSource = BeginActiveUpdate("Applying menu values");
         LocalError = null;
         LocalStatus = null;
         try
         {
-            await ApplyChangesCoreAsync(controls, indexedChanges);
+            await ApplyChangesCoreAsync(controls, indexedChanges, updateSource.Token);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (updateSource.IsCancellationRequested)
         {
-            LocalError = "Menu-control update was cancelled.";
+            LocalError = "Update stopped. No further keys were sent after the stop took effect. Samsung does not report the selected row or setting values, so treat the current menu position and any partly adjusted indexed values as uncertain; enter the TV's current settings before resuming.";
         }
         catch (Exception exception)
         {
@@ -690,58 +751,120 @@ else
         }
         finally
         {
+            EndActiveUpdate(updateSource);
             IsBusy = false;
         }
     }
 
     private async Task ApplyChangesCoreAsync(
         IReadOnlyList<PictureControlEdit> controls,
-        IReadOnlyList<IndexedCellChange> indexedChanges)
+        IReadOnlyList<IndexedCellChange> indexedChanges,
+        CancellationToken cancellationToken)
     {
         if (controls.Count > 0)
         {
             var knownValues = CreateKnownControlValues();
-            await Controller.ApplyMenuControlValuesAsync(
-                controls.Select(control => new MenuControlValueUpdate(
-                        control.Node.Id,
-                        control.AppliedValue,
-                        control.DesiredValue))
-                    .ToArray(),
-                knownValues,
-                returnToNormalVideo: indexedChanges.Count == 0
-                    && ExitBehavior == PictureExitBehavior.ReturnToVideo);
-            foreach (var control in controls)
+            var completed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            try
             {
-                control.AppliedValue = control.DesiredValue;
+                await Controller.ApplyMenuControlValuesAsync(
+                    controls.Select(control => new MenuControlValueUpdate(
+                            control.Node.Id,
+                            control.AppliedValue,
+                            control.DesiredValue))
+                        .ToArray(),
+                    knownValues,
+                    returnToNormalVideo: indexedChanges.Count == 0
+                        && ExitBehavior == PictureExitBehavior.ReturnToVideo,
+                    cancellationToken: cancellationToken,
+                    valueApplied: update => completed[update.NodeId] = update.ToValue);
+            }
+            finally
+            {
+                foreach (var control in controls.Where(control => completed.ContainsKey(control.Node.Id)))
+                {
+                    control.AppliedValue = completed[control.Node.Id];
+                }
             }
         }
 
         if (indexedChanges.Count > 0)
         {
-            await Controller.ApplyIndexedMenuControlValuesAsync(
-                indexedChanges.Select(change => new MenuIndexedControlValueUpdate(
-                        change.Group.Selector.Id,
-                        change.Cell.SelectorValue,
-                        change.Cell.Slider.Id,
-                        change.Cell.AppliedValue,
-                        change.Cell.DesiredValue))
-                    .ToArray(),
-                CreateKnownControlValues(),
-                ExitBehavior == PictureExitBehavior.ReturnToVideo);
-            foreach (var change in indexedChanges)
+            var completed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            try
             {
-                change.Cell.AppliedValue = change.Cell.DesiredValue;
+                await Controller.ApplyIndexedMenuControlValuesAsync(
+                    indexedChanges.Select(change => new MenuIndexedControlValueUpdate(
+                            change.Group.Selector.Id,
+                            change.Cell.SelectorValue,
+                            change.Cell.Slider.Id,
+                            change.Cell.AppliedValue,
+                            change.Cell.DesiredValue))
+                        .ToArray(),
+                    CreateKnownControlValues(),
+                    ExitBehavior == PictureExitBehavior.ReturnToVideo,
+                    cancellationToken: cancellationToken,
+                    valueApplied: update => completed[IndexedUpdateKey(update)] = update.ToValue);
             }
-
-            foreach (var group in indexedChanges.Select(change => change.Group).Distinct())
+            finally
             {
-                SynchronizeIndexedGroupControlPredictions(group, indexedChanges);
+                var appliedChanges = indexedChanges.Where(change => completed.TryGetValue(
+                        IndexedUpdateKey(change),
+                        out _))
+                    .ToArray();
+                foreach (var change in appliedChanges)
+                {
+                    change.Cell.AppliedValue = completed[IndexedUpdateKey(change)];
+                }
+
+                foreach (var group in appliedChanges.Select(change => change.Group).Distinct())
+                {
+                    SynchronizeIndexedGroupControlPredictions(group, appliedChanges);
+                }
             }
         }
 
         var total = controls.Count + indexedChanges.Count;
-        await Controller.SaveMenuControlProfileAsync(CreateControlProfileValues());
+        await Controller.SaveMenuControlProfileAsync(
+            CreateControlProfileValues(),
+            cancellationToken);
         LocalStatus = $"Applied {total} menu value{(total == 1 ? string.Empty : "s")} using the fully verified display profile.";
+    }
+
+    private CancellationTokenSource BeginActiveUpdate(string label)
+    {
+        if (ActiveUpdateSource is not null)
+        {
+            throw new InvalidOperationException("Another TV update is already running.");
+        }
+
+        ActiveUpdateLabel = label;
+        ActiveUpdateSource = new CancellationTokenSource();
+        return ActiveUpdateSource;
+    }
+
+    private void CancelActiveUpdate()
+    {
+        var source = ActiveUpdateSource;
+        if (source is null || source.IsCancellationRequested)
+        {
+            return;
+        }
+
+        source.Cancel();
+        Controller.CancelNavigation();
+        LocalError = null;
+        LocalStatus = "Stop requested. The controller will not send another key after the current in-flight send or wait finishes.";
+    }
+
+    private void EndActiveUpdate(CancellationTokenSource source)
+    {
+        if (ReferenceEquals(ActiveUpdateSource, source))
+        {
+            ActiveUpdateSource = null;
+        }
+
+        source.Dispose();
     }
 
     private void BeginFactoryReset()
@@ -777,15 +900,19 @@ else
         }
 
         IsBusy = true;
+        var updateSource = BeginActiveUpdate("Factory reset and target application");
         ConfirmFactoryReset = false;
         LocalError = null;
         LocalStatus = null;
         try
         {
-            await Controller.SaveMenuControlProfileAsync(CreateControlProfileValues());
+            await Controller.SaveMenuControlProfileAsync(
+                CreateControlProfileValues(),
+                updateSource.Token);
             await Controller.ResetMenuControlsToFactoryDefaultsAsync(
                 resetNode.Id,
-                SelectedFactoryResetChoice);
+                SelectedFactoryResetChoice,
+                updateSource.Token);
             ResetAppliedValuesToDeclaredDefaults();
             var controls = Controls.Where(control =>
                     control.Pending
@@ -796,7 +923,7 @@ else
             var indexedChanges = GetPendingIndexedChanges();
             if (controls.Length > 0 || indexedChanges.Count > 0)
             {
-                await ApplyChangesCoreAsync(controls, indexedChanges);
+                await ApplyChangesCoreAsync(controls, indexedChanges, updateSource.Token);
                 LocalStatus = $"Factory reset completed. {LocalStatus}";
             }
             else
@@ -804,9 +931,9 @@ else
                 LocalStatus = "Factory reset completed. Every desired value already matches its declared factory default.";
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (updateSource.IsCancellationRequested)
         {
-            LocalError = "Factory reset and profile application was cancelled.";
+            LocalError = "Factory reset/apply stopped. No cleanup or return-to-video keys were added after cancellation. The reset or some target values may already have completed, so record the TV's current settings before resuming.";
         }
         catch (Exception exception)
         {
@@ -814,6 +941,7 @@ else
         }
         finally
         {
+            EndActiveUpdate(updateSource);
             IsBusy = false;
         }
     }
@@ -836,6 +964,162 @@ else
         {
             IsBusy = false;
         }
+    }
+
+    private async Task DownloadTargetCalibrationAsync()
+    {
+        if (!CanExportTargetCalibration)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        LocalError = null;
+        LocalStatus = null;
+        try
+        {
+            var name = string.IsNullOrWhiteSpace(TargetCalibrationName)
+                ? $"{Navigation.DefinitionName ?? Navigation.Model ?? "TV"} calibration"
+                : TargetCalibrationName.Trim();
+            var document = new MenuControlTargetProfile(
+                MenuControlTargetProfileSerializer.CurrentVersion,
+                name,
+                Profile.DefinitionId!,
+                Navigation.DefinitionName,
+                Navigation.Model,
+                Navigation.Context,
+                DateTimeOffset.UtcNow,
+                CreateControlProfileValues());
+            var json = MenuControlTargetProfileSerializer.Serialize(document);
+            var fileName = $"{CreateTargetFileStem(name)}.samsung-calibration.json";
+            await JavaScript.InvokeVoidAsync(
+                "samsungController.downloadText",
+                fileName,
+                json);
+            LocalStatus = $"Downloaded '{fileName}' with {document.Values.Count} desired values. No TV commands were sent.";
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task LoadTargetCalibrationAsync(InputFileChangeEventArgs args)
+    {
+        IsBusy = true;
+        LocalError = null;
+        LocalStatus = null;
+        try
+        {
+            const long maximumFileSize = 2 * 1024 * 1024;
+            if (args.File.Size > maximumFileSize)
+            {
+                throw new InvalidOperationException(
+                    "A target-calibration file cannot exceed 2 MB.");
+            }
+
+            await using var stream = args.File.OpenReadStream(maximumFileSize);
+            using var reader = new StreamReader(stream);
+            var json = await reader.ReadToEndAsync();
+            var document = MenuControlTargetProfileSerializer.Deserialize(json);
+            if (string.IsNullOrWhiteSpace(Profile.DefinitionId)
+                || !document.DefinitionId.Equals(
+                    Profile.DefinitionId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"Target '{document.Name}' belongs to menu definition '{document.DefinitionId}', but the active definition is '{Profile.DefinitionId ?? "none"}'. Load the matching menu structure first.");
+            }
+
+            var normalizedValues = Controller.ValidateMenuControlProfileValues(document.Values);
+            var controlAssignments = new List<(PictureControlEdit Control, string Value)>();
+            var indexedAssignments = new List<(IndexedCellEdit Cell, string Value)>();
+            var unavailable = new List<string>();
+            foreach (var value in normalizedValues)
+            {
+                if (string.IsNullOrWhiteSpace(value.SelectorNodeId))
+                {
+                    var control = Controls.FirstOrDefault(candidate =>
+                        !IsIndexedControl(candidate.Node.Id)
+                        && candidate.Node.Id.Equals(value.NodeId, StringComparison.OrdinalIgnoreCase));
+                    if (control is null)
+                    {
+                        unavailable.Add(value.NodeId);
+                    }
+                    else
+                    {
+                        controlAssignments.Add((control, value.Value));
+                    }
+
+                    continue;
+                }
+
+                var group = IndexedGroups.FirstOrDefault(candidate => candidate.Selector.Id.Equals(
+                    value.SelectorNodeId,
+                    StringComparison.OrdinalIgnoreCase));
+                var row = group?.Rows.FirstOrDefault(candidate => candidate.SelectorValue.Equals(
+                    value.SelectorValue,
+                    StringComparison.OrdinalIgnoreCase));
+                var cell = row?.Cells.FirstOrDefault(candidate => candidate.Slider.Id.Equals(
+                    value.NodeId,
+                    StringComparison.OrdinalIgnoreCase));
+                if (cell is null)
+                {
+                    unavailable.Add(
+                        $"{value.SelectorNodeId}/{value.SelectorValue}/{value.NodeId}");
+                }
+                else
+                {
+                    indexedAssignments.Add((cell, value.Value));
+                }
+            }
+
+            if (unavailable.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    $"The active verified Menu page cannot stage {unavailable.Count} target value{(unavailable.Count == 1 ? string.Empty : "s")}: {string.Join(", ", unavailable.Take(5))}{(unavailable.Count > 5 ? ", …" : string.Empty)}.");
+            }
+
+            foreach (var assignment in controlAssignments)
+            {
+                assignment.Control.DesiredValue = assignment.Value;
+            }
+
+            foreach (var assignment in indexedAssignments)
+            {
+                assignment.Cell.DesiredValue = assignment.Value;
+            }
+
+            ClearPendingValuesThatBecameUnavailable();
+            EnsureSelectedMenuArea();
+            await Controller.SaveMenuControlProfileAsync(CreateControlProfileValues());
+            Profile = Controller.GetMenuControlProfileSnapshot();
+            TargetCalibrationName = document.Name;
+            LocalStatus = $"Loaded '{document.Name}' and staged {PendingCount} difference{(PendingCount == 1 ? string.Empty : "s")} from the current-TV baseline. The targets were saved locally; no TV commands were sent. Review the differences, then choose Apply when ready.";
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            TargetFileInputKey++;
+            IsBusy = false;
+        }
+    }
+
+    private static string CreateTargetFileStem(string name)
+    {
+        var characters = name.Trim().ToLowerInvariant().Select(character =>
+            char.IsLetterOrDigit(character) ? character : '-').ToArray();
+        var stem = string.Join(
+            '-',
+            new string(characters).Split('-', StringSplitOptions.RemoveEmptyEntries));
+        return string.IsNullOrWhiteSpace(stem) ? "calibration-target" : stem;
     }
 
     private async Task SaveCurrentTvStateAsync()
@@ -1424,6 +1708,12 @@ else
 
     private static string IndexedDraftKey(IndexedControlGroupEdit group, IndexedCellEdit cell) =>
         $"indexed:{group.Selector.Id}\u001f{cell.SelectorValue}\u001f{cell.Slider.Id}";
+
+    private static string IndexedUpdateKey(MenuIndexedControlValueUpdate update) =>
+        $"{update.SelectorNodeId}\u001f{update.SelectorValue}\u001f{update.NodeId}";
+
+    private static string IndexedUpdateKey(IndexedCellChange change) =>
+        $"{change.Group.Selector.Id}\u001f{change.Cell.SelectorValue}\u001f{change.Cell.Slider.Id}";
 
     private IReadOnlyList<IndexedCellChange> GetPendingIndexedChanges() => IndexedGroups
         .Where(group => !IsIndexedGroupDisabled(group) && !IsIndexedGroupHidden(group))
@@ -2031,7 +2321,17 @@ else
     private static string FormatValue(decimal value) =>
         value.ToString("G29", CultureInfo.InvariantCulture);
 
-    public void Dispose() => Controller.Changed -= HandleControllerChanged;
+    public void Dispose()
+    {
+        Controller.Changed -= HandleControllerChanged;
+        if (ActiveUpdateSource is { } source)
+        {
+            source.Cancel();
+            Controller.CancelNavigation();
+            source.Dispose();
+            ActiveUpdateSource = null;
+        }
+    }
 
     private static IReadOnlyList<ExpertSettingsTab> ExpertTabs { get; } =
     [
