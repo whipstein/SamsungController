@@ -1,0 +1,154 @@
+<article class="picture-control-card @StateClass @(CurrentStateMode ? "current-state-entry-card" : string.Empty)">
+    <header>
+        <div>
+            <strong>@Node.Label</strong>
+            <small>@ControlTypeLabel</small>
+        </div>
+        <b>@StateLabel</b>
+    </header>
+
+    @if (Node.ControlType == MenuControlType.Slider)
+    {
+        <div class="picture-compact-value">
+            <strong>@Value</strong>
+            <span>@FormatValue(Minimum) – @FormatValue(Maximum)</span>
+        </div>
+        <div class="picture-compact-slider">
+            <button type="button"
+                    aria-label="Decrease @Node.Label"
+                    @onclick="() => NudgeAsync(-1)"
+                    disabled="@(Busy || Disabled || NumericValue <= Minimum)">−</button>
+            <input type="range"
+                   min="@FormatValue(Minimum)"
+                   max="@FormatValue(Maximum)"
+                   step="1"
+                   value="@Value"
+                   aria-label="@Node.Label"
+                   @onchange="ChangeAsync"
+                   disabled="@(Busy || Disabled)" />
+            <button type="button"
+                    aria-label="Increase @Node.Label"
+                    @onclick="() => NudgeAsync(1)"
+                    disabled="@(Busy || Disabled || NumericValue >= Maximum)">+</button>
+            <input class="picture-compact-number"
+                   type="number"
+                   min="@FormatValue(Minimum)"
+                   max="@FormatValue(Maximum)"
+                   step="1"
+                   value="@Value"
+                   aria-label="Numeric value for @Node.Label"
+                   @onchange="ChangeAsync"
+                   disabled="@(Busy || Disabled)" />
+        </div>
+    }
+    else if (Node.ControlType == MenuControlType.Switch)
+    {
+        <label class="picture-switch-control">
+            <span class="picture-switch-copy">
+                <strong>@(IsOn(Value) ? "On" : "Off")</strong>
+                <small>@(Disabled ? DisabledReason : CurrentStateMode ? "Record the value shown on the TV" : "Select to toggle")</small>
+            </span>
+            <input type="checkbox"
+                   checked="@IsOn(Value)"
+                   @onchange="ChangeSwitchAsync"
+                   disabled="@(Busy || Disabled)" />
+            <span class="picture-switch-track" aria-hidden="true"><i></i></span>
+        </label>
+    }
+    else if (Node.ControlType is MenuControlType.Selection
+             or MenuControlType.SubmenuSelection
+             or MenuControlType.IndexedSelection)
+    {
+        <label class="picture-selection-control">
+            <span>@(CurrentStateMode ? "VALUE SHOWN ON TV" : "SELECTED VALUE")</span>
+            <select value="@Value"
+                    @onchange="ChangeAsync"
+                    disabled="@(Busy || Disabled)">
+                @foreach (var option in Node.SelectionOptions)
+                {
+                    <option value="@option">@option</option>
+                }
+            </select>
+        </label>
+    }
+
+    <footer>
+        @if (Disabled)
+        {
+            <span class="picture-disabled-reason">@DisabledReason</span>
+        }
+        else if (CurrentStateMode)
+        {
+            <span>Saved baseline: <b>@ReferenceValue</b></span>
+        }
+        else
+        {
+            <span>TV prediction: <b>@ReferenceValue</b></span>
+        }
+    </footer>
+</article>
+
+@code {
+    [Parameter, EditorRequired]
+    public MenuNodeSummary Node { get; set; } = null!;
+
+    [Parameter, EditorRequired]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string ReferenceValue { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public bool Busy { get; set; }
+
+    [Parameter]
+    public bool CurrentStateMode { get; set; }
+
+    [Parameter]
+    public string DisabledReason { get; set; } = string.Empty;
+
+    [Parameter]
+    public string StateClass { get; set; } = string.Empty;
+
+    [Parameter]
+    public string StateLabel { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public EventCallback<string?> ValueChanged { get; set; }
+
+    private decimal Minimum => Node.MinimumValue ?? 0;
+    private decimal Maximum => Node.MaximumValue ?? 0;
+    private decimal NumericValue => decimal.TryParse(
+        Value,
+        NumberStyles.Number,
+        CultureInfo.InvariantCulture,
+        out var value) ? value : 0;
+
+    private string ControlTypeLabel => Node.ControlType switch
+    {
+        MenuControlType.Slider => "SLIDER",
+        MenuControlType.Switch => "SWITCH",
+        MenuControlType.Selection => "SELECTION",
+        MenuControlType.SubmenuSelection => "SUBMENU SELECTION",
+        MenuControlType.IndexedSelection => "INDEXED SELECTION",
+        _ => Node.ControlType.ToString().ToUpperInvariant()
+    };
+
+    private Task ChangeAsync(ChangeEventArgs args) => ValueChanged.InvokeAsync(args.Value?.ToString());
+
+    private Task ChangeSwitchAsync(ChangeEventArgs args) =>
+        ValueChanged.InvokeAsync(args.Value is true ? "on" : "off");
+
+    private Task NudgeAsync(int delta) => ValueChanged.InvokeAsync(FormatValue(Math.Clamp(
+        NumericValue + delta,
+        Minimum,
+        Maximum)));
+
+    private static bool IsOn(string value) => value.Equals("on", StringComparison.OrdinalIgnoreCase);
+
+    private static string FormatValue(decimal value) =>
+        value.ToString("G29", CultureInfo.InvariantCulture);
+}

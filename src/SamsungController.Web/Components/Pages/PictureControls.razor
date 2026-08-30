@@ -7,8 +7,8 @@
 <section class="page-heading compact-heading picture-controls-heading">
     <div>
         <span class="eyebrow">MENU</span>
-        <h1>Adjust verified menu settings.</h1>
-        <p>Controls are grouped like the TV and unlock after the complete menu structure has been verified for this display combination.</p>
+        <h1>@(WorkspaceMode == MenuWorkspaceMode.CurrentState ? "Record current TV settings." : "Adjust verified menu settings.")</h1>
+        <p>@(WorkspaceMode == MenuWorkspaceMode.CurrentState ? "Enter values already shown on the TV in a command-free local workspace." : "Controls are grouped like the TV and unlock after the complete menu structure has been verified for this display combination.")</p>
     </div>
     <div class="page-heading-actions">
         <HelpBubble Title="Menu control behavior" ButtonText="Page help">
@@ -17,9 +17,10 @@
                 <li>Switches, selections, and submenu selections use predicted values and dynamically apply declared <code>disabledWhen</code> and <code>hiddenWhen</code> rules.</li>
                 <li>Turning on 20 Point enables its Interval and RGB controls. Choosing Custom Color Space enables its Color and RGB controls.</li>
                 <li>Interval percentages and Custom Color choices appear as fixed grid rows, so every RGB value can be staged together without manually changing the selector.</li>
+                <li><strong>Adjust TV</strong> sends or stages commands. <strong>Enter current settings</strong> uses an independent local draft and never sends commands to the TV.</li>
                 <li><strong>Immediate</strong> sends one changed control at a time. <strong>Apply button</strong> can stage a controller and its newly enabled settings together.</li>
                 <li><strong>Save profile</strong> stores desired values locally. <strong>Reset &amp; apply all</strong> runs a verified reset confirmation, restores known defaults, and reapplies that profile.</li>
-                <li>Use <strong>Saved current TV states</strong> to record values already visible on the TV and later load them as the prediction baseline. Saving or loading a state sends no remote commands.</li>
+                <li>Use <strong>Enter current settings</strong> to record values already visible on the TV and later load them as the prediction baseline. Saving or loading a state sends no remote commands.</li>
                 <li>This page unlocks only after Display Verification is complete for the selected menu structure, TV, signal, picture mode, input, and configurations.</li>
                 <li>Once unlocked, shared slider, switch, selection, submenu-selection, and indexed-selection behaviors are already trusted and do not request redundant confirmation.</li>
             </ul>
@@ -48,46 +49,238 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
 }
 else
 {
-<section class="panel picture-control-toolbar">
-    <div class="panel-label"><span>UPDATE BEHAVIOR</span><span>@PendingCount PENDING</span></div>
-    <div class="picture-control-options">
-        <label>
-            <span>WHEN VALUES CHANGE</span>
-            <select @bind="UpdateMode" disabled="@IsBusy">
-                <option value="@PictureUpdateMode.Immediate">Update TV immediately</option>
-                <option value="@PictureUpdateMode.Staged">Wait for Apply</option>
-            </select>
-        </label>
-        <label>
-            <span>AFTER UPDATE</span>
-            <select @bind="ExitBehavior" disabled="@IsBusy">
-                <option value="@PictureExitBehavior.Stay">Stay on last adjusted item</option>
-                <option value="@PictureExitBehavior.ReturnToVideo">Exit to normal video</option>
-            </select>
-        </label>
-        <div class="picture-control-summary">
-            <span>CURRENT MENU</span>
-            <strong>@(Snapshot.MenuLabel ?? "Unknown")</strong>
-            <small>@Snapshot.MenuConfidence confidence</small>
+<nav class="menu-workspace-tabs" aria-label="Menu workspace" role="tablist">
+    <button type="button"
+            class="@(WorkspaceMode == MenuWorkspaceMode.AdjustTv ? "active" : string.Empty)"
+            role="tab"
+            aria-selected="@(WorkspaceMode == MenuWorkspaceMode.AdjustTv ? "true" : "false")"
+            @onclick="() => SelectWorkspace(MenuWorkspaceMode.AdjustTv)"
+            disabled="@IsBusy">
+        <span>Adjust TV</span>
+        <small>Send now or stage for Apply</small>
+    </button>
+    <button type="button"
+            class="@(WorkspaceMode == MenuWorkspaceMode.CurrentState ? "active safe" : string.Empty)"
+            role="tab"
+            aria-selected="@(WorkspaceMode == MenuWorkspaceMode.CurrentState ? "true" : "false")"
+            @onclick="() => SelectWorkspace(MenuWorkspaceMode.CurrentState)"
+            disabled="@IsBusy">
+        <span>Enter current settings</span>
+        <small>Local values only · never sends commands</small>
+    </button>
+</nav>
+
+@if (WorkspaceMode == MenuWorkspaceMode.CurrentState)
+{
+    <section class="panel current-state-workspace">
+        <div class="current-state-safety">
+            <div>
+                <span>COMMAND-FREE WORKSPACE</span>
+                <strong>Record what is already shown on the TV.</strong>
+                <small>Edits below stay in a separate local draft. They cannot update the TV, even if immediate updates are enabled in the Adjust TV workspace.</small>
+            </div>
+            <b>NO TV COMMANDS</b>
         </div>
-        @if (FactoryResetCandidates.Count > 0)
-        {
+        <div class="saved-tv-state-manager">
             <label>
-                <span>FACTORY RESET ROUTE</span>
-                <select @bind="SelectedFactoryResetNodeId" @bind:after="SelectFactoryResetNode" disabled="@IsBusy">
-                    @foreach (var candidate in FactoryResetCandidates)
+                <span>STATE NAME</span>
+                <input @bind="SavedStateName" maxlength="80" placeholder="Current calibrated state" disabled="@IsBusy" />
+            </label>
+            <button class="primary-action" @onclick="SaveCurrentTvStateAsync" disabled="@(!CanSaveCurrentTvState)">Save entered values</button>
+            <label>
+                <span>LOAD SAVED STATE</span>
+                <select @bind="SelectedSavedStateId" disabled="@(IsBusy || SavedTvStates.Count == 0)">
+                    @if (SavedTvStates.Count == 0)
                     {
-                        <option value="@candidate.Id">@candidate.Path</option>
+                        <option value="">No saved states</option>
+                    }
+                    @foreach (var state in SavedTvStates)
+                    {
+                        <option value="@state.Id">@state.Name · @state.SavedAtUtc.ToLocalTime().ToString("g")</option>
                     }
                 </select>
             </label>
-            <button class="secondary-action danger-action" @onclick="BeginFactoryReset" disabled="@(!CanBeginFactoryReset)">Reset &amp; apply all</button>
+            <button class="secondary-action" @onclick="LoadCurrentTvStateAsync" disabled="@(!CanUseSavedTvState)">Load for editing</button>
+            <button class="quiet-action" @onclick="ResetCurrentStateDraft" disabled="@(IsBusy || !CurrentStateDraftChanged)">Discard draft</button>
+            <button class="quiet-action danger-action" @onclick="DeleteCurrentTvStateAsync" disabled="@(!CanUseSavedTvState)">Delete saved state</button>
+        </div>
+    </section>
+}
+else
+{
+    <details class="panel picture-control-toolbar compact-update-panel">
+        <summary>
+            <span>Update behavior</span>
+            <small>@UpdateBehaviorSummary</small>
+            <b>@PendingCount pending</b>
+        </summary>
+        <div class="compact-update-panel-body">
+            <div class="picture-control-options">
+                <label>
+                    <span>WHEN VALUES CHANGE</span>
+                    <select @bind="UpdateMode" disabled="@IsBusy">
+                        <option value="@PictureUpdateMode.Immediate">Update TV immediately</option>
+                        <option value="@PictureUpdateMode.Staged">Wait for Apply</option>
+                    </select>
+                </label>
+                <label>
+                    <span>AFTER UPDATE</span>
+                    <select @bind="ExitBehavior" disabled="@IsBusy">
+                        <option value="@PictureExitBehavior.Stay">Stay on last adjusted item</option>
+                        <option value="@PictureExitBehavior.ReturnToVideo">Exit to normal video</option>
+                    </select>
+                </label>
+                <div class="picture-control-summary">
+                    <span>CURRENT MENU</span>
+                    <strong>@(Snapshot.MenuLabel ?? "Unknown")</strong>
+                    <small>@Snapshot.MenuConfidence confidence</small>
+                </div>
+                @if (FactoryResetCandidates.Count > 0)
+                {
+                    <label>
+                        <span>FACTORY RESET ROUTE</span>
+                        <select @bind="SelectedFactoryResetNodeId" @bind:after="SelectFactoryResetNode" disabled="@IsBusy">
+                            @foreach (var candidate in FactoryResetCandidates)
+                            {
+                                <option value="@candidate.Id">@candidate.Path</option>
+                            }
+                        </select>
+                    </label>
+                    <button class="secondary-action danger-action" @onclick="BeginFactoryReset" disabled="@(!CanBeginFactoryReset)">Reset &amp; apply all</button>
+                }
+                <button class="secondary-action" @onclick="SaveControlProfileAsync" disabled="@(!CanSaveControlProfile)">Save profile</button>
+                <button class="primary-action picture-apply-action" @onclick="ApplyPendingAsync" disabled="@(!CanApplyPending)">
+                    @(IsBusy ? "Applying…" : $"Apply {PendingCount} change{(PendingCount == 1 ? string.Empty : "s")}") <span>▶</span>
+                </button>
+            </div>
+            @if (ConfirmFactoryReset)
+            {
+                <div class="factory-reset-confirmation" role="alert">
+                    <div>
+                        <strong>Reset picture settings to factory defaults?</strong>
+                        <span>SamsungController will execute <b>@SelectedFactoryResetNode?.Path</b>, choose <b>@SelectedFactoryResetChoice</b>, return to normal video, and then apply every staged value from known menu-definition defaults. This changes all settings covered by that TV reset.</span>
+                    </div>
+                    <button class="secondary-action" @onclick="CancelFactoryReset" disabled="@IsBusy">Cancel</button>
+                    <button class="primary-action danger-action" @onclick="ResetAndApplyAllAsync" disabled="@IsBusy">Yes — reset and apply all</button>
+                </div>
+            }
+        </div>
+    </details>
+}
+
+@if (HasExpertControls)
+{
+    <section class="panel expert-settings-panel">
+        <header class="expert-settings-heading">
+            <div>
+                <span>EXPERT SETTINGS</span>
+                <h2>Calibration controls</h2>
+                <p>Keep the most-used white-balance and custom-color controls close at hand.</p>
+            </div>
+            <small>@(WorkspaceMode == MenuWorkspaceMode.CurrentState ? "ENTER VALUES ONLY" : "VERIFIED TV CONTROLS")</small>
+        </header>
+        <nav class="expert-settings-tabs" aria-label="Expert settings groups" role="tablist">
+            @foreach (var tab in ExpertTabs)
+            {
+                var isSelected = tab.Kind == SelectedExpertTab;
+                <button type="button"
+                        class="@(isSelected ? "active" : string.Empty)"
+                        role="tab"
+                        aria-selected="@isSelected.ToString().ToLowerInvariant()"
+                        @onclick="() => SelectedExpertTab = tab.Kind"
+                        disabled="@IsBusy">
+                    <span>@tab.Label</span>
+                    <b>@GetExpertControlCount(tab.Kind)</b>
+                </button>
+            }
+        </nav>
+
+        @if (GetExpertControlCount(SelectedExpertTab) == 0)
+        {
+            <div class="expert-settings-empty">No @GetExpertTabLabel(SelectedExpertTab) controls are defined in this menu structure.</div>
         }
-        <button class="secondary-action" @onclick="SaveControlProfileAsync" disabled="@(!CanSaveControlProfile)">Save profile</button>
-        <button class="primary-action picture-apply-action" @onclick="ApplyPendingAsync" disabled="@(!CanApplyPending)">
-            @(IsBusy ? "Applying…" : $"Apply {PendingCount} change{(PendingCount == 1 ? string.Empty : "s")}") <span>▶</span>
-        </button>
-    </div>
+        else
+        {
+            <div class="expert-settings-content">
+                @foreach (var group in GetExpertIndexedGroups(SelectedExpertTab))
+                {
+                    var groupDisabled = IsIndexedGroupDisabled(group);
+                    <section class="picture-control-section indexed-control-section @(groupDisabled ? "disabled" : string.Empty)">
+                        <header class="picture-section-heading">
+                            <div>
+                                <span>FIXED VALUE GRID</span>
+                                <h2>@group.Label</h2>
+                                <p>@group.Path · each @group.Selector.Label option is fixed to one row</p>
+                            </div>
+                            <small>@group.Rows.Count row@(group.Rows.Count == 1 ? string.Empty : "s")</small>
+                        </header>
+                        @if (groupDisabled)
+                        {
+                            <p class="picture-disabled-reason">@GetIndexedGroupDisabledReason(group)</p>
+                        }
+                        <div class="indexed-control-table-wrap">
+                            <table class="indexed-control-table">
+                                <thead>
+                                    <tr>
+                                        <th>@group.Selector.Label</th>
+                                        @foreach (var slider in group.Sliders)
+                                        {
+                                            <th>@slider.Label <small>@FormatValue(slider.MinimumValue ?? 0)–@FormatValue(slider.MaximumValue ?? 0)</small></th>
+                                        }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var row in group.Rows)
+                                    {
+                                        <tr>
+                                            <th scope="row">@row.SelectorValue</th>
+                                            @foreach (var cell in row.Cells)
+                                            {
+                                                <td class="@(IsIndexedDisplayPending(group, cell) ? "pending" : string.Empty)">
+                                                    <input type="number"
+                                                           min="@FormatValue(cell.Minimum)"
+                                                           max="@FormatValue(cell.Maximum)"
+                                                           step="1"
+                                                           value="@GetIndexedDisplayValue(group, cell)"
+                                                           aria-label="@group.Label @row.SelectorValue @cell.Slider.Label"
+                                                           @onchange="args => ChangeIndexedCellAsync(group, cell, args.Value?.ToString())"
+                                                           disabled="@(IsBusy || groupDisabled)" />
+                                                    <small>@(WorkspaceMode == MenuWorkspaceMode.CurrentState ? "Saved" : "TV"): @cell.AppliedValue</small>
+                                                </td>
+                                            }
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                }
+                @if (GetExpertControls(SelectedExpertTab).Count > 0)
+                {
+                    <div class="picture-control-grid expert-control-grid">
+                        @foreach (var control in GetExpertControls(SelectedExpertTab))
+                        {
+                            var disabled = IsControlDisabled(control);
+                            <MenuControlCard Node="@control.Node"
+                                             Value="@GetControlDisplayValue(control)"
+                                             ReferenceValue="@control.AppliedValue"
+                                             Disabled="@disabled"
+                                             Busy="@IsBusy"
+                                             CurrentStateMode="@(WorkspaceMode == MenuWorkspaceMode.CurrentState)"
+                                             DisabledReason="@GetDisabledReason(control)"
+                                             StateClass="@GetControlCssClass(control, disabled)"
+                                             StateLabel="@GetControlStateLabel(control, disabled)"
+                                             ValueChanged="value => ChangeControlAsync(control, value)" />
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </section>
+}
+
+<section class="panel menu-area-browser">
+    <div class="panel-label"><span>ALL MENU SETTINGS</span><span>@DisplayVerification.CurrentDisplay</span></div>
     @if (Controls.Count > 0)
     {
         <nav class="menu-control-tabs" aria-label="Top-level menu areas" role="tablist">
@@ -108,68 +301,29 @@ else
     }
     <div class="menu-control-filters">
         <label>
-            <span>SEARCH CONTROLS</span>
+            <span>SEARCH THIS MENU AREA</span>
             <input type="search" @bind="SearchText" @bind:event="oninput" placeholder="Name or menu path" disabled="@IsBusy" />
         </label>
         <div class="slider-verification-summary verified">
-            <span>DISPLAY PROFILE</span>
-            <strong>Fully verified</strong>
-            <small>@DisplayVerification.CurrentDisplay</small>
+            <span>WORKSPACE</span>
+            <strong>@(WorkspaceMode == MenuWorkspaceMode.CurrentState ? "Local value entry · command-free" : "Fully verified TV updates")</strong>
+            <small>@(WorkspaceMode == MenuWorkspaceMode.CurrentState ? "Saving records a new prediction baseline." : "Values are predictions based on changes sent during this session.")</small>
         </div>
     </div>
-    <p class="field-note">Values are predictions based on menu-definition defaults and changes sent during this page session. Controls changed elsewhere can make those predictions inaccurate.</p>
-    <div class="saved-tv-state-manager">
-        <div>
-            <span>SAVED CURRENT TV STATES</span>
-            <strong>Load an observed baseline without changing the TV</strong>
-            <small>Stage the values currently shown by the TV, name that state, then save it. Loading a state makes relative adjustments start from those saved values and sends no keys.</small>
-        </div>
-        <label>
-            <span>STATE NAME</span>
-            <input @bind="SavedStateName" maxlength="80" placeholder="Current calibrated state" disabled="@IsBusy" />
-        </label>
-        <button class="secondary-action" @onclick="SaveCurrentTvStateAsync" disabled="@(!CanSaveCurrentTvState)">Save staged values as current</button>
-        <label>
-            <span>SAVED STATE</span>
-            <select @bind="SelectedSavedStateId" disabled="@(IsBusy || SavedTvStates.Count == 0)">
-                @if (SavedTvStates.Count == 0)
-                {
-                    <option value="">No saved states</option>
-                }
-                @foreach (var state in SavedTvStates)
-                {
-                    <option value="@state.Id">@state.Name · @state.SavedAtUtc.ToLocalTime().ToString("g")</option>
-                }
-            </select>
-        </label>
-        <button class="primary-action" @onclick="LoadCurrentTvStateAsync" disabled="@(!CanUseSavedTvState)">Load as current values</button>
-        <button class="quiet-action" @onclick="DeleteCurrentTvStateAsync" disabled="@(!CanUseSavedTvState)">Delete</button>
-    </div>
-    @if (ConfirmFactoryReset)
-    {
-        <div class="factory-reset-confirmation" role="alert">
-            <div>
-                <strong>Reset picture settings to factory defaults?</strong>
-                <span>SamsungController will execute <b>@SelectedFactoryResetNode?.Path</b>, choose <b>@SelectedFactoryResetChoice</b>, return to normal video, and then apply every staged value from known menu-definition defaults. This changes all settings covered by that TV reset.</span>
-            </div>
-            <button class="secondary-action" @onclick="CancelFactoryReset" disabled="@IsBusy">Cancel</button>
-            <button class="primary-action danger-action" @onclick="ResetAndApplyAllAsync" disabled="@IsBusy">Yes — reset and apply all</button>
-        </div>
-    }
 </section>
 
-@if (VisibleControlCount == 0)
+@if (GeneralVisibleControlCount == 0)
 {
     <section class="panel panel-empty picture-controls-empty">
-        <strong>@(Controls.Count == 0 ? "No verified menu controls are available" : "No controls match this filter")</strong>
-        <span>@(Controls.Count == 0 ? "Define values and bounds in the menu file, then complete the generated route verification." : "Choose another menu tab or clear the search text.")</span>
+        <strong>@(Controls.Count == 0 ? "No verified menu controls are available" : "No additional controls match this menu area")</strong>
+        <span>@(Controls.Count == 0 ? "Define values and bounds in the menu file, then complete the generated route verification." : "Choose another menu tab or clear the search text. Expert settings remain available above.")</span>
         <a href="menu/build">Open Build &amp; Verify →</a>
     </section>
 }
 else
 {
     <div class="picture-control-sections">
-        @foreach (var group in GetVisibleIndexedGroups())
+        @foreach (var group in GetVisibleGeneralIndexedGroups())
         {
             var groupDisabled = IsIndexedGroupDisabled(group);
             <section class="panel picture-control-section indexed-control-section @(groupDisabled ? "disabled" : string.Empty)">
@@ -203,16 +357,16 @@ else
                                     <th scope="row">@row.SelectorValue</th>
                                     @foreach (var cell in row.Cells)
                                     {
-                                        <td class="@(cell.Pending ? "pending" : string.Empty)">
+                                        <td class="@(IsIndexedDisplayPending(group, cell) ? "pending" : string.Empty)">
                                             <input type="number"
                                                    min="@FormatValue(cell.Minimum)"
                                                    max="@FormatValue(cell.Maximum)"
                                                    step="1"
-                                                   value="@cell.DesiredValue"
+                                                   value="@GetIndexedDisplayValue(group, cell)"
                                                    aria-label="@group.Label @row.SelectorValue @cell.Slider.Label"
                                                    @onchange="args => ChangeIndexedCellAsync(group, cell, args.Value?.ToString())"
                                                    disabled="@(IsBusy || groupDisabled)" />
-                                            <small>TV: @cell.AppliedValue</small>
+                                            <small>@(WorkspaceMode == MenuWorkspaceMode.CurrentState ? "Saved" : "TV"): @cell.AppliedValue</small>
                                         </td>
                                     }
                                 </tr>
@@ -237,91 +391,16 @@ else
                     @foreach (var control in section.Controls)
                     {
                         var disabled = IsControlDisabled(control);
-                        <article class="picture-control-card @GetControlCssClass(control, disabled)">
-                            <header>
-                                <div>
-                                    <strong>@control.Node.Label</strong>
-                                    <small>@GetControlTypeLabel(control.Node.ControlType)</small>
-                                </div>
-                                <b>@GetControlStateLabel(control, disabled)</b>
-                            </header>
-
-                            @if (control.Node.ControlType == MenuControlType.Slider)
-                            {
-                                <div class="picture-compact-value">
-                                    <strong>@control.DesiredValue</strong>
-                                    <span>@FormatValue(control.Minimum) – @FormatValue(control.Maximum)</span>
-                                </div>
-                                <div class="picture-compact-slider">
-                                    <button type="button"
-                                            aria-label="Decrease @control.Node.Label"
-                                            @onclick="() => NudgeAsync(control, -1)"
-                                            disabled="@(IsBusy || disabled || control.DesiredNumber <= control.Minimum)">−</button>
-                                    <input type="range"
-                                           min="@FormatValue(control.Minimum)"
-                                           max="@FormatValue(control.Maximum)"
-                                           step="1"
-                                           value="@control.DesiredValue"
-                                           aria-label="@control.Node.Label"
-                                           @onchange="args => ChangeControlAsync(control, args.Value?.ToString())"
-                                           disabled="@(IsBusy || disabled)" />
-                                    <button type="button"
-                                            aria-label="Increase @control.Node.Label"
-                                            @onclick="() => NudgeAsync(control, 1)"
-                                            disabled="@(IsBusy || disabled || control.DesiredNumber >= control.Maximum)">+</button>
-                                    <input class="picture-compact-number"
-                                           type="number"
-                                           min="@FormatValue(control.Minimum)"
-                                           max="@FormatValue(control.Maximum)"
-                                           step="1"
-                                           value="@control.DesiredValue"
-                                           aria-label="Numeric value for @control.Node.Label"
-                                           @onchange="args => ChangeControlAsync(control, args.Value?.ToString())"
-                                           disabled="@(IsBusy || disabled)" />
-                                </div>
-                            }
-                            else if (control.Node.ControlType == MenuControlType.Switch)
-                            {
-                                <label class="picture-switch-control">
-                                    <span class="picture-switch-copy">
-                                        <strong>@(IsOn(control.DesiredValue) ? "On" : "Off")</strong>
-                                        <small>@(disabled ? GetDisabledReason(control) : "Select to toggle")</small>
-                                    </span>
-                                    <input type="checkbox"
-                                           checked="@IsOn(control.DesiredValue)"
-                                           @onchange="args => ChangeSwitchAsync(control, args.Value is true)"
-                                           disabled="@(IsBusy || disabled)" />
-                                    <span class="picture-switch-track" aria-hidden="true"><i></i></span>
-                                </label>
-                            }
-                            else if (control.Node.ControlType is MenuControlType.Selection
-                                     or MenuControlType.SubmenuSelection
-                                     or MenuControlType.IndexedSelection)
-                            {
-                                <label class="picture-selection-control">
-                                    <span>SELECTED VALUE</span>
-                                    <select value="@control.DesiredValue"
-                                            @onchange="args => ChangeControlAsync(control, args.Value?.ToString())"
-                                            disabled="@(IsBusy || disabled)">
-                                        @foreach (var option in control.Node.SelectionOptions)
-                                        {
-                                            <option value="@option">@option</option>
-                                        }
-                                    </select>
-                                </label>
-                            }
-
-                            <footer>
-                                @if (disabled)
-                                {
-                                    <span class="picture-disabled-reason">@GetDisabledReason(control)</span>
-                                }
-                                else
-                                {
-                                    <span>TV prediction: <b>@control.AppliedValue</b></span>
-                                }
-                            </footer>
-                        </article>
+                        <MenuControlCard Node="@control.Node"
+                                         Value="@GetControlDisplayValue(control)"
+                                         ReferenceValue="@control.AppliedValue"
+                                         Disabled="@disabled"
+                                         Busy="@IsBusy"
+                                         CurrentStateMode="@(WorkspaceMode == MenuWorkspaceMode.CurrentState)"
+                                         DisabledReason="@GetDisabledReason(control)"
+                                         StateClass="@GetControlCssClass(control, disabled)"
+                                         StateLabel="@GetControlStateLabel(control, disabled)"
+                                         ValueChanged="value => ChangeControlAsync(control, value)" />
                     }
                 </div>
             </section>
@@ -338,6 +417,9 @@ else
     private IReadOnlyList<SavedMenuControlStateSummary> SavedTvStates { get; set; } = [];
     private List<PictureControlEdit> Controls { get; } = [];
     private List<IndexedControlGroupEdit> IndexedGroups { get; } = [];
+    private Dictionary<string, string> CurrentStateDraft { get; } = new(StringComparer.OrdinalIgnoreCase);
+    private MenuWorkspaceMode WorkspaceMode { get; set; } = MenuWorkspaceMode.AdjustTv;
+    private ExpertSettingsKind SelectedExpertTab { get; set; } = ExpertSettingsKind.TwoPointWhiteBalance;
     private PictureUpdateMode UpdateMode { get; set; } = PictureUpdateMode.Staged;
     private PictureExitBehavior ExitBehavior { get; set; } = PictureExitBehavior.Stay;
     private string SelectedAreaId { get; set; } = string.Empty;
@@ -359,7 +441,19 @@ else
         + IndexedGroups.Sum(group => IsIndexedGroupDisabled(group)
             ? 0
             : group.Rows.Sum(row => row.Cells.Count(cell => cell.Pending)));
-    private int VisibleControlCount => GetFilteredControls().Count + GetVisibleIndexedGroups().Count;
+    private int GeneralVisibleControlCount => GetFilteredControls().Count + GetVisibleGeneralIndexedGroups().Count;
+    private bool HasExpertControls => Controls.Any(control => ClassifyExpertControl(control.Node) is not null)
+        || IndexedGroups.Any(group => ClassifyExpertControl(group.Selector) is not null);
+    private bool CurrentStateDraftChanged => Controls
+            .Where(control => !IsIndexedControl(control.Node.Id))
+            .Any(control => !GetControlDisplayValue(control).Equals(
+                control.AppliedValue,
+                StringComparison.OrdinalIgnoreCase))
+        || IndexedGroups.SelectMany(group => group.Rows.SelectMany(row => row.Cells.Select(cell => (group, cell))))
+            .Any(item => !GetIndexedDisplayValue(item.group, item.cell).Equals(
+                item.cell.AppliedValue,
+                StringComparison.OrdinalIgnoreCase));
+    private string UpdateBehaviorSummary => $"{(UpdateMode == PictureUpdateMode.Immediate ? "Immediate" : "Apply button")} · {(ExitBehavior == PictureExitBehavior.Stay ? "stay on item" : "return to video")}";
     private bool MenuIsAvailable => DisplayVerification.FullyVerified;
     private bool CanApplyPending => PendingCount > 0
         && MenuIsAvailable
@@ -392,7 +486,8 @@ else
         && Controls.Count > 0
         && !Snapshot.MacroRunning
         && !Navigation.IsRunning;
-    private bool CanSaveCurrentTvState => CanSaveControlProfile
+    private bool CanSaveCurrentTvState => WorkspaceMode == MenuWorkspaceMode.CurrentState
+        && CanSaveControlProfile
         && !string.IsNullOrWhiteSpace(SavedStateName);
     private bool CanUseSavedTvState => !IsBusy
         && MenuIsAvailable
@@ -420,6 +515,15 @@ else
             return;
         }
 
+        if (WorkspaceMode == MenuWorkspaceMode.CurrentState)
+        {
+            CurrentStateDraft[ControlDraftKey(control.Node.Id)] = value;
+            EnsureSelectedMenuArea();
+            LocalError = null;
+            LocalStatus = $"Recorded {control.Node.Label} at {value} in the local draft. No TV commands were sent.";
+            return;
+        }
+
         control.DesiredValue = value;
         ClearPendingValuesThatBecameUnavailable();
         EnsureSelectedMenuArea();
@@ -432,17 +536,6 @@ else
             await ApplyAsync([control]);
         }
     }
-
-    private Task ChangeSwitchAsync(PictureControlEdit control, bool enabled) =>
-        ChangeControlAsync(control, enabled ? "on" : "off");
-
-    private Task NudgeAsync(PictureControlEdit control, int delta) =>
-        ChangeControlAsync(
-            control,
-            FormatValue(Math.Clamp(
-                control.DesiredNumber + delta,
-                control.Minimum,
-                control.Maximum)));
 
     private Task ApplyPendingAsync() => ApplyChangesAsync(
         Controls.Where(control =>
@@ -471,10 +564,19 @@ else
             return;
         }
 
-        cell.DesiredValue = FormatValue(Math.Clamp(
+        var value = FormatValue(Math.Clamp(
             decimal.Truncate(numericValue),
             cell.Minimum,
             cell.Maximum));
+        if (WorkspaceMode == MenuWorkspaceMode.CurrentState)
+        {
+            CurrentStateDraft[IndexedDraftKey(group, cell)] = value;
+            LocalError = null;
+            LocalStatus = $"Recorded {group.Label} · {cell.SelectorValue} · {cell.Slider.Label} at {value} in the local draft. No TV commands were sent.";
+            return;
+        }
+
+        cell.DesiredValue = value;
         LocalError = null;
         LocalStatus = UpdateMode == PictureUpdateMode.Staged
             ? $"{group.Label} · {cell.SelectorValue} · {cell.Slider.Label} staged at {cell.DesiredValue}."
@@ -668,8 +770,9 @@ else
         {
             var state = await Controller.SaveCurrentMenuControlStateAsync(
                 SavedStateName,
-                CreateControlProfileValues());
+                CreateCurrentStateProfileValues());
             ApplySavedTvState(state);
+            ResetCurrentStateDraft();
             SavedTvStates = Controller.GetSavedMenuControlStates();
             SelectedSavedStateId = state.Id;
             SavedStateName = state.Name;
@@ -694,6 +797,7 @@ else
         {
             var state = await Controller.LoadMenuControlStateAsync(SelectedSavedStateId);
             ApplySavedTvState(state);
+            ResetCurrentStateDraft();
             SavedStateName = state.Name;
             LocalStatus = $"Loaded '{state.Name}' as the current prediction baseline. No TV commands were sent.";
         }
@@ -793,6 +897,47 @@ else
         ClearPendingValuesThatBecameUnavailable();
     }
 
+    private void SelectWorkspace(MenuWorkspaceMode mode)
+    {
+        WorkspaceMode = mode;
+        ConfirmFactoryReset = false;
+        LocalError = null;
+        LocalStatus = mode == MenuWorkspaceMode.CurrentState
+            ? "Current-settings entry is command-free. Changes remain local until you save this TV state."
+            : null;
+        if (mode == MenuWorkspaceMode.CurrentState && CurrentStateDraft.Count == 0)
+        {
+            ResetCurrentStateDraft();
+        }
+        else if (mode == MenuWorkspaceMode.CurrentState)
+        {
+            ReconcileCurrentStateDraft();
+        }
+    }
+
+    private void ResetCurrentStateDraft()
+    {
+        CurrentStateDraft.Clear();
+        foreach (var control in Controls.Where(control => !IsIndexedControl(control.Node.Id)))
+        {
+            CurrentStateDraft[ControlDraftKey(control.Node.Id)] = control.AppliedValue;
+        }
+
+        foreach (var group in IndexedGroups)
+        {
+            foreach (var cell in group.Rows.SelectMany(row => row.Cells))
+            {
+                CurrentStateDraft[IndexedDraftKey(group, cell)] = cell.AppliedValue;
+            }
+        }
+
+        if (WorkspaceMode == MenuWorkspaceMode.CurrentState)
+        {
+            LocalError = null;
+            LocalStatus = "Current-settings draft restored to the saved prediction baseline. No TV commands were sent.";
+        }
+    }
+
     private IReadOnlyList<MenuControlProfileValue> CreateControlProfileValues() => Controls
         .Where(control => !IsIndexedControl(control.Node.Id))
         .Select(control => new MenuControlProfileValue(
@@ -802,6 +947,19 @@ else
             new MenuControlProfileValue(
                 cell.Slider.Id,
                 cell.DesiredValue,
+                group.Selector.Id,
+                row.SelectorValue)))))
+        .ToArray();
+
+    private IReadOnlyList<MenuControlProfileValue> CreateCurrentStateProfileValues() => Controls
+        .Where(control => !IsIndexedControl(control.Node.Id))
+        .Select(control => new MenuControlProfileValue(
+            control.Node.Id,
+            GetControlDisplayValue(control)))
+        .Concat(IndexedGroups.SelectMany(group => group.Rows.SelectMany(row => row.Cells.Select(cell =>
+            new MenuControlProfileValue(
+                cell.Slider.Id,
+                GetIndexedDisplayValue(group, cell),
                 group.Selector.Id,
                 row.SelectorValue)))))
         .ToArray();
@@ -982,8 +1140,9 @@ else
             : GetDisabledReason(disabledNode);
     }
 
-    private IReadOnlyList<IndexedControlGroupEdit> GetVisibleIndexedGroups() => IndexedGroups
+    private IReadOnlyList<IndexedControlGroupEdit> GetVisibleGeneralIndexedGroups() => IndexedGroups
         .Where(group => !IsIndexedGroupHidden(group)
+            && ClassifyExpertControl(group.Selector) is null
             && !string.IsNullOrWhiteSpace(SelectedAreaId)
             && ResolveMenuArea(group.Selector).Id.Equals(
                 SelectedAreaId,
@@ -998,6 +1157,80 @@ else
                     SearchText.Trim(),
                     StringComparison.OrdinalIgnoreCase))))
         .ToArray();
+
+    private IReadOnlyList<PictureControlEdit> GetExpertControls(ExpertSettingsKind kind) => Controls
+        .Where(control => !IsIndexedControl(control.Node.Id)
+            && !IsControlHidden(control)
+            && ClassifyExpertControl(control.Node) == kind)
+        .ToArray();
+
+    private IReadOnlyList<IndexedControlGroupEdit> GetExpertIndexedGroups(ExpertSettingsKind kind) => IndexedGroups
+        .Where(group => !IsIndexedGroupHidden(group)
+            && ClassifyExpertControl(group.Selector) == kind)
+        .ToArray();
+
+    private int GetExpertControlCount(ExpertSettingsKind kind) =>
+        GetExpertControls(kind).Count
+        + GetExpertIndexedGroups(kind).Sum(group => group.Rows.Count * group.Sliders.Count);
+
+    private static string GetExpertTabLabel(ExpertSettingsKind kind) => kind switch
+    {
+        ExpertSettingsKind.TwoPointWhiteBalance => "2pt white balance",
+        ExpertSettingsKind.TwentyPointWhiteBalance => "20pt white balance",
+        ExpertSettingsKind.Color => "color",
+        _ => "expert"
+    };
+
+    private static ExpertSettingsKind? ClassifyExpertControl(MenuNodeSummary node)
+    {
+        var identity = $"{node.Id} {node.Label} {node.Path}";
+        if (identity.Contains("20 Point", StringComparison.OrdinalIgnoreCase)
+            || identity.Contains("20pt", StringComparison.OrdinalIgnoreCase)
+            || identity.Contains("20 pt", StringComparison.OrdinalIgnoreCase))
+        {
+            return ExpertSettingsKind.TwentyPointWhiteBalance;
+        }
+
+        if (identity.Contains("Color Space", StringComparison.OrdinalIgnoreCase)
+            || identity.Contains("Colour Space", StringComparison.OrdinalIgnoreCase))
+        {
+            return ExpertSettingsKind.Color;
+        }
+
+        if (identity.Contains("White Balance", StringComparison.OrdinalIgnoreCase)
+            || identity.Contains("2 Point", StringComparison.OrdinalIgnoreCase)
+            || identity.Contains("2pt", StringComparison.OrdinalIgnoreCase)
+            || identity.Contains("2 pt", StringComparison.OrdinalIgnoreCase))
+        {
+            return ExpertSettingsKind.TwoPointWhiteBalance;
+        }
+
+        return null;
+    }
+
+    private string GetControlDisplayValue(PictureControlEdit control) =>
+        WorkspaceMode == MenuWorkspaceMode.CurrentState
+            ? CurrentStateDraft.GetValueOrDefault(
+                ControlDraftKey(control.Node.Id),
+                control.AppliedValue)
+            : control.DesiredValue;
+
+    private string GetIndexedDisplayValue(IndexedControlGroupEdit group, IndexedCellEdit cell) =>
+        WorkspaceMode == MenuWorkspaceMode.CurrentState
+            ? CurrentStateDraft.GetValueOrDefault(
+                IndexedDraftKey(group, cell),
+                cell.AppliedValue)
+            : cell.DesiredValue;
+
+    private bool IsIndexedDisplayPending(IndexedControlGroupEdit group, IndexedCellEdit cell) =>
+        !GetIndexedDisplayValue(group, cell).Equals(
+            cell.AppliedValue,
+            StringComparison.OrdinalIgnoreCase);
+
+    private static string ControlDraftKey(string nodeId) => $"control:{nodeId}";
+
+    private static string IndexedDraftKey(IndexedControlGroupEdit group, IndexedCellEdit cell) =>
+        $"indexed:{group.Selector.Id}\u001f{cell.SelectorValue}\u001f{cell.Slider.Id}";
 
     private IReadOnlyList<IndexedCellChange> GetPendingIndexedChanges() => IndexedGroups
         .Where(group => !IsIndexedGroupDisabled(group) && !IsIndexedGroupHidden(group))
@@ -1047,14 +1280,21 @@ else
         }
     }
 
-    private string? GetPredictedValue(string nodeId) =>
-        Controls.FirstOrDefault(candidate => candidate.Node.Id.Equals(
+    private string? GetPredictedValue(string nodeId)
+    {
+        var control = Controls.FirstOrDefault(candidate => candidate.Node.Id.Equals(
             nodeId,
-            StringComparison.OrdinalIgnoreCase))?.DesiredValue
-        ?? Navigation.ControlValues.GetValueOrDefault(nodeId)
-        ?? Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
-            nodeId,
-            StringComparison.OrdinalIgnoreCase))?.DefaultValue;
+            StringComparison.OrdinalIgnoreCase));
+        if (control is not null)
+        {
+            return GetControlDisplayValue(control);
+        }
+
+        return Navigation.ControlValues.GetValueOrDefault(nodeId)
+            ?? Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
+                nodeId,
+                StringComparison.OrdinalIgnoreCase))?.DefaultValue;
+    }
 
     private string GetDisabledReason(PictureControlEdit control) =>
         GetDisabledReason(control.Node);
@@ -1119,6 +1359,7 @@ else
     private IReadOnlyList<PictureControlEdit> GetFilteredControls() => Controls.Where(control =>
             !IsControlHidden(control)
             && !IsIndexedControl(control.Node.Id)
+            && ClassifyExpertControl(control.Node) is null
             && !string.IsNullOrWhiteSpace(SelectedAreaId)
             && ResolveMenuArea(control.Node).Id.Equals(
                 SelectedAreaId,
@@ -1132,10 +1373,13 @@ else
     {
         var nodeOrder = Navigation.Nodes.Select((node, index) => (node.Id, index))
             .ToDictionary(item => item.Id, item => item.index, StringComparer.OrdinalIgnoreCase);
-        return Controls.Where(control => !IsControlHidden(control) && !IsIndexedControl(control.Node.Id))
+        return Controls.Where(control => !IsControlHidden(control)
+                && !IsIndexedControl(control.Node.Id)
+                && ClassifyExpertControl(control.Node) is null)
             .Select(control => ResolveMenuArea(control.Node))
             .Concat(IndexedGroups
-                .Where(group => !IsIndexedGroupHidden(group))
+                .Where(group => !IsIndexedGroupHidden(group)
+                    && ClassifyExpertControl(group.Selector) is null)
                 .SelectMany(group => Enumerable.Repeat(
                     ResolveMenuArea(group.Selector),
                     Math.Max(1, group.Rows.Count * group.Sliders.Count))))
@@ -1234,6 +1478,7 @@ else
         {
             Controls.Clear();
             IndexedGroups.Clear();
+            CurrentStateDraft.Clear();
             SelectedAreaId = string.Empty;
             return;
         }
@@ -1272,8 +1517,40 @@ else
         }
 
         ReconcileIndexedGroups();
+        ReconcileCurrentStateDraft();
         EnsureSelectedMenuArea();
         EnsureFactoryResetSelection();
+    }
+
+    private void ReconcileCurrentStateDraft()
+    {
+        if (WorkspaceMode != MenuWorkspaceMode.CurrentState)
+        {
+            return;
+        }
+
+        var validKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var control in Controls.Where(control => !IsIndexedControl(control.Node.Id)))
+        {
+            var key = ControlDraftKey(control.Node.Id);
+            validKeys.Add(key);
+            CurrentStateDraft.TryAdd(key, control.AppliedValue);
+        }
+
+        foreach (var group in IndexedGroups)
+        {
+            foreach (var cell in group.Rows.SelectMany(row => row.Cells))
+            {
+                var key = IndexedDraftKey(group, cell);
+                validKeys.Add(key);
+                CurrentStateDraft.TryAdd(key, cell.AppliedValue);
+            }
+        }
+
+        foreach (var staleKey in CurrentStateDraft.Keys.Where(key => !validKeys.Contains(key)).ToArray())
+        {
+            CurrentStateDraft.Remove(staleKey);
+        }
     }
 
     private void ReconcileIndexedGroups()
@@ -1521,33 +1798,48 @@ else
             StringComparison.OrdinalIgnoreCase));
     }
 
-    private static string GetControlTypeLabel(MenuControlType type) => type switch
-    {
-        MenuControlType.Slider => "SLIDER",
-        MenuControlType.Switch => "SWITCH",
-        MenuControlType.Selection => "SELECTION",
-        MenuControlType.SubmenuSelection => "SUBMENU SELECTION",
-        MenuControlType.IndexedSelection => "INDEXED SELECTION",
-        _ => type.ToString().ToUpperInvariant()
-    };
-
     private string GetControlStateLabel(PictureControlEdit control, bool disabled) => disabled
         ? "DISABLED"
-        : control.Pending
-            ? "PENDING"
-            : "VERIFIED";
+        : WorkspaceMode == MenuWorkspaceMode.CurrentState
+            ? GetControlDisplayValue(control).Equals(control.AppliedValue, StringComparison.OrdinalIgnoreCase)
+                ? "RECORDED"
+                : "UNSAVED"
+            : control.Pending
+                ? "PENDING"
+                : "VERIFIED";
 
     private string GetControlCssClass(PictureControlEdit control, bool disabled)
     {
-        return $"{(disabled ? "disabled" : string.Empty)} {(control.Pending ? "pending" : string.Empty)} {(MenuIsAvailable ? "confirmed" : string.Empty)}";
+        var pending = WorkspaceMode == MenuWorkspaceMode.CurrentState
+            ? !GetControlDisplayValue(control).Equals(control.AppliedValue, StringComparison.OrdinalIgnoreCase)
+            : control.Pending;
+        return $"{(disabled ? "disabled" : string.Empty)} {(pending ? "pending" : string.Empty)} {(MenuIsAvailable && !pending ? "confirmed" : string.Empty)}";
     }
-
-    private static bool IsOn(string value) => value.Equals("on", StringComparison.OrdinalIgnoreCase);
 
     private static string FormatValue(decimal value) =>
         value.ToString("G29", CultureInfo.InvariantCulture);
 
     public void Dispose() => Controller.Changed -= HandleControllerChanged;
+
+    private static IReadOnlyList<ExpertSettingsTab> ExpertTabs { get; } =
+    [
+        new(ExpertSettingsKind.TwoPointWhiteBalance, "2pt white balance"),
+        new(ExpertSettingsKind.TwentyPointWhiteBalance, "20pt white balance"),
+        new(ExpertSettingsKind.Color, "Color")
+    ];
+
+    private enum MenuWorkspaceMode
+    {
+        AdjustTv,
+        CurrentState
+    }
+
+    private enum ExpertSettingsKind
+    {
+        TwoPointWhiteBalance,
+        TwentyPointWhiteBalance,
+        Color
+    }
 
     private enum PictureUpdateMode
     {
@@ -1584,6 +1876,8 @@ else
         int Order);
 
     private sealed record MenuControlArea(string Id, string Label, int ControlCount);
+
+    private sealed record ExpertSettingsTab(ExpertSettingsKind Kind, string Label);
 
     private sealed class IndexedControlGroupEdit(
         MenuNodeSummary selector,

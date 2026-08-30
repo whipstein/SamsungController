@@ -106,6 +106,7 @@ Status was reconciled with the repository on 2026-08-30. A checked box means the
 - [x] Collapse authoring sections by default and reopen them when contained state requires validation.
 - [x] Remove incorrect verified settings with dependency-aware safeguards.
 - [x] Expose sliders, switches, and selections from every menu area in a top-level tabbed, section-grouped Menu page after full display verification.
+- [x] Separate command-free current-value entry from TV updates and keep 2pt, 20pt, and color calibration controls in dedicated Expert Settings tabs.
 - [x] Apply conditional enablement in dependency order and derive enabled-child routes from verified containing sections.
 - [x] Promote shared slider behavior through three distinct guided Display Verification confirmations instead of verifying every slider.
 - [x] Promote TV-specific selection behavior through one guided confirmation per interaction type while fingerprinting every declared option list.
