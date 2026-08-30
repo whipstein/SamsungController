@@ -105,10 +105,10 @@ Status was reconciled with the repository on 2026-08-30. A checked box means the
 - [x] Set the expected current position after each accepted pass and return to video after the third.
 - [x] Collapse authoring sections by default and reopen them when contained state requires validation.
 - [x] Remove incorrect verified settings with dependency-aware safeguards.
-- [x] Expose verified sliders, switches, and selections from every menu area in a top-level tabbed, section-grouped control center.
+- [x] Expose sliders, switches, and selections from every menu area in a top-level tabbed, section-grouped Menu page after full display verification.
 - [x] Apply conditional enablement in dependency order and derive enabled-child routes from verified containing sections.
-- [x] Promote shared slider behavior after three distinct TV-specific visual confirmations instead of verifying every slider.
-- [x] Promote TV-specific selection behavior after one representative confirmation per interaction type while fingerprinting every declared option list.
+- [x] Promote shared slider behavior through three distinct guided Display Verification confirmations instead of verifying every slider.
+- [x] Promote TV-specific selection behavior through one guided confirmation per interaction type while fingerprinting every declared option list.
 - [x] Support submenu selections that choose from an ordered value list and return to the containing menu afterward.
 - [x] Present 20 Point percentages and Custom Color choices as fixed multi-slider grids.
 - [x] Persist a local desired-value profile and reapply it after an explicitly confirmed verified factory-reset command.
@@ -119,6 +119,8 @@ Status was reconciled with the repository on 2026-08-30. A checked box means the
 - [x] Exclude reset/destructive confirmations from required representative verification.
 - [x] Save and load named current-TV value states locally without sending TV commands.
 - [x] Keep distributable menu structures in a tracked repository catalog while storing display verification and saved TV states locally.
+- [x] Auto-discover local, repository, and packaged menu structures and select their configurations from the Connection page.
+- [x] Consolidate everyday settings into Menu, remove the separate navigator page, and hide all controls until the complete menu/display profile is current.
 
 ### Read-only protocol research
 

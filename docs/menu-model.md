@@ -264,19 +264,19 @@ calculated routes.
 
 `hiddenWhen` documents rows that disappear entirely. It uses the same `setting`
 and `equals` entries and the same OR behavior. When a hidden rule matches, the
-row and all descendants are removed from Menu Controls, the verified menu map,
-and calculated sibling offsets. SamsungController orders a staged controlling
+row and all descendants are removed from Menu and calculated sibling offsets.
+SamsungController orders a staged controlling
 change before its dependent rows and keeps the predicted values for the current
 application session. A change made with the physical remote cannot be observed;
-restore the declared defaults or reproduce that change in Menu Controls before
+restore the declared defaults or load a matching saved state in Menu before
 relying on a calculated route.
 
 Nested `children` arrays control tree presentation. Within each submenu, the
 array sequence is the persistent custom order used to mirror the TV.
 Build & Verify can move siblings up or down and can temporarily display every
 branch alphabetically without changing that saved custom order. Tree order does
-not imply that navigation is possible; the verified Menu page follows the saved
-custom order. The planner uses only explicit directed
+not imply that navigation is possible; route generation follows the saved custom
+order. The planner uses only explicit directed
 transitions, adds a strong penalty to draft edges during preview, and normally
 prefers a longer verified route over a short draft route.
 
@@ -373,8 +373,8 @@ can be planned or sent.
    When selections change which rows are present, add a named menu configuration
    for each visible layout and record its relevant selection values. Choose the
    matching configuration before recording, validation, or everyday navigation.
-   Nodes may exist only as topology documentation; only destinations with a
-   route verified in the active configuration appear on the ordinary Menu page.
+   Nodes may exist only as topology documentation; adjustable controls become
+   available on Menu after the complete structure/display profile is verified.
 5. In **Define anchor**, choose the base menu, normally Settings. Define the
    root return script (`KEY_RETURN` on the observed TV) and the deeper-menu
    return script (`KEY_MENU, KEY_RETURN`). Save them as one anchor definition.
@@ -424,21 +424,20 @@ can be planned or sent.
 
 For a slider, topology verification ends with the slider row highlighted. Do not
 press Left or Right during that route test: the coverage result verifies only
-that the generated route reaches the correct control. After the route is
-verified, use **Menu Controls** to exercise the value behavior. That page
+that the generated route reaches the correct control. Display Verification then
+tests representative value behavior. After the complete profile passes, **Menu**
 collects adjustable controls from every menu area, separates them into tabs by
 top-level menu, and groups sliders, switches, selections, and submenu selections by their immediate
 menu parent. It
 sends one Left or Right key per whole-number slider step, Select for a switch,
 and Select plus ordered Up/Down movement for a selection. A submenu selection
 adds Return after choosing the value so the TV is back in the containing menu.
-It then asks for
-visual confirmation of the predicted value. The value confirmation is
-deliberately separate from the three-pass route count because the TV does not
-return its setting value. Changes made with a physical remote or another
-application can invalidate the page's predicted starting value.
+The page does not request another per-control confirmation because these shared
+behaviors were already accepted in Display Verification. Changes made with a
+physical remote or another application can still invalidate its predicted
+starting value.
 
-Menu Controls evaluates `disabledWhen` and `hiddenWhen` against predicted values.
+Menu evaluates `disabledWhen` and `hiddenWhen` against predicted values.
 A staged update orders controlling settings before their dependents. A
 conditional child that is disabled under the declared defaults does not need to be
 added to the default-state coverage checklist: after its controller enables it,
@@ -448,30 +447,19 @@ RGB controls and Custom Color Space controls that remain in the topology but
 cannot be selected in the default state.
 
 When a `hiddenWhen` rule changes, the row and descendants appear or disappear
-immediately and every later sibling offset is recalculated. The ordinary verified
-menu navigator uses the same in-session predictions. Default values are restored
-when the definition is reloaded or the application restarts.
+immediately and every later sibling offset is recalculated. Default values are
+restored when the definition is reloaded or the application restarts.
 
-Slider value confirmation uses representative coverage rather than requiring
-every slider independently. Each distinct slider visually confirmed on the page
-adds one pass to the TV-specific shared slider profile. Up to three distinct
-sliders promote the profile; a definition containing fewer sliders requires only
-those available. Repeating one slider does not increase coverage. The profile is
-persisted for the saved TV address, resets automatically when a different TV
-address is saved, resets when system-wide menu delays change, and can be reset
-manually from Menu Controls. Selections require one successful representative
-confirmation for each interaction type present: ordinary selection, submenu
-selection, and indexed selection. Controls of the same type then share that
-TV-specific behavior evidence. Their individual option lists remain in the
-local display-verification fingerprint, so edits still reopen the shared behavior
-group. Selection verification resets for a different TV, when system-wide menu
-delays change, or from Menu Controls. Switches are not promoted by either routine
-coverage type and continue to request visual confirmation during normal updates;
-Display Verification uses one shared switch-behavior check.
+Display Verification uses representative coverage rather than requiring every
+control independently. Up to three distinct sliders prove shared slider motion;
+ordinary selections, submenu selections, indexed selections, and switches each
+use one shared behavior check when present. Their exact bounds, choices, and
+conditions remain in local display-verification fingerprints, so a relevant edit
+reopens the shared check and locks Menu until the full profile is current again.
 
 ### Saved profile and factory-reset synchronization
 
-Menu Controls stores desired values in the local application settings for the
+Menu stores desired values in the local application settings for the
 active menu-definition ID. Indexed cells are keyed by selector, selector option,
 and slider node, so all 20 Point percentages or Custom Color rows survive an
 application restart. These personal target values are not written to the shared

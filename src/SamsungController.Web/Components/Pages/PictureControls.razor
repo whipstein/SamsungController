@@ -1,15 +1,14 @@
-@page "/controls"
-@page "/picture-controls"
+@page "/menu"
 @implements IDisposable
 @inject SamsungControllerService Controller
 
-<PageTitle>Menu Controls · SamsungController</PageTitle>
+<PageTitle>Menu · SamsungController</PageTitle>
 
 <section class="page-heading compact-heading picture-controls-heading">
     <div>
-        <span class="eyebrow">MENU CONTROLS</span>
+        <span class="eyebrow">MENU</span>
         <h1>Adjust verified menu settings.</h1>
-        <p>Compact controls cover every verified menu area and are grouped like the TV, with conditional settings enabled by their switches and selections.</p>
+        <p>Controls are grouped like the TV and unlock after the complete menu structure has been verified for this display combination.</p>
     </div>
     <div class="page-heading-actions">
         <HelpBubble Title="Menu control behavior" ButtonText="Page help">
@@ -21,24 +20,34 @@
                 <li><strong>Immediate</strong> sends one changed control at a time. <strong>Apply button</strong> can stage a controller and its newly enabled settings together.</li>
                 <li><strong>Save profile</strong> stores desired values locally. <strong>Reset &amp; apply all</strong> runs a verified reset confirmation, restores known defaults, and reapplies that profile.</li>
                 <li>Use <strong>Saved current TV states</strong> to record values already visible on the TV and later load them as the prediction baseline. Saving or loading a state sends no remote commands.</li>
-                <li>Confirm three different sliders visually to verify the shared slider behavior for this TV. Later slider changes no longer require individual confirmation.</li>
-                <li>Confirm each selection control once. A submenu selection also sends Return after choosing its value.</li>
+                <li>This page unlocks only after Display Verification is complete for the selected menu structure, TV, signal, picture mode, input, and configurations.</li>
+                <li>Once unlocked, shared slider, switch, selection, submenu-selection, and indexed-selection behaviors are already trusted and do not request redundant confirmation.</li>
             </ul>
             <p class="help-callout">A conditionally enabled or visible control uses its verified containing-section route and the recalculated menu order after its controller has changed.</p>
         </HelpBubble>
-        <a class="secondary-action menu-authoring-link" href="menu">Verified menus <span>→</span></a>
+        <a class="secondary-action menu-authoring-link" href="verification">Display verification <span>→</span></a>
     </div>
 </section>
 
 @if (!string.IsNullOrWhiteSpace(LocalError))
 {
-    <div class="notice danger" role="alert"><strong>Menu controls need attention</strong><span>@LocalError</span></div>
+    <div class="notice danger" role="alert"><strong>Menu needs attention</strong><span>@LocalError</span></div>
 }
 else if (!string.IsNullOrWhiteSpace(LocalStatus))
 {
-    <div class="notice" role="status"><strong>Menu controls</strong><span>@LocalStatus</span></div>
+    <div class="notice" role="status"><strong>Menu</strong><span>@LocalStatus</span></div>
 }
 
+@if (!MenuIsAvailable)
+{
+    <section class="panel panel-empty picture-controls-empty menu-validation-lock">
+        <strong>Menu controls are locked for this display</strong>
+        <span>Complete Display Verification for @DisplayVerification.CurrentDisplay before changing menu settings. @DisplayVerification.VerifiedCount of @DisplayVerification.RequiredCount required checks currently match.</span>
+        <a href="verification">Open Display Verification →</a>
+    </section>
+}
+else
+{
 <section class="panel picture-control-toolbar">
     <div class="panel-label"><span>UPDATE BEHAVIOR</span><span>@PendingCount PENDING</span></div>
     <div class="picture-control-options">
@@ -102,32 +111,11 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
             <span>SEARCH CONTROLS</span>
             <input type="search" @bind="SearchText" @bind:event="oninput" placeholder="Name or menu path" disabled="@IsBusy" />
         </label>
-        <div class="slider-verification-summary @(Verification.SlidersVerified ? "verified" : "unverified")">
-            <span>SHARED SLIDER VERIFICATION</span>
-            <strong>@(Verification.SlidersVerified ? "Verified for this TV" : $"{Verification.ConfirmedSliderCount}/{Verification.RequiredSliderCount} different sliders")</strong>
-            <small>@(Verification.SlidersVerified ? "Future slider updates do not require confirmation." : "Confirm successful slider values on the TV.")</small>
+        <div class="slider-verification-summary verified">
+            <span>DISPLAY PROFILE</span>
+            <strong>Fully verified</strong>
+            <small>@DisplayVerification.CurrentDisplay</small>
         </div>
-        @if (Verification.RequiredSelectionCount > 0)
-        {
-            <div class="selection-verification-summary @(Verification.SelectionsVerified ? "verified" : "unverified")">
-                <span>SHARED SELECTION VERIFICATION</span>
-                <strong>@(Verification.SelectionsVerified ? "All selection behaviors verified" : $"{Verification.ConfirmedSelectionCount}/{Verification.RequiredSelectionCount} interaction types")</strong>
-                <small>@(Verification.SelectionsVerified ? "Controls with the same interaction type share this evidence." : "Confirm one ordinary, submenu, or indexed selection when that type exists.")</small>
-            </div>
-        }
-        @if (Verification.ConfirmedSliderCount > 0 || Verification.ConfirmedSelectionCount > 0)
-        {
-            <div class="menu-control-verification-actions">
-                @if (Verification.ConfirmedSliderCount > 0)
-                {
-                    <button class="secondary-action" @onclick="ResetSliderVerificationAsync" disabled="@IsBusy">Reset sliders</button>
-                }
-                @if (Verification.ConfirmedSelectionCount > 0)
-                {
-                    <button class="secondary-action" @onclick="ResetSelectionVerificationAsync" disabled="@IsBusy">Reset selections</button>
-                }
-            </div>
-        }
     </div>
     <p class="field-note">Values are predictions based on menu-definition defaults and changes sent during this page session. Controls changed elsewhere can make those predictions inaccurate.</p>
     <div class="saved-tv-state-manager">
@@ -191,14 +179,7 @@ else
                         <h2>@group.Label</h2>
                         <p>@group.Path · each @group.Selector.Label option is fixed to one row</p>
                     </div>
-                    @if (group.AwaitingConfirmation && !groupDisabled)
-                    {
-                        <button class="secondary-action" @onclick="() => ConfirmIndexedGroupAsync(group)" disabled="@IsBusy">TV grid matches ✓</button>
-                    }
-                    else
-                    {
-                        <small>@group.Rows.Count row@(group.Rows.Count == 1 ? string.Empty : "s")</small>
-                    }
+                    <small>@group.Rows.Count row@(group.Rows.Count == 1 ? string.Empty : "s")</small>
                 </header>
                 @if (groupDisabled)
                 {
@@ -339,10 +320,6 @@ else
                                 {
                                     <span>TV prediction: <b>@control.AppliedValue</b></span>
                                 }
-                                @if (control.AwaitingConfirmation && !disabled)
-                                {
-                                    <button class="secondary-action" @onclick="() => ConfirmControlAsync(control)" disabled="@IsBusy">TV shows @control.AppliedValue ✓</button>
-                                }
                             </footer>
                         </article>
                     }
@@ -351,11 +328,12 @@ else
         }
     </div>
 }
+}
 
 @code {
     private ControllerSnapshot Snapshot { get; set; } = null!;
     private MenuNavigationSnapshot Navigation { get; set; } = null!;
-    private MenuControlVerificationSnapshot Verification { get; set; } = null!;
+    private MenuDefinitionVerificationSnapshot DisplayVerification { get; set; } = null!;
     private MenuControlProfileSnapshot Profile { get; set; } = null!;
     private IReadOnlyList<SavedMenuControlStateSummary> SavedTvStates { get; set; } = [];
     private List<PictureControlEdit> Controls { get; } = [];
@@ -382,7 +360,9 @@ else
             ? 0
             : group.Rows.Sum(row => row.Cells.Count(cell => cell.Pending)));
     private int VisibleControlCount => GetFilteredControls().Count + GetVisibleIndexedGroups().Count;
+    private bool MenuIsAvailable => DisplayVerification.FullyVerified;
     private bool CanApplyPending => PendingCount > 0
+        && MenuIsAvailable
         && !IsBusy
         && Snapshot.ConnectionState == SamsungConnectionState.Connected
         && !Snapshot.MacroRunning
@@ -401,18 +381,21 @@ else
     private MenuNodeSummary? SelectedFactoryResetNode => FactoryResetCandidates.FirstOrDefault(node =>
         node.Id.Equals(SelectedFactoryResetNodeId, StringComparison.OrdinalIgnoreCase));
     private bool CanBeginFactoryReset => !IsBusy
+        && MenuIsAvailable
         && Snapshot.ConnectionState == SamsungConnectionState.Connected
         && SelectedFactoryResetNode is not null
         && !string.IsNullOrWhiteSpace(SelectedFactoryResetChoice)
         && !Snapshot.MacroRunning
         && !Navigation.IsRunning;
     private bool CanSaveControlProfile => !IsBusy
+        && MenuIsAvailable
         && Controls.Count > 0
         && !Snapshot.MacroRunning
         && !Navigation.IsRunning;
     private bool CanSaveCurrentTvState => CanSaveControlProfile
         && !string.IsNullOrWhiteSpace(SavedStateName);
     private bool CanUseSavedTvState => !IsBusy
+        && MenuIsAvailable
         && !string.IsNullOrWhiteSpace(SelectedSavedStateId)
         && SavedTvStates.Any(state => state.Id.Equals(
             SelectedSavedStateId,
@@ -438,8 +421,6 @@ else
         }
 
         control.DesiredValue = value;
-        control.Confirmed = false;
-        control.AwaitingConfirmation = false;
         ClearPendingValuesThatBecameUnavailable();
         EnsureSelectedMenuArea();
         LocalError = null;
@@ -494,7 +475,6 @@ else
             decimal.Truncate(numericValue),
             cell.Minimum,
             cell.Maximum));
-        group.AwaitingConfirmation = false;
         LocalError = null;
         LocalStatus = UpdateMode == PictureUpdateMode.Staged
             ? $"{group.Label} · {cell.SelectorValue} · {cell.Slider.Label} staged at {cell.DesiredValue}."
@@ -554,12 +534,6 @@ else
             foreach (var control in controls)
             {
                 control.AppliedValue = control.DesiredValue;
-                var behaviorIsVerified = control.Node.ControlType == MenuControlType.Slider
-                        && Verification.SlidersVerified
-                    || IsSelectionControl(control.Node.ControlType)
-                        && IsSelectionVerified(control);
-                control.AwaitingConfirmation = !behaviorIsVerified;
-                control.Confirmed = behaviorIsVerified;
             }
         }
 
@@ -583,18 +557,12 @@ else
             foreach (var group in indexedChanges.Select(change => change.Group).Distinct())
             {
                 SynchronizeIndexedGroupControlPredictions(group, indexedChanges);
-                group.AwaitingConfirmation = !Verification.SlidersVerified
-                    || !IsSelectionVerified(group.Selector);
             }
         }
 
         var total = controls.Count + indexedChanges.Count;
-        var needsConfirmation = controls.Any(control => control.AwaitingConfirmation)
-            || indexedChanges.Any(change => change.Group.AwaitingConfirmation);
         await Controller.SaveMenuControlProfileAsync(CreateControlProfileValues());
-        LocalStatus = needsConfirmation
-            ? $"Applied {total} menu value{(total == 1 ? string.Empty : "s")}. Confirm the displayed values on the TV."
-            : $"Applied {total} menu value{(total == 1 ? string.Empty : "s")}. The changed control behavior is already verified.";
+        LocalStatus = $"Applied {total} menu value{(total == 1 ? string.Empty : "s")} using the fully verified display profile.";
     }
 
     private void BeginFactoryReset()
@@ -786,8 +754,6 @@ else
 
             control.AppliedValue = normalized;
             control.DesiredValue = normalized;
-            control.AwaitingConfirmation = false;
-            control.Confirmed = false;
         }
 
         foreach (var group in IndexedGroups)
@@ -822,7 +788,6 @@ else
                 }
             }
 
-            group.AwaitingConfirmation = false;
         }
 
         ClearPendingValuesThatBecameUnavailable();
@@ -851,13 +816,10 @@ else
                 control.AppliedValue = defaultValue;
             }
 
-            control.AwaitingConfirmation = false;
-            control.Confirmed = false;
         }
 
         foreach (var group in IndexedGroups)
         {
-            group.AwaitingConfirmation = false;
             foreach (var cell in group.Rows.SelectMany(row => row.Cells))
             {
                 var defaultValue = NormalizeDefaultValue(cell.Slider);
@@ -866,140 +828,6 @@ else
                     cell.AppliedValue = defaultValue;
                 }
             }
-        }
-    }
-
-    private async Task ConfirmControlAsync(PictureControlEdit control)
-    {
-        IsBusy = true;
-        LocalError = null;
-        try
-        {
-            if (control.Node.ControlType == MenuControlType.Slider)
-            {
-                Verification = await Controller.ConfirmMenuSliderBehaviorAsync(control.Node.Id);
-            }
-            else if (IsSelectionControl(control.Node.ControlType))
-            {
-                Verification = await Controller.ConfirmMenuSelectionBehaviorAsync(control.Node.Id);
-            }
-
-            control.AwaitingConfirmation = false;
-            control.Confirmed = true;
-            if (Verification.SlidersVerified && control.Node.ControlType == MenuControlType.Slider)
-            {
-                foreach (var slider in Controls.Where(candidate =>
-                             candidate.Node.ControlType == MenuControlType.Slider))
-                {
-                    slider.AwaitingConfirmation = false;
-                    slider.Confirmed = true;
-                }
-
-                LocalStatus = $"{control.Node.Label} confirmed at {control.AppliedValue}. Shared slider behavior is now verified for this TV.";
-            }
-            else if (control.Node.ControlType == MenuControlType.Slider)
-            {
-                LocalStatus = $"{control.Node.Label} confirmed at {control.AppliedValue} · {Verification.ConfirmedSliderCount}/{Verification.RequiredSliderCount} different sliders verified.";
-            }
-            else if (IsSelectionControl(control.Node.ControlType))
-            {
-                LocalStatus = $"{control.Node.Label} confirmed at {control.AppliedValue} · {Verification.ConfirmedSelectionCount}/{Verification.RequiredSelectionCount} selection interaction types verified.";
-            }
-            else
-            {
-                LocalStatus = $"{control.Node.Label} visually confirmed at {control.AppliedValue}.";
-            }
-        }
-        catch (Exception exception)
-        {
-            LocalError = exception.Message;
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    private async Task ConfirmIndexedGroupAsync(IndexedControlGroupEdit group)
-    {
-        IsBusy = true;
-        LocalError = null;
-        try
-        {
-            Verification = await Controller.ConfirmMenuSelectionBehaviorAsync(group.Selector.Id);
-            foreach (var slider in group.Sliders)
-            {
-                Verification = await Controller.ConfirmMenuSliderBehaviorAsync(slider.Id);
-                if (Verification.SlidersVerified)
-                {
-                    break;
-                }
-            }
-
-            group.AwaitingConfirmation = false;
-            LocalStatus = $"{group.Label} grid confirmed. Selector order and shared slider behavior are recorded for this TV.";
-        }
-        catch (Exception exception)
-        {
-            LocalError = exception.Message;
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    private async Task ResetSliderVerificationAsync()
-    {
-        IsBusy = true;
-        LocalError = null;
-        try
-        {
-            await Controller.ResetMenuSliderBehaviorVerificationAsync();
-            Verification = Controller.GetMenuControlVerificationSnapshot();
-            foreach (var slider in Controls.Where(control =>
-                         control.Node.ControlType == MenuControlType.Slider))
-            {
-                slider.AwaitingConfirmation = false;
-                slider.Confirmed = false;
-            }
-
-            LocalStatus = "Shared slider verification reset. Confirm three different sliders to verify it again.";
-        }
-        catch (Exception exception)
-        {
-            LocalError = exception.Message;
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    private async Task ResetSelectionVerificationAsync()
-    {
-        IsBusy = true;
-        LocalError = null;
-        try
-        {
-            await Controller.ResetMenuSelectionBehaviorVerificationAsync();
-            Verification = Controller.GetMenuControlVerificationSnapshot();
-            foreach (var selection in Controls.Where(control =>
-                         IsSelectionControl(control.Node.ControlType)))
-            {
-                selection.AwaitingConfirmation = false;
-                selection.Confirmed = false;
-            }
-
-            LocalStatus = "Selection verification reset. Confirm one representative of each selection interaction type on the TV.";
-        }
-        catch (Exception exception)
-        {
-            LocalError = exception.Message;
-        }
-        finally
-        {
-            IsBusy = false;
         }
     }
 
@@ -1050,8 +878,6 @@ else
                      IsControlDisabled(control) || IsControlHidden(control)))
         {
             control.DesiredValue = control.AppliedValue;
-            control.AwaitingConfirmation = false;
-            control.Confirmed = false;
         }
 
 
@@ -1063,7 +889,6 @@ else
                 cell.DesiredValue = cell.AppliedValue;
             }
 
-            group.AwaitingConfirmation = false;
         }
     }
 
@@ -1392,7 +1217,7 @@ else
     {
         Snapshot = Controller.GetSnapshot();
         Navigation = Controller.GetMenuNavigationSnapshot();
-        Verification = Controller.GetMenuControlVerificationSnapshot();
+        DisplayVerification = Controller.GetMenuDefinitionVerificationSnapshot();
         Profile = Controller.GetMenuControlProfileSnapshot();
         SavedTvStates = Controller.GetSavedMenuControlStates();
         if (!SavedTvStates.Any(state => state.Id.Equals(
@@ -1405,6 +1230,14 @@ else
 
     private void ReconcileControls()
     {
+        if (!MenuIsAvailable)
+        {
+            Controls.Clear();
+            IndexedGroups.Clear();
+            SelectedAreaId = string.Empty;
+            return;
+        }
+
         var existing = Controls.ToDictionary(control => control.Node.Id, StringComparer.OrdinalIgnoreCase);
         var eligible = Navigation.Nodes.Where(node =>
                 IsSupportedControl(node)
@@ -1441,19 +1274,6 @@ else
         ReconcileIndexedGroups();
         EnsureSelectedMenuArea();
         EnsureFactoryResetSelection();
-        foreach (var selection in Controls.Where(control =>
-                     IsSelectionControl(control.Node.ControlType)))
-        {
-            if (IsSelectionVerified(selection))
-            {
-                selection.AwaitingConfirmation = false;
-                selection.Confirmed = true;
-            }
-            else if (!selection.AwaitingConfirmation)
-            {
-                selection.Confirmed = false;
-            }
-        }
     }
 
     private void ReconcileIndexedGroups()
@@ -1463,10 +1283,6 @@ else
                 Key: $"{group.Selector.Id}\u001f{row.SelectorValue}\u001f{cell.Slider.Id}",
                 Cell: cell))))
             .ToDictionary(item => item.Key, item => item.Cell, StringComparer.OrdinalIgnoreCase);
-        var awaitingBySelector = IndexedGroups.ToDictionary(
-            group => group.Selector.Id,
-            group => group.AwaitingConfirmation,
-            StringComparer.OrdinalIgnoreCase);
         var nodes = Navigation.Nodes.ToArray();
         IndexedGroups.Clear();
         foreach (var selector in nodes.Where(node =>
@@ -1540,8 +1356,7 @@ else
                 sliders,
                 rows,
                 parent?.Label ?? selector.Label,
-                parent?.Path ?? selector.Path,
-                awaitingBySelector.GetValueOrDefault(selector.Id)));
+                parent?.Path ?? selector.Path));
         }
     }
 
@@ -1720,42 +1535,12 @@ else
         ? "DISABLED"
         : control.Pending
             ? "PENDING"
-            : control.AwaitingConfirmation
-                ? "VERIFY"
-                : control.Node.ControlType == MenuControlType.Slider && Verification.SlidersVerified
-                    ? "SLIDER VERIFIED"
-                    : IsSelectionControl(control.Node.ControlType) && IsSelectionVerified(control)
-                        ? "SELECTION VERIFIED"
-                        : control.Confirmed
-                            ? "CONFIRMED"
-                            : IsSelectionControl(control.Node.ControlType)
-                                ? "NEEDS VERIFICATION"
-                                : control.Node.HasVerifiedRoute
-                                    ? "VERIFIED"
-                                    : "CONDITIONAL";
+            : "VERIFIED";
 
     private string GetControlCssClass(PictureControlEdit control, bool disabled)
     {
-        var confirmed = control.Confirmed
-            || IsSelectionControl(control.Node.ControlType)
-            && IsSelectionVerified(control);
-        return $"{(disabled ? "disabled" : string.Empty)} {(control.Pending ? "pending" : string.Empty)} {(control.AwaitingConfirmation ? "awaiting-confirmation" : confirmed ? "confirmed" : string.Empty)}";
+        return $"{(disabled ? "disabled" : string.Empty)} {(control.Pending ? "pending" : string.Empty)} {(MenuIsAvailable ? "confirmed" : string.Empty)}";
     }
-
-    private bool IsSelectionVerified(PictureControlEdit control) =>
-        IsSelectionVerified(control.Node);
-
-    private bool IsSelectionVerified(MenuNodeSummary node) =>
-        Verification.VerifiedSelectionControlTypes.Contains(
-            MenuControlBehaviorClassifier.GetEffectiveControlType(
-                node.ControlType,
-                node.Label,
-                node.SelectionOptions));
-
-    private static bool IsSelectionControl(MenuControlType controlType) =>
-        controlType is MenuControlType.Selection
-            or MenuControlType.SubmenuSelection
-            or MenuControlType.IndexedSelection;
 
     private static bool IsOn(string value) => value.Equals("on", StringComparison.OrdinalIgnoreCase);
 
@@ -1781,8 +1566,6 @@ else
         public MenuNodeSummary Node { get; set; } = node;
         public string AppliedValue { get; set; } = defaultValue;
         public string DesiredValue { get; set; } = defaultValue;
-        public bool AwaitingConfirmation { get; set; }
-        public bool Confirmed { get; set; }
         public bool Pending => !DesiredValue.Equals(AppliedValue, StringComparison.OrdinalIgnoreCase);
         public decimal Minimum => Node.MinimumValue ?? 0;
         public decimal Maximum => Node.MaximumValue ?? 0;
@@ -1807,15 +1590,13 @@ else
         IReadOnlyList<MenuNodeSummary> sliders,
         IReadOnlyList<IndexedControlRowEdit> rows,
         string label,
-        string path,
-        bool awaitingConfirmation)
+        string path)
     {
         public MenuNodeSummary Selector { get; } = selector;
         public IReadOnlyList<MenuNodeSummary> Sliders { get; } = sliders;
         public IReadOnlyList<IndexedControlRowEdit> Rows { get; } = rows;
         public string Label { get; } = label;
         public string Path { get; } = path;
-        public bool AwaitingConfirmation { get; set; } = awaitingConfirmation;
     }
 
     private sealed record IndexedControlRowEdit(

@@ -18,6 +18,7 @@
                 <li>Select <strong>Connect to display</strong>, then choose <strong>Allow</strong> on the TV when prompted.</li>
                 <li>After the first approval, the saved host and token are reused by the web UI and CLI.</li>
                 <li>Channel-readiness defaults verify the WebSocket and briefly warm the TV before its first command.</li>
+                <li>Choose an automatically discovered menu structure and the configuration matching the rows currently visible on the TV.</li>
             </ol>
             <p class="help-callout safe">A successful connection may run the preferred verified anchor to establish a known menu position. This can send visible menu keys immediately after pairing.</p>
             <p>If no approval prompt appears, check the TV's Device Connect Manager and remove any denied or stale SamsungController entry before trying again.</p>
@@ -42,6 +43,10 @@ else if (Snapshot.ConnectionState == SamsungConnectionState.Warming)
 {
     <div class="notice pairing" role="status"><strong>Warming TV</strong><span>The channel is authorized. Commands remain held until the TV's remote service is ready.</span></div>
 }
+else if (!string.IsNullOrWhiteSpace(LocalStatus))
+{
+    <div class="notice" role="status"><strong>Menu profile</strong><span>@LocalStatus</span></div>
+}
 
 <section class="dashboard-grid">
     <div class="panel connection-panel">
@@ -60,6 +65,45 @@ else if (Snapshot.ConnectionState == SamsungConnectionState.Warming)
             <label class="toggle-row"><input type="checkbox" @bind="Secure" disabled="@IsBusy" /> Secure WebSocket <small>Recommended</small></label>
             <label class="toggle-row"><input type="checkbox" @bind="AllowUntrustedCertificate" disabled="@IsBusy" /> Accept TV certificate <small>Local TV certificate</small></label>
             <label class="toggle-row compact-option"><span>Port override</span><InputNumber @bind-Value="Port" placeholder="Automatic" disabled="@IsBusy" /></label>
+        </div>
+        <div class="connection-menu-profile">
+            <div class="connection-menu-profile-heading">
+                <span>MENU / DISPLAY PROFILE</span>
+                <small>Detected automatically from local and distributed menu catalogs</small>
+            </div>
+            <label>
+                <span>Menu structure</span>
+                <select value="@Navigation.DefinitionPath"
+                        @onchange="ChangeMenuDefinitionAsync"
+                        disabled="@MenuProfileControlDisabled"
+                        aria-label="Menu structure">
+                    @if (MenuDefinitions.Count == 0)
+                    {
+                        <option value="">No valid menu structures found</option>
+                    }
+                    @foreach (var definition in MenuDefinitions)
+                    {
+                        <option value="@definition.Path">@FormatMenuDefinition(definition)</option>
+                    }
+                </select>
+            </label>
+            <label>
+                <span>Menu configuration</span>
+                <select value="@Navigation.ActiveConfigurationId"
+                        @onchange="ChangeMenuConfigurationAsync"
+                        disabled="@(MenuProfileControlDisabled || Navigation.Configurations.Count == 0)"
+                        aria-label="Menu configuration">
+                    @if (Navigation.Configurations.Count == 0)
+                    {
+                        <option value="">No configurations available</option>
+                    }
+                    @foreach (var configuration in Navigation.Configurations)
+                    {
+                        <option value="@configuration.Id">@configuration.Name</option>
+                    }
+                </select>
+            </label>
+            <p>@ActiveMenuContext</p>
         </div>
         <details class="connection-readiness-settings">
             <summary><span>Channel readiness</span><small>Recommended defaults</small></summary>
@@ -120,7 +164,7 @@ else if (Snapshot.ConnectionState == SamsungConnectionState.Warming)
         <div class="quick-links">
             <a href="remote"><span>Remote</span><small>Directional and volume control</small><b>→</b></a>
             <a href="macros"><span>Macro runner</span><small>Validated repeatable sequences</small><b>→</b></a>
-            <a href="menu"><span>Menu navigator</span><small>Predicted, confidence-aware paths</small><b>→</b></a>
+            <a href="menu"><span>Menu</span><small>Verified controls grouped like the TV</small><b>→</b></a>
             <a href="protocol"><span>Protocol</span><small>Inspect every RX / TX message</small><b>→</b></a>
         </div>
     </div>
@@ -128,6 +172,8 @@ else if (Snapshot.ConnectionState == SamsungConnectionState.Warming)
 
 @code {
     private ControllerSnapshot Snapshot { get; set; } = null!;
+    private MenuNavigationSnapshot Navigation { get; set; } = null!;
+    private IReadOnlyList<MenuDefinitionCatalogEntry> MenuDefinitions { get; set; } = [];
     private string DisplayName { get; set; } = "Samsung TV";
     private string Host { get; set; } = string.Empty;
     private bool Secure { get; set; } = true;
@@ -138,7 +184,9 @@ else if (Snapshot.ConnectionState == SamsungConnectionState.Warming)
     private int PostConnectWarmupMilliseconds { get; set; } = 1500;
     private int ReconnectAfterIdleSeconds { get; set; } = 300;
     private bool IsBusy { get; set; }
+    private bool MenuProfileBusy { get; set; }
     private string? LocalError { get; set; }
+    private string? LocalStatus { get; set; }
 
     private string? ErrorMessage => LocalError ?? Snapshot.LastError;
     private bool ReadinessSettingsValid => KeepAliveIntervalSeconds is >= 5 and <= 120
@@ -149,6 +197,13 @@ else if (Snapshot.ConnectionState == SamsungConnectionState.Warming)
             || ReconnectAfterIdleSeconds is >= 30 and <= 3600);
     private bool CanDisconnect => ConnectionStatePresentation.CanDisconnect(
         Snapshot.ConnectionState);
+    private bool MenuProfileControlDisabled => IsBusy
+        || MenuProfileBusy
+        || Snapshot.MacroRunning
+        || Snapshot.NavigationRunning;
+    private string ActiveMenuContext => Navigation.Context is null
+        ? "No menu/display context loaded."
+        : $"{Navigation.Model} · firmware {Navigation.Context.Firmware} · {Navigation.Context.Signal} · {Navigation.Context.PictureMode} · {Navigation.Context.Input}";
     private string TransportLabel => $"{(Secure ? "WSS" : "WS")} : {Port ?? (Secure ? 8002 : 8001)}";
     private string StateClass => Snapshot.ConnectionState switch
     {
@@ -184,9 +239,12 @@ else if (Snapshot.ConnectionState == SamsungConnectionState.Warming)
     protected override async Task OnInitializedAsync()
     {
         Snapshot = Controller.GetSnapshot();
+        Navigation = Controller.GetMenuNavigationSnapshot();
         Controller.Changed += HandleControllerChanged;
         await Controller.InitializeAsync();
         ApplySnapshotToForm(Controller.GetSnapshot());
+        Navigation = Controller.GetMenuNavigationSnapshot();
+        MenuDefinitions = await Controller.DiscoverMenuDefinitionsAsync();
     }
 
     private async Task ConnectAsync()
@@ -234,11 +292,71 @@ else if (Snapshot.ConnectionState == SamsungConnectionState.Warming)
         }
     }
 
+    private async Task ChangeMenuDefinitionAsync(ChangeEventArgs args)
+    {
+        var path = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        MenuProfileBusy = true;
+        LocalError = null;
+        LocalStatus = null;
+        try
+        {
+            await Controller.SetMenuDefinitionAsync(path);
+            Navigation = Controller.GetMenuNavigationSnapshot();
+            MenuDefinitions = await Controller.DiscoverMenuDefinitionsAsync();
+            LocalStatus = $"Selected {Navigation.DefinitionName}. Choose the configuration matching the TV's visible menu layout.";
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            MenuProfileBusy = false;
+        }
+    }
+
+    private async Task ChangeMenuConfigurationAsync(ChangeEventArgs args)
+    {
+        var configurationId = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(configurationId))
+        {
+            return;
+        }
+
+        MenuProfileBusy = true;
+        LocalError = null;
+        LocalStatus = null;
+        try
+        {
+            await Controller.SetMenuConfigurationAsync(configurationId);
+            Navigation = Controller.GetMenuNavigationSnapshot();
+            var selected = Navigation.Configurations.First(configuration => configuration.IsActive);
+            LocalStatus = $"Selected menu configuration: {selected.Name}.";
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            MenuProfileBusy = false;
+        }
+    }
+
     private void HandleControllerChanged()
     {
         Snapshot = Controller.GetSnapshot();
+        Navigation = Controller.GetMenuNavigationSnapshot();
         _ = InvokeAsync(StateHasChanged);
     }
+
+    private static string FormatMenuDefinition(MenuDefinitionCatalogEntry definition) =>
+        $"{definition.Name} · {definition.Model} · firmware {definition.Context.Firmware} · {definition.Context.Signal} · {definition.Context.PictureMode} · {definition.Context.Input} · {definition.Location}";
 
     private void ApplySnapshotToForm(ControllerSnapshot snapshot)
     {

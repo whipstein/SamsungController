@@ -1414,6 +1414,79 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
     }
 
+    public async Task<IReadOnlyList<MenuDefinitionCatalogEntry>>
+        DiscoverMenuDefinitionsAsync(
+            CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        string activePath;
+        lock (_sync)
+        {
+            activePath = GetMenuDefinitionPath(_settings);
+        }
+
+        var candidates = new Dictionary<string, MenuDefinitionCandidate>(
+            StringComparer.OrdinalIgnoreCase);
+        AddMenuDefinitionCandidate(candidates, activePath, "Active", 0);
+        AddMenuDefinitionDirectory(
+            candidates,
+            Path.Combine(_configurationDirectory, "menu-definitions"),
+            "Local",
+            1);
+        AddMenuDefinitionDirectory(
+            candidates,
+            Path.Combine(Directory.GetCurrentDirectory(), "menu-definitions"),
+            "Repository",
+            2);
+        AddMenuDefinitionDirectory(
+            candidates,
+            Path.Combine(AppContext.BaseDirectory, "menu-definitions"),
+            "Installed",
+            3);
+
+        var discovered = new List<(MenuDefinitionCatalogEntry Entry, int Priority)>();
+        foreach (var candidate in candidates.Values)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var definition = await new MenuDefinitionParser()
+                    .ParseFileAsync(candidate.Path, cancellationToken)
+                    .ConfigureAwait(false);
+                new MenuDefinitionValidator().ValidateAndThrow(definition);
+                discovered.Add((
+                    new MenuDefinitionCatalogEntry(
+                        candidate.Path,
+                        definition.Id,
+                        definition.Name,
+                        definition.Model,
+                        definition.Context,
+                        candidate.Location,
+                        candidate.Path.Equals(
+                            activePath,
+                            StringComparison.OrdinalIgnoreCase)),
+                    candidate.Priority));
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // Build & Verify reports diagnostics for explicitly loaded files.
+                // The Connection page only offers definitions that parsed cleanly.
+            }
+        }
+
+        return discovered
+            .GroupBy(item => item.Entry.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderByDescending(item => item.Entry.IsActive)
+                .ThenBy(item => item.Priority)
+                .First()
+                .Entry)
+            .OrderByDescending(entry => entry.IsActive)
+            .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(entry => entry.Model, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     public async Task<string> ExportMenuStructureAsync(
         string path,
         CancellationToken cancellationToken = default)
@@ -8172,6 +8245,52 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private string GetMenuDefinitionPath(SamsungWebSettings settings) =>
         Path.GetFullPath(settings.MenuDefinitionPath ?? _defaultMenuDefinitionPath);
 
+    private static void AddMenuDefinitionDirectory(
+        IDictionary<string, MenuDefinitionCandidate> candidates,
+        string directory,
+        string location,
+        int priority)
+    {
+        if (!Directory.Exists(directory))
+        {
+            return;
+        }
+
+        foreach (var path in Directory.EnumerateFiles(
+                     directory,
+                     "*",
+                     SearchOption.AllDirectories))
+        {
+            AddMenuDefinitionCandidate(candidates, path, location, priority);
+        }
+    }
+
+    private static void AddMenuDefinitionCandidate(
+        IDictionary<string, MenuDefinitionCandidate> candidates,
+        string path,
+        string location,
+        int priority)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var extension = Path.GetExtension(fullPath);
+        if (!File.Exists(fullPath)
+            || !extension.Equals(".yaml", StringComparison.OrdinalIgnoreCase)
+            && !extension.Equals(".yml", StringComparison.OrdinalIgnoreCase)
+            && !extension.Equals(".json", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (!candidates.TryGetValue(fullPath, out var existing)
+            || priority < existing.Priority)
+        {
+            candidates[fullPath] = new MenuDefinitionCandidate(
+                fullPath,
+                location,
+                priority);
+        }
+    }
+
     private static MenuDefinition ActivateMenuConfiguration(
         MenuDefinition definition,
         string? requestedConfigurationId) =>
@@ -8895,6 +9014,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
     }
 
     private sealed record ValidationSetup(MenuAnchor Anchor, NavigationPlan Plan);
+
+    private sealed record MenuDefinitionCandidate(
+        string Path,
+        string Location,
+        int Priority);
 
     private sealed record MenuValidationSession(
         MenuAuthoringItemKind Kind,

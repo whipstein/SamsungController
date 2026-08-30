@@ -226,6 +226,15 @@ public sealed record MenuConfigurationSummary(
     string? Conditions,
     bool IsActive);
 
+public sealed record MenuDefinitionCatalogEntry(
+    string Path,
+    string Id,
+    string Name,
+    string Model,
+    MenuDefinitionContext Context,
+    string Location,
+    bool IsActive);
+
 public sealed record MenuNavigationSnapshot(
     string DefinitionPath,
     string? DefinitionName,

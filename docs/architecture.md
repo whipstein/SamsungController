@@ -53,14 +53,13 @@ deliberately sanitized and published as a separate compatibility profile.
 
 ## Predicted menu navigation
 
-`MenuDefinition` is a validated directed graph loaded from YAML. Nodes organize
-modeled menu locations; explicit transitions contain the only key sequences the
-planner may use. Anchors establish deterministic starting nodes. Draft
-transitions are confined to the Build & Verify workflow. The everyday Menu page
-lists and runs only `verified: true` destinations, anchors, and transitions.
-Selecting a destination creates and executes its verified plan as one controller
-operation; the separate planning controls remain available for route inspection.
-Only verified routes can reach the TV from that page.
+`MenuDefinition` is a validated directed graph loaded from YAML or JSON. Nodes
+organize modeled menu locations; explicit transitions contain the key sequences
+the planner may use. Anchors establish deterministic starting nodes. Draft
+transitions are confined to Build & Verify. The everyday Menu page exposes
+adjustable controls only after the entire structure/display verification profile
+is current, and every adjustment executes through verified routes. Remote and
+macro workflows provide the remaining navigation surfaces.
 
 `MenuStateTracker` records a predicted node, reason, timestamp, and confidence
 of Unknown, Low, Probable, or Synchronized. It updates after verified navigation
@@ -147,7 +146,7 @@ stored in local per-user settings rather than shared menu-topology YAML. A stati
 entire subtree. Conditional `disabledWhen` rules reference another value-bearing node and retain gray rows in
 their ordered topology. `hiddenWhen` rules remove matching rows and descendants
 from the effective topology. Default-value evaluation begins as descriptive UI
-state rather than telemetry; values sent through Menu Controls update an
+state rather than telemetry; values sent through Menu update an
 in-session prediction used by controls and calculated navigation.
 
 An indented-outline planner can add or synchronize an entire branch in one
@@ -177,8 +176,8 @@ creates a new group without disturbing verified siblings.
 Named menu configurations describe reordered or otherwise unmodeled alternate
 layouts inside a single model YAML. Modeled row presence uses `hiddenWhen`.
 Routes and anchors may be configuration-scoped; planning,
-state observation, recording, validation queues, macro checks, and the ordinary
-Menu page consider only universal behavior plus the active configuration.
+state observation, recording, validation queues, macro checks, and Menu control
+execution consider only universal behavior plus the active configuration.
 Because the TV does not report these selection values, configuration choice is
 explicit and a change replaces the navigator and resets predicted position to
 unknown.

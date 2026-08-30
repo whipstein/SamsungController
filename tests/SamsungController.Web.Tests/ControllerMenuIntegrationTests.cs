@@ -36,6 +36,72 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task DiscoversRunnableLocalMenusAndTheirConfigurations()
+    {
+        Directory.CreateDirectory(_directory);
+        var activePath = Path.Combine(_directory, "active.yaml");
+        await File.WriteAllTextAsync(activePath, ValidMenuYaml);
+        await WriteSettingsAsync(activePath);
+        var catalogDirectory = Path.Combine(_directory, "menu-definitions");
+        Directory.CreateDirectory(catalogDirectory);
+        var alternatePath = Path.Combine(catalogDirectory, "alternate.yaml");
+        await File.WriteAllTextAsync(
+            alternatePath,
+            """
+            version: 1
+            id: alternate
+            name: Alternate Menu
+            model: Test TV 2
+            context:
+              firmware: "2000"
+              signal: HDR
+              pictureMode: Movie
+              input: HDMI 1
+            configurations:
+              - id: standard
+                name: Standard
+                conditions: Game Mode = Off
+              - id: game
+                name: Game
+                conditions: Game Mode = On
+            nodes:
+              - id: normal-video
+                label: Normal video
+            anchors:
+              - id: normal
+                label: Normal video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(catalogDirectory, "invalid.yaml"),
+            "version: 1\nid: invalid");
+        await using var controller = CreateController();
+
+        await controller.InitializeAsync();
+        var discovered = await controller.DiscoverMenuDefinitionsAsync();
+
+        var active = Assert.Single(discovered, item => item.Id == "test");
+        Assert.True(active.IsActive);
+        Assert.Equal("Active", active.Location);
+        var alternate = Assert.Single(discovered, item => item.Id == "alternate");
+        Assert.False(alternate.IsActive);
+        Assert.Equal("Local", alternate.Location);
+        Assert.DoesNotContain(discovered, item => item.Id == "invalid");
+
+        await controller.SetMenuDefinitionAsync(alternate.Path);
+        var navigation = controller.GetMenuNavigationSnapshot();
+        Assert.Equal("Alternate Menu", navigation.DefinitionName);
+        Assert.Equal(["standard", "game"], navigation.Configurations.Select(item => item.Id));
+        await controller.SetMenuConfigurationAsync("game");
+        Assert.Equal(
+            "game",
+            controller.GetMenuNavigationSnapshot().ActiveConfigurationId);
+    }
+
+    [Fact]
     public async Task UnverifiedAnchorTargetIsReportedAsRecordedDraftRoute()
     {
         Directory.CreateDirectory(_directory);
