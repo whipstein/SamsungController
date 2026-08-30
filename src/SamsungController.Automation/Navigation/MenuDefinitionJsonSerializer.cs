@@ -32,15 +32,13 @@ public sealed class MenuDefinitionJsonSerializer
             yaml.Save(writer, assignAnchors: false);
             return new MenuDefinitionParser().Parse(writer.ToString());
         }
-        catch (MenuDefinitionParseException)
+        catch (MenuDefinitionParseException exception)
         {
-            throw;
+            throw MenuDefinitionSourceDiagnostics.AddJsonLocation(json, exception);
         }
         catch (JsonException exception)
         {
-            throw new MenuDefinitionParseException(
-                $"Invalid menu definition JSON: {exception.Message}",
-                exception);
+            throw MenuDefinitionSourceDiagnostics.FromJsonSyntaxError(exception);
         }
     }
 

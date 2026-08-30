@@ -71,6 +71,51 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task InvalidConfiguredJsonReportsEachNodesSourceLine()
+    {
+        Directory.CreateDirectory(_directory);
+        var definitionPath = Path.Combine(_directory, "broken.json");
+        await File.WriteAllTextAsync(
+            definitionPath,
+            """
+            {
+              "version": 1,
+              "id": "broken-json",
+              "name": "Broken JSON",
+              "model": "Samsung Test TV",
+              "nodes": [
+                {
+                  "id": "normal-video",
+                  "label": "Normal video",
+                  "children": [
+                    {
+                      "id": "picture-mode",
+                      "label": "Picture Mode",
+                      "controlType": "selection",
+                      "options": ["Standard", "Movie"]
+                    },
+                    {
+                      "id": "reset-picture",
+                      "label": "Reset Picture",
+                      "controlType": "confirmation",
+                      "options": ["Reset", "Cancel"]
+                    }
+                  ]
+                }
+              ]
+            }
+            """);
+        await WriteSettingsAsync(definitionPath);
+        await using var controller = CreateController();
+
+        await controller.InitializeAsync();
+        var error = controller.GetMenuNavigationSnapshot().Error;
+
+        Assert.Contains("line 12, column 11 · node 'picture-mode'", error, StringComparison.Ordinal);
+        Assert.Contains("line 18, column 11 · node 'reset-picture'", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task NewDefinitionCanBeCreatedAndPersistedEntirelyThroughTheService()
     {
         Directory.CreateDirectory(_directory);

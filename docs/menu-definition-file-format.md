@@ -20,6 +20,10 @@ case-insensitive, but the spelling shown here is the normalized form written by
 SamsungController. Unknown and duplicate fields are rejected rather than
 silently ignored.
 
+When a JSON file fails to load, syntax, schema, and validation errors include
+one-based source line and column numbers. Multiple validation problems remain
+on separate lines in the Build & Verify error panel.
+
 ## Start safely
 
 The guided UI is the recommended editor. It preserves generated route metadata,

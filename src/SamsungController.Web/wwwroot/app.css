@@ -203,6 +203,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .notice span { color: var(--muted); }
 .notice a { text-decoration: none; }
 .notice.danger { color: var(--danger); border-color: rgba(255,119,119,.25); background: rgba(255,119,119,.07); }
+.definition-error-detail { white-space: pre-wrap; overflow-wrap: anywhere; }
 .compact-heading { align-items: flex-end; }
 .compact-heading h1 { font-size: clamp(34px, 4.2vw, 59px); }
 .page-state { border: 1px solid var(--line); border-radius: 999px; padding: 9px 12px; color: var(--muted); font: 10px ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; white-space: nowrap; }

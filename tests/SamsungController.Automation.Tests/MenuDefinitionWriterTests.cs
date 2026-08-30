@@ -457,6 +457,33 @@ public sealed class MenuDefinitionWriterTests : IDisposable
             () => new MenuDefinitionJsonSerializer().Parse("{ \"version\": 1,"));
 
         Assert.Contains("Invalid menu definition JSON", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("line 1, column", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void JsonSemanticErrorReportsTheUnknownFieldsSourceLine()
+    {
+        const string json =
+            """
+            {
+              "version": 1,
+              "id": "line-diagnostics",
+              "name": "Line Diagnostics",
+              "model": "Samsung TV",
+              "nodes": [
+                {
+                  "id": "normal-video",
+                  "lable": "Normal video"
+                }
+              ]
+            }
+            """;
+
+        var exception = Assert.Throws<MenuDefinitionParseException>(
+            () => new MenuDefinitionJsonSerializer().Parse(json));
+
+        Assert.Contains("line 9, column 7", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("lable", exception.Message, StringComparison.Ordinal);
     }
 
     public void Dispose()

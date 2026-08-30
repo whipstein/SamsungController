@@ -7545,7 +7545,23 @@ public sealed class SamsungControllerService : IAsyncDisposable
         var definition = MenuDefinitionVerificationReconciler.Reconcile(
             TopologyRouteGenerator.Regenerate(
                 MigrateLegacyReturnReplacement(NormalizeInitialMenuTiming(parsed))));
-        new MenuDefinitionValidator().ValidateAndThrow(definition);
+        try
+        {
+            new MenuDefinitionValidator().ValidateAndThrow(definition);
+        }
+        catch (MenuDefinitionValidationException exception)
+        {
+            var source = await File.ReadAllTextAsync(path, cancellationToken)
+                .ConfigureAwait(false);
+            if (MenuDefinitionFileFormats.DetectForRead(path, source)
+                == MenuDefinitionFileFormat.Json)
+            {
+                throw MenuDefinitionSourceDiagnostics.AddJsonLocations(source, exception);
+            }
+
+            throw;
+        }
+
         return definition;
     }
 
