@@ -1482,6 +1482,26 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task ReloadingTheActiveYamlPreservesTheExpectedMenuState()
+    {
+        var (controller, transport) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            var definitionPath = controller.GetMenuNavigationSnapshot().DefinitionPath;
+            await controller.SetMenuDefinitionAsync(definitionPath);
+
+            Assert.Empty(GetSentKeys(transport));
+            var snapshot = controller.GetSnapshot();
+            Assert.Equal("Normal video", snapshot.MenuLabel);
+            Assert.Equal(MenuStateConfidence.Probable, snapshot.MenuConfidence);
+            Assert.Contains(
+                "preserved",
+                controller.GetMenuNavigationSnapshot().State.Reason,
+                StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task MenuNavigationPlansUseVerifiedTransitionsOnly()
     {
         var (controller, _) = await CreateConnectedControllerAsync();

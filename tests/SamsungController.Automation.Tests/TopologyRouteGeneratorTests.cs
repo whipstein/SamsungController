@@ -129,6 +129,50 @@ public sealed class TopologyRouteGeneratorTests
     }
 
     [Fact]
+    public void PrefersANonConfirmationCoverageTarget()
+    {
+        var definition = new MenuDefinition(
+            "safe-coverage",
+            "Safe Coverage",
+            "Test TV",
+            new MenuDefinitionContext(),
+            [
+                new MenuNode("normal-video", "Normal video"),
+                new MenuNode("settings", "Settings", "normal-video"),
+                new MenuNode("picture", "Picture", "settings"),
+                new MenuNode(
+                    "brightness",
+                    "Brightness",
+                    "picture",
+                    ControlType: MenuControlType.Slider,
+                    DefaultValue: "25",
+                    MinimumValue: 0,
+                    MaximumValue: 50),
+                new MenuNode(
+                    "reset",
+                    "Reset",
+                    "picture",
+                    ControlType: MenuControlType.Confirmation,
+                    DefaultValue: "Cancel",
+                    SelectionOptions: ["Reset", "Cancel"])
+            ],
+            [
+                new MenuTransition(
+                    "open-settings",
+                    "normal-video",
+                    "settings",
+                    [new MenuOperation("KEY_MENU")])
+            ],
+            []);
+
+        var generated = TopologyRouteGenerator.Regenerate(definition);
+        var validationRoute = Assert.Single(generated.Transitions.Values, transition =>
+            transition.GeneratedFromTopology && transition.IsValidationRoute);
+
+        Assert.Equal("brightness", validationRoute.ToNodeId);
+    }
+
+    [Fact]
     public void AddingOneMenuItemInvalidatesOnlyItsAffectedCoverageBranch()
     {
         var initial = TopologyRouteGenerator.Regenerate(CreateDefinition());

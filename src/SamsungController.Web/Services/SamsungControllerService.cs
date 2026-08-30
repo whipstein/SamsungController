@@ -694,6 +694,20 @@ public sealed class SamsungControllerService : IAsyncDisposable
             var configurationId = ResolveMenuConfigurationId(
                 definition,
                 GetSettings().MenuConfigurationId);
+            bool preserveMenuState;
+            lock (_sync)
+            {
+                preserveMenuState = _menuDefinition is { } currentDefinition
+                    && currentDefinition.Id.Equals(definition.Id, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(
+                        currentDefinition.ActiveConfigurationId,
+                        configurationId,
+                        StringComparison.OrdinalIgnoreCase)
+                    && GetMenuDefinitionPath(_settings).Equals(
+                        fullPath,
+                        StringComparison.Ordinal);
+            }
+
             await UpdateSettingsAsync(
                     current => current with
                     {
@@ -702,7 +716,16 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     },
                     cancellationToken)
                 .ConfigureAwait(false);
-            InstallMenuDefinition(definition.WithActiveConfiguration(configurationId));
+            InstallMenuDefinition(
+                definition.WithActiveConfiguration(configurationId),
+                preserveMenuState: preserveMenuState);
+            lock (_sync)
+            {
+                _navigationStatus = "YAML reloaded · topology routes and validation items regenerated";
+                _menuAuthoringStatus = "Menu definition reloaded from disk";
+            }
+
+            NotifyChanged();
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -5170,7 +5193,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
     private void InstallMenuDefinition(
         MenuDefinition definition,
-        bool preserveValidationProgress = false)
+        bool preserveValidationProgress = false,
+        bool preserveMenuState = false)
     {
         var tracker = new MenuStateTracker(definition);
         var navigator = new MenuNavigator(
@@ -5182,10 +5206,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
         MenuStateTracker? previousTracker;
         MenuNavigator? previousNavigator;
+        MenuState? previousState;
         lock (_sync)
         {
             previousTracker = _menuStateTracker;
             previousNavigator = _menuNavigator;
+            previousState = previousTracker?.Current;
             _menuDefinition = definition;
             _menuStateTracker = tracker;
             _menuNavigator = navigator;
@@ -5215,6 +5241,27 @@ public sealed class SamsungControllerService : IAsyncDisposable
         if (previousNavigator is not null)
         {
             previousNavigator.ProgressChanged -= HandleNavigationProgress;
+        }
+
+        if (preserveMenuState
+            && previousState?.NodeId is { } nodeId
+            && definition.Nodes.ContainsKey(nodeId))
+        {
+            var reason =
+                $"Menu definition reloaded; preserved the prior expected state. {previousState.Reason}";
+            switch (previousState.Confidence)
+            {
+                case MenuStateConfidence.Synchronized:
+                    tracker.ConfirmNode(nodeId, reason);
+                    break;
+                case MenuStateConfidence.Probable:
+                    tracker.AssumeNode(nodeId, reason);
+                    break;
+                case MenuStateConfidence.Low:
+                    tracker.AssumeNode(nodeId, reason);
+                    tracker.ReduceConfidence(reason);
+                    break;
+            }
         }
 
         NotifyChanged();

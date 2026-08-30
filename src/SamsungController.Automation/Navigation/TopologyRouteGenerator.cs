@@ -81,6 +81,7 @@ public static class TopologyRouteGenerator
                 transition => transition.ValidationGroupId!,
                 StringComparer.OrdinalIgnoreCase)
             .SelectMany(group => FinalizeValidationGroup(
+                definition,
                 group.ToArray(),
                 existingGenerated,
                 explicitTransitions))
@@ -193,6 +194,7 @@ public static class TopologyRouteGenerator
     }
 
     private static IReadOnlyList<MenuTransition> FinalizeValidationGroup(
+        MenuDefinition definition,
         IReadOnlyList<MenuTransition> generated,
         IReadOnlyList<MenuTransition> existingGenerated,
         IReadOnlyList<MenuTransition> explicitTransitions)
@@ -215,11 +217,14 @@ public static class TopologyRouteGenerator
                        && seedVerified
                        && existingGroup.All(route => route.Verified);
         var previousValidationTarget = unchanged
-            ? existingGroup.FirstOrDefault(route => route.IsValidationRoute)?.ToNodeId
+            ? existingGroup.FirstOrDefault(route =>
+                route.IsValidationRoute
+                && IsPreferredValidationTarget(definition, route))?.ToNodeId
             : null;
         var validationTarget = previousValidationTarget
             ?? generated
-                .OrderByDescending(route => route.Operations.Sum(operation => operation.Repeat))
+                .OrderByDescending(route => IsPreferredValidationTarget(definition, route))
+                .ThenByDescending(route => route.Operations.Sum(operation => operation.Repeat))
                 .ThenBy(route => route.ToNodeId, StringComparer.OrdinalIgnoreCase)
                 .First()
                 .ToNodeId;
@@ -231,6 +236,11 @@ public static class TopologyRouteGenerator
                 StringComparison.OrdinalIgnoreCase)
         }).ToArray();
     }
+
+    private static bool IsPreferredValidationTarget(
+        MenuDefinition definition,
+        MenuTransition route) =>
+        definition.GetRequiredNode(route.ToNodeId).ControlType != MenuControlType.Confirmation;
 
     private static bool IsDisabledByDefault(MenuDefinition definition, MenuNode node) =>
         (node.DisabledWhen ?? []).Any(condition =>
