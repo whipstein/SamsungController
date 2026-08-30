@@ -178,6 +178,109 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task RecordedMenuEntryGeneratesAndGroupValidatesTopologyRoutes()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: generated-coverage
+            name: Generated Coverage
+            model: Test TV
+            nodes:
+              - id: normal-video
+                label: Normal video
+              - id: settings
+                label: Settings
+                parent: normal-video
+              - id: picture
+                label: Picture
+                parent: settings
+              - id: sound
+                label: Sound
+                parent: settings
+              - id: picture-mode
+                label: Picture Mode
+                parent: picture
+                controlType: selection
+                defaultValue: Movie
+                options: [Standard, Movie]
+              - id: expert
+                label: Expert Settings
+                parent: picture
+              - id: brightness
+                label: Brightness
+                parent: expert
+                controlType: slider
+                defaultValue: 25
+                minimumValue: 0
+                maximumValue: 50
+              - id: sound-output
+                label: Sound Output
+                parent: sound
+                controlType: selection
+                defaultValue: TV Speaker
+                options: [TV Speaker, Receiver]
+            anchors:
+              - id: normal-video
+                label: Return to video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_EXIT
+            transitions: []
+            """;
+        var (controller, _) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            controller.StartMenuRecording(new MenuRecordingRequest(
+                MenuAuthoringItemKind.Transition,
+                string.Empty,
+                "Settings",
+                "normal-video",
+                "settings",
+                null,
+                null));
+            await controller.SendKeyAsync("KEY_MENU");
+            await controller.StopAndSaveMenuRecordingAsync();
+
+            var generated = controller.GetMenuAuthoringSnapshot();
+            Assert.Equal(2, generated.DraftCandidates.Count);
+            Assert.All(generated.DraftCandidates, candidate => Assert.True(candidate.GeneratedFromTopology));
+            Assert.Equal([4, 2], generated.DraftCandidates
+                .Select(candidate => candidate.CoveredRouteCount)
+                .OrderDescending());
+
+            var pictureCoverage = Assert.Single(generated.DraftCandidates, candidate =>
+                candidate.TargetPath.EndsWith("Brightness", StringComparison.Ordinal));
+            for (var pass = 0; pass < 3; pass++)
+            {
+                await controller.RunMenuAuthoringValidationAsync(
+                    pictureCoverage.Kind,
+                    pictureCoverage.Id);
+                await controller.ConfirmMenuAuthoringValidationAsync(passed: true);
+            }
+
+            var remaining = controller.GetMenuAuthoringSnapshot().DraftCandidates;
+            Assert.Single(remaining);
+            Assert.DoesNotContain(remaining, candidate =>
+                candidate.ValidationPasses > 0);
+            var persisted = await new MenuDefinitionParser().ParseFileAsync(
+                controller.GetMenuNavigationSnapshot().DefinitionPath);
+            var seed = Assert.Single(persisted.Transitions.Values, transition =>
+                !transition.GeneratedFromTopology
+                && transition.FromNodeId == "normal-video"
+                && transition.ToNodeId == "settings");
+            Assert.True(seed.Verified);
+            var verifiedGroupId = persisted.Transitions[pictureCoverage.Id].ValidationGroupId;
+            Assert.All(
+                persisted.Transitions.Values.Where(transition =>
+                    transition.ValidationGroupId == verifiedGroupId),
+                transition => Assert.True(transition.Verified));
+            Assert.True(persisted.Transitions.Values.Count(transition => transition.Verified) >= 5);
+        }
+    }
+
+    [Fact]
     public async Task ExistingDefinitionRequiresConfirmationAndCanBeReplaced()
     {
         Directory.CreateDirectory(_directory);

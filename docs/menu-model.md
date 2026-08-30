@@ -288,18 +288,21 @@ can be planned or sent.
    matching configuration before recording, validation, or everyday navigation.
    Nodes may exist only as topology documentation; only destinations with a
    route verified in the active configuration appear on the ordinary Menu page.
-5. Choose **Anchor** or **Transition**, select two predefined nodes, and start
-   live recording. For a transition, **Prepare source**
-   uses a verified anchor and verified routes to position the TV first. The UI
-   derives the transition's internal YAML identifier from its target control;
-   selecting the same source and target again automatically replaces that draft.
-   To define a target-specific return, check **Also record return to normal
-   video**. Record the forward traversal first, choose **Continue · record
-   return**, and then record the return keys as phase two of the same draft.
+5. Record the exceptional entry behavior: normally a `normal-video` anchor and
+   one transition from Normal video into Settings. When an explicit transition
+   enters a modeled submenu, the writer derives absolute descendant routes from
+   sibling order. Each edge moves Down to the child index and presses Enter only
+   when that child is a submenu; a leaf route stops on the selected row. Rows
+   disabled under declared defaults are neither targeted nor counted in the
+   directional offset. Explicit transitions to descendants override generated
+   ones. To define a target-specific return exception, check **Also record return
+   to normal video** and capture its forward and return phases together.
 6. Use the embedded remote. Every successfully sent button controls the TV and
    is captured; failed sends are not recorded. The system timing profile supplies
    waits unless a button has a custom override in the timing lab.
-7. Stop the recording. The UI atomically adds it to the active YAML as a draft.
+7. Stop the recording. The UI atomically adds it to the active YAML and generates
+   descendant routes. Generated transitions retain their seed and validation-group
+   metadata in YAML so they can be regenerated after topology edits.
 8. Edit the **System-wide timing** profile, select a traversal, and
    place the TV at that traversal's source before choosing **Test system
    profile**. The test sends only the displayed traversal and ignores its
@@ -311,7 +314,7 @@ can be planned or sent.
    visual confirmation. Add an exact-state override when one menu position needs
    different keys; **Prepare start** is an explicit, separate positioning action.
    Three successful runs mark each script verified in the YAML.
-10. Open the draft's **Timing lab**, enable custom waits only for exceptional
+10. Open a draft or topology-coverage card's **Timing lab**, enable custom waits only for exceptional
    button presses, then choose **Save + replay**.
    Use **Prepare source** when desired, or place the TV at the displayed source
    manually. For a traversal with integrated return keys, Prepare source sends
@@ -319,10 +322,12 @@ can be planned or sent.
    if preparation is wrong or incomplete, adjust the TV manually. **Replay
    test** sends the forward keys. Both operations stay on the same draft card
    and retain one validation count.
-11. Visually confirm the target after every run. Three confirmed passes update
-   the same YAML entry to `verified: true`; a failed confirmation resets the
-   count for that item to zero. Partial pass counts are retained independently
-   when validation switches between draft commands. Every successful
+11. Visually confirm the target after every run. Topology-generated routes expose
+   only one longest representative card per top-level branch. Three confirmed
+   passes verify its recorded seed and every generated route in that group; the
+   card states the number promoted. A failed confirmation resets only that
+   coverage card. Partial pass counts are retained independently when validation
+   switches between cards. Every successful
    confirmation immediately synchronizes the
    current-menu indicator to the confirmed target, including after the third
    pass reloads the YAML; that third accepted pass then runs Return to video
@@ -330,8 +335,9 @@ can be planned or sent.
    normal-video anchor may use its recorded return even before the traversal
    reaches 3/3; otherwise draft return keys remain unavailable.
 
-Draft cards can be replayed, re-recorded under the same identifier, or deleted
-entirely in the UI. Verified items are protected from this draft workflow.
+Explicit draft cards can be replayed, re-recorded under the same identifier, or
+deleted entirely in the UI. Generated coverage cards are regenerated from their
+seed and topology rather than manually re-recorded or deleted. Verified items are protected from this draft workflow.
 The separate **Manage verified settings** area can remove an incorrect verified
 setting after a second confirmation. Its descendants and all related routes are
 removed with it; verified anchor targets are protected from deletion.

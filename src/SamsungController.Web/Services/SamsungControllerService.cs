@@ -365,7 +365,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         0,
                         []))
                     .Concat(definition.ApplicableTransitions
-                        .Where(transition => !transition.Verified)
+                        .Where(transition => IsAuthoringValidationCandidate(
+                            definition,
+                            transition))
+                        .OrderBy(transition => definition.GetDepth(transition.FromNodeId))
+                        .ThenBy(transition => definition.GetPath(transition.ToNodeId), StringComparer.OrdinalIgnoreCase)
                         .Select(transition => new MenuAuthoringCandidateSummary(
                             MenuAuthoringItemKind.Transition,
                             transition.Id,
@@ -382,7 +386,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
                             transition.ReturnToVideoOperations?.Sum(operation => operation.Repeat) ?? 0,
                             GetReplaySteps(
                                 transition.ReturnToVideoOperations ?? [],
-                                definition.Timing))))
+                                definition.Timing),
+                            transition.GeneratedFromTopology,
+                            GetCoveredTopologyRouteCount(definition, transition))))
                     .ToArray();
             var timingTestRoutes = definition is null
                 ? []
@@ -1422,14 +1428,28 @@ public sealed class SamsungControllerService : IAsyncDisposable
             await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
             lock (_sync)
             {
+                var installed = _menuDefinition ?? updated;
+                var coverageRouteCount = request.Kind == MenuAuthoringItemKind.Transition
+                    ? installed.ApplicableTransitions.Count(transition =>
+                        transition.GeneratedFromTopology
+                        && transition.TopologySeedTransitionId?.Equals(
+                            request.ItemId,
+                            StringComparison.OrdinalIgnoreCase) == true
+                        && transition.IsValidationRoute
+                        && !transition.Verified)
+                    : 0;
                 SetMenuValidationPasses(request.Kind, request.ItemId, 0);
-                _menuValidation = new MenuValidationSession(
-                    request.Kind,
-                    request.ItemId,
-                    0,
-                    false,
-                    updated.GetPath(request.TargetNodeId));
-                _menuAuthoringStatus = $"Draft {request.Kind.ToString().ToLowerInvariant()} saved to YAML · ready for validation";
+                _menuValidation = coverageRouteCount > 0
+                    ? null
+                    : new MenuValidationSession(
+                        request.Kind,
+                        request.ItemId,
+                        0,
+                        false,
+                        installed.GetPath(request.TargetNodeId));
+                _menuAuthoringStatus = coverageRouteCount > 0
+                    ? $"Traversal saved · topology generated {coverageRouteCount} branch coverage test(s)"
+                    : $"Draft {request.Kind.ToString().ToLowerInvariant()} saved to YAML · ready for validation";
                 _menuAuthoringError = null;
             }
         }
@@ -2541,6 +2561,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
         var hasIntegratedReturn = session.Kind == MenuAuthoringItemKind.Transition
             && definition.Transitions.TryGetValue(session.ItemId, out var integratedTransition)
             && integratedTransition.ReturnToVideoOperations is { Count: > 0 };
+        var coveredRouteCount = session.Kind == MenuAuthoringItemKind.Transition
+            && definition.Transitions.TryGetValue(session.ItemId, out var topologyTransition)
+            && topologyTransition.GeneratedFromTopology
+            ? GetCoveredTopologyRouteCount(definition, topologyTransition)
+            : 1;
         var verified = SetAuthoringItemVerified(definition, session.Kind, session.ItemId);
         var returnAnchor = FindReturnToVideoAnchor(verified);
         await PersistActiveMenuDefinitionAsync(verified, cancellationToken).ConfigureAwait(false);
@@ -2551,7 +2576,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 Passes = MenuValidationSession.RequiredPasses,
                 AwaitingConfirmation = false
             };
-            _menuAuthoringStatus = hasIntegratedReturn
+            _menuAuthoringStatus = coveredRouteCount > 1
+                ? $"Topology branch verified · {coveredRouteCount} generated routes promoted together"
+                : hasIntegratedReturn
                 ? $"Verified traversal and its recorded return · passed {MenuValidationSession.RequiredPasses}/{MenuValidationSession.RequiredPasses} together and saved to YAML"
                 : $"Verified · {session.ItemId} passed {MenuValidationSession.RequiredPasses}/{MenuValidationSession.RequiredPasses} and YAML was updated";
             _menuAuthoringError = null;
@@ -3973,6 +4000,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
         MenuDefinition definition,
         CancellationToken cancellationToken)
     {
+        definition = TopologyRouteGenerator.Regenerate(definition);
+        new MenuDefinitionValidator().ValidateAndThrow(definition);
         await _menuDefinitionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -4097,12 +4126,31 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 ? anchor with { Verified = true }
                 : anchor)
             .ToArray();
-        var transitions = definition.Transitions.Values
-            .Select(transition => kind == MenuAuthoringItemKind.Transition
-                                  && transition.Id.Equals(itemId, StringComparison.OrdinalIgnoreCase)
+        var selectedTransition = kind == MenuAuthoringItemKind.Transition
+            && definition.Transitions.TryGetValue(itemId, out var candidate)
+                ? candidate
+                : null;
+        var transitions = definition.Transitions.Values.Select(transition =>
+        {
+            if (selectedTransition is null)
+            {
+                return transition;
+            }
+
+            var selectedItem = transition.Id.Equals(itemId, StringComparison.OrdinalIgnoreCase);
+            var coveredByTopologyGroup = selectedTransition.GeneratedFromTopology
+                                         && transition.GeneratedFromTopology
+                                         && transition.ValidationGroupId?.Equals(
+                                             selectedTransition.ValidationGroupId,
+                                             StringComparison.OrdinalIgnoreCase) == true;
+            var topologySeed = selectedTransition.GeneratedFromTopology
+                               && transition.Id.Equals(
+                                   selectedTransition.TopologySeedTransitionId,
+                                   StringComparison.OrdinalIgnoreCase);
+            return selectedItem || coveredByTopologyGroup || topologySeed
                 ? transition with { Verified = true }
-                : transition)
-            .ToArray();
+                : transition;
+        }).ToArray();
         var found = kind == MenuAuthoringItemKind.Anchor
             ? anchors.Any(anchor => anchor.Id.Equals(itemId, StringComparison.OrdinalIgnoreCase))
             : transitions.Any(transition => transition.Id.Equals(itemId, StringComparison.OrdinalIgnoreCase));
@@ -4676,7 +4724,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private static IReadOnlyList<MenuTimingTestRouteSummary> GetTimingTestRoutes(
         MenuDefinition definition) =>
         definition.ApplicableTransitions
-            .Where(transition => transition.Operations.Count > 0)
+            .Where(transition => transition.Operations.Count > 0
+                && (!transition.GeneratedFromTopology || transition.IsValidationRoute))
             .OrderBy(transition => definition.GetPath(transition.FromNodeId), StringComparer.OrdinalIgnoreCase)
             .ThenBy(transition => definition.GetPath(transition.ToNodeId), StringComparer.OrdinalIgnoreCase)
             .Select(transition => new MenuTimingTestRouteSummary(
@@ -4686,6 +4735,39 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 transition.Operations.Sum(operation => operation.Repeat),
                 transition.Operations.Any(operation => operation.DelayAfter is not null)))
             .ToArray();
+
+    private static bool IsAuthoringValidationCandidate(
+        MenuDefinition definition,
+        MenuTransition transition)
+    {
+        if (transition.Verified)
+        {
+            return false;
+        }
+
+        if (transition.GeneratedFromTopology)
+        {
+            return transition.IsValidationRoute;
+        }
+
+        return !definition.ApplicableTransitions.Any(generated =>
+            generated.GeneratedFromTopology
+            && !generated.Verified
+            && generated.IsValidationRoute
+            && generated.TopologySeedTransitionId?.Equals(
+                transition.Id,
+                StringComparison.OrdinalIgnoreCase) == true);
+    }
+
+    private static int GetCoveredTopologyRouteCount(
+        MenuDefinition definition,
+        MenuTransition transition) => transition.GeneratedFromTopology
+        ? definition.ApplicableTransitions.Count(candidate =>
+            candidate.GeneratedFromTopology
+            && candidate.ValidationGroupId?.Equals(
+                transition.ValidationGroupId,
+                StringComparison.OrdinalIgnoreCase) == true)
+        : 1;
 
     private static ValidationSetup FindValidationSetup(
         MenuDefinition definition,
@@ -5245,7 +5327,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
         var parsed = await new MenuDefinitionParser()
             .ParseFileAsync(path, cancellationToken)
             .ConfigureAwait(false);
-        var definition = MigrateLegacyReturnReplacement(NormalizeInitialMenuTiming(parsed));
+        var definition = TopologyRouteGenerator.Regenerate(
+            MigrateLegacyReturnReplacement(NormalizeInitialMenuTiming(parsed)));
         new MenuDefinitionValidator().ValidateAndThrow(definition);
         return definition;
     }

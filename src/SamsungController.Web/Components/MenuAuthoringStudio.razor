@@ -22,9 +22,9 @@
                     <li><strong>TV profile:</strong> enter the model number and firmware. The definition name and file ID are generated for you.</li>
                     <li><strong>Configuration:</strong> the initial Default layout is ready automatically. Add and describe alternatives only when TV settings change which rows are visible or their order.</li>
                     <li><strong>Menu outline:</strong> paste the visible hierarchy using indentation. Preview it, then save while continuing to edit or advance to recording. Use fine adjustments only when needed.</li>
-                    <li><strong>Record:</strong> select a source and target, then use the embedded remote. Successful buttons control the TV and enter the draft.</li>
+                    <li><strong>Record:</strong> capture the normal-video anchor and exceptional entry traversals, normally Normal video to Settings. Successful buttons control the TV and enter the draft; ordered descendants are generated automatically.</li>
                     <li><strong>Timing:</strong> recording starts with an assumed-valid 800 ms screen-change wait. Test and tune common waits after a route exists, then override only steps that need special pacing.</li>
-                    <li><strong>Verify:</strong> prepare the source, replay the draft, and confirm three separate visual passes.</li>
+                    <li><strong>Verify:</strong> replay one generated representative per top-level branch and confirm three visual passes. A completed coverage card promotes all routes in that branch.</li>
                 </ol>
                 <p class="help-callout safe">The source/target pair identifies a transition automatically. Recording the same pair replaces its existing draft instead of creating a duplicate ID.</p>
                 <p>Use <strong>Also record return to normal video</strong> when that target needs a specific return sequence. Forward and return keys then share one verification count.</p>
@@ -276,7 +276,7 @@
                                         }
                                     </div>
                                 }
-                                <p class="bulk-topology-footnote"><strong>Topology is not verification.</strong> Record only the destinations you want to execute. Unrecorded items remain in this model file but stay off the verified Menu page.</p>
+                                <p class="bulk-topology-footnote"><strong>Topology drives route generation.</strong> After you record an entry into a modeled submenu, its ordered descendants become generated drafts. They appear on the verified Menu page after their branch coverage card passes three times.</p>
                                 </div>
                             </div>
                         }
@@ -665,7 +665,7 @@
                     }
                     else
                     {
-                        <p class="field-note">Add and name menu positions in the tree above, then choose them here. New recordings inherit the system-wide timing profile; traversals are matched to source and target automatically.</p>
+                        <p class="field-note">Record exceptional entry traversals such as Normal video → Settings. The ordered topology then generates descendant routes and a small set of branch coverage tests automatically.</p>
                     }
                 }
                 else
@@ -963,7 +963,7 @@
             @if (DraftValidationExpanded)
             {
                 <div class="authoring-section-body">
-                    <p class="field-note">For a traversal with recorded return keys, Prepare source sends that return sequence and then follows verified routes toward the forward source. Replay test sends the forward traversal, then that same command row changes to Count pass. Each card remembers its own 3-pass count when you switch between commands. The third accepted pass verifies the command and returns to normal video automatically.</p>
+                    <p class="field-note">Topology coverage cards replay a representative route for an entire branch. Three accepted passes promote every generated route shown on that card together. Manually recorded exceptions retain their own validation when topology cannot infer them.</p>
             @if (Authoring.DraftCandidates.Count == 0)
             {
                 <div class="capture-empty compact">No draft anchors or transitions are waiting for validation.</div>
@@ -976,9 +976,9 @@
                         var isActive = Authoring.ActiveValidationKind == candidate.Kind && Authoring.ActiveValidationId == candidate.Id;
                         <article class="validation-card @(isActive ? "active" : "")">
                             <div>
-                                <span>@candidate.Kind</span>
+                                <span>@(candidate.GeneratedFromTopology ? "TOPOLOGY COVERAGE" : candidate.Kind)</span>
                                 <strong>@candidate.Label</strong>
-                                <small>@(candidate.SourcePath is null ? candidate.TargetPath : $"{candidate.SourcePath} → {candidate.TargetPath}") · @candidate.CommandCount forward@(candidate.ReturnCommandCount > 0 ? $" + {candidate.ReturnCommandCount} return" : string.Empty) commands</small>
+                                <small>@(candidate.SourcePath is null ? candidate.TargetPath : $"{candidate.SourcePath} → {candidate.TargetPath}") · @candidate.CommandCount forward@(candidate.ReturnCommandCount > 0 ? $" + {candidate.ReturnCommandCount} return" : string.Empty) commands@(candidate.GeneratedFromTopology ? $" · validates {candidate.CoveredRouteCount} generated routes" : string.Empty)</small>
                             </div>
                             <div class="validation-card-actions">
                                 <b>@candidate.ValidationPasses/@Authoring.RequiredValidationPasses passed</b>
@@ -986,7 +986,10 @@
                                 {
                                     <button class="secondary-action" @onclick="() => PrepareValidationSourceAsync(candidate)" disabled="@(!CanPrepareValidationSource(candidate))">@(candidate.ReturnCommandCount > 0 ? "Prepare with recorded return" : "Prepare source")</button>
                                 }
-                                <button class="secondary-action" @onclick="() => PrepareRerecord(candidate)" disabled="@(Authoring.IsRecording || Navigation.IsRunning)">Re-record</button>
+                                @if (!candidate.GeneratedFromTopology)
+                                {
+                                    <button class="secondary-action" @onclick="() => PrepareRerecord(candidate)" disabled="@(Authoring.IsRecording || Navigation.IsRunning)">Re-record</button>
+                                }
                                 <button class="secondary-action" @onclick="() => ToggleTimingEditor(candidate)" disabled="@(Authoring.IsRecording || Navigation.IsRunning)">@(IsTimingEditorOpen(candidate) ? "Close timing" : "Timing lab")</button>
                                 @if (isActive && Authoring.AwaitingValidationConfirmation)
                                 {
@@ -1002,7 +1005,10 @@
                                 {
                                     <button class="secondary-action" @onclick="() => RunValidationAsync(candidate)" disabled="@(!CanRunValidation || Authoring.AwaitingValidationConfirmation)">Replay test</button>
                                 }
-                                <button class="secondary-action danger-action" @onclick="() => DeleteDraftAsync(candidate)" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">Delete</button>
+                                @if (!candidate.GeneratedFromTopology)
+                                {
+                                    <button class="secondary-action danger-action" @onclick="() => DeleteDraftAsync(candidate)" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">Delete</button>
+                                }
                             </div>
                             @if (IsTimingEditorOpen(candidate))
                             {
@@ -2962,7 +2968,9 @@
         ?? targetId;
 
     private bool IsUnrecordedRecordingTarget(MenuNodeSummary node) =>
-        !node.HasVerifiedRoute
+        !node.Id.Equals("tv-interface", StringComparison.OrdinalIgnoreCase)
+        && node.ParentId is not null
+        && !node.HasVerifiedRoute
         && !node.HasDraftRoute
         && Authoring.DraftCandidates.All(candidate => !candidate.TargetNodeId.Equals(
             node.Id,

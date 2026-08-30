@@ -168,6 +168,47 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Assert.Empty(reparsed.Transitions);
     }
 
+    [Fact]
+    public void TopologyGenerationMetadataRoundTrips()
+    {
+        var definition = new MenuDefinition(
+            "generated-routes",
+            "Generated Routes",
+            "Samsung TV",
+            new MenuDefinitionContext(),
+            [
+                new MenuNode("normal-video", "Normal video"),
+                new MenuNode("settings", "Settings", "normal-video"),
+                new MenuNode("picture", "Picture", "settings")
+            ],
+            [
+                new MenuTransition(
+                    "open-settings",
+                    "normal-video",
+                    "settings",
+                    [new MenuOperation("KEY_MENU")]),
+                new MenuTransition(
+                    "topology-open-settings-to-picture",
+                    "normal-video",
+                    "picture",
+                    [new MenuOperation("KEY_MENU"), new MenuOperation("KEY_ENTER")],
+                    GeneratedFromTopology: true,
+                    TopologySeedTransitionId: "open-settings",
+                    ValidationGroupId: "topology-open-settings-picture",
+                    IsValidationRoute: true)
+            ],
+            []);
+
+        var yaml = new MenuDefinitionWriter().Serialize(definition);
+        var reparsed = new MenuDefinitionParser().Parse(yaml);
+        var generated = reparsed.Transitions["topology-open-settings-to-picture"];
+
+        Assert.True(generated.GeneratedFromTopology);
+        Assert.Equal("open-settings", generated.TopologySeedTransitionId);
+        Assert.Equal("topology-open-settings-picture", generated.ValidationGroupId);
+        Assert.True(generated.IsValidationRoute);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_directory))

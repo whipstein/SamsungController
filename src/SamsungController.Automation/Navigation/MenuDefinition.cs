@@ -81,7 +81,11 @@ public sealed record MenuTransition(
     bool Verified = false,
     string? Description = null,
     IReadOnlyList<MenuOperation>? ReturnToVideoOperations = null,
-    string? ConfigurationId = null);
+    string? ConfigurationId = null,
+    bool GeneratedFromTopology = false,
+    string? TopologySeedTransitionId = null,
+    string? ValidationGroupId = null,
+    bool IsValidationRoute = false);
 
 public sealed record MenuReturnScript(
     IReadOnlyList<MenuOperation> Operations,

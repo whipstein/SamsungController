@@ -7,21 +7,21 @@
 <section class="page-heading compact-heading menu-build-heading">
     <div>
         <span class="eyebrow">BUILD &amp; VERIFY</span>
-        <h1>Build the map. Prove every route.</h1>
-        <p>Create controls, record live traversals, tune timing, and complete three visual passes before a destination appears in the verified Menu page.</p>
+        <h1>Build the map. Prove each branch.</h1>
+        <p>Describe the topology, record its exceptional entry points, and use a small set of generated coverage routes to verify the complete menu.</p>
     </div>
     <div class="page-heading-actions">
         <HelpBubble Title="Build a TV menu interface" ButtonText="Page help">
             <ol>
                 <li>Create or load a definition for the exact model, firmware, signal, picture mode, and input context being tested.</li>
                 <li>Build the visible hierarchy from an indented outline. Preview validates formatting beside the editor, and deleting a line removes that item unless partial-outline mode is enabled. Add a named configuration whenever TV settings add, remove, or reorder rows.</li>
-                <li>Use the automatic Default configuration, or select a described alternative when TV settings change the visible layout. Then record live keys between named source and target positions.</li>
+                <li>Use the automatic Default configuration, or select a described alternative when TV settings change the visible layout. Record the normal-video anchor and an entry traversal into a modeled submenu; normally that is Normal video to Settings.</li>
                 <li>Start with the assumed-valid timing defaults; tune system-wide timing after recording if playback needs adjustment, and use per-button overrides only for exceptional steps.</li>
-                <li>Prepare the source, replay the draft, and accept only a visually correct result. Three passes promote it to the verified Menu page.</li>
+                <li>SamsungController generates routes from the declared sibling order and presents one representative coverage card for each top-level branch. Three visually correct passes promote every route covered by that card.</li>
             </ol>
-            <p class="help-callout">Red tree nodes have no recorded command. Yellow nodes are recorded but still need validation. Normal-color nodes are verified.</p>
+            <p class="help-callout">Red tree nodes have no route. Yellow nodes have a recorded or topology-generated draft that still needs coverage validation. Normal-color nodes are verified.</p>
             <p>A route is valid only in the configuration where it was recorded. SamsungController cannot detect external setting changes, so choose the matching configuration explicitly.</p>
-            <p>Do not approve a failed pass. Manually restore the TV if needed, adjust the route or waits, and replay it.</p>
+            <p>Do not approve a failed pass. Manually restore the TV if needed, correct the topology, add an explicit exception, or adjust the waits and replay it.</p>
         </HelpBubble>
         <a class="secondary-action menu-authoring-link" href="menu">View verified menus <span>→</span></a>
     </div>

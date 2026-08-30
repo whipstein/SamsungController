@@ -146,6 +146,16 @@ atomic write. It reuses matching stable IDs, previews additions, updates,
 reordering, removals, interaction types, defaults, bounds, choices, and disabled rules, and
 refuses to remove nodes referenced by recorded behavior.
 
+Topology route generation treats recorded forward transitions as exceptional
+seeds. A seed that enters a descendant submenu produces deterministic absolute
+routes for every reachable child using declared sibling order, Down presses,
+and Enter for submenu children. Disabled rows under declared defaults are
+excluded from both targets and offsets. Generated routes are grouped by the
+first child below the seed target; only the longest route in each group appears
+as a visual coverage test. Three passes promote the group and its seed together.
+Regeneration preserves verified groups while their structural key sequences are
+unchanged and invalidates only groups affected by topology or seed changes.
+
 Named menu configurations describe settings-dependent visible layouts inside a
 single model YAML. Routes and anchors may be configuration-scoped; planning,
 state observation, recording, validation queues, macro checks, and the ordinary

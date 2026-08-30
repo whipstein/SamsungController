@@ -28,7 +28,7 @@ public sealed class MenuDefinitionParser
     private static readonly HashSet<string> ReturnScriptFields =
         new(["verified", "steps"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> TransitionFields =
-        new(["id", "from", "to", "configuration", "verified", "description", "returnSteps", "steps"], StringComparer.OrdinalIgnoreCase);
+        new(["id", "from", "to", "configuration", "verified", "description", "generatedFromTopology", "topologySeed", "validationGroup", "validationRoute", "returnSteps", "steps"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> StepFields =
         new(["key", "action", "repeat", "delay"], StringComparer.OrdinalIgnoreCase);
 
@@ -360,7 +360,11 @@ public sealed class MenuDefinitionParser
                         RequireSequence(returnStepsNode, $"'returnSteps' in {context}"),
                         $"{context}, return-to-video")
                     : null,
-                OptionalScalar(fields, "configuration")));
+                OptionalScalar(fields, "configuration"),
+                OptionalBoolean(fields, "generatedFromTopology", context),
+                OptionalScalar(fields, "topologySeed"),
+                OptionalScalar(fields, "validationGroup"),
+                OptionalBoolean(fields, "validationRoute", context)));
         }
 
         return transitions;

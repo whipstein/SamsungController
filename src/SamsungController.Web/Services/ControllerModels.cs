@@ -342,7 +342,9 @@ public sealed record MenuAuthoringCandidateSummary(
     int CommandCount,
     IReadOnlyList<MenuAuthoringReplayStepSummary> ReplaySteps,
     int ReturnCommandCount,
-    IReadOnlyList<MenuAuthoringReplayStepSummary> ReturnReplaySteps);
+    IReadOnlyList<MenuAuthoringReplayStepSummary> ReturnReplaySteps,
+    bool GeneratedFromTopology = false,
+    int CoveredRouteCount = 1);
 
 public sealed record MenuTimingTestRouteSummary(
     string Id,

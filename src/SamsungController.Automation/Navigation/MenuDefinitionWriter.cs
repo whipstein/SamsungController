@@ -96,6 +96,13 @@ public sealed class MenuDefinitionWriter
             AppendOptionalScalar(yaml, 4, "configuration", transition.ConfigurationId);
             AppendBoolean(yaml, 4, "verified", transition.Verified);
             AppendOptionalScalar(yaml, 4, "description", transition.Description);
+            if (transition.GeneratedFromTopology)
+            {
+                AppendBoolean(yaml, 4, "generatedFromTopology", true);
+                AppendOptionalScalar(yaml, 4, "topologySeed", transition.TopologySeedTransitionId);
+                AppendOptionalScalar(yaml, 4, "validationGroup", transition.ValidationGroupId);
+                AppendBoolean(yaml, 4, "validationRoute", transition.IsValidationRoute);
+            }
             if (transition.ReturnToVideoOperations is { Count: > 0 } returnOperations)
             {
                 AppendOperations(yaml, returnOperations, name: "returnSteps");

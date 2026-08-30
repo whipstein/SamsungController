@@ -137,6 +137,40 @@ public sealed class MenuDefinitionValidator
                     "Source and target nodes must be different."));
             }
 
+            if (transition.GeneratedFromTopology)
+            {
+                if (string.IsNullOrWhiteSpace(transition.TopologySeedTransitionId))
+                {
+                    errors.Add(new MenuDefinitionValidationError(
+                        location,
+                        "A topology-generated transition must identify its seed transition."));
+                }
+                else if (!definition.Transitions.TryGetValue(
+                             transition.TopologySeedTransitionId,
+                             out var seedTransition)
+                         || seedTransition.GeneratedFromTopology)
+                {
+                    errors.Add(new MenuDefinitionValidationError(
+                        location,
+                        $"Topology seed transition '{transition.TopologySeedTransitionId}' does not exist or is itself generated."));
+                }
+
+                if (string.IsNullOrWhiteSpace(transition.ValidationGroupId))
+                {
+                    errors.Add(new MenuDefinitionValidationError(
+                        location,
+                        "A topology-generated transition must identify its validation group."));
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(transition.TopologySeedTransitionId)
+                     || !string.IsNullOrWhiteSpace(transition.ValidationGroupId)
+                     || transition.IsValidationRoute)
+            {
+                errors.Add(new MenuDefinitionValidationError(
+                    location,
+                    "Only topology-generated transitions can define topology validation metadata."));
+            }
+
             ValidateOperations(location, transition.Operations, errors);
             if (transition.ReturnToVideoOperations is { } returnOperations)
             {
