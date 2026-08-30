@@ -1694,12 +1694,13 @@
     private string GetWorkflowStageClass(MenuWorkflowStage stage)
     {
         var classes = new List<string> { "menu-setup-guide-step" };
-        if (IsWorkflowStageComplete(stage))
+        var isComplete = IsWorkflowStageComplete(stage);
+        if (isComplete)
         {
             classes.Add("complete");
         }
 
-        if (stage == RecommendedWorkflowStage)
+        if (!isComplete && stage == RecommendedWorkflowStage)
         {
             classes.Add("current");
         }

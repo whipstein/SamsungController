@@ -500,6 +500,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .menu-setup-guide-step strong { color: var(--ink); font-size: 9px; }
 .menu-setup-guide-step small { margin-top: 3px; color: var(--faint); font-size: 7px; }
 .menu-setup-guide-step:hover:not(:disabled) { border-color: rgba(124,231,220,.38); }
+.menu-setup-guide-step.complete { border-color: rgba(124,231,220,.42); background: var(--cyan-soft); box-shadow: 0 0 0 1px rgba(124,231,220,.06); }
 .menu-setup-guide-step.complete > span { border-color: rgba(124,231,220,.42); background: var(--cyan-soft); color: var(--cyan); }
 .menu-setup-guide-step.complete > span::before { content: "✓"; }
 .menu-setup-guide-step.complete > span { font-size: 0; }
