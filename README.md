@@ -198,6 +198,14 @@ If the expected position is unknown, run a verified anchor under **Resynchronize
 
 Menu definitions are model-, firmware-, input-, signal-, and picture-mode-sensitive. Do not assume a route verified in one SDR context is valid in HDR, on another input, or on different firmware. See [Menu definitions](docs/menu-model.md) for the data model and confidence rules.
 
+### Picture Controls
+
+The **Picture Controls** page collects every bounded slider beneath the verified Picture menu. A slider appears only after its navigation route has been verified. That route verification proves SamsungController can reach and highlight the row; it does not prove the displayed numeric value because the Samsung remote channel does not report setting values.
+
+Each card starts from its declared YAML default and tracks the Left/Right changes sent during the current page session. Choose **Update TV immediately** to send a change when the slider is released or a step button is selected, or choose **Wait for Apply** to stage several values and send them together. The staged operation uses verified state-aware routes between sliders.
+
+Choose **Stay on last adjusted item** to leave the final slider visible for inspection, or **Exit to normal video** to run the verified return anchor afterward. After a successful send, compare the predicted value with the TV and select **TV shows …** to record the visual confirmation in the page. If the TV was adjusted outside SamsungController, first restore the declared defaults or update the definition before relying on relative numeric changes.
+
 ### Build & Verify
 
 Use **Build & Verify** when the supplied menu definition does not match the TV, or when adding a model and firmware combination. It does not require hand-editing YAML.

@@ -117,6 +117,11 @@ public sealed record MenuNodeSummary(
     decimal? MinimumValue,
     decimal? MaximumValue);
 
+public sealed record MenuSliderValueUpdate(
+    string NodeId,
+    decimal FromValue,
+    decimal ToValue);
+
 public sealed record MenuAnchorSummary(
     string Id,
     string Label,

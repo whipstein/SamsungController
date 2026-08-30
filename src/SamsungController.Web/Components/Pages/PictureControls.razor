@@ -1,0 +1,352 @@
+@page "/picture-controls"
+@implements IDisposable
+@inject SamsungControllerService Controller
+
+<PageTitle>Picture Controls · SamsungController</PageTitle>
+
+<section class="page-heading compact-heading picture-controls-heading">
+    <div>
+        <span class="eyebrow">PICTURE CONTROLS</span>
+        <h1>Adjust verified picture sliders.</h1>
+        <p>Use the declared ranges to update the TV immediately or stage several changes and apply them together.</p>
+    </div>
+    <div class="page-heading-actions">
+        <HelpBubble Title="Picture slider behavior" ButtonText="Page help">
+            <ul>
+                <li>Only picture sliders with verified navigation routes appear here.</li>
+                <li>The displayed starting value comes from the YAML default. Samsung does not report the actual value, so visually confirm it on the TV.</li>
+                <li><strong>Immediate</strong> sends a change when a slider is released or a step button is pressed. <strong>Apply button</strong> stages changes.</li>
+                <li>Each update navigates to the slider, sends one Left/Right press per whole-number step, and either stays there or runs the verified return-to-video anchor.</li>
+            </ul>
+            <p class="help-callout">Route verification proves that the slider is reached. Value confirmation proves that the declared value and bounds agree with the TV display.</p>
+        </HelpBubble>
+        <a class="secondary-action menu-authoring-link" href="menu">Verified menus <span>→</span></a>
+    </div>
+</section>
+
+@if (!string.IsNullOrWhiteSpace(LocalError))
+{
+    <div class="notice danger" role="alert"><strong>Picture controls need attention</strong><span>@LocalError</span></div>
+}
+else if (!string.IsNullOrWhiteSpace(LocalStatus))
+{
+    <div class="notice" role="status"><strong>Picture controls</strong><span>@LocalStatus</span></div>
+}
+
+<section class="panel picture-control-toolbar">
+    <div class="panel-label"><span>UPDATE BEHAVIOR</span><span>@PendingCount PENDING</span></div>
+    <div class="picture-control-options">
+        <label>
+            <span>WHEN VALUES CHANGE</span>
+            <select @bind="UpdateMode" disabled="@IsBusy">
+                <option value="@PictureUpdateMode.Immediate">Update TV immediately</option>
+                <option value="@PictureUpdateMode.Staged">Wait for Apply</option>
+            </select>
+        </label>
+        <label>
+            <span>AFTER UPDATE</span>
+            <select @bind="ExitBehavior" disabled="@IsBusy">
+                <option value="@PictureExitBehavior.Stay">Stay on last adjusted item</option>
+                <option value="@PictureExitBehavior.ReturnToVideo">Exit to normal video</option>
+            </select>
+        </label>
+        <div class="picture-control-summary">
+            <span>CURRENT MENU</span>
+            <strong>@(Snapshot.MenuLabel ?? "Unknown")</strong>
+            <small>@Snapshot.MenuConfidence confidence</small>
+        </div>
+        <button class="primary-action picture-apply-action" @onclick="ApplyPendingAsync" disabled="@(!CanApplyPending)">
+            @(IsBusy ? "Applying…" : $"Apply {PendingCount} change{(PendingCount == 1 ? string.Empty : "s")}") <span>▶</span>
+        </button>
+    </div>
+    <p class="field-note">Values are predictions based on YAML defaults and changes sent by this page. If the TV was adjusted elsewhere, reload the page only after updating the YAML default or manually return the TV to the displayed starting value.</p>
+</section>
+
+@if (Sliders.Count == 0)
+{
+    <section class="panel panel-empty picture-controls-empty">
+        <strong>No verified picture sliders are available</strong>
+        <span>Define slider bounds in YAML and complete the generated route verification first.</span>
+        <a href="menu/build">Open Build &amp; Verify →</a>
+    </section>
+}
+else
+{
+    <section class="picture-slider-grid" aria-label="Verified picture sliders">
+        @foreach (var slider in Sliders)
+        {
+            <article class="picture-slider-card @(slider.Pending ? "pending" : "") @(slider.AwaitingConfirmation ? "awaiting-confirmation" : slider.Confirmed ? "confirmed" : "")">
+                <header>
+                    <div>
+                        <span>@slider.SectionLabel</span>
+                        <strong>@slider.Node.Label</strong>
+                        <small>@slider.Node.Path</small>
+                    </div>
+                    <b>@GetSliderStateLabel(slider)</b>
+                </header>
+                <div class="picture-slider-value">
+                    <strong>@FormatValue(slider.DesiredValue)</strong>
+                    <span>@FormatValue(slider.Minimum) – @FormatValue(slider.Maximum)</span>
+                </div>
+                <div class="picture-slider-control">
+                    <button type="button" aria-label="Decrease @slider.Node.Label" @onclick="() => NudgeAsync(slider, -1)" disabled="@(IsBusy || slider.DesiredValue <= slider.Minimum)">−</button>
+                    <input type="range"
+                           min="@FormatValue(slider.Minimum)"
+                           max="@FormatValue(slider.Maximum)"
+                           step="1"
+                           value="@FormatValue(slider.DesiredValue)"
+                           aria-label="@slider.Node.Label"
+                           @onchange="args => ChangeSliderAsync(slider, args.Value?.ToString())"
+                           disabled="@IsBusy" />
+                    <button type="button" aria-label="Increase @slider.Node.Label" @onclick="() => NudgeAsync(slider, 1)" disabled="@(IsBusy || slider.DesiredValue >= slider.Maximum)">+</button>
+                </div>
+                <div class="picture-slider-footer">
+                    <label>
+                        <span>VALUE</span>
+                        <input type="number"
+                               min="@FormatValue(slider.Minimum)"
+                               max="@FormatValue(slider.Maximum)"
+                               step="1"
+                               value="@FormatValue(slider.DesiredValue)"
+                               @onchange="args => ChangeSliderAsync(slider, args.Value?.ToString())"
+                               disabled="@IsBusy" />
+                    </label>
+                    <span class="picture-slider-applied">Predicted TV value: <b>@FormatValue(slider.AppliedValue)</b></span>
+                    @if (slider.AwaitingConfirmation)
+                    {
+                        <button class="secondary-action" @onclick="() => ConfirmSlider(slider)" disabled="@IsBusy">TV shows @FormatValue(slider.AppliedValue) ✓</button>
+                    }
+                </div>
+            </article>
+        }
+    </section>
+}
+
+@code {
+    private ControllerSnapshot Snapshot { get; set; } = null!;
+    private MenuNavigationSnapshot Navigation { get; set; } = null!;
+    private List<PictureSliderEdit> Sliders { get; } = [];
+    private PictureUpdateMode UpdateMode { get; set; } = PictureUpdateMode.Staged;
+    private PictureExitBehavior ExitBehavior { get; set; } = PictureExitBehavior.Stay;
+    private string? LocalError { get; set; }
+    private string? LocalStatus { get; set; }
+    private bool IsBusy { get; set; }
+
+    private int PendingCount => Sliders.Count(slider => slider.Pending);
+    private bool CanApplyPending => PendingCount > 0
+        && !IsBusy
+        && Snapshot.ConnectionState == SamsungConnectionState.Connected
+        && !Snapshot.MacroRunning
+        && !Navigation.IsRunning;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Refresh();
+        Controller.Changed += HandleControllerChanged;
+        await Controller.InitializeAsync();
+        Refresh();
+        ReconcileSliders();
+    }
+
+    private async Task ChangeSliderAsync(PictureSliderEdit slider, string? rawValue)
+    {
+        if (!decimal.TryParse(rawValue, NumberStyles.Number, CultureInfo.InvariantCulture, out var value))
+        {
+            LocalError = $"Enter a whole-number value for {slider.Node.Label}.";
+            return;
+        }
+
+        value = Math.Clamp(decimal.Truncate(value), slider.Minimum, slider.Maximum);
+        slider.DesiredValue = value;
+        slider.Confirmed = false;
+        slider.AwaitingConfirmation = false;
+        LocalError = null;
+        LocalStatus = UpdateMode == PictureUpdateMode.Staged
+            ? $"{slider.Node.Label} staged at {FormatValue(value)}."
+            : null;
+        if (UpdateMode == PictureUpdateMode.Immediate && slider.Pending)
+        {
+            await ApplyAsync([slider]);
+        }
+    }
+
+    private Task NudgeAsync(PictureSliderEdit slider, int delta) =>
+        ChangeSliderAsync(
+            slider,
+            FormatValue(Math.Clamp(slider.DesiredValue + delta, slider.Minimum, slider.Maximum)));
+
+    private Task ApplyPendingAsync() => ApplyAsync(Sliders.Where(slider => slider.Pending).ToArray());
+
+    private async Task ApplyAsync(IReadOnlyList<PictureSliderEdit> sliders)
+    {
+        if (sliders.Count == 0)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        LocalError = null;
+        LocalStatus = null;
+        try
+        {
+            await Controller.ApplyMenuSliderValuesAsync(
+                sliders.Select(slider => new MenuSliderValueUpdate(
+                        slider.Node.Id,
+                        slider.AppliedValue,
+                        slider.DesiredValue))
+                    .ToArray(),
+                ExitBehavior == PictureExitBehavior.ReturnToVideo);
+            foreach (var slider in sliders)
+            {
+                slider.AppliedValue = slider.DesiredValue;
+                slider.AwaitingConfirmation = true;
+                slider.Confirmed = false;
+            }
+
+            LocalStatus = $"Applied {sliders.Count} picture slider{(sliders.Count == 1 ? string.Empty : "s")}. Confirm the displayed values on the TV.";
+        }
+        catch (OperationCanceledException)
+        {
+            LocalError = "Picture slider update was cancelled.";
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void ConfirmSlider(PictureSliderEdit slider)
+    {
+        slider.AwaitingConfirmation = false;
+        slider.Confirmed = true;
+        LocalError = null;
+        LocalStatus = $"{slider.Node.Label} visually confirmed at {FormatValue(slider.AppliedValue)}.";
+    }
+
+    private void HandleControllerChanged()
+    {
+        _ = InvokeAsync(() =>
+        {
+            Refresh();
+            ReconcileSliders();
+            StateHasChanged();
+        });
+    }
+
+    private void Refresh()
+    {
+        Snapshot = Controller.GetSnapshot();
+        Navigation = Controller.GetMenuNavigationSnapshot();
+    }
+
+    private void ReconcileSliders()
+    {
+        var pictureRoot = Navigation.Nodes.FirstOrDefault(node =>
+            node.Id.Equals("picture", StringComparison.OrdinalIgnoreCase))
+            ?? Navigation.Nodes.FirstOrDefault(node =>
+                node.Label.Equals("Picture", StringComparison.OrdinalIgnoreCase)
+                && node.ControlType == MenuControlType.Submenu);
+        var existing = Sliders.ToDictionary(slider => slider.Node.Id, StringComparer.OrdinalIgnoreCase);
+        var eligible = pictureRoot is null
+            ? []
+            : Navigation.Nodes
+                .Where(node => node.ControlType == MenuControlType.Slider
+                    && node.HasVerifiedRoute
+                    && !node.IsDisabledByDefault
+                    && node.MinimumValue is not null
+                    && node.MaximumValue is not null
+                    && IsDescendantOf(node, pictureRoot.Id))
+                .OrderBy(node => node.Path, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        Sliders.Clear();
+        foreach (var node in eligible)
+        {
+            if (existing.TryGetValue(node.Id, out var edit))
+            {
+                edit.Node = node;
+                Sliders.Add(edit);
+                continue;
+            }
+
+            if (!decimal.TryParse(
+                    node.DefaultValue,
+                    NumberStyles.Number,
+                    CultureInfo.InvariantCulture,
+                    out var defaultValue))
+            {
+                continue;
+            }
+
+            var minimum = node.MinimumValue!.Value;
+            var maximum = node.MaximumValue!.Value;
+            defaultValue = Math.Clamp(decimal.Truncate(defaultValue), minimum, maximum);
+            Sliders.Add(new PictureSliderEdit(node, minimum, maximum, defaultValue));
+        }
+    }
+
+    private bool IsDescendantOf(MenuNodeSummary node, string ancestorId)
+    {
+        var parentId = node.ParentId;
+        while (!string.IsNullOrWhiteSpace(parentId))
+        {
+            if (parentId.Equals(ancestorId, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            parentId = Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
+                parentId,
+                StringComparison.OrdinalIgnoreCase))?.ParentId;
+        }
+
+        return false;
+    }
+
+    private string GetSliderStateLabel(PictureSliderEdit slider) => slider.Pending
+        ? "PENDING"
+        : slider.AwaitingConfirmation
+            ? "VERIFY ON TV"
+            : slider.Confirmed
+                ? "CONFIRMED"
+                : "ROUTE VERIFIED";
+
+    private static string FormatValue(decimal value) =>
+        value.ToString("G29", CultureInfo.InvariantCulture);
+
+    public void Dispose() => Controller.Changed -= HandleControllerChanged;
+
+    private enum PictureUpdateMode
+    {
+        Immediate,
+        Staged
+    }
+
+    private enum PictureExitBehavior
+    {
+        Stay,
+        ReturnToVideo
+    }
+
+    private sealed class PictureSliderEdit(
+        MenuNodeSummary node,
+        decimal minimum,
+        decimal maximum,
+        decimal defaultValue)
+    {
+        public MenuNodeSummary Node { get; set; } = node;
+        public decimal Minimum { get; } = minimum;
+        public decimal Maximum { get; } = maximum;
+        public decimal AppliedValue { get; set; } = defaultValue;
+        public decimal DesiredValue { get; set; } = defaultValue;
+        public bool AwaitingConfirmation { get; set; }
+        public bool Confirmed { get; set; }
+        public bool Pending => DesiredValue != AppliedValue;
+        public string SectionLabel => Node.Path.Contains(" / Expert Settings / ", StringComparison.OrdinalIgnoreCase)
+            ? "EXPERT SETTINGS"
+            : "PICTURE";
+    }
+}

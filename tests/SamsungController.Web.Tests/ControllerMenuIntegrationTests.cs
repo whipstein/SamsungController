@@ -1420,6 +1420,74 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task PictureSliderUpdatesNavigateAdjustAndHonorTheExitBehavior()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: picture-sliders
+            name: Picture Sliders
+            model: Test TV
+            timing:
+              defaultDelay: 50ms
+              screenChangeDelay: 50ms
+              returnDelay: 50ms
+            nodes:
+              - id: normal-video
+                label: Normal video
+              - id: settings
+                label: Settings
+                parent: normal-video
+              - id: brightness
+                label: Brightness
+                parent: settings
+                controlType: slider
+                defaultValue: 25
+                minimumValue: 0
+                maximumValue: 50
+            anchors:
+              - id: normal
+                label: Return to normal video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            transitions:
+              - id: open-brightness
+                from: normal-video
+                to: brightness
+                verified: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_DOWN
+            """;
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            await controller.ApplyMenuSliderValuesAsync(
+                [new MenuSliderValueUpdate("brightness", 25, 27)],
+                returnToNormalVideo: false);
+
+            Assert.Equal(
+                ["KEY_MENU", "KEY_DOWN", "KEY_RIGHT", "KEY_RIGHT"],
+                GetSentKeys(transport));
+            var stayed = controller.GetSnapshot();
+            Assert.Equal("Brightness", stayed.MenuLabel);
+            Assert.Equal(MenuStateConfidence.Synchronized, stayed.MenuConfidence);
+
+            transport.SentMessages.Clear();
+            await controller.ApplyMenuSliderValuesAsync(
+                [new MenuSliderValueUpdate("brightness", 27, 26)],
+                returnToNormalVideo: true);
+
+            Assert.Equal(["KEY_LEFT", "KEY_RETURN"], GetSentKeys(transport));
+            var returned = controller.GetSnapshot();
+            Assert.Equal("Normal video", returned.MenuLabel);
+            Assert.Equal(MenuStateConfidence.Synchronized, returned.MenuConfidence);
+        }
+    }
+
+    [Fact]
     public async Task NavigateBetweenVerifiedDestinationsUsesCalculatedRelativeRoute()
     {
         var allVerifiedYaml = ExplicitValidationMenuYaml.Replace(

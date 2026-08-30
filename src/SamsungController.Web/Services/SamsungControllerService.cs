@@ -2895,6 +2895,101 @@ public sealed class SamsungControllerService : IAsyncDisposable
             cancellationToken);
     }
 
+    public async Task ApplyMenuSliderValuesAsync(
+        IReadOnlyList<MenuSliderValueUpdate> updates,
+        bool returnToNormalVideo,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(updates);
+        if (updates.Count == 0)
+        {
+            throw new InvalidOperationException("Choose at least one changed slider value to apply.");
+        }
+
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("apply menu slider values");
+        EnsureNoMenuRecording("apply menu slider values");
+        if (_client.State != SamsungConnectionState.Connected)
+        {
+            throw new InvalidOperationException("Connect to the TV before applying slider values.");
+        }
+
+        MenuDefinition definition;
+        MenuStateTracker tracker;
+        MenuAnchor? returnAnchor;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+            tracker = _menuStateTracker
+                ?? throw new InvalidOperationException("No menu state tracker is available.");
+            returnAnchor = returnToNormalVideo
+                ? FindReturnToVideoAnchor(definition)
+                : null;
+        }
+
+        var normalized = updates.Select(update => ValidateSliderUpdate(definition, update)).ToArray();
+        if (normalized.Select(update => update.NodeId).Distinct(StringComparer.OrdinalIgnoreCase).Count()
+            != normalized.Length)
+        {
+            throw new InvalidOperationException("Each slider can appear only once in an apply operation.");
+        }
+
+        if (returnToNormalVideo && returnAnchor?.Verified != true)
+        {
+            throw new InvalidOperationException(
+                "A verified return-to-normal-video anchor is required for the selected exit behavior.");
+        }
+
+        var lastTargetNodeId = normalized[^1].NodeId;
+        await RunNavigationAsync(
+                $"Apply {normalized.Length} picture slider{(normalized.Length == 1 ? string.Empty : "s")}",
+                async (navigator, token) =>
+                {
+                    foreach (var update in normalized)
+                    {
+                        var plan = navigator.Plan(update.NodeId, includeDraftTransitions: false);
+                        await navigator.ExecutePlanAsync(plan, token).ConfigureAwait(false);
+                        try
+                        {
+                            await ExecuteSliderValueChangeAsync(
+                                    definition,
+                                    update,
+                                    token)
+                                .ConfigureAwait(false);
+                            tracker.ConfirmNode(
+                                update.NodeId,
+                                $"Slider '{definition.GetPath(update.NodeId)}' was adjusted to the predicted value {update.ToValue:G29}.");
+                        }
+                        catch
+                        {
+                            tracker.MarkUnknown(
+                                $"Slider adjustment for '{definition.GetPath(update.NodeId)}' did not complete.");
+                            throw;
+                        }
+                    }
+
+                    if (returnAnchor is not null)
+                    {
+                        try
+                        {
+                            await navigator.ExecuteAnchorAsync(returnAnchor.Id, token)
+                                .ConfigureAwait(false);
+                        }
+                        catch
+                        {
+                            tracker.ConfirmNode(
+                                lastTargetNodeId,
+                                "Slider values were applied, but the requested return to normal video failed; the last adjusted slider remains the expected state.");
+                            throw;
+                        }
+                    }
+                },
+                clearPlanOnSuccess: true,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<MenuTraversalFailureReport> ReportMenuTraversalFailureAsync(
         NavigationPlan failedPlan,
         CancellationToken cancellationToken = default)
@@ -5077,6 +5172,95 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
     private static int GetSetupCommandCount(ValidationSetup setup) =>
         setup.Anchor.Operations.Sum(operation => operation.Repeat) + setup.Plan.CommandCount;
+
+    private static MenuSliderValueUpdate ValidateSliderUpdate(
+        MenuDefinition definition,
+        MenuSliderValueUpdate update)
+    {
+        ArgumentNullException.ThrowIfNull(update);
+        ArgumentException.ThrowIfNullOrWhiteSpace(update.NodeId);
+        var nodeId = update.NodeId.Trim();
+        var node = definition.GetRequiredNode(nodeId);
+        if (node.ControlType != MenuControlType.Slider)
+        {
+            throw new InvalidOperationException(
+                $"'{definition.GetPath(nodeId)}' is not defined as a slider.");
+        }
+
+        if (node.MinimumValue is not { } minimum || node.MaximumValue is not { } maximum)
+        {
+            throw new InvalidOperationException(
+                $"Slider '{definition.GetPath(nodeId)}' must define minimum and maximum values.");
+        }
+
+        if (update.FromValue < minimum || update.FromValue > maximum
+            || update.ToValue < minimum || update.ToValue > maximum)
+        {
+            throw new InvalidOperationException(
+                $"Slider '{definition.GetPath(nodeId)}' values must remain between {minimum:G29} and {maximum:G29}.");
+        }
+
+        if (decimal.Truncate(update.FromValue) != update.FromValue
+            || decimal.Truncate(update.ToValue) != update.ToValue)
+        {
+            throw new InvalidOperationException(
+                $"Slider '{definition.GetPath(nodeId)}' currently supports whole-number key steps only.");
+        }
+
+        var commandCount = decimal.Abs(update.ToValue - update.FromValue);
+        if (commandCount > MenuDefinitionValidator.MaximumRepeat)
+        {
+            throw new InvalidOperationException(
+                $"Slider '{definition.GetPath(nodeId)}' requires {commandCount:G29} key presses; the maximum per update is {MenuDefinitionValidator.MaximumRepeat}.");
+        }
+
+        if (!definition.ApplicableTransitions.Any(transition =>
+                transition.Verified
+                && transition.ToNodeId.Equals(nodeId, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException(
+                $"Slider '{definition.GetPath(nodeId)}' does not have a verified navigation route.");
+        }
+
+        return update with { NodeId = nodeId };
+    }
+
+    private async Task ExecuteSliderValueChangeAsync(
+        MenuDefinition definition,
+        MenuSliderValueUpdate update,
+        CancellationToken cancellationToken)
+    {
+        var commandCount = decimal.ToInt32(decimal.Abs(update.ToValue - update.FromValue));
+        if (commandCount == 0)
+        {
+            return;
+        }
+
+        var key = update.ToValue > update.FromValue ? "KEY_RIGHT" : "KEY_LEFT";
+        var path = definition.GetPath(update.NodeId);
+        for (var commandNumber = 1; commandNumber <= commandCount; commandNumber++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_sync)
+            {
+                _navigationProgress = new NavigationProgress(
+                    DateTimeOffset.UtcNow,
+                    $"Adjust slider · {path}",
+                    path,
+                    path,
+                    commandNumber,
+                    commandCount,
+                    key,
+                    RemoteKeyAction.Click);
+            }
+
+            NotifyChanged();
+            await _client.SendKeyAsync(key, RemoteKeyAction.Click, cancellationToken)
+                .ConfigureAwait(false);
+            await _menuDelay.DelayAsync(definition.Timing.GetDelay(key), cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
 
     private async Task ExecuteAuthoringOperationsAsync(
         string phase,

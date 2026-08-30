@@ -335,6 +335,17 @@ can be planned or sent.
    pass reloads the YAML; that third accepted pass then runs the verified anchor
    return automatically.
 
+For a slider, topology verification ends with the slider row highlighted. Do not
+press Left or Right during that route test: the coverage result verifies only
+that the generated route reaches the correct control. After the route is
+verified, use **Picture Controls** to exercise the value behavior. That page
+uses the declared minimum, maximum, and default, sends one Left or Right key per
+whole-number step, and asks for visual confirmation of the predicted number.
+The value confirmation is deliberately separate from the three-pass route count
+because the TV does not return its numeric setting value. Changes made with a
+physical remote or another application can invalidate the page's predicted
+starting value.
+
 After initial verification, editing the outline or fine-adjustment tree runs the
 same generator again. A group whose generated key sequences and membership are
 unchanged retains verification. A newly added top-level branch contributes one
