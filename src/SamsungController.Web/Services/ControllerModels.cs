@@ -131,7 +131,11 @@ public sealed record MenuControlVerificationSnapshot(
     int ConfirmedSliderCount,
     int RequiredSliderCount,
     bool SlidersVerified,
-    IReadOnlyList<string> ConfirmedSliderNodeIds);
+    IReadOnlyList<string> ConfirmedSliderNodeIds,
+    int ConfirmedSelectionCount,
+    int RequiredSelectionCount,
+    bool SelectionsVerified,
+    IReadOnlyList<string> ConfirmedSelectionNodeIds);
 
 public sealed record MenuAnchorSummary(
     string Id,

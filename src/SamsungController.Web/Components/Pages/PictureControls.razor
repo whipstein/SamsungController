@@ -19,6 +19,7 @@
                 <li>Turning on 20 Point enables its Interval and RGB controls. Choosing Custom Color Space enables its Color and RGB controls.</li>
                 <li><strong>Immediate</strong> sends one changed control at a time. <strong>Apply button</strong> can stage a controller and its newly enabled settings together.</li>
                 <li>Confirm three different sliders visually to verify the shared slider behavior for this TV. Later slider changes no longer require individual confirmation.</li>
+                <li>Confirm each selection dropdown once. Its option list and ordering are stored separately from other selections.</li>
             </ul>
             <p class="help-callout">A conditionally enabled control uses its verified containing-section route and the declared menu order after its controller has changed.</p>
         </HelpBubble>
@@ -89,9 +90,26 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
             <strong>@(Verification.SlidersVerified ? "Verified for this TV" : $"{Verification.ConfirmedSliderCount}/{Verification.RequiredSliderCount} different sliders")</strong>
             <small>@(Verification.SlidersVerified ? "Future slider updates do not require confirmation." : "Confirm successful slider values on the TV.")</small>
         </div>
-        @if (Verification.ConfirmedSliderCount > 0)
+        @if (Verification.RequiredSelectionCount > 0)
         {
-            <button class="secondary-action slider-verification-reset" @onclick="ResetSliderVerificationAsync" disabled="@IsBusy">Reset slider verification</button>
+            <div class="selection-verification-summary @(Verification.SelectionsVerified ? "verified" : "unverified")">
+                <span>SELECTION VERIFICATION</span>
+                <strong>@(Verification.SelectionsVerified ? "All selections verified" : $"{Verification.ConfirmedSelectionCount}/{Verification.RequiredSelectionCount} selection dropdowns")</strong>
+                <small>@(Verification.SelectionsVerified ? "Future updates use the verified option order." : "Each dropdown needs one visual confirmation.")</small>
+            </div>
+        }
+        @if (Verification.ConfirmedSliderCount > 0 || Verification.ConfirmedSelectionCount > 0)
+        {
+            <div class="menu-control-verification-actions">
+                @if (Verification.ConfirmedSliderCount > 0)
+                {
+                    <button class="secondary-action" @onclick="ResetSliderVerificationAsync" disabled="@IsBusy">Reset sliders</button>
+                }
+                @if (Verification.ConfirmedSelectionCount > 0)
+                {
+                    <button class="secondary-action" @onclick="ResetSelectionVerificationAsync" disabled="@IsBusy">Reset selections</button>
+                }
+            </div>
         }
     </div>
     <p class="field-note">Values are predictions based on YAML defaults and changes sent during this page session. Controls changed elsewhere can make those predictions inaccurate.</p>
@@ -310,14 +328,16 @@ else
             foreach (var control in controls)
             {
                 control.AppliedValue = control.DesiredValue;
-                var sliderIsGloballyVerified = control.Node.ControlType == MenuControlType.Slider
-                    && Verification.SlidersVerified;
-                control.AwaitingConfirmation = !sliderIsGloballyVerified;
-                control.Confirmed = sliderIsGloballyVerified;
+                var behaviorIsVerified = control.Node.ControlType == MenuControlType.Slider
+                        && Verification.SlidersVerified
+                    || control.Node.ControlType == MenuControlType.Selection
+                        && IsSelectionVerified(control);
+                control.AwaitingConfirmation = !behaviorIsVerified;
+                control.Confirmed = behaviorIsVerified;
             }
 
             LocalStatus = controls.All(control => !control.AwaitingConfirmation)
-                ? $"Applied {controls.Count} menu control{(controls.Count == 1 ? string.Empty : "s")}. Shared slider behavior is already verified."
+                ? $"Applied {controls.Count} menu control{(controls.Count == 1 ? string.Empty : "s")}. The changed control behavior is already verified."
                 : $"Applied {controls.Count} menu control{(controls.Count == 1 ? string.Empty : "s")}. Confirm the displayed values on the TV.";
         }
         catch (OperationCanceledException)
@@ -344,6 +364,10 @@ else
             {
                 Verification = await Controller.ConfirmMenuSliderBehaviorAsync(control.Node.Id);
             }
+            else if (control.Node.ControlType == MenuControlType.Selection)
+            {
+                Verification = await Controller.ConfirmMenuSelectionBehaviorAsync(control.Node.Id);
+            }
 
             control.AwaitingConfirmation = false;
             control.Confirmed = true;
@@ -361,6 +385,10 @@ else
             else if (control.Node.ControlType == MenuControlType.Slider)
             {
                 LocalStatus = $"{control.Node.Label} confirmed at {control.AppliedValue} · {Verification.ConfirmedSliderCount}/{Verification.RequiredSliderCount} different sliders verified.";
+            }
+            else if (control.Node.ControlType == MenuControlType.Selection)
+            {
+                LocalStatus = $"{control.Node.Label} confirmed at {control.AppliedValue} · {Verification.ConfirmedSelectionCount}/{Verification.RequiredSelectionCount} selection dropdowns verified.";
             }
             else
             {
@@ -393,6 +421,33 @@ else
             }
 
             LocalStatus = "Shared slider verification reset. Confirm three different sliders to verify it again.";
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task ResetSelectionVerificationAsync()
+    {
+        IsBusy = true;
+        LocalError = null;
+        try
+        {
+            await Controller.ResetMenuSelectionBehaviorVerificationAsync();
+            Verification = Controller.GetMenuControlVerificationSnapshot();
+            foreach (var selection in Controls.Where(control =>
+                         control.Node.ControlType == MenuControlType.Selection))
+            {
+                selection.AwaitingConfirmation = false;
+                selection.Confirmed = false;
+            }
+
+            LocalStatus = "Selection verification reset. Confirm each dropdown after changing it on the TV.";
         }
         catch (Exception exception)
         {
@@ -631,6 +686,19 @@ else
         }
 
         EnsureSelectedMenuArea();
+        foreach (var selection in Controls.Where(control =>
+                     control.Node.ControlType == MenuControlType.Selection))
+        {
+            if (IsSelectionVerified(selection))
+            {
+                selection.AwaitingConfirmation = false;
+                selection.Confirmed = true;
+            }
+            else if (!selection.AwaitingConfirmation)
+            {
+                selection.Confirmed = false;
+            }
+        }
     }
 
     private bool HasUsableRoute(MenuNodeSummary node)
@@ -700,20 +768,34 @@ else
 
     private string GetControlStateLabel(PictureControlEdit control, bool disabled) => disabled
         ? "DISABLED"
-        : control.Node.ControlType == MenuControlType.Slider && Verification.SlidersVerified
-            ? "SLIDER VERIFIED"
         : control.Pending
             ? "PENDING"
             : control.AwaitingConfirmation
                 ? "VERIFY"
-                : control.Confirmed
-                    ? "CONFIRMED"
-                    : control.Node.HasVerifiedRoute
-                        ? "VERIFIED"
-                        : "CONDITIONAL";
+                : control.Node.ControlType == MenuControlType.Slider && Verification.SlidersVerified
+                    ? "SLIDER VERIFIED"
+                    : control.Node.ControlType == MenuControlType.Selection && IsSelectionVerified(control)
+                        ? "SELECTION VERIFIED"
+                        : control.Confirmed
+                            ? "CONFIRMED"
+                            : control.Node.ControlType == MenuControlType.Selection
+                                ? "NEEDS VERIFICATION"
+                                : control.Node.HasVerifiedRoute
+                                    ? "VERIFIED"
+                                    : "CONDITIONAL";
 
-    private static string GetControlCssClass(PictureControlEdit control, bool disabled) =>
-        $"{(disabled ? "disabled" : string.Empty)} {(control.Pending ? "pending" : string.Empty)} {(control.AwaitingConfirmation ? "awaiting-confirmation" : control.Confirmed ? "confirmed" : string.Empty)}";
+    private string GetControlCssClass(PictureControlEdit control, bool disabled)
+    {
+        var confirmed = control.Confirmed
+            || control.Node.ControlType == MenuControlType.Selection
+            && IsSelectionVerified(control);
+        return $"{(disabled ? "disabled" : string.Empty)} {(control.Pending ? "pending" : string.Empty)} {(control.AwaitingConfirmation ? "awaiting-confirmation" : confirmed ? "confirmed" : string.Empty)}";
+    }
+
+    private bool IsSelectionVerified(PictureControlEdit control) =>
+        Verification.ConfirmedSelectionNodeIds.Contains(
+            control.Node.Id,
+            StringComparer.OrdinalIgnoreCase);
 
     private static bool IsOn(string value) => value.Equals("on", StringComparison.OrdinalIgnoreCase);
 

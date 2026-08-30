@@ -344,7 +344,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
     {
         lock (_sync)
         {
-            var ids = _settings.Host?.Equals(
+            var sliderIds = _settings.Host?.Equals(
                     _settings.SliderVerificationHost,
                     StringComparison.OrdinalIgnoreCase) == true
                 ? (_settings.VerifiedSliderNodeIds ?? [])
@@ -352,11 +352,30 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToArray()
                 : [];
+            var requiredSelectionIds = GetVerifiableSelectionNodeIds(_menuDefinition);
+            var savedSelectionIds = _settings.Host?.Equals(
+                    _settings.SelectionVerificationHost,
+                    StringComparison.OrdinalIgnoreCase) == true
+                ? (_settings.VerifiedSelectionNodeIds ?? [])
+                    .Where(nodeId => !string.IsNullOrWhiteSpace(nodeId))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray()
+                : [];
+            var confirmedSelectionIds = savedSelectionIds
+                .Where(nodeId => requiredSelectionIds.Contains(
+                    nodeId,
+                    StringComparer.OrdinalIgnoreCase))
+                .ToArray();
             return new MenuControlVerificationSnapshot(
-                ids.Length,
+                sliderIds.Length,
                 SliderVerificationRequiredCount,
-                ids.Length >= SliderVerificationRequiredCount,
-                ids);
+                sliderIds.Length >= SliderVerificationRequiredCount,
+                sliderIds,
+                confirmedSelectionIds.Length,
+                requiredSelectionIds.Length,
+                requiredSelectionIds.Length > 0
+                && confirmedSelectionIds.Length >= requiredSelectionIds.Length,
+                confirmedSelectionIds);
         }
     }
 
@@ -494,7 +513,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     current =>
                     {
                         var host = request.Host.Trim();
-                        var sameSliderVerificationHost = current.Host?.Equals(
+                        var sameControlVerificationHost = current.Host?.Equals(
                             host,
                             StringComparison.OrdinalIgnoreCase) == true;
                         return current with
@@ -510,11 +529,17 @@ public sealed class SamsungControllerService : IAsyncDisposable
                             KeepAliveTimeoutSeconds = request.KeepAliveTimeoutSeconds,
                             PostConnectWarmupMilliseconds = request.PostConnectWarmupMilliseconds,
                             ReconnectAfterIdleSeconds = request.ReconnectAfterIdleSeconds,
-                            SliderVerificationHost = sameSliderVerificationHost
+                            SliderVerificationHost = sameControlVerificationHost
                                 ? current.SliderVerificationHost
                                 : null,
-                            VerifiedSliderNodeIds = sameSliderVerificationHost
+                            VerifiedSliderNodeIds = sameControlVerificationHost
                                 ? current.VerifiedSliderNodeIds
+                                : [],
+                            SelectionVerificationHost = sameControlVerificationHost
+                                ? current.SelectionVerificationHost
+                                : null,
+                            VerifiedSelectionNodeIds = sameControlVerificationHost
+                                ? current.VerifiedSelectionNodeIds
                                 : []
                         };
                     },
@@ -1572,7 +1597,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
         if (delaysChanged)
         {
-            await ClearMenuSliderBehaviorVerificationAsync(cancellationToken)
+            await ClearMenuControlBehaviorVerificationAsync(cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -1663,7 +1688,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
         if (delaysChanged)
         {
-            await ClearMenuSliderBehaviorVerificationAsync(cancellationToken)
+            await ClearMenuControlBehaviorVerificationAsync(cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -2415,7 +2440,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
         if (delaysChanged)
         {
-            await ClearMenuSliderBehaviorVerificationAsync(cancellationToken)
+            await ClearMenuControlBehaviorVerificationAsync(cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -3151,6 +3176,61 @@ public sealed class SamsungControllerService : IAsyncDisposable
     {
         await InitializeAsync(cancellationToken).ConfigureAwait(false);
         await ClearMenuSliderBehaviorVerificationAsync(cancellationToken).ConfigureAwait(false);
+        NotifyChanged();
+    }
+
+    public async Task<MenuControlVerificationSnapshot> ConfirmMenuSelectionBehaviorAsync(
+        string nodeId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(nodeId);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        string normalizedNodeId;
+        lock (_sync)
+        {
+            var definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+            var node = definition.GetRequiredNode(nodeId.Trim());
+            if (node.ControlType != MenuControlType.Selection)
+            {
+                throw new InvalidOperationException(
+                    $"'{definition.GetPath(node.Id)}' is not defined as a selection.");
+            }
+
+            normalizedNodeId = node.Id;
+        }
+
+        await UpdateSettingsAsync(
+                current =>
+                {
+                    var ids = current.Host?.Equals(
+                            current.SelectionVerificationHost,
+                            StringComparison.OrdinalIgnoreCase) == true
+                        ? (current.VerifiedSelectionNodeIds ?? []).ToList()
+                        : [];
+                    if (!ids.Contains(normalizedNodeId, StringComparer.OrdinalIgnoreCase))
+                    {
+                        ids.Add(normalizedNodeId);
+                    }
+
+                    return current with
+                    {
+                        SelectionVerificationHost = current.Host,
+                        VerifiedSelectionNodeIds = ids
+                    };
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+        NotifyChanged();
+        return GetMenuControlVerificationSnapshot();
+    }
+
+    public async Task ResetMenuSelectionBehaviorVerificationAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        await ClearMenuSelectionBehaviorVerificationAsync(cancellationToken)
+            .ConfigureAwait(false);
         NotifyChanged();
     }
 
@@ -5517,6 +5597,27 @@ public sealed class SamsungControllerService : IAsyncDisposable
             anchor.Verified
             && anchor.TargetNodeId.Equals(nodeId, StringComparison.OrdinalIgnoreCase));
 
+    private static string[] GetVerifiableSelectionNodeIds(MenuDefinition? definition)
+    {
+        if (definition is null)
+        {
+            return [];
+        }
+
+        return definition.Nodes.Values
+            .Where(node => node.ControlType == MenuControlType.Selection
+                && !string.IsNullOrWhiteSpace(node.DefaultValue)
+                && node.SelectionOptions is { Count: > 0 })
+            .Where(node => HasVerifiedPictureControlRoute(definition, node.Id)
+                || node.DisabledWhen is { Count: > 0 }
+                && !string.IsNullOrWhiteSpace(node.ParentId)
+                && definition.GetRequiredNode(node.ParentId).ControlType == MenuControlType.Submenu
+                && HasVerifiedPictureControlRoute(definition, node.ParentId))
+            .Select(node => node.Id)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     private async Task PreparePictureControlAsync(
         MenuNavigator navigator,
         MenuDefinition definition,
@@ -6326,6 +6427,28 @@ public sealed class SamsungControllerService : IAsyncDisposable
             {
                 SliderVerificationHost = current.Host,
                 VerifiedSliderNodeIds = []
+            },
+            cancellationToken);
+
+    private Task ClearMenuSelectionBehaviorVerificationAsync(
+        CancellationToken cancellationToken) =>
+        UpdateSettingsAsync(
+            current => current with
+            {
+                SelectionVerificationHost = current.Host,
+                VerifiedSelectionNodeIds = []
+            },
+            cancellationToken);
+
+    private Task ClearMenuControlBehaviorVerificationAsync(
+        CancellationToken cancellationToken) =>
+        UpdateSettingsAsync(
+            current => current with
+            {
+                SliderVerificationHost = current.Host,
+                VerifiedSliderNodeIds = [],
+                SelectionVerificationHost = current.Host,
+                VerifiedSelectionNodeIds = []
             },
             cancellationToken);
 

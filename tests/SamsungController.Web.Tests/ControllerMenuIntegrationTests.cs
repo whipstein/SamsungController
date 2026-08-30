@@ -1747,6 +1747,87 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task SelectionBehaviorVerificationTracksEachDropdownAndPersists()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: selection-verification
+            name: Selection Verification
+            model: Test TV
+            nodes:
+              - id: normal-video
+                label: Normal video
+              - id: picture-mode
+                label: Picture Mode
+                parent: normal-video
+                controlType: selection
+                defaultValue: Standard
+                options: [Standard, Movie, Filmmaker Mode]
+              - id: color-tone
+                label: Color Tone
+                parent: normal-video
+                controlType: selection
+                defaultValue: Standard
+                options: [Standard, Warm1, Warm2]
+            anchors:
+              - id: normal
+                label: Return to normal video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            transitions:
+              - id: open-picture-mode
+                from: normal-video
+                to: picture-mode
+                verified: true
+                steps:
+                  - key: KEY_MENU
+              - id: open-color-tone
+                from: normal-video
+                to: color-tone
+                verified: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_DOWN
+            """;
+        var (controller, _) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            var initial = controller.GetMenuControlVerificationSnapshot();
+            Assert.False(initial.SelectionsVerified);
+            Assert.Equal(0, initial.ConfirmedSelectionCount);
+            Assert.Equal(2, initial.RequiredSelectionCount);
+
+            var first = await controller.ConfirmMenuSelectionBehaviorAsync("picture-mode");
+            var duplicate = await controller.ConfirmMenuSelectionBehaviorAsync("picture-mode");
+            var completed = await controller.ConfirmMenuSelectionBehaviorAsync("color-tone");
+
+            Assert.Equal(1, first.ConfirmedSelectionCount);
+            Assert.Equal(1, duplicate.ConfirmedSelectionCount);
+            Assert.True(completed.SelectionsVerified);
+            Assert.Equal(2, completed.ConfirmedSelectionCount);
+        }
+
+        await using var reloaded = CreateController();
+        await reloaded.InitializeAsync();
+        Assert.True(reloaded.GetMenuControlVerificationSnapshot().SelectionsVerified);
+
+        await reloaded.UpdateMenuTimingProfileAsync(new MenuTimingProfile(
+            DefaultDelayMilliseconds: 151,
+            ScreenChangeDelayMilliseconds: 800,
+            ReturnDelayMilliseconds: 300));
+        Assert.Equal(0, reloaded.GetMenuControlVerificationSnapshot().ConfirmedSelectionCount);
+
+        await reloaded.ConfirmMenuSelectionBehaviorAsync("picture-mode");
+        await reloaded.ResetMenuSelectionBehaviorVerificationAsync();
+        var reset = reloaded.GetMenuControlVerificationSnapshot();
+        Assert.False(reset.SelectionsVerified);
+        Assert.Equal(0, reset.ConfirmedSelectionCount);
+    }
+
+    [Fact]
     public async Task NavigateBetweenVerifiedDestinationsUsesCalculatedRelativeRoute()
     {
         var allVerifiedYaml = ExplicitValidationMenuYaml.Replace(

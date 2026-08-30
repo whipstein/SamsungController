@@ -365,8 +365,12 @@ promote the profile; subsequent slider updates no longer request confirmation.
 Repeating one slider does not increase coverage. The profile is persisted for
 the saved TV address, resets automatically when a different TV address is saved,
 resets when system-wide menu delays change, and can be reset manually from Menu
-Controls. Switches and selections are not promoted by slider coverage because
-their Select and choice-list behavior is different.
+Controls. Selections are verified individually because each declares a different
+ordered option list. After one successful value confirmation, that selection's
+verification is persisted for the saved TV address and later changes no longer
+request routine confirmation. Selection verification resets for a different TV,
+when system-wide menu delays change, or from Menu Controls. Switches are not
+promoted by either coverage type and continue to request visual confirmation.
 
 After initial verification, editing the outline or fine-adjustment tree runs the
 same generator again. A group whose generated key sequences and membership are

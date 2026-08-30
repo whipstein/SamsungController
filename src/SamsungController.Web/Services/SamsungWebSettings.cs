@@ -41,6 +41,10 @@ internal sealed record SamsungWebSettings
 
     public IReadOnlyList<string>? VerifiedSliderNodeIds { get; init; }
 
+    public string? SelectionVerificationHost { get; init; }
+
+    public IReadOnlyList<string>? VerifiedSelectionNodeIds { get; init; }
+
     public IReadOnlyList<QuickAccessAction>? QuickAccess { get; init; }
 
     public static async Task<SamsungWebSettings> LoadAsync(

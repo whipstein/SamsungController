@@ -105,6 +105,7 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 - [x] Expose verified sliders, switches, and selections from every menu area in a top-level tabbed, section-grouped control center.
 - [x] Apply conditional enablement in dependency order and derive enabled-child routes from verified containing sections.
 - [x] Promote shared slider behavior after three distinct TV-specific visual confirmations instead of verifying every slider.
+- [x] Persist individual TV-specific verification for selection dropdowns with distinct ordered option lists.
 
 ### Read-only protocol research
 
