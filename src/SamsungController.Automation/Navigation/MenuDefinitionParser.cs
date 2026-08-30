@@ -22,7 +22,7 @@ public sealed class MenuDefinitionParser
     private static readonly HashSet<string> ConfigurationFields =
         new(["id", "name", "conditions"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> NodeFields =
-        new(["id", "label", "children", "description", "controlType", "defaultValue", "minimumValue", "maximumValue", "options", "disabledWhen", "hiddenWhen"], StringComparer.OrdinalIgnoreCase);
+        new(["id", "label", "children", "description", "controlType", "defaultValue", "minimumValue", "maximumValue", "options", "disabled", "disabledWhen", "hiddenWhen"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ValueConditionFields =
         new(["setting", "equals"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> AnchorFields =
@@ -275,7 +275,8 @@ public sealed class MenuDefinitionParser
                     ? ParseHiddenConditions(
                         RequireSequence(hiddenWhenNode, $"hiddenWhen in {context}"),
                         context)
-                    : []));
+                    : [],
+                OptionalBoolean(fields, "disabled", context)));
 
             if (fields.TryGetValue("children", out var childrenNode))
             {

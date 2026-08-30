@@ -16,7 +16,7 @@ public sealed class MenuDefinitionParserTests
         Assert.Equal("Menu / Picture", definition.GetPath("picture"));
         Assert.Equal("menu", definition.Nodes["picture"].ParentId);
         Assert.Equal(
-            ["auto-picture", "picture", "brightness", "reset-picture", "sound-output", "interval", "interval-red", "smart-calibration"],
+            ["auto-picture", "picture", "brightness", "reset-picture", "sound-output", "interval", "interval-red", "smart-calibration", "unavailable-feature"],
             definition.Nodes.Values
                 .Where(node => node.ParentId == "menu")
                 .Select(node => node.Id));
@@ -40,6 +40,7 @@ public sealed class MenuDefinitionParserTests
         Assert.Equal(["5%", "10%", "15%"], definition.Nodes["interval"].SelectionOptions);
         Assert.Equal(MenuControlType.Action, definition.Nodes["smart-calibration"].ControlType);
         Assert.Null(definition.Nodes["smart-calibration"].DefaultValue);
+        Assert.True(definition.Nodes["unavailable-feature"].Disabled);
         var disabledCondition = Assert.Single(definition.Nodes["picture"].DisabledWhen!);
         Assert.Equal("auto-picture", disabledCondition.SettingNodeId);
         Assert.Equal("on", disabledCondition.EqualsValue);
@@ -279,6 +280,9 @@ public sealed class MenuDefinitionParserTests
               - id: smart-calibration
                 label: Smart Calibration
                 controlType: action
+              - id: unavailable-feature
+                label: Unavailable Feature
+                disabled: true
         anchors:
           - id: normal
             label: Back to video

@@ -105,6 +105,12 @@ public sealed class TopologyRouteGeneratorTests
                     "Game Options",
                     "settings",
                     HiddenWhen: [new MenuNodeHiddenCondition("adaptive", "on")]),
+                new MenuNode(
+                    "unavailable",
+                    "Unavailable",
+                    "settings",
+                    Disabled: true),
+                new MenuNode("unavailable-detail", "Unavailable Detail", "unavailable"),
                 new MenuNode("sound", "Sound", "settings"),
                 new MenuNode(
                     "sound-output",
@@ -131,6 +137,8 @@ public sealed class TopologyRouteGeneratorTests
         Assert.DoesNotContain(routes, transition => transition.ToNodeId == "advanced");
         Assert.DoesNotContain(routes, transition => transition.ToNodeId == "advanced-detail");
         Assert.DoesNotContain(routes, transition => transition.ToNodeId == "game-options");
+        Assert.DoesNotContain(routes, transition => transition.ToNodeId == "unavailable");
+        Assert.DoesNotContain(routes, transition => transition.ToNodeId == "unavailable-detail");
         var sound = Assert.Single(routes, transition => transition.ToNodeId == "sound");
         Assert.Equal(["KEY_MENU", "KEY_DOWN", "KEY_ENTER"], sound.Operations.Select(step => step.Key));
         Assert.Equal(1, sound.Operations[1].Repeat);

@@ -345,6 +345,13 @@ public sealed class MenuDefinitionValidator
             }
         }
 
+        if (node.Disabled && node.DisabledWhen is { Count: > 0 })
+        {
+            errors.Add(new MenuDefinitionValidationError(
+                $"node '{node.Id}'",
+                "A permanently disabled item cannot also define disabledWhen; remove the redundant conditional rule."));
+        }
+
         ValidateValueConditions(
             definition,
             node,

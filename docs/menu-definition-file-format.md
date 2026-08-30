@@ -349,6 +349,7 @@ Every node requires `id` and `label`. These fields are optional:
 | `defaultValue` | Expected value after reset/startup. Required for value-bearing controls; forbidden for `submenu` and `action`. |
 | `minimumValue`, `maximumValue` | Numeric slider boundaries; both are required for sliders only. |
 | `options` | Ordered values for choice controls. |
+| `disabled` | Set to `true` when this row is always visible but permanently gray/unavailable. Descendants inherit this state. |
 | `disabledWhen` | OR-list of conditions that leave this row present but gray/unavailable. Descendants inherit this state. |
 | `hiddenWhen` | OR-list of conditions that remove this row and all descendants. |
 
@@ -370,6 +371,25 @@ per entry, and must contain the declared default. For an indexed selection, keep
 its sliders consecutive under the same parent immediately after the selector.
 
 ### Conditional rows
+
+For a row that is always present but never selectable, use the boolean
+`disabled` field:
+
+```yaml
+disabled: true
+```
+
+```json
+"disabled": true
+```
+
+The default is `false`. Do not combine `disabled: true` with `disabledWhen` on
+the same node; the conditional rule would be redundant. A permanently disabled
+submenu automatically makes all of its descendants unavailable. The visual
+editor exposes the same behavior as **Always disabled**, and the outline editor
+accepts either `{submenu; disabled}` or `{submenu; disabled=true}`.
+
+Use `disabledWhen` only when availability depends on another modeled setting.
 
 Both conditional fields contain objects with `setting` and `equals`:
 
@@ -398,9 +418,6 @@ Define `disabledWhen` only on that submenu; repeating the same condition on its
 children is unnecessary. When the controlling value enables the submenu again,
 its descendants become available and generated routes use the inherited state.
 
-There is no separate “always disabled” boolean in version 1. Model a permanent
-gray row through a condition that is true in the applicable configuration, or
-leave it as documented topology and do not define an executable destination.
 Use separate configurations if combinations require AND logic or cannot be
 represented by one modeled value.
 
@@ -498,9 +515,9 @@ verification:
 64-character SHA-256 hexadecimal fingerprint, and an ISO-8601 timestamp.
 Fingerprints include the display combination and the relevant behavior. Controls
 sharing an interaction type are fingerprinted as one representative group.
-Conditional rows are fingerprinted in disabled, hidden, or combined behavior
-classes; each class fingerprint still includes every affected node and exact
-`disabledWhen`/`hiddenWhen` rule. Changing only a slider's bounds, for example,
+Conditional rows are fingerprinted in permanent-disabled, conditional-disabled,
+and hidden behavior classes; each class fingerprint still includes every affected
+node and exact rule. Changing only a slider's bounds, for example,
 reopens the shared slider check without invalidating unrelated routes or
 restoring one check for every slider.
 

@@ -142,8 +142,9 @@ highlighted action. A submenu selection uses the selection option model but
 sends Return after choosing so execution ends back in the containing menu. An
 indexed selection turns its ordered options into fixed rows and consumes the
 consecutive slider siblings as columns. Desired normal and indexed values are
-stored in local per-user settings rather than shared menu-topology YAML. Conditional
-`disabledWhen` rules reference another value-bearing node and retain gray rows in
+stored in local per-user settings rather than shared menu-topology YAML. A static
+`disabled: true` flag represents permanently gray rows and is inherited by the
+entire subtree. Conditional `disabledWhen` rules reference another value-bearing node and retain gray rows in
 their ordered topology. `hiddenWhen` rules remove matching rows and descendants
 from the effective topology. Default-value evaluation begins as descriptive UI
 state rather than telemetry; values sent through Menu Controls update an
@@ -151,7 +152,7 @@ in-session prediction used by controls and calculated navigation.
 
 An indented-outline planner can add or synchronize an entire branch in one
 atomic write. It reuses matching stable IDs, previews additions, updates,
-reordering, removals, interaction types, defaults, bounds, choices, disabled rules,
+reordering, removals, interaction types, defaults, bounds, choices, permanent and conditional disabled rules,
 and hidden rules, and
 refuses to remove nodes referenced by recorded behavior.
 

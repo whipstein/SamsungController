@@ -257,6 +257,12 @@ highlighted and deliberately omits the final OK/Enter. It has no default,
 options, bounds, or children. These declarations document the expected TV
 behavior; SamsungController cannot read the live value or highlighted choice.
 
+`disabled: true` documents a row that remains visible but is permanently gray
+and unavailable. Do not also add `disabledWhen` to that row. A permanently
+disabled submenu makes all descendants unavailable, removes the branch from
+generated executable routes, and requires only one representative visual
+behavior check rather than checks for every control below it.
+
 `disabledWhen` documents rows that remain visible in their declared position
 in the menu but become unavailable or gray. Each condition names another
 value-bearing node and the value that disables this node. Multiple conditions
@@ -351,7 +357,8 @@ can be planned or sent.
    `Adaptive Picture {switch; default=off}`, `Reset Picture {confirmation;
    default=Cancel; options=Reset|Cancel}`, or `Smart Calibration {action}`. The option order after
    `options=` is preserved. A dependent gray row can be written as `Brightness {slider;
-   default=50; min=0; max=100; disabledWhen=adaptive-picture=on}`. A row that
+   default=50; min=0; max=100; disabledWhen=adaptive-picture=on}`. An always-gray
+   row can use `Unsupported Feature {submenu; disabled=true}`. A row that
    disappears can use `Game HDR {submenu; hiddenWhen=game-mode=off}`. Separate
    multiple conditions with `|`. The fine-adjustment editor exposes disabled and
    hidden rules, selection, submenu-selection, indexed-selection, and

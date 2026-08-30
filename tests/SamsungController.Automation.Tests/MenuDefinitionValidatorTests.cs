@@ -5,6 +5,39 @@ namespace SamsungController.Automation.Tests;
 public sealed class MenuDefinitionValidatorTests
 {
     [Fact]
+    public void PermanentlyDisabledItemCannotAlsoDeclareDisabledWhen()
+    {
+        var definition = new MenuDefinition(
+            "disabled",
+            "Disabled",
+            "TV",
+            new MenuDefinitionContext(),
+            [
+                new MenuNode("settings", "Settings"),
+                new MenuNode(
+                    "mode",
+                    "Mode",
+                    "settings",
+                    ControlType: MenuControlType.Switch,
+                    DefaultValue: "off"),
+                new MenuNode(
+                    "unavailable",
+                    "Unavailable",
+                    "settings",
+                    DisabledWhen: [new MenuNodeDisabledCondition("mode", "off")],
+                    Disabled: true)
+            ],
+            [],
+            []);
+
+        var error = Assert.Single(
+            new MenuDefinitionValidator().Validate(definition),
+            item => item.Message.Contains("cannot also define disabledWhen", StringComparison.Ordinal));
+
+        Assert.Equal("node 'unavailable'", error.Location);
+    }
+
+    [Fact]
     public void ReportsMissingReferencesInvalidOperationsAndParentCycles()
     {
         var definition = new MenuDefinition(

@@ -250,7 +250,8 @@ public static class TopologyRouteGenerator
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         while (visited.Add(current.Id))
         {
-            if ((current.DisabledWhen ?? []).Any(condition =>
+            if (current.Disabled
+                || (current.DisabledWhen ?? []).Any(condition =>
                     definition.Nodes.TryGetValue(condition.SettingNodeId, out var setting)
                     && setting.DefaultValue?.Equals(
                         condition.EqualsValue,

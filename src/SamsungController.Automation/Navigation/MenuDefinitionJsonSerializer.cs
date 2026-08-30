@@ -194,6 +194,10 @@ public sealed class MenuDefinitionJsonSerializer
         {
             result["maximumValue"] = maximum;
         }
+        if (node.Disabled)
+        {
+            result["disabled"] = true;
+        }
         if (node.SelectionOptions is { Count: > 0 })
         {
             result["options"] = new JsonArray(node.SelectionOptions

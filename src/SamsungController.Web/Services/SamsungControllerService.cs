@@ -299,6 +299,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         node.ControlType,
                         node.DefaultValue,
                         node.DisabledWhen ?? [],
+                        node.Disabled,
+                        IsMenuNodePermanentlyDisabled(definition, node),
                         IsMenuNodeDisabledByDefault(definition, node),
                         node.HiddenWhen ?? [],
                         IsMenuNodeHiddenByDefault(definition, node),
@@ -356,7 +358,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
         lock (_sync)
         {
             var availableSliderIds = (_menuDefinition?.Nodes.Values ?? [])
-                .Where(node => node.ControlType == MenuControlType.Slider)
+                .Where(node => node.ControlType == MenuControlType.Slider
+                    && !IsMenuNodePermanentlyDisabled(_menuDefinition!, node))
                 .Select(node => node.Id)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
             var savedSliderIds = _settings.Host?.Equals(
@@ -5008,7 +5011,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         while (visited.Add(current.Id))
         {
-            if ((current.DisabledWhen ?? []).Any(condition =>
+            if (current.Disabled
+                || (current.DisabledWhen ?? []).Any(condition =>
                     definition.Nodes.TryGetValue(condition.SettingNodeId, out var setting)
                     && setting.DefaultValue?.Equals(
                         condition.EqualsValue,
@@ -5021,6 +5025,29 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 || !definition.Nodes.TryGetValue(current.ParentId, out current))
             {
                 break;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsMenuNodePermanentlyDisabled(
+        MenuDefinition definition,
+        MenuNode node)
+    {
+        var current = node;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (visited.Add(current.Id))
+        {
+            if (current.Disabled)
+            {
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(current.ParentId)
+                || !definition.Nodes.TryGetValue(current.ParentId, out current))
+            {
+                return false;
             }
         }
 
@@ -5059,7 +5086,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 .Select(condition => new MenuNodeHiddenCondition(
                     condition.SettingNodeId.Trim(),
                     condition.EqualsValue.Trim()))
-                .ToArray() ?? []);
+                .ToArray() ?? [],
+            request.Disabled);
 
     private static MenuRecordingRequest NormalizeRecordingRequest(MenuRecordingRequest request) =>
         request with
@@ -6451,7 +6479,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
         MenuDefinition definition,
         MenuNode node,
         IReadOnlyDictionary<string, string> effectiveValues) =>
-        (node.DisabledWhen ?? []).Any(condition =>
+        node.Disabled
+        || (node.DisabledWhen ?? []).Any(condition =>
         {
             var value = effectiveValues.TryGetValue(condition.SettingNodeId, out var knownValue)
                 ? knownValue
@@ -6640,11 +6669,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
 
         return definition.Nodes.Values
-            .Where(node => node.ControlType is MenuControlType.Selection
+            .Where(node => (node.ControlType is MenuControlType.Selection
                     or MenuControlType.SubmenuSelection
-                    or MenuControlType.IndexedSelection
+                    or MenuControlType.IndexedSelection)
                 && !string.IsNullOrWhiteSpace(node.DefaultValue)
-                && node.SelectionOptions is { Count: > 0 })
+                && node.SelectionOptions is { Count: > 0 }
+                && !IsMenuNodePermanentlyDisabled(definition, node))
             .Where(node => HasVerifiedPictureControlRoute(definition, node.Id)
                 || HasConditionalAncestorWithVerifiedParent(definition, node))
             .Select(node => node.Id)

@@ -178,7 +178,7 @@
                                     }
                                 </div>
                                 <div class="menu-outline-step setup-step-anchor" @ref="TopologyStepElement">
-                                <p>Paste the hierarchy using two spaces per level. Add control details as <code>{slider; default=50; min=0; max=100}</code>, <code>{selection; default=Warm2; options=Standard|Warm1|Warm2}</code>, <code>{indexed-selection; default=5%; options=5%|10%|15%}</code>, <code>{switch; default=off}</code>, or <code>{confirmation; default=Cancel; options=Reset|Cancel}</code>. Place the indexed selection immediately before its slider columns. Use a setting's stable ID for <code>disabledWhen=adaptive-picture=on</code> when a row stays gray, or <code>hiddenWhen=game-mode=on</code> when it disappears. Add <code>[stable-id]</code> last only when identity must be explicit.</p>
+                                <p>Paste the hierarchy using two spaces per level. Add control details as <code>{slider; default=50; min=0; max=100}</code>, <code>{selection; default=Warm2; options=Standard|Warm1|Warm2}</code>, <code>{indexed-selection; default=5%; options=5%|10%|15%}</code>, <code>{switch; default=off}</code>, or <code>{confirmation; default=Cancel; options=Reset|Cancel}</code>. Place the indexed selection immediately before its slider columns. Add <code>disabled=true</code> when a row is always gray, use a setting's stable ID for <code>disabledWhen=adaptive-picture=on</code> when it is conditionally gray, or <code>hiddenWhen=game-mode=on</code> when it disappears. Add <code>[stable-id]</code> last only when identity must be explicit.</p>
                                 <div class="bulk-topology-controls">
                                     <label>
                                         <span>PLACE OUTLINE UNDER</span>
@@ -443,7 +443,15 @@
                                     <span><b>DISABLED / GRAYED-OUT RULES</b><small>The item remains in menu order. It is disabled when any listed setting equals the specified value. Descendants automatically inherit a disabled parent menu and do not need duplicate rules.</small></span>
                                     <button class="secondary-action" @onclick="AddNodeDisabledCondition" disabled="@(!CanAddNodeDisabledCondition)">+ Add rule</button>
                                 </header>
-                                @if (NodeEditorDisabledConditions.Count == 0)
+                                <label class="timing-override-toggle">
+                                    <input type="checkbox" @bind="NodeEditorDisabled" @bind:after="HandleNodeDisabledChanged" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
+                                    <span>Always disabled — row remains visible but can never be selected</span>
+                                </label>
+                                @if (NodeEditorDisabled)
+                                {
+                                    <p>This row is permanently gray. Conditional disabled rules are unnecessary.</p>
+                                }
+                                else if (NodeEditorDisabledConditions.Count == 0)
                                 {
                                     var inheritedDisabledAncestor = GetInheritedDisabledAncestorForEditor();
                                     @if (inheritedDisabledAncestor is not null)
@@ -1174,6 +1182,7 @@
     private string NodeEditorDescription { get; set; } = string.Empty;
     private MenuControlType NodeEditorControlType { get; set; } = MenuControlType.Submenu;
     private string NodeEditorDefaultValue { get; set; } = string.Empty;
+    private bool NodeEditorDisabled { get; set; }
     private decimal? NodeEditorMinimumValue { get; set; }
     private decimal? NodeEditorMaximumValue { get; set; }
     private List<SelectionOptionEdit> NodeEditorSelectionOptions { get; } = [];
@@ -1324,6 +1333,7 @@
             or MenuControlType.Confirmation
         && NodeEditorSelectionOptions.Count < 100;
     private bool CanAddNodeDisabledCondition => CanEditMenuTree
+        && !NodeEditorDisabled
         && NodeEditorDisabledConditions.Count < 20
         && AvailableDisabledConditionSettings.Count > 0;
     private bool CanAddNodeHiddenCondition => CanEditMenuTree
@@ -1464,7 +1474,9 @@
             Navigation.Nodes,
             TreeOrdering == MenuTreeSortMode.Alphabetical);
     private static string GetMenuTreeNodeStateClass(MenuNodeSummary node) =>
-        (node.HasDraftRoute
+        (node.IsPermanentlyDisabled
+            ? "verified"
+            : node.HasDraftRoute
             ? "unverified"
             : node.HasVerifiedRoute
                 ? "verified"
@@ -1480,7 +1492,9 @@
                 ? " conditionally-hidden"
                 : string.Empty);
     private static string GetMenuTreeNodeStateTitle(MenuNodeSummary node) =>
-        (node.HasDraftRoute
+        (node.IsPermanentlyDisabled
+            ? "Permanently disabled menu item; no traversal verification is required"
+            : node.HasDraftRoute
             ? "Recorded menu command needs verification"
             : node.HasVerifiedRoute
                 ? "Verified menu position"
@@ -1519,6 +1533,7 @@
         && IsNodeEditorDefaultValid
         && AreSliderBoundsValid
         && IsSelectionOptionsValid
+        && (!NodeEditorDisabled || NodeEditorDisabledConditions.Count == 0)
         && NodeEditorDisabledConditions.All(condition =>
             !string.IsNullOrWhiteSpace(condition.SettingNodeId)
             && !string.IsNullOrWhiteSpace(condition.EqualsValue))
@@ -2194,6 +2209,7 @@
         NodeEditorParentId = retainedParentId;
         NodeEditorControlType = MenuControlType.Submenu;
         NodeEditorDefaultValue = string.Empty;
+        NodeEditorDisabled = false;
         NodeEditorMinimumValue = null;
         NodeEditorMaximumValue = null;
         NodeEditorSelectionOptions.Clear();
@@ -2226,6 +2242,7 @@
             NodeEditorDescription = string.Empty;
             NodeEditorControlType = MenuControlType.Submenu;
             NodeEditorDefaultValue = string.Empty;
+            NodeEditorDisabled = false;
             NodeEditorMinimumValue = null;
             NodeEditorMaximumValue = null;
             NodeEditorSelectionOptions.Clear();
@@ -2246,6 +2263,7 @@
         NodeEditorDescription = node.Description ?? string.Empty;
         NodeEditorControlType = node.ControlType;
         NodeEditorDefaultValue = node.DefaultValue ?? string.Empty;
+        NodeEditorDisabled = node.Disabled;
         NodeEditorMinimumValue = node.MinimumValue;
         NodeEditorMaximumValue = node.MaximumValue;
         NodeEditorSelectionOptions.Clear();
@@ -2258,6 +2276,16 @@
         NodeEditorHiddenConditions.AddRange(node.HiddenWhen.Select(condition =>
             new NodeHiddenConditionEdit(condition)));
         ConfirmMenuNodeDelete = false;
+        LocalError = null;
+    }
+
+    private void HandleNodeDisabledChanged()
+    {
+        if (NodeEditorDisabled)
+        {
+            NodeEditorDisabledConditions.Clear();
+        }
+
         LocalError = null;
     }
 
@@ -2476,7 +2504,8 @@
                 CreateSelectionOptions(),
                 NodeEditorMinimumValue,
                 NodeEditorMaximumValue,
-                CreateNodeHiddenConditions());
+                CreateNodeHiddenConditions(),
+                NodeEditorDisabled);
             await Controller.UpdateMenuNodeAsync(nodeId, request);
 
             Refresh();
@@ -2501,7 +2530,8 @@
             CreateSelectionOptions(),
             NodeEditorMinimumValue,
             NodeEditorMaximumValue,
-            CreateNodeHiddenConditions());
+            CreateNodeHiddenConditions(),
+            NodeEditorDisabled);
         await Controller.CreateMenuNodeAsync(request);
 
         Refresh();
@@ -3339,6 +3369,11 @@
             details.Add("options=" + string.Join('|', node.SelectionOptions));
         }
 
+        if (node.Disabled)
+        {
+            details.Add("disabled=true");
+        }
+
         if (node.DisabledWhen.Count > 0)
         {
             details.Add("disabledWhen=" + string.Join('|', node.DisabledWhen.Select(condition =>
@@ -3356,6 +3391,11 @@
 
     private string FormatDisabledConditions(MenuNodeSummary node)
     {
+        if (node.Disabled)
+        {
+            return "Always disabled";
+        }
+
         var rules = node.DisabledWhen.Select(condition =>
         {
             var setting = Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
@@ -3381,7 +3421,7 @@
                 break;
             }
 
-            if (parent.DisabledWhen.Count > 0)
+            if (parent.IsPermanentlyDisabled || parent.DisabledWhen.Count > 0)
             {
                 return parent;
             }

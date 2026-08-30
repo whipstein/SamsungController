@@ -112,6 +112,8 @@ public sealed record MenuNodeSummary(
     MenuControlType ControlType,
     string? DefaultValue,
     IReadOnlyList<MenuNodeDisabledCondition> DisabledWhen,
+    bool Disabled,
+    bool IsPermanentlyDisabled,
     bool IsDisabledByDefault,
     IReadOnlyList<MenuNodeHiddenCondition> HiddenWhen,
     bool IsHiddenByDefault,
@@ -265,7 +267,8 @@ public sealed record MenuNodeEditRequest(
     IReadOnlyList<string>? SelectionOptions = null,
     decimal? MinimumValue = null,
     decimal? MaximumValue = null,
-    IReadOnlyList<MenuNodeHiddenCondition>? HiddenWhen = null);
+    IReadOnlyList<MenuNodeHiddenCondition>? HiddenWhen = null,
+    bool Disabled = false);
 
 public sealed record MenuTopologyOutlineRequest(
     string ParentNodeId,

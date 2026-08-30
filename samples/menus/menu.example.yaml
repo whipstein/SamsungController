@@ -51,6 +51,10 @@ nodes:
                 label: Example TV function
                 description: Navigation highlights this row but does not press OK to start it.
                 controlType: action
+              - id: example-unavailable-feature
+                label: Example unavailable feature
+                description: This row is always visible but gray on the modeled display.
+                disabled: true
 
 anchors:
   - id: normal-video

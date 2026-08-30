@@ -54,7 +54,7 @@
 
 <section class="navigator-layout">
     <div class="panel menu-tree-panel">
-        <div class="panel-label"><span>VERIFIED MENU MAP · CLICK TO RUN</span><span>@VerifiedNodes.Count DESTINATIONS</span></div>
+        <div class="panel-label"><span>VERIFIED MENU MAP · CLICK AVAILABLE ITEMS TO RUN</span><span>@VerifiedNodes.Count ITEMS</span></div>
 
         @if (VerifiedNodes.Count == 0)
         {
@@ -72,9 +72,9 @@
                     <button class="menu-node @(SelectedTarget == node.Id ? "selected" : "") @(Navigation.State.NodeId == node.Id ? "current" : "") @(node.IsDisabledByDefault ? "disabled-default" : node.DisabledWhen.Count > 0 ? "conditionally-disabled" : "")"
                             style="@($"padding-left: {14 + node.Depth * 18}px")"
                             role="treeitem"
-                            aria-label="Run verified route to @node.Path"
+                            aria-label="@(node.IsPermanentlyDisabled ? $"{node.Path} is permanently disabled" : $"Run verified route to {node.Path}")"
                             @onclick="() => RunTargetAsync(node.Id)"
-                            disabled="@(!CanAutomate)">
+                            disabled="@(!CanAutomate || node.IsPermanentlyDisabled)">
                         <span class="tree-branch" aria-hidden="true"></span>
                         <span>
                             <strong>@node.Label</strong>
@@ -82,7 +82,7 @@
                             <small class="menu-node-behavior">@FormatNodeBehavior(node)</small>
                         </span>
                         <b class="node-badge @(Navigation.State.NodeId == node.Id ? "current" : "verified")">
-                            @(Navigation.State.NodeId == node.Id ? "Current" : "Run")
+                            @(node.IsPermanentlyDisabled ? "Disabled" : Navigation.State.NodeId == node.Id ? "Current" : "Run")
                         </b>
                     </button>
                 }
@@ -193,7 +193,8 @@
 
     private string? ErrorMessage => LocalError ?? Navigation.Error;
     private IReadOnlyList<MenuNodeSummary> VerifiedNodes => Navigation.Nodes
-        .Where(node => node.HasVerifiedRoute && !IsNodeHidden(node))
+        .Where(node => (node.HasVerifiedRoute || HasVerifiedContainerForPermanentDisabled(node))
+            && !IsNodeHidden(node))
         .ToArray();
     private IReadOnlyList<MenuAnchorSummary> VerifiedAnchors => Navigation.Anchors
         .Where(anchor => anchor.Verified)
@@ -246,7 +247,9 @@
             : string.Empty;
         if (node.DisabledWhen.Count == 0 && node.HiddenWhen.Count == 0)
         {
-            var inheritedDisabled = node.IsDisabledByDefault
+            var inheritedDisabled = node.Disabled
+                ? " · always disabled"
+                : node.IsPermanentlyDisabled
                 ? " · disabled because a parent menu is disabled"
                 : string.Empty;
             return control + defaultValue + range + options + inheritedDisabled;
@@ -275,6 +278,36 @@
             : (node.IsHiddenByDefault ? " · hidden by default when " : " · hidden when ")
               + string.Join(" or ", hiddenRules);
         return control + defaultValue + range + options + disabled + hidden;
+    }
+
+    private bool HasVerifiedContainerForPermanentDisabled(MenuNodeSummary node)
+    {
+        if (!node.IsPermanentlyDisabled)
+        {
+            return false;
+        }
+
+        var current = node;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (visited.Add(current.Id) && !string.IsNullOrWhiteSpace(current.ParentId))
+        {
+            var parent = Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
+                current.ParentId,
+                StringComparison.OrdinalIgnoreCase));
+            if (parent is null)
+            {
+                return false;
+            }
+
+            if (!parent.IsPermanentlyDisabled)
+            {
+                return parent.HasVerifiedRoute;
+            }
+
+            current = parent;
+        }
+
+        return false;
     }
 
     private bool IsNodeHidden(MenuNodeSummary node)

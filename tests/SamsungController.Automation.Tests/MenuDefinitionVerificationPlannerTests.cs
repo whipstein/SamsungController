@@ -146,6 +146,51 @@ public sealed class MenuDefinitionVerificationPlannerTests
     }
 
     [Fact]
+    public void PermanentlyDisabledBranchUsesOneBehaviorCheckAndNoControlChecks()
+    {
+        var definition = new MenuDefinition(
+            "permanently-disabled",
+            "Permanently disabled",
+            "S95F",
+            new MenuDefinitionContext("1296", "SDR", "Movie", "HDMI 1"),
+            [
+                new MenuNode("normal-video", "Normal video"),
+                new MenuNode("settings", "Settings", "normal-video"),
+                new MenuNode("unavailable", "Unavailable", "settings", Disabled: true),
+                new MenuNode(
+                    "unavailable-slider",
+                    "Unavailable slider",
+                    "unavailable",
+                    ControlType: MenuControlType.Slider,
+                    DefaultValue: "5",
+                    MinimumValue: 0,
+                    MaximumValue: 10),
+                new MenuNode(
+                    "unavailable-mode",
+                    "Unavailable mode",
+                    "unavailable",
+                    ControlType: MenuControlType.Selection,
+                    DefaultValue: "Off",
+                    SelectionOptions: ["Off", "On"])
+            ],
+            [],
+            []);
+
+        var checks = MenuDefinitionVerificationPlanner.Create(definition).Checks;
+
+        var disabled = Assert.Single(
+            checks,
+            check => check.Id == "condition:always-disabled-behavior");
+        Assert.Equal(MenuVerificationCheckKind.ConditionalVisibility, disabled.Kind);
+        Assert.Equal("settings", disabled.TargetNodeId);
+        Assert.Contains("permanently gray", disabled.Description);
+        Assert.DoesNotContain(checks, check => check.Kind == MenuVerificationCheckKind.SliderBehavior);
+        Assert.DoesNotContain(
+            checks,
+            check => check.Id == "control:selection-behavior");
+    }
+
+    [Fact]
     public void ReconcileInvalidatesVerifiedRouteWhoseRecordedFingerprintChanged()
     {
         var original = new MenuDefinition(

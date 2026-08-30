@@ -89,7 +89,8 @@ public sealed record MenuNode(
     IReadOnlyList<string>? SelectionOptions = null,
     decimal? MinimumValue = null,
     decimal? MaximumValue = null,
-    IReadOnlyList<MenuNodeHiddenCondition>? HiddenWhen = null);
+    IReadOnlyList<MenuNodeHiddenCondition>? HiddenWhen = null,
+    bool Disabled = false);
 
 public sealed record MenuOperation(
     string Key,

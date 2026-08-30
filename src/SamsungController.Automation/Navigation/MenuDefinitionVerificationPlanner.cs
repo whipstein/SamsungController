@@ -105,7 +105,10 @@ public static class MenuDefinitionVerificationPlanner
         }
 
         foreach (var transition in definition.Transitions.Values
-                     .Where(item => !item.GeneratedFromTopology || item.IsValidationRoute)
+                     .Where(item => (!item.GeneratedFromTopology || item.IsValidationRoute)
+                         && !IsPermanentlyDisabled(
+                             definition,
+                             definition.GetRequiredNode(item.ToNodeId)))
                      .OrderBy(item => item.ConfigurationId, StringComparer.OrdinalIgnoreCase)
                      .ThenBy(item => definition.GetDepth(item.ToNodeId))
                      .ThenBy(item => item.Id, StringComparer.OrdinalIgnoreCase))
@@ -127,7 +130,8 @@ public static class MenuDefinitionVerificationPlanner
         }
 
         var sliders = definition.Nodes.Values
-            .Where(node => node.ControlType == MenuControlType.Slider)
+            .Where(node => node.ControlType == MenuControlType.Slider
+                && !IsPermanentlyDisabled(definition, node))
             .OrderBy(node => node.Id, StringComparer.OrdinalIgnoreCase)
             .ToArray();
         if (sliders.Length > 0)
@@ -203,7 +207,8 @@ public static class MenuDefinitionVerificationPlanner
         {
             var nodes = definition.Nodes.Values
                 .Where(node => MenuControlBehaviorClassifier.GetEffectiveControlType(node)
-                    == controlType)
+                    == controlType
+                    && !IsPermanentlyDisabled(definition, node))
                 .OrderBy(node => node.Id, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
             if (nodes.Length == 0)
@@ -259,35 +264,42 @@ public static class MenuDefinitionVerificationPlanner
         MenuDefinition definition)
     {
         var groups = definition.Nodes.Values
-            .Where(node => node.DisabledWhen is { Count: > 0 }
-                || node.HiddenWhen is { Count: > 0 })
-            .GroupBy(ConditionBehaviorClass, StringComparer.OrdinalIgnoreCase)
+            .SelectMany(node => CreateConditionalCoverageEntries(node))
+            .GroupBy(entry => entry.BehaviorClass, StringComparer.OrdinalIgnoreCase)
             .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase);
         foreach (var group in groups)
         {
             var nodes = group
+                .Select(entry => entry.Node)
+                .DistinctBy(node => node.Id, StringComparer.OrdinalIgnoreCase)
                 .OrderBy(node => node.Id, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
             var representative = SelectRepresentative(definition, nodes);
-            var controllerNodeId = nodes
-                .SelectMany(node => (node.DisabledWhen ?? [])
-                    .Select(condition => condition.SettingNodeId)
-                    .Concat((node.HiddenWhen ?? []).Select(condition => condition.SettingNodeId)))
-                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
-                .First();
+            var controllerNodeId = group.Key.Equals(
+                    "always-disabled",
+                    StringComparison.OrdinalIgnoreCase)
+                ? representative.ParentId ?? representative.Id
+                : nodes
+                    .SelectMany(node => group.Key.Equals("disabled", StringComparison.OrdinalIgnoreCase)
+                        ? (node.DisabledWhen ?? []).Select(condition => condition.SettingNodeId)
+                        : (node.HiddenWhen ?? []).Select(condition => condition.SettingNodeId))
+                    .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+                    .First();
             var controller = definition.GetRequiredNode(controllerNodeId);
             var affected = nodes.Length == 1
                 ? definition.GetPath(representative.Id)
                 : $"{nodes.Length} related rows, including {definition.GetPath(representative.Id)}";
             var distinctRuleCount = nodes
-                .Select(ConditionPredicate)
+                .Select(node => group.Key.Equals("always-disabled", StringComparison.OrdinalIgnoreCase)
+                    ? $"always:{node.Id}"
+                    : ConditionPredicate(node))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Count();
             var (label, behavior) = group.Key switch
             {
+                "always-disabled" => ("Permanently disabled rows", "is present but permanently gray and cannot be selected"),
                 "disabled" => ("Shared disabled-row behavior", "becomes disabled and remains visible"),
                 "hidden" => ("Shared hidden-row behavior", "disappears and is removed from sibling offsets"),
-                "disabled-hidden" => ("Shared disabled/hidden behavior", "follows its declared disabled and hidden states"),
                 _ => throw new InvalidOperationException($"Unknown conditional behavior class '{group.Key}'.")
             };
             Add(
@@ -296,7 +308,9 @@ public static class MenuDefinitionVerificationPlanner
                 $"condition:{group.Key}-behavior",
                 MenuVerificationCheckKind.ConditionalVisibility,
                 label,
-                $"Change {definition.GetPath(controller.Id)} and verify the representative {behavior}. This covers {affected} across {distinctRuleCount} declared conditional rule{(distinctRuleCount == 1 ? string.Empty : "s")}.",
+                group.Key.Equals("always-disabled", StringComparison.OrdinalIgnoreCase)
+                    ? $"Open {definition.GetPath(controller.Id)} and verify the representative {behavior}. This covers {affected}."
+                    : $"Change {definition.GetPath(controller.Id)} and verify the representative {behavior}. This covers {affected} across {distinctRuleCount} declared conditional rule{(distinctRuleCount == 1 ? string.Empty : "s")}.",
                 $"representative-condition-coverage-v3|{group.Key}|{string.Join(";", nodes.Select(node => ConditionShape(definition, node)))}",
                 controller.Id);
         }
@@ -312,6 +326,29 @@ public static class MenuDefinitionVerificationPlanner
         .ThenBy(node => definition.GetDepth(node.Id))
         .ThenBy(node => node.Id, StringComparer.OrdinalIgnoreCase)
         .First();
+
+    private static bool IsPermanentlyDisabled(
+        MenuDefinition definition,
+        MenuNode node)
+    {
+        var current = node;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (visited.Add(current.Id))
+        {
+            if (current.Disabled)
+            {
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(current.ParentId)
+                || !definition.Nodes.TryGetValue(current.ParentId, out current))
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
 
     private static string ControlTypeLabel(MenuControlType controlType) => controlType switch
     {
@@ -358,6 +395,7 @@ public static class MenuDefinitionVerificationPlanner
     private static string ConditionShape(MenuDefinition definition, MenuNode node) => string.Join(
         "|",
         node.Id,
+        node.Disabled,
         string.Join("\u001e", (node.DisabledWhen ?? []).Select(condition => $"{condition.SettingNodeId}={condition.EqualsValue}")),
         string.Join("\u001e", (node.HiddenWhen ?? []).Select(condition => $"{condition.SettingNodeId}={condition.EqualsValue}")),
         string.Join(
@@ -378,15 +416,23 @@ public static class MenuDefinitionVerificationPlanner
             .Select(condition => $"{condition.SettingNodeId}={condition.EqualsValue}")
             .OrderBy(value => value, StringComparer.OrdinalIgnoreCase))}");
 
-    private static string ConditionBehaviorClass(MenuNode node) =>
-        (node.DisabledWhen is { Count: > 0 }, node.HiddenWhen is { Count: > 0 }) switch
+    private static IEnumerable<ConditionalCoverageEntry> CreateConditionalCoverageEntries(
+        MenuNode node)
+    {
+        if (node.Disabled)
         {
-            (true, true) => "disabled-hidden",
-            (true, false) => "disabled",
-            (false, true) => "hidden",
-            _ => throw new InvalidOperationException(
-                $"Menu node '{node.Id}' does not declare conditional behavior.")
-        };
+            yield return new ConditionalCoverageEntry(node, "always-disabled");
+        }
+        else if (node.DisabledWhen is { Count: > 0 })
+        {
+            yield return new ConditionalCoverageEntry(node, "disabled");
+        }
+
+        if (node.HiddenWhen is { Count: > 0 })
+        {
+            yield return new ConditionalCoverageEntry(node, "hidden");
+        }
+    }
 
     private static string Operations(IEnumerable<MenuOperation> operations) => string.Join(
         ";",
@@ -399,4 +445,8 @@ public static class MenuDefinitionVerificationPlanner
 
     private static string Fingerprint(string content) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content))).ToLowerInvariant();
+
+    private sealed record ConditionalCoverageEntry(
+        MenuNode Node,
+        string BehaviorClass);
 }

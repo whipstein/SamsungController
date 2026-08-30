@@ -76,7 +76,12 @@ public sealed class MenuDefinitionWriterTests : IDisposable
                     "smart-calibration",
                     "Smart Calibration",
                     "settings",
-                    ControlType: MenuControlType.Action)
+                    ControlType: MenuControlType.Action),
+                new MenuNode(
+                    "unavailable-feature",
+                    "Unavailable Feature",
+                    "settings",
+                    Disabled: true)
             ],
             [
                 new MenuTransition(
@@ -165,6 +170,8 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Assert.Equal(["5%", "10%", "15%"], reparsed.Nodes["interval"].SelectionOptions);
         Assert.Equal(MenuControlType.Action, reparsed.Nodes["smart-calibration"].ControlType);
         Assert.Null(reparsed.Nodes["smart-calibration"].DefaultValue);
+        Assert.True(reparsed.Nodes["unavailable-feature"].Disabled);
+        Assert.Contains("disabled: true", writtenYaml, StringComparison.Ordinal);
         Assert.True(reparsed.Anchors["normal"].Verified);
         Assert.Equal("standard", reparsed.Anchors["normal"].ConfigurationId);
         Assert.Equal("settings", reparsed.Anchors["normal"].ValidationSourceNodeId);
@@ -346,7 +353,12 @@ public sealed class MenuDefinitionWriterTests : IDisposable
                     "smart-calibration",
                     "Smart Calibration",
                     "settings",
-                    ControlType: MenuControlType.Action)
+                    ControlType: MenuControlType.Action),
+                new MenuNode(
+                    "unavailable-feature",
+                    "Unavailable Feature",
+                    "settings",
+                    Disabled: true)
             ],
             [
                 new MenuTransition(
@@ -403,6 +415,8 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Assert.Equal(100m, reparsed.Nodes["brightness"].MaximumValue);
         Assert.Equal(["Standard", "Filmmaker Mode"], reparsed.Nodes["picture-mode"].SelectionOptions);
         Assert.Equal(MenuControlType.Action, reparsed.Nodes["smart-calibration"].ControlType);
+        Assert.True(reparsed.Nodes["unavailable-feature"].Disabled);
+        Assert.Contains("\"disabled\": true", firstContent, StringComparison.Ordinal);
         Assert.Equal("KEY_MENU", Assert.Single(reparsed.Transitions.Values).Operations[0].Key);
         Assert.Equal(verifiedAt, Assert.Single(reparsed.Verification!.Checks).VerifiedAtUtc);
     }

@@ -131,6 +131,10 @@ public sealed class MenuDefinitionWriter
         AppendOptionalScalar(yaml, fieldIndentation, "defaultValue", node.DefaultValue);
         AppendOptionalDecimal(yaml, fieldIndentation, "minimumValue", node.MinimumValue);
         AppendOptionalDecimal(yaml, fieldIndentation, "maximumValue", node.MaximumValue);
+        if (node.Disabled)
+        {
+            AppendBoolean(yaml, fieldIndentation, "disabled", true);
+        }
         if (node.SelectionOptions is { Count: > 0 })
         {
             yaml.Append(' ', fieldIndentation).AppendLine("options:");
