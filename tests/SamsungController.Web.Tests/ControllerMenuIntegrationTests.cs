@@ -124,6 +124,57 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task RouteLessDefinitionCanRecordWhenPersistedTimingWasUnverified()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: route-less
+            name: Route-less Menu
+            model: Test TV
+            timing:
+              defaultDelay: 150ms
+              screenChangeDelay: 800ms
+              returnDelay: 300ms
+              verified: false
+            nodes:
+              - id: normal-video
+                label: Normal video
+              - id: settings
+                label: Settings
+                parent: normal-video
+            anchors: []
+            transitions: []
+            """;
+        var (controller, _) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            var beforeRecording = controller.GetMenuAuthoringSnapshot();
+            Assert.True(beforeRecording.Timing.Verified);
+            Assert.Equal(3, beforeRecording.TimingValidationPasses);
+
+            controller.StartMenuRecording(new MenuRecordingRequest(
+                MenuAuthoringItemKind.Transition,
+                string.Empty,
+                "Settings",
+                "normal-video",
+                "settings",
+                null,
+                null));
+
+            Assert.True(controller.GetMenuAuthoringSnapshot().IsRecording);
+
+            await controller.SendKeyAsync("KEY_MENU");
+            await controller.StopAndSaveMenuRecordingAsync();
+
+            var persisted = await new MenuDefinitionParser().ParseFileAsync(
+                controller.GetMenuNavigationSnapshot().DefinitionPath);
+            Assert.True(persisted.Timing.Verified);
+            Assert.Equal(800, persisted.Timing.ScreenChangeDelayMilliseconds);
+        }
+    }
+
+    [Fact]
     public async Task ExistingDefinitionRequiresConfirmationAndCanBeReplaced()
     {
         Directory.CreateDirectory(_directory);

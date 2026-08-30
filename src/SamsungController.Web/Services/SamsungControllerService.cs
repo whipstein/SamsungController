@@ -342,7 +342,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
     {
         lock (_sync)
         {
-            var definition = _menuDefinition;
+            var definition = _menuDefinition is null
+                ? null
+                : NormalizeInitialMenuTiming(_menuDefinition);
             var candidates = definition is null
                 ? []
                 : definition.ApplicableAnchors
@@ -3906,7 +3908,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         IReadOnlyList<MenuOperation> operations,
         IReadOnlyList<MenuOperation> returnOperations)
     {
-        definition = MigrateLegacyReturnReplacement(definition);
+        definition = NormalizeInitialMenuTiming(MigrateLegacyReturnReplacement(definition));
         ValidateRecordingRequest(definition, request);
         var nodes = definition.Nodes.Values.ToList();
         if (!definition.Nodes.ContainsKey(request.TargetNodeId))
@@ -5243,28 +5245,32 @@ public sealed class SamsungControllerService : IAsyncDisposable
         var parsed = await new MenuDefinitionParser()
             .ParseFileAsync(path, cancellationToken)
             .ConfigureAwait(false);
-        var definition = MigrateLegacyReturnReplacement(MigrateLegacyDefaultTiming(parsed));
+        var definition = MigrateLegacyReturnReplacement(NormalizeInitialMenuTiming(parsed));
         new MenuDefinitionValidator().ValidateAndThrow(definition);
         return definition;
     }
 
-    private static MenuDefinition MigrateLegacyDefaultTiming(MenuDefinition definition)
+    private static MenuDefinition NormalizeInitialMenuTiming(MenuDefinition definition)
     {
         var timing = definition.Timing;
-        if (timing.DefaultDelayMilliseconds != 150
-            || timing.ScreenChangeDelayMilliseconds != 500
-            || timing.ReturnDelayMilliseconds != 300)
+        var usesLegacyDefaults = timing.DefaultDelayMilliseconds == 150
+                                 && timing.ScreenChangeDelayMilliseconds == 500
+                                 && timing.ReturnDelayMilliseconds == 300;
+        var hasTimingTestRoute = definition.Transitions.Values.Any(
+            transition => transition.Operations.Count > 0);
+        var normalized = timing with
+        {
+            ScreenChangeDelayMilliseconds = usesLegacyDefaults
+                ? 800
+                : timing.ScreenChangeDelayMilliseconds,
+            Verified = timing.Verified || usesLegacyDefaults || !hasTimingTestRoute
+        };
+        if (normalized == timing)
         {
             return definition;
         }
 
-        return CopyMenuDefinition(
-            definition,
-            timing: timing with
-            {
-                ScreenChangeDelayMilliseconds = 800,
-                Verified = true
-            });
+        return CopyMenuDefinition(definition, timing: normalized);
     }
 
     private static MenuDefinition MigrateLegacyReturnReplacement(
