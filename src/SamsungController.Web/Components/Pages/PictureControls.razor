@@ -16,8 +16,8 @@
                 <li>Choose a top-level menu tab, then search or adjust controls grouped by their immediate TV menu section.</li>
                 <li>Switches, selections, and submenu selections use predicted values and dynamically apply declared <code>disabledWhen</code> and <code>hiddenWhen</code> rules.</li>
                 <li>Turning on 20 Point enables its Interval and RGB controls. Choosing Custom Color Space enables its Color and RGB controls.</li>
-                <li>The first calibration tab contains Expert Settings and pins the 20 Point switch first. The Color tab places Color Space before its fixed-value grid.</li>
-                <li>Interval percentages and Custom Color choices appear as fixed grid rows, so every RGB value can be staged together without manually changing the selector.</li>
+                <li>The 2pt tab separates RGB gains and offsets into two columns. The 20pt tab pins its enable switch first, and the Color tab places Color Space first.</li>
+                <li>Every 20pt percentage and Custom Color choice groups three full RGB sliders with minus/plus buttons and a raw number input, so all values can be staged together without manually changing the selector.</li>
                 <li><strong>Adjust TV</strong> sends or stages commands. <strong>Enter current settings</strong> uses an independent local draft and never sends commands to the TV.</li>
                 <li><strong>Immediate</strong> sends one changed control at a time. <strong>Apply button</strong> can stage a controller and its newly enabled settings together.</li>
                 <li><strong>Save profile</strong> stores desired values locally. <strong>Reset &amp; apply all</strong> runs a verified reset confirmation, restores known defaults, and reapplies that profile.</li>
@@ -223,7 +223,61 @@ else
         else
         {
             <div class="expert-settings-content">
-                @if (GetExpertControls(SelectedExpertTab).Count > 0)
+                @if (SelectedExpertTab == ExpertSettingsKind.TwoPointWhiteBalance)
+                {
+                    <div class="two-point-balance-groups">
+                        @foreach (var group in TwoPointGroups)
+                        {
+                            var groupedControls = GetTwoPointControls(group.Kind);
+                            @if (groupedControls.Count > 0)
+                            {
+                                <section class="two-point-balance-group">
+                                    <header>
+                                        <span>@group.Label.ToUpperInvariant()</span>
+                                        <h3>RGB @group.Label</h3>
+                                        <small>@group.Description</small>
+                                    </header>
+                                    <div class="two-point-balance-control-list">
+                                        @foreach (var control in groupedControls)
+                                        {
+                                            var disabled = IsControlDisabled(control);
+                                            <MenuControlCard Node="@control.Node"
+                                                             Value="@GetControlDisplayValue(control)"
+                                                             ReferenceValue="@control.AppliedValue"
+                                                             Disabled="@disabled"
+                                                             Busy="@IsBusy"
+                                                             CurrentStateMode="@(WorkspaceMode == MenuWorkspaceMode.CurrentState)"
+                                                             DisabledReason="@GetDisabledReason(control)"
+                                                             StateClass="@GetControlCssClass(control, disabled)"
+                                                             StateLabel="@GetControlStateLabel(control, disabled)"
+                                                             ValueChanged="value => ChangeControlAsync(control, value)" />
+                                        }
+                                    </div>
+                                </section>
+                            }
+                        }
+                    </div>
+                    @if (GetUngroupedTwoPointControls().Count > 0)
+                    {
+                        <div class="picture-control-grid expert-control-grid">
+                            @foreach (var control in GetUngroupedTwoPointControls())
+                            {
+                                var disabled = IsControlDisabled(control);
+                                <MenuControlCard Node="@control.Node"
+                                                 Value="@GetControlDisplayValue(control)"
+                                                 ReferenceValue="@control.AppliedValue"
+                                                 Disabled="@disabled"
+                                                 Busy="@IsBusy"
+                                                 CurrentStateMode="@(WorkspaceMode == MenuWorkspaceMode.CurrentState)"
+                                                 DisabledReason="@GetDisabledReason(control)"
+                                                 StateClass="@GetControlCssClass(control, disabled)"
+                                                 StateLabel="@GetControlStateLabel(control, disabled)"
+                                                 ValueChanged="value => ChangeControlAsync(control, value)" />
+                            }
+                        </div>
+                    }
+                }
+                else if (GetExpertControls(SelectedExpertTab).Count > 0)
                 {
                     <div class="picture-control-grid expert-control-grid">
                         @foreach (var control in GetExpertControls(SelectedExpertTab))
@@ -248,9 +302,9 @@ else
                     <section class="picture-control-section indexed-control-section @(groupDisabled ? "disabled" : string.Empty)">
                         <header class="picture-section-heading">
                             <div>
-                                <span>FIXED VALUE GRID</span>
+                                <span>INDEXED RGB SLIDERS</span>
                                 <h2>@group.Label</h2>
-                                <p>@group.Path · each @group.Selector.Label option is fixed to one row</p>
+                                <p>@group.Path · each @group.Selector.Label option owns one fixed RGB slider row</p>
                             </div>
                             <small>@group.Rows.Count row@(group.Rows.Count == 1 ? string.Empty : "s")</small>
                         </header>
@@ -258,40 +312,31 @@ else
                         {
                             <p class="picture-disabled-reason">@GetIndexedGroupDisabledReason(group)</p>
                         }
-                        <div class="indexed-control-table-wrap">
-                            <table class="indexed-control-table">
-                                <thead>
-                                    <tr>
-                                        <th>@group.Selector.Label</th>
-                                        @foreach (var slider in group.Sliders)
+                        <div class="indexed-slider-groups">
+                            @foreach (var row in group.Rows)
+                            {
+                                <section class="indexed-slider-row">
+                                    <header>
+                                        <span>@group.Selector.Label.ToUpperInvariant()</span>
+                                        <h3>@row.SelectorValue</h3>
+                                    </header>
+                                    <div class="picture-control-grid indexed-slider-grid">
+                                        @foreach (var cell in row.Cells)
                                         {
-                                            <th>@slider.Label <small>@FormatValue(slider.MinimumValue ?? 0)–@FormatValue(slider.MaximumValue ?? 0)</small></th>
+                                            <MenuControlCard Node="@cell.Slider"
+                                                             Value="@GetIndexedDisplayValue(group, cell)"
+                                                             ReferenceValue="@cell.AppliedValue"
+                                                             Disabled="@groupDisabled"
+                                                             Busy="@IsBusy"
+                                                             CurrentStateMode="@(WorkspaceMode == MenuWorkspaceMode.CurrentState)"
+                                                             DisabledReason="@GetIndexedGroupDisabledReason(group)"
+                                                             StateClass="@GetIndexedCellCssClass(group, cell, groupDisabled)"
+                                                             StateLabel="@GetIndexedCellStateLabel(group, cell, groupDisabled)"
+                                                             ValueChanged="value => ChangeIndexedCellAsync(group, cell, value)" />
                                         }
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var row in group.Rows)
-                                    {
-                                        <tr>
-                                            <th scope="row">@row.SelectorValue</th>
-                                            @foreach (var cell in row.Cells)
-                                            {
-                                                <td class="@(IsIndexedDisplayPending(group, cell) ? "pending" : string.Empty)">
-                                                    <input type="number"
-                                                           min="@FormatValue(cell.Minimum)"
-                                                           max="@FormatValue(cell.Maximum)"
-                                                           step="1"
-                                                           value="@GetIndexedDisplayValue(group, cell)"
-                                                           aria-label="@group.Label @row.SelectorValue @cell.Slider.Label"
-                                                           @onchange="args => ChangeIndexedCellAsync(group, cell, args.Value?.ToString())"
-                                                           disabled="@(IsBusy || groupDisabled)" />
-                                                    <small>@(WorkspaceMode == MenuWorkspaceMode.CurrentState ? "Saved" : "TV"): @cell.AppliedValue</small>
-                                                </td>
-                                            }
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
+                                    </div>
+                                </section>
+                            }
                         </div>
                     </section>
                 }
@@ -1197,9 +1242,57 @@ else
         .OrderBy(control => GetExpertControlPriority(kind, control.Node))
         .ToArray();
 
+    private IReadOnlyList<PictureControlEdit> GetTwoPointControls(TwoPointGroupKind kind) =>
+        GetExpertControls(ExpertSettingsKind.TwoPointWhiteBalance)
+            .Where(control => kind switch
+            {
+                TwoPointGroupKind.Gain => control.Node.Label.Contains(
+                    "Gain",
+                    StringComparison.OrdinalIgnoreCase),
+                TwoPointGroupKind.Offset => control.Node.Label.Contains(
+                    "Offset",
+                    StringComparison.OrdinalIgnoreCase),
+                _ => false
+            })
+            .OrderBy(control => GetRgbOrder(control.Node.Label))
+            .ToArray();
+
+    private IReadOnlyList<PictureControlEdit> GetUngroupedTwoPointControls() =>
+        GetExpertControls(ExpertSettingsKind.TwoPointWhiteBalance)
+            .Where(control => !control.Node.Label.Contains(
+                    "Gain",
+                    StringComparison.OrdinalIgnoreCase)
+                && !control.Node.Label.Contains(
+                    "Offset",
+                    StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+    private static int GetRgbOrder(string label)
+    {
+        if (label.StartsWith("R", StringComparison.OrdinalIgnoreCase)
+            || label.Contains("Red", StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
+
+        if (label.StartsWith("G", StringComparison.OrdinalIgnoreCase)
+            || label.Contains("Green", StringComparison.OrdinalIgnoreCase))
+        {
+            return 1;
+        }
+
+        if (label.StartsWith("B", StringComparison.OrdinalIgnoreCase)
+            || label.Contains("Blue", StringComparison.OrdinalIgnoreCase))
+        {
+            return 2;
+        }
+
+        return 3;
+    }
+
     private static int GetExpertControlPriority(ExpertSettingsKind kind, MenuNodeSummary node)
     {
-        if (kind == ExpertSettingsKind.ExpertSettings
+        if (kind == ExpertSettingsKind.TwentyPointWhiteBalance
             && node.ControlType == MenuControlType.Switch
             && (node.Label.Equals("20 Point", StringComparison.OrdinalIgnoreCase)
                 || node.Label.Equals("20pt", StringComparison.OrdinalIgnoreCase)
@@ -1253,7 +1346,7 @@ else
                 || node.Id.Contains("20-point", StringComparison.OrdinalIgnoreCase)
                 || node.Id.Contains("20pt", StringComparison.OrdinalIgnoreCase)))
         {
-            return ExpertSettingsKind.ExpertSettings;
+            return ExpertSettingsKind.TwentyPointWhiteBalance;
         }
 
         if (identity.Contains("20 Point", StringComparison.OrdinalIgnoreCase)
@@ -1308,6 +1401,24 @@ else
         !GetIndexedDisplayValue(group, cell).Equals(
             cell.AppliedValue,
             StringComparison.OrdinalIgnoreCase);
+
+    private string GetIndexedCellStateLabel(
+        IndexedControlGroupEdit group,
+        IndexedCellEdit cell,
+        bool disabled) => disabled
+        ? "DISABLED"
+        : WorkspaceMode == MenuWorkspaceMode.CurrentState
+            ? IsIndexedDisplayPending(group, cell) ? "UNSAVED" : "RECORDED"
+            : cell.Pending ? "PENDING" : "VERIFIED";
+
+    private string GetIndexedCellCssClass(
+        IndexedControlGroupEdit group,
+        IndexedCellEdit cell,
+        bool disabled)
+    {
+        var pending = IsIndexedDisplayPending(group, cell);
+        return $"{(disabled ? "disabled" : string.Empty)} {(pending ? "pending" : string.Empty)} {(MenuIsAvailable && !pending ? "confirmed" : string.Empty)}";
+    }
 
     private static string ControlDraftKey(string nodeId) => $"control:{nodeId}";
 
@@ -1930,6 +2041,12 @@ else
         new(ExpertSettingsKind.Color, "Color")
     ];
 
+    private static IReadOnlyList<TwoPointGroup> TwoPointGroups { get; } =
+    [
+        new(TwoPointGroupKind.Gain, "Gains", "Red, green, and blue high-end balance"),
+        new(TwoPointGroupKind.Offset, "Offsets", "Red, green, and blue low-end balance")
+    ];
+
     private enum MenuWorkspaceMode
     {
         AdjustTv,
@@ -1942,6 +2059,12 @@ else
         TwoPointWhiteBalance,
         TwentyPointWhiteBalance,
         Color
+    }
+
+    private enum TwoPointGroupKind
+    {
+        Gain,
+        Offset
     }
 
     private enum PictureUpdateMode
@@ -1981,6 +2104,11 @@ else
     private sealed record MenuControlArea(string Id, string Label, int ControlCount);
 
     private sealed record ExpertSettingsTab(ExpertSettingsKind Kind, string Label);
+
+    private sealed record TwoPointGroup(
+        TwoPointGroupKind Kind,
+        string Label,
+        string Description);
 
     private sealed record PendingControlSummary(
         string Label,
