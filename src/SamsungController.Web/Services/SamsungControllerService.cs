@@ -811,7 +811,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 new MenuConfiguration(
                     "default",
                     "Default",
-                    "Record the setting values that affect which menu items are visible.")
+                    "Default menu layout.")
             ],
             activeConfigurationId: "default");
         new MenuDefinitionValidator().ValidateAndThrow(definition);

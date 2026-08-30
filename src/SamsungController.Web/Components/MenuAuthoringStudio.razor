@@ -20,7 +20,7 @@
             <HelpBubble Title="Menu-authoring workflow" ButtonText="Workflow help">
                 <ol>
                     <li><strong>TV profile:</strong> enter the model number and firmware. The definition name and file ID are generated for you.</li>
-                    <li><strong>Configuration:</strong> describe the settings-dependent layout currently shown on the TV.</li>
+                    <li><strong>Configuration:</strong> the initial Default layout is ready automatically. Add and describe alternatives only when TV settings change which rows are visible or their order.</li>
                     <li><strong>Menu outline:</strong> paste the visible hierarchy using indentation. Preview it, then save while continuing to edit or advance to recording. Use fine adjustments only when needed.</li>
                     <li><strong>Record:</strong> select a source and target, then use the embedded remote. Successful buttons control the TV and enter the draft.</li>
                     <li><strong>Timing:</strong> recording starts with an assumed-valid 800 ms screen-change wait. Test and tune common waits after a route exists, then override only steps that need special pacing.</li>
@@ -1149,10 +1149,11 @@
     private MenuConfigurationSummary? ActiveMenuConfiguration => Navigation.Configurations
         .FirstOrDefault(configuration => configuration.IsActive);
     private bool ActiveMenuConfigurationIsDescribed => ActiveMenuConfiguration is { } configuration
-        && !string.IsNullOrWhiteSpace(configuration.Conditions)
-        && !configuration.Conditions.Equals(
-            "Record the setting values that affect which menu items are visible.",
-            StringComparison.OrdinalIgnoreCase);
+        && (Navigation.Configurations.Count == 1
+            || (!string.IsNullOrWhiteSpace(configuration.Conditions)
+                && !configuration.Conditions.Equals(
+                    "Record the setting values that affect which menu items are visible.",
+                    StringComparison.OrdinalIgnoreCase)));
     private IReadOnlyList<MenuNodeSummary> VerifiedSettings => Navigation.Nodes
         .Where(node => node.HasVerifiedRoute)
         .ToArray();

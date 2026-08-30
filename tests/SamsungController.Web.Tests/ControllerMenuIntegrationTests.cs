@@ -96,6 +96,9 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         Assert.Equal("new-tv", reparsed.Id);
         Assert.Equal(800, reparsed.Timing.ScreenChangeDelayMilliseconds);
         Assert.True(reparsed.Timing.Verified);
+        var defaultConfiguration = Assert.Single(reparsed.Configurations.Values);
+        Assert.Equal("default", defaultConfiguration.Id);
+        Assert.Equal("Default menu layout.", defaultConfiguration.Conditions);
         Assert.Empty(reparsed.Anchors);
         Assert.Empty(reparsed.Transitions);
     }
