@@ -339,8 +339,9 @@ For a slider, topology verification ends with the slider row highlighted. Do not
 press Left or Right during that route test: the coverage result verifies only
 that the generated route reaches the correct control. After the route is
 verified, use **Menu Controls** to exercise the value behavior. That page
-collects adjustable controls from every menu area and groups sliders, switches,
-and selections by their immediate menu parent. It
+collects adjustable controls from every menu area, separates them into tabs by
+top-level menu, and groups sliders, switches, and selections by their immediate
+menu parent. It
 sends one Left or Right key per whole-number slider step, Select for a switch,
 and Select plus ordered Up/Down movement for a selection. It then asks for
 visual confirmation of the predicted value. The value confirmation is

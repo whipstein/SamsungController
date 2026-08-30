@@ -852,7 +852,15 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .picture-control-summary strong { font-size: 11px; }
 .picture-control-summary small { margin-top: 3px; color: var(--muted); font-size: 8px; }
 .picture-apply-action { width: auto; min-width: 175px; gap: 18px; white-space: nowrap; }
-.menu-control-filters { display: grid; grid-template-columns: minmax(175px, .7fr) minmax(200px, .9fr) minmax(235px, 1fr) auto; gap: 12px; align-items: end; margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--line); }
+.menu-control-tabs { display: flex; gap: 2px; margin-top: 15px; overflow-x: auto; border-bottom: 1px solid var(--line-strong); scrollbar-width: thin; }
+.menu-control-tab { display: flex; flex: 0 0 auto; align-items: center; justify-content: center; gap: 9px; min-width: 92px; padding: 10px 13px 9px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); cursor: pointer; font: 9px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .04em; }
+.menu-control-tab:hover:not(:disabled) { background: rgba(124,231,220,.04); color: var(--text); }
+.menu-control-tab:focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; }
+.menu-control-tab.active { border-bottom-color: var(--cyan); background: rgba(124,231,220,.07); color: var(--cyan); }
+.menu-control-tab b { display: inline-grid; min-width: 19px; height: 19px; padding: 0 5px; place-items: center; border: 1px solid var(--line-strong); border-radius: 10px; color: var(--faint); font-size: 7px; }
+.menu-control-tab.active b { border-color: rgba(124,231,220,.35); color: var(--cyan); }
+.menu-control-tab:disabled { cursor: default; opacity: .55; }
+.menu-control-filters { display: grid; grid-template-columns: minmax(230px, .9fr) minmax(235px, 1fr) auto; gap: 12px; align-items: end; padding-top: 13px; }
 .menu-control-filters label > span, .slider-verification-summary > span { display: block; margin-bottom: 6px; color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .09em; }
 .menu-control-filters select, .menu-control-filters input { width: 100%; }
 .slider-verification-summary { min-height: 39px; padding: 2px 9px 2px 11px; border-left: 2px solid var(--amber); }

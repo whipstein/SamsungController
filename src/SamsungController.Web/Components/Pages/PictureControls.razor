@@ -14,7 +14,7 @@
     <div class="page-heading-actions">
         <HelpBubble Title="Menu control behavior" ButtonText="Page help">
             <ul>
-                <li>Use the menu-area filter or search, then adjust controls grouped by their immediate TV menu section.</li>
+                <li>Choose a top-level menu tab, then search or adjust controls grouped by their immediate TV menu section.</li>
                 <li>Switches and selections use their YAML defaults and dynamically apply declared <code>disabledWhen</code> rules.</li>
                 <li>Turning on 20 Point enables its Interval and RGB controls. Choosing Custom Color Space enables its Color and RGB controls.</li>
                 <li><strong>Immediate</strong> sends one changed control at a time. <strong>Apply button</strong> can stage a controller and its newly enabled settings together.</li>
@@ -61,17 +61,25 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
             @(IsBusy ? "Applying…" : $"Apply {PendingCount} change{(PendingCount == 1 ? string.Empty : "s")}") <span>▶</span>
         </button>
     </div>
+    @if (Controls.Count > 0)
+    {
+        <nav class="menu-control-tabs" aria-label="Top-level menu areas" role="tablist">
+            @foreach (var area in GetMenuAreas())
+            {
+                var isSelected = area.Id.Equals(SelectedAreaId, StringComparison.OrdinalIgnoreCase);
+                <button type="button"
+                        class="menu-control-tab @(isSelected ? "active" : string.Empty)"
+                        role="tab"
+                        aria-selected="@isSelected.ToString().ToLowerInvariant()"
+                        @onclick="() => SelectMenuArea(area.Id)"
+                        disabled="@IsBusy">
+                    <span>@area.Label</span>
+                    <b>@area.ControlCount</b>
+                </button>
+            }
+        </nav>
+    }
     <div class="menu-control-filters">
-        <label>
-            <span>MENU AREA</span>
-            <select @bind="SelectedAreaId" disabled="@IsBusy">
-                <option value="*">All menu areas</option>
-                @foreach (var area in GetMenuAreas())
-                {
-                    <option value="@area.Id">@area.Label</option>
-                }
-            </select>
-        </label>
         <label>
             <span>SEARCH CONTROLS</span>
             <input type="search" @bind="SearchText" @bind:event="oninput" placeholder="Name or menu path" disabled="@IsBusy" />
@@ -93,7 +101,7 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
 {
     <section class="panel panel-empty picture-controls-empty">
         <strong>@(Controls.Count == 0 ? "No verified menu controls are available" : "No controls match this filter")</strong>
-        <span>@(Controls.Count == 0 ? "Define values and bounds in YAML, then complete the generated route verification." : "Choose another menu area or clear the search text.")</span>
+        <span>@(Controls.Count == 0 ? "Define values and bounds in YAML, then complete the generated route verification." : "Choose another menu tab or clear the search text.")</span>
         <a href="menu/build">Open Build &amp; Verify →</a>
     </section>
 }
@@ -216,7 +224,7 @@ else
     private List<PictureControlEdit> Controls { get; } = [];
     private PictureUpdateMode UpdateMode { get; set; } = PictureUpdateMode.Staged;
     private PictureExitBehavior ExitBehavior { get; set; } = PictureExitBehavior.Stay;
-    private string SelectedAreaId { get; set; } = "*";
+    private string SelectedAreaId { get; set; } = string.Empty;
     private string SearchText { get; set; } = string.Empty;
     private string? LocalError { get; set; }
     private string? LocalStatus { get; set; }
@@ -503,10 +511,10 @@ else
     }
 
     private IReadOnlyList<PictureControlEdit> GetFilteredControls() => Controls.Where(control =>
-            (SelectedAreaId == "*"
-             || ResolveMenuArea(control.Node).Id.Equals(
-                 SelectedAreaId,
-                 StringComparison.OrdinalIgnoreCase))
+            !string.IsNullOrWhiteSpace(SelectedAreaId)
+            && ResolveMenuArea(control.Node).Id.Equals(
+                SelectedAreaId,
+                StringComparison.OrdinalIgnoreCase)
             && (string.IsNullOrWhiteSpace(SearchText)
                 || control.Node.Label.Contains(SearchText.Trim(), StringComparison.OrdinalIgnoreCase)
                 || control.Node.Path.Contains(SearchText.Trim(), StringComparison.OrdinalIgnoreCase)))
@@ -517,7 +525,8 @@ else
         var nodeOrder = Navigation.Nodes.Select((node, index) => (node.Id, index))
             .ToDictionary(item => item.Id, item => item.index, StringComparer.OrdinalIgnoreCase);
         return Controls.Select(control => ResolveMenuArea(control.Node))
-            .DistinctBy(area => area.Id, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(area => area.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new MenuControlArea(group.Key, group.First().Label, group.Count()))
             .OrderBy(area => nodeOrder.GetValueOrDefault(area.Id, int.MaxValue))
             .ThenBy(area => area.Label, StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -540,19 +549,44 @@ else
                 || parent.Label.Equals("Settings", StringComparison.OrdinalIgnoreCase))
             {
                 return current.Id.Equals(node.Id, StringComparison.OrdinalIgnoreCase)
-                    ? new MenuControlArea(parent.Id, parent.Label)
-                    : new MenuControlArea(current.Id, current.Label);
+                    ? new MenuControlArea(parent.Id, parent.Label, 0)
+                    : new MenuControlArea(current.Id, current.Label, 0);
             }
 
             if (parent.Id.Equals("normal-video", StringComparison.OrdinalIgnoreCase))
             {
-                return new MenuControlArea(current.Id, current.Label);
+                return new MenuControlArea(current.Id, current.Label, 0);
             }
 
             current = parent;
         }
 
-        return new MenuControlArea(current.Id, current.Label);
+        return new MenuControlArea(current.Id, current.Label, 0);
+    }
+
+    private void SelectMenuArea(string areaId)
+    {
+        SelectedAreaId = areaId;
+        LocalError = null;
+    }
+
+    private void EnsureSelectedMenuArea()
+    {
+        var areas = GetMenuAreas();
+        if (areas.Count == 0)
+        {
+            SelectedAreaId = string.Empty;
+            return;
+        }
+
+        if (areas.Any(area => area.Id.Equals(SelectedAreaId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        SelectedAreaId = areas.FirstOrDefault(area =>
+                area.Label.Equals("Picture", StringComparison.OrdinalIgnoreCase))?.Id
+            ?? areas[0].Id;
     }
 
     private void HandleControllerChanged()
@@ -595,6 +629,8 @@ else
                 Controls.Add(new PictureControlEdit(node, defaultValue));
             }
         }
+
+        EnsureSelectedMenuArea();
     }
 
     private bool HasUsableRoute(MenuNodeSummary node)
@@ -722,5 +758,5 @@ else
         IReadOnlyList<PictureControlEdit> Controls,
         int Order);
 
-    private sealed record MenuControlArea(string Id, string Label);
+    private sealed record MenuControlArea(string Id, string Label, int ControlCount);
 }

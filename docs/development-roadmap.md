@@ -102,7 +102,7 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 - [x] Set the expected current position after each accepted pass and return to video after the third.
 - [x] Collapse authoring sections by default and reopen them when contained state requires validation.
 - [x] Remove incorrect verified settings with dependency-aware safeguards.
-- [x] Expose verified sliders, switches, and selections from every menu area in a compact section-grouped control center.
+- [x] Expose verified sliders, switches, and selections from every menu area in a top-level tabbed, section-grouped control center.
 - [x] Apply conditional enablement in dependency order and derive enabled-child routes from verified containing sections.
 - [x] Promote shared slider behavior after three distinct TV-specific visual confirmations instead of verifying every slider.
 

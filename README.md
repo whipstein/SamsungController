@@ -201,7 +201,7 @@ Menu definitions are model-, firmware-, input-, signal-, and picture-mode-sensit
 
 ### Menu Controls
 
-The **Menu Controls** page collects adjustable sliders, switches, and selections from every verified menu area. Use the area filter or search, then work with compact cards grouped by their immediate TV-menu section. A normal control appears after its route has been verified. A conditionally disabled control can also appear when its containing section has a verified route; once enabled, SamsungController derives its position from the declared sibling order.
+The **Menu Controls** page collects adjustable sliders, switches, and selections from every verified menu area. Choose the **Picture**, **Sound**, or other top-level menu tab, then search within that tab and work with compact cards grouped by their immediate TV-menu section. A normal control appears after its route has been verified. A conditionally disabled control can also appear when its containing section has a verified route; once enabled, SamsungController derives its position from the declared sibling order.
 
 Each card starts from its declared YAML default and tracks changes sent during the current page session. Sliders send Left/Right steps, switches send Select, and selections open the choice list, move from the predicted current option, and select the new option. Choose **Update TV immediately** to send one change at a time, or choose **Wait for Apply** to stage several values. Staged dependencies are sent first: for example, 20 Point is enabled before its Interval/RGB controls, and Custom Color Space is selected before its Color/RGB controls. The page reevaluates every `disabledWhen` rule as its controlling value changes.
 
