@@ -11,6 +11,7 @@ public enum MenuVerificationCheckKind
     Anchor,
     ReturnScript,
     Route,
+    CalculatedNavigation,
     SliderBehavior,
     Selection,
     Switch,
@@ -27,7 +28,9 @@ public sealed record MenuDefinitionVerificationCheck(
     string? TargetNodeId = null,
     bool ExistingEvidenceReady = false,
     string? ConfigurationId = null,
-    string? SourceItemId = null);
+    string? SourceItemId = null,
+    string? SourceNodeId = null,
+    string? PreparationAnchorId = null);
 
 public sealed record MenuDefinitionVerificationPlan(
     MenuVerificationDisplay Display,
@@ -130,6 +133,8 @@ public static class MenuDefinitionVerificationPlanner
                 transition.ConfigurationId,
                 transition.Id);
         }
+
+        AddCalculatedNavigationCheck(checks, display, definition);
 
         var sliders = definition.Nodes.Values
             .Where(node => node.ControlType == MenuControlType.Slider
@@ -265,6 +270,187 @@ public static class MenuDefinitionVerificationPlanner
         }
     }
 
+    private static void AddCalculatedNavigationCheck(
+        ICollection<MenuDefinitionVerificationCheck> checks,
+        MenuVerificationDisplay display,
+        MenuDefinition definition)
+    {
+        if (SelectCalculatedNavigationRepresentative(definition) is not { } representative)
+        {
+            return;
+        }
+
+        var configuration = NormalizeConfiguration(representative.ConfigurationId);
+        Add(
+            checks,
+            display,
+            $"navigation:{configuration}:calculated-backtracking",
+            MenuVerificationCheckKind.CalculatedNavigation,
+            "Calculated cross-branch navigation",
+            $"Start at {definition.GetPath(representative.SourceNodeId)}, then verify the calculated route reaches {definition.GetPath(representative.TargetNodeId)} without returning to normal video.",
+            $"calculated-backtracking-v1|{representative.AnchorId}|{representative.SourceNodeId}|{representative.TargetNodeId}|{Operations(representative.Operations)}|{definition.Timing.DefaultDelayMilliseconds}|{definition.Timing.ScreenChangeDelayMilliseconds}|{definition.Timing.ReturnDelayMilliseconds}",
+            representative.TargetNodeId,
+            configurationId: representative.ConfigurationId,
+            sourceNodeId: representative.SourceNodeId,
+            preparationAnchorId: representative.AnchorId);
+    }
+
+    private static CalculatedNavigationRepresentative?
+        SelectCalculatedNavigationRepresentative(MenuDefinition definition)
+    {
+        var submenuReturnDelay = TimeSpan.FromMilliseconds(Math.Max(
+            definition.Timing.ReturnDelayMilliseconds,
+            definition.Timing.ScreenChangeDelayMilliseconds));
+        var routes = definition.ApplicableAnchors
+            .Where(anchor => anchor.Verified)
+            .OrderBy(anchor => anchor.Operations.Sum(operation => operation.Repeat))
+            .ThenBy(anchor => anchor.Id, StringComparer.OrdinalIgnoreCase)
+            .SelectMany(anchor => definition.ApplicableTransitions
+                .Where(transition => transition.Verified
+                    && transition.FromNodeId.Equals(
+                        anchor.TargetNodeId,
+                        StringComparison.OrdinalIgnoreCase)
+                    && IsSafeCalculatedNavigationTarget(
+                        definition,
+                        definition.GetRequiredNode(transition.ToNodeId)))
+                .Select(transition => new AbsoluteNavigationRoute(
+                    anchor.Id,
+                    definition.ActiveConfigurationId
+                    ?? transition.ConfigurationId
+                    ?? anchor.ConfigurationId,
+                    transition.ToNodeId,
+                    ExpandOperations(transition.Operations))))
+            .GroupBy(
+                route => $"{route.AnchorId}\u001f{route.TargetNodeId}",
+                StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderBy(route => route.Operations.Count)
+                .First())
+            .ToArray();
+        if (routes.Length < 2)
+        {
+            return null;
+        }
+
+        var candidates = new List<CalculatedNavigationRepresentative>();
+        foreach (var source in routes)
+        {
+            foreach (var target in routes.Where(target =>
+                         target.AnchorId.Equals(
+                             source.AnchorId,
+                             StringComparison.OrdinalIgnoreCase)
+                         && !target.TargetNodeId.Equals(
+                             source.TargetNodeId,
+                             StringComparison.OrdinalIgnoreCase)))
+            {
+                var commonPressCount = 0;
+                while (commonPressCount < source.Operations.Count
+                       && commonPressCount < target.Operations.Count
+                       && HasSameCommand(
+                           source.Operations[commonPressCount],
+                           target.Operations[commonPressCount]))
+                {
+                    commonPressCount++;
+                }
+
+                if (!MenuNavigator.TryCreateRelativeOperations(
+                        source.Operations,
+                        target.Operations,
+                        submenuReturnDelay,
+                        commonPressCount,
+                        out var relativePresses))
+                {
+                    continue;
+                }
+
+                var operations = CollapseRepeats(relativePresses);
+                if (!operations.Any(operation =>
+                        operation.Key.Equals(
+                            "KEY_RETURN",
+                            StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                candidates.Add(new CalculatedNavigationRepresentative(
+                    source.AnchorId,
+                    source.ConfigurationId,
+                    source.TargetNodeId,
+                    target.TargetNodeId,
+                    operations));
+            }
+        }
+
+        return candidates
+            .OrderBy(candidate => candidate.Operations.Sum(operation => operation.Repeat))
+            .ThenByDescending(candidate => definition.GetDepth(candidate.SourceNodeId))
+            .ThenBy(candidate => candidate.SourceNodeId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(candidate => candidate.TargetNodeId, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+    }
+
+    private static IReadOnlyList<MenuOperation> ExpandOperations(
+        IReadOnlyList<MenuOperation> operations) => operations
+        .SelectMany(operation => Enumerable.Range(0, operation.Repeat)
+            .Select(_ => operation with { Repeat = 1 }))
+        .ToArray();
+
+    private static bool HasSameCommand(MenuOperation left, MenuOperation right) =>
+        left.Key.Equals(right.Key, StringComparison.OrdinalIgnoreCase)
+        && left.Action == right.Action;
+
+    private static IReadOnlyList<MenuOperation> CollapseRepeats(
+        IReadOnlyList<MenuOperation> operations)
+    {
+        var collapsed = new List<MenuOperation>();
+        foreach (var operation in operations)
+        {
+            if (collapsed.Count > 0
+                && collapsed[^1].Key.Equals(
+                    operation.Key,
+                    StringComparison.OrdinalIgnoreCase)
+                && collapsed[^1].Action == operation.Action
+                && collapsed[^1].DelayAfter == operation.DelayAfter)
+            {
+                collapsed[^1] = collapsed[^1] with
+                {
+                    Repeat = collapsed[^1].Repeat + operation.Repeat
+                };
+                continue;
+            }
+
+            collapsed.Add(operation);
+        }
+
+        return collapsed;
+    }
+
+    private static bool IsSafeCalculatedNavigationTarget(
+        MenuDefinition definition,
+        MenuNode node)
+    {
+        var current = node;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (visited.Add(current.Id))
+        {
+            if (current.Disabled
+                || current.DisabledWhen is { Count: > 0 }
+                || current.HiddenWhen is { Count: > 0 }
+                || IsUnsafeConfirmationTarget(current))
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(current.ParentId)
+                || !definition.Nodes.TryGetValue(current.ParentId, out current))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static void AddConditionalChecks(
         ICollection<MenuDefinitionVerificationCheck> checks,
         MenuVerificationDisplay display,
@@ -397,10 +583,23 @@ public static class MenuDefinitionVerificationPlanner
         string? targetNodeId = null,
         bool existingEvidenceReady = false,
         string? configurationId = null,
-        string? sourceItemId = null)
+        string? sourceItemId = null,
+        string? sourceNodeId = null,
+        string? preparationAnchorId = null)
     {
         var fingerprint = Fingerprint($"{FingerprintVersion}|{CanonicalDisplay(display)}|{id}|{content}");
-        checks.Add(new MenuDefinitionVerificationCheck(id, kind, label, description, fingerprint, targetNodeId, existingEvidenceReady, configurationId, sourceItemId));
+        checks.Add(new MenuDefinitionVerificationCheck(
+            id,
+            kind,
+            label,
+            description,
+            fingerprint,
+            targetNodeId,
+            existingEvidenceReady,
+            configurationId,
+            sourceItemId,
+            sourceNodeId,
+            preparationAnchorId));
     }
 
     private static string NormalizeConfiguration(string? value) =>
@@ -475,4 +674,17 @@ public static class MenuDefinitionVerificationPlanner
     private sealed record ConditionalCoverageEntry(
         MenuNode Node,
         string BehaviorClass);
+
+    private sealed record CalculatedNavigationRepresentative(
+        string AnchorId,
+        string? ConfigurationId,
+        string SourceNodeId,
+        string TargetNodeId,
+        IReadOnlyList<MenuOperation> Operations);
+
+    private sealed record AbsoluteNavigationRoute(
+        string AnchorId,
+        string? ConfigurationId,
+        string TargetNodeId,
+        IReadOnlyList<MenuOperation> Operations);
 }

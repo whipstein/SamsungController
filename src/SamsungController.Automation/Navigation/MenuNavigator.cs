@@ -524,7 +524,7 @@ public sealed class MenuNavigator
         }
 
         var usedAncestorReturnRoute = false;
-        var ancestorReturnDelay = TimeSpan.FromMilliseconds(Math.Max(
+        var submenuReturnDelay = TimeSpan.FromMilliseconds(Math.Max(
             _definition.Timing.ReturnDelayMilliseconds,
             _definition.Timing.ScreenChangeDelayMilliseconds));
         List<MenuOperation> relativePresses;
@@ -533,7 +533,7 @@ public sealed class MenuNavigator
             && TryCreateAncestorReturnPresses(
                 sourcePresses,
                 commonPressCount,
-                ancestorReturnDelay,
+                submenuReturnDelay,
                 out var ancestorReturnPresses))
         {
             usedAncestorReturnRoute = true;
@@ -541,20 +541,14 @@ public sealed class MenuNavigator
         }
         else
         {
-            relativePresses = [];
-            for (var index = sourcePresses.Count - 1; index >= commonPressCount; index--)
+            if (!TryCreateRelativeOperations(
+                    sourcePresses,
+                    targetPresses,
+                    submenuReturnDelay,
+                    commonPressCount,
+                    out relativePresses))
             {
-                if (!TryInvert(sourcePresses[index], out var inverse))
-                {
-                    return false;
-                }
-
-                AddAndCancelDirectionalOpposites(relativePresses, inverse);
-            }
-
-            for (var index = commonPressCount; index < targetPresses.Count; index++)
-            {
-                AddAndCancelDirectionalOpposites(relativePresses, targetPresses[index]);
+                return false;
             }
         }
 
@@ -582,7 +576,7 @@ public sealed class MenuNavigator
                 targetPath,
                 operations,
                 usedAncestorReturnRoute
-                    ? $"Calculated from verified menu levels via {anchor.Label}; {relativePresses.Count} level returns with {ancestorReturnDelay.TotalMilliseconds:0}ms waits."
+                    ? $"Calculated from verified menu levels via {anchor.Label}; {relativePresses.Count} level returns with {submenuReturnDelay.TotalMilliseconds:0}ms waits."
                     : $"Calculated by subtracting two verified routes from {anchor.Label}; {commonPressCount} shared commands.",
                 BasedOnVerifiedRoutes: true));
         return true;
@@ -599,7 +593,40 @@ public sealed class MenuNavigator
         left.Key.Equals(right.Key, StringComparison.OrdinalIgnoreCase)
         && left.Action == right.Action;
 
-    private static bool TryInvert(MenuOperation operation, out MenuOperation inverse)
+    internal static bool TryCreateRelativeOperations(
+        IReadOnlyList<MenuOperation> sourcePresses,
+        IReadOnlyList<MenuOperation> targetPresses,
+        TimeSpan submenuReturnDelay,
+        int commonPressCount,
+        out List<MenuOperation> relativePresses)
+    {
+        relativePresses = [];
+        for (var index = sourcePresses.Count - 1; index >= commonPressCount; index--)
+        {
+            if (!TryInvert(
+                    sourcePresses[index],
+                    submenuReturnDelay,
+                    out var inverse))
+            {
+                relativePresses = [];
+                return false;
+            }
+
+            AddAndCancelDirectionalOpposites(relativePresses, inverse);
+        }
+
+        for (var index = commonPressCount; index < targetPresses.Count; index++)
+        {
+            AddAndCancelDirectionalOpposites(relativePresses, targetPresses[index]);
+        }
+
+        return relativePresses.Count > 0;
+    }
+
+    private static bool TryInvert(
+        MenuOperation operation,
+        TimeSpan submenuReturnDelay,
+        out MenuOperation inverse)
     {
         var inverseKey = operation.Action == RemoteKeyAction.Click
             ? operation.Key.Trim().ToUpperInvariant() switch
@@ -614,7 +641,8 @@ public sealed class MenuNavigator
             : null;
         inverse = new MenuOperation(
             inverseKey ?? operation.Key,
-            RemoteKeyAction.Click);
+            RemoteKeyAction.Click,
+            DelayAfter: inverseKey == "KEY_RETURN" ? submenuReturnDelay : null);
         return inverseKey is not null;
     }
 

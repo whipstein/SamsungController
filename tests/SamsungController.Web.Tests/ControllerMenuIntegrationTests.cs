@@ -2851,6 +2851,92 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task FileVerificationGuidedTestExercisesCalculatedCrossBranchRoute()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: calculated-navigation-verification
+            name: Calculated Navigation Verification
+            model: Test TV
+            timing:
+              defaultDelay: 150ms
+              screenChangeDelay: 800ms
+              returnDelay: 300ms
+              verified: true
+            nodes:
+              - id: normal-video
+                label: Normal video
+                children:
+                  - id: white-balance
+                    label: White Balance
+                    children:
+                      - id: two-point
+                        label: 2 Point
+                        children:
+                          - id: two-point-red
+                            label: Red Gain
+                      - id: twenty-point
+                        label: 20 Point
+                        children:
+                          - id: twenty-point-red
+                            label: Red
+            anchors:
+              - id: normal
+                label: Return to normal video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            transitions:
+              - id: to-two-point-red
+                from: normal-video
+                to: two-point-red
+                verified: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_ENTER
+                    repeat: 2
+              - id: to-twenty-point-red
+                from: normal-video
+                to: twenty-point-red
+                verified: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_ENTER
+                  - key: KEY_DOWN
+                  - key: KEY_ENTER
+            """;
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            var check = Assert.Single(
+                controller.GetMenuDefinitionVerificationSnapshot().Checks,
+                candidate => candidate.Kind == MenuVerificationCheckKind.CalculatedNavigation);
+
+            var result = await controller.RunMenuDefinitionVerificationTestAsync(check.Id);
+
+            Assert.Equal(check.TargetNodeId, result.TargetNodeId);
+            Assert.Contains("without returning to normal video", result.ActionDescription);
+            Assert.Equal(
+                [
+                    "KEY_RETURN",
+                    "KEY_MENU",
+                    "KEY_ENTER",
+                    "KEY_DOWN",
+                    "KEY_ENTER",
+                    "KEY_RETURN",
+                    "KEY_UP",
+                    "KEY_ENTER"
+                ],
+                GetSentKeys(transport));
+            Assert.Equal(
+                check.TargetNodeId,
+                controller.GetMenuNavigationSnapshot().State.NodeId);
+        }
+    }
+
+    [Fact]
     public async Task FileVerificationGuidedSelectionEnablesConditionalPrerequisites()
     {
         const string yaml =

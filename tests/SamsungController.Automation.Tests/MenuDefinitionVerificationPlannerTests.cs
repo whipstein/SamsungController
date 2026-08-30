@@ -146,6 +146,24 @@ public sealed class MenuDefinitionVerificationPlannerTests
     }
 
     [Fact]
+    public void PlanIncludesOneCalculatedCrossBranchNavigationCheck()
+    {
+        var definition = CreateCrossBranchDefinition();
+
+        var checks = MenuDefinitionVerificationPlanner.Create(definition).Checks;
+
+        var check = Assert.Single(
+            checks,
+            candidate => candidate.Kind == MenuVerificationCheckKind.CalculatedNavigation);
+        Assert.Equal("navigation:default:calculated-backtracking", check.Id);
+        Assert.NotNull(check.SourceNodeId);
+        Assert.NotNull(check.TargetNodeId);
+        Assert.NotEqual(check.SourceNodeId, check.TargetNodeId);
+        Assert.Equal("normal", check.PreparationAnchorId);
+        Assert.Contains("without returning to normal video", check.Description);
+    }
+
+    [Fact]
     public void PermanentlyDisabledBranchUsesOneBehaviorCheckAndNoControlChecks()
     {
         var definition = new MenuDefinition(
@@ -234,6 +252,51 @@ public sealed class MenuDefinitionVerificationPlannerTests
             record => record.Id.StartsWith("route:", StringComparison.Ordinal));
         Assert.Contains(reconciled.Verification.Checks, record => record.Id == "display");
     }
+
+    private static MenuDefinition CreateCrossBranchDefinition() => new(
+        "cross-branch-verification",
+        "Cross branch verification",
+        "S95F",
+        new MenuDefinitionContext("1296", "SDR", "Movie", "HDMI 1"),
+        [
+            new MenuNode("normal-video", "Normal video"),
+            new MenuNode("white-balance", "White Balance", "normal-video"),
+            new MenuNode("two-point", "2 Point", "white-balance"),
+            new MenuNode("two-point-red", "Red Gain", "two-point"),
+            new MenuNode("twenty-point", "20 Point", "white-balance"),
+            new MenuNode("twenty-point-red", "Red", "twenty-point")
+        ],
+        [
+            new MenuTransition(
+                "to-two-point-red",
+                "normal-video",
+                "two-point-red",
+                [
+                    new MenuOperation("KEY_MENU"),
+                    new MenuOperation("KEY_ENTER", Repeat: 2)
+                ],
+                true),
+            new MenuTransition(
+                "to-twenty-point-red",
+                "normal-video",
+                "twenty-point-red",
+                [
+                    new MenuOperation("KEY_MENU"),
+                    new MenuOperation("KEY_ENTER"),
+                    new MenuOperation("KEY_DOWN"),
+                    new MenuOperation("KEY_ENTER")
+                ],
+                true)
+        ],
+        [
+            new MenuAnchor(
+                "normal",
+                "Return to normal video",
+                "normal-video",
+                [new MenuOperation("KEY_RETURN")],
+                true)
+        ],
+        new MenuTimingProfile(150, 800, 300, true));
 
     [Fact]
     public void ReconcileRemovesRouteManifestEvidenceWhenTheRouteNeedsValidation()

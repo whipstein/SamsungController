@@ -204,7 +204,7 @@
     new[]
     {
         CreateGroup("01", "Display & timing", VerificationState.Checks.Where(check => check.Kind is MenuVerificationCheckKind.Display or MenuVerificationCheckKind.Timing)),
-        CreateGroup("02", "Menu locations & return paths", VerificationState.Checks.Where(check => check.Kind is MenuVerificationCheckKind.Anchor or MenuVerificationCheckKind.ReturnScript or MenuVerificationCheckKind.Route)),
+        CreateGroup("02", "Menu locations & return paths", VerificationState.Checks.Where(check => check.Kind is MenuVerificationCheckKind.Anchor or MenuVerificationCheckKind.ReturnScript or MenuVerificationCheckKind.Route or MenuVerificationCheckKind.CalculatedNavigation)),
         CreateGroup("03", "Representative control behaviors", VerificationState.Checks.Where(check => check.Kind is MenuVerificationCheckKind.SliderBehavior or MenuVerificationCheckKind.Selection or MenuVerificationCheckKind.Switch or MenuVerificationCheckKind.Confirmation)),
         CreateGroup("04", "Representative conditional behaviors", VerificationState.Checks.Where(check => check.Kind == MenuVerificationCheckKind.ConditionalVisibility))
     }.Where(group => group.Checks.Count > 0).ToArray();
@@ -414,6 +414,7 @@
             or MenuVerificationCheckKind.Switch
             or MenuVerificationCheckKind.Confirmation
             or MenuVerificationCheckKind.ConditionalVisibility
+            or MenuVerificationCheckKind.CalculatedNavigation
             or MenuVerificationCheckKind.SliderBehavior);
 
     private bool IsPendingVisualTest(MenuDefinitionVerificationCheckSummary check) =>
@@ -436,6 +437,7 @@
             or MenuVerificationCheckKind.Switch
             or MenuVerificationCheckKind.Confirmation
             or MenuVerificationCheckKind.ConditionalVisibility
+            or MenuVerificationCheckKind.CalculatedNavigation
             or MenuVerificationCheckKind.SliderBehavior);
 
     private static string ConfirmationLabel(MenuDefinitionVerificationCheckSummary check) => check.Kind switch
@@ -450,6 +452,7 @@
         MenuVerificationCheckKind.ConditionalVisibility => "CONDITIONAL STATE",
         MenuVerificationCheckKind.SliderBehavior => "SHARED BEHAVIOR",
         MenuVerificationCheckKind.ReturnScript => "RETURN SCRIPT",
+        MenuVerificationCheckKind.CalculatedNavigation => "CALCULATED ROUTE",
         _ => kind.ToString().ToUpperInvariant()
     };
 

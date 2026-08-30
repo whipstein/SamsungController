@@ -698,9 +698,73 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         effectiveValues,
                         cancellationToken)
                     .ConfigureAwait(false),
+            MenuVerificationCheckKind.CalculatedNavigation =>
+                await RunCalculatedNavigationVerificationTestAsync(
+                        definition,
+                        check,
+                        cancellationToken)
+                    .ConfigureAwait(false),
             _ => throw new InvalidOperationException(
                 $"'{check.Label}' is verified through its existing Build & Verify workflow rather than an automated control adjustment.")
         };
+    }
+
+    private async Task<MenuDefinitionVerificationTestResult>
+        RunCalculatedNavigationVerificationTestAsync(
+            MenuDefinition definition,
+            MenuDefinitionVerificationCheck check,
+            CancellationToken cancellationToken)
+    {
+        var sourceNodeId = check.SourceNodeId
+            ?? throw new InvalidOperationException(
+                $"'{check.Label}' does not define its calculated-route starting location.");
+        var anchorId = check.PreparationAnchorId
+            ?? throw new InvalidOperationException(
+                $"'{check.Label}' does not define a known-state preparation anchor.");
+        var targetNodeId = check.TargetNodeId!;
+        NavigationPlan? calculatedPlan = null;
+        await RunNavigationAsync(
+                $"Verify calculated navigation · {definition.GetPath(sourceNodeId)} → {definition.GetPath(targetNodeId)}",
+                async (navigator, token) =>
+                {
+                    await navigator.ExecuteAnchorAsync(anchorId, token).ConfigureAwait(false);
+                    if (!definition.GetRequiredAnchor(anchorId).TargetNodeId.Equals(
+                            sourceNodeId,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        var sourcePlan = navigator.Plan(
+                            sourceNodeId,
+                            includeDraftTransitions: false);
+                        await navigator.ExecutePlanAsync(sourcePlan, token).ConfigureAwait(false);
+                    }
+
+                    calculatedPlan = navigator.Plan(
+                        targetNodeId,
+                        includeDraftTransitions: false);
+                    if (!calculatedPlan.UsesCalculatedRoute
+                        || calculatedPlan.UsesAnchor
+                        || calculatedPlan.CalculatedLeg?.Operations.Any(operation =>
+                            operation.Key.Equals(
+                                "KEY_RETURN",
+                                StringComparison.OrdinalIgnoreCase)) != true)
+                    {
+                        throw new InvalidOperationException(
+                            "The representative route no longer exercises calculated cross-branch navigation. Reload the menu definition to regenerate verification requirements.");
+                    }
+
+                    await navigator.ExecutePlanAsync(calculatedPlan, token).ConfigureAwait(false);
+                },
+                clearPlanOnSuccess: true,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        return new MenuDefinitionVerificationTestResult(
+            check.Id,
+            targetNodeId,
+            definition.GetPath(targetNodeId),
+            null,
+            $"Prepared {definition.GetPath(sourceNodeId)}, then used {calculatedPlan!.CommandCount} calculated command{(calculatedPlan.CommandCount == 1 ? string.Empty : "s")} to reach {definition.GetPath(targetNodeId)} without returning to normal video. Confirm the final highlight before counting the pass.",
+            []);
     }
 
     public async Task<string> ReturnMenuDefinitionVerificationToKnownStateAsync(
@@ -5908,14 +5972,14 @@ public sealed class SamsungControllerService : IAsyncDisposable
         MenuDefinition definition,
         MenuDefinitionVerificationCheck check,
         MenuControlVerificationSnapshot controlVerification) => check.Kind switch
-    {
-        MenuVerificationCheckKind.SliderBehavior => controlVerification.SlidersVerified,
-        MenuVerificationCheckKind.Selection => check.TargetNodeId is { } nodeId
-            && controlVerification.VerifiedSelectionControlTypes.Contains(
-                MenuControlBehaviorClassifier.GetEffectiveControlType(
-                    definition.GetRequiredNode(nodeId))),
-        _ => check.ExistingEvidenceReady
-    };
+        {
+            MenuVerificationCheckKind.SliderBehavior => controlVerification.SlidersVerified,
+            MenuVerificationCheckKind.Selection => check.TargetNodeId is { } nodeId
+                && controlVerification.VerifiedSelectionControlTypes.Contains(
+                    MenuControlBehaviorClassifier.GetEffectiveControlType(
+                        definition.GetRequiredNode(nodeId))),
+            _ => check.ExistingEvidenceReady
+        };
 
     private static MenuDefinition AddVerificationRecords(
         MenuDefinition definition,

@@ -314,6 +314,96 @@ public sealed class MenuNavigatorTests
     }
 
     [Fact]
+    public async Task CalculatedCrossBranchRouteWaitsForSubmenuReturnToFinish()
+    {
+        var definition = CreateCrossBranchDefinition();
+        var tracker = new MenuStateTracker(definition);
+        var target = new RecordingTarget();
+        var delay = new RecordingDelay();
+        var navigator = new MenuNavigator(definition, tracker, target, delay);
+
+        await navigator.ExecuteAnchorAsync("normal");
+        await navigator.ExecutePlanAsync(navigator.Plan("two-point-red", includeDraftTransitions: false));
+        target.Keys.Clear();
+        delay.Delays.Clear();
+
+        var plan = navigator.Plan("twenty-point-red", includeDraftTransitions: false);
+
+        Assert.True(plan.UsesCalculatedRoute);
+        Assert.False(plan.UsesAnchor);
+        Assert.Collection(
+            plan.CalculatedLeg!.Operations,
+            operation =>
+            {
+                Assert.Equal("KEY_RETURN", operation.Key);
+                Assert.Equal(TimeSpan.FromMilliseconds(800), operation.DelayAfter);
+            },
+            operation => Assert.Equal("KEY_DOWN", operation.Key),
+            operation => Assert.Equal("KEY_ENTER", operation.Key));
+
+        await navigator.ExecutePlanAsync(plan);
+
+        Assert.Equal(["KEY_RETURN", "KEY_DOWN", "KEY_ENTER"], target.Keys);
+        Assert.Equal(
+            [
+                TimeSpan.FromMilliseconds(800),
+                TimeSpan.FromMilliseconds(150),
+                TimeSpan.FromMilliseconds(800)
+            ],
+            delay.Delays);
+        Assert.Equal("twenty-point-red", tracker.Current.NodeId);
+    }
+
+    [Fact]
+    public async Task CalculatedColorSpaceToWhiteBalanceRouteWaitsAfterEverySubmenuExit()
+    {
+        var definition = CreateCrossBranchDefinition();
+        var tracker = new MenuStateTracker(definition);
+        var target = new RecordingTarget();
+        var delay = new RecordingDelay();
+        var navigator = new MenuNavigator(definition, tracker, target, delay);
+
+        await navigator.ExecuteAnchorAsync("normal");
+        await navigator.ExecutePlanAsync(navigator.Plan("color-red", includeDraftTransitions: false));
+        target.Keys.Clear();
+        delay.Delays.Clear();
+
+        var plan = navigator.Plan("two-point-red", includeDraftTransitions: false);
+
+        Assert.True(plan.UsesCalculatedRoute);
+        Assert.Collection(
+            plan.CalculatedLeg!.Operations,
+            operation =>
+            {
+                Assert.Equal("KEY_RETURN", operation.Key);
+                Assert.Equal(2, operation.Repeat);
+                Assert.Equal(TimeSpan.FromMilliseconds(800), operation.DelayAfter);
+            },
+            operation => Assert.Equal("KEY_UP", operation.Key),
+            operation =>
+            {
+                Assert.Equal("KEY_ENTER", operation.Key);
+                Assert.Equal(2, operation.Repeat);
+            });
+
+        await navigator.ExecutePlanAsync(plan);
+
+        Assert.Equal(
+            ["KEY_RETURN", "KEY_RETURN", "KEY_UP", "KEY_ENTER", "KEY_ENTER"],
+            target.Keys);
+        Assert.Equal(
+            [
+                TimeSpan.FromMilliseconds(800),
+                TimeSpan.FromMilliseconds(800),
+                TimeSpan.FromMilliseconds(150),
+                TimeSpan.FromMilliseconds(800),
+                TimeSpan.FromMilliseconds(800)
+            ],
+            delay.Delays);
+        Assert.Equal("two-point-red", tracker.Current.NodeId);
+    }
+
+    [Fact]
     public async Task PlanUsesVerifiedAnchorWhenSourcePathCannotBeSafelyInverted()
     {
         var definition = CreateNonInvertibleRouteDefinition();
@@ -585,6 +675,67 @@ public sealed class MenuNavigatorTests
                 [new MenuOperation("KEY_EXIT")],
                 true)
         ]);
+
+    private static MenuDefinition CreateCrossBranchDefinition() => new(
+        "cross-branch",
+        "Cross branch",
+        "TV",
+        new MenuDefinitionContext(),
+        [
+            new MenuNode("normal", "Normal video"),
+            new MenuNode("settings", "Settings", "normal"),
+            new MenuNode("expert", "Expert Settings", "settings"),
+            new MenuNode("white-balance", "White Balance", "expert"),
+            new MenuNode("two-point", "2 Point", "white-balance"),
+            new MenuNode("two-point-red", "Red Gain", "two-point"),
+            new MenuNode("twenty-point", "20 Point", "white-balance"),
+            new MenuNode("twenty-point-red", "Red", "twenty-point"),
+            new MenuNode("color-space", "Color Space", "expert"),
+            new MenuNode("custom-color", "Custom", "color-space"),
+            new MenuNode("color-red", "Red", "custom-color")
+        ],
+        [
+            new MenuTransition(
+                "to-two-point-red",
+                "normal",
+                "two-point-red",
+                [
+                    new MenuOperation("KEY_MENU"),
+                    new MenuOperation("KEY_ENTER", Repeat: 3)
+                ],
+                true),
+            new MenuTransition(
+                "to-twenty-point-red",
+                "normal",
+                "twenty-point-red",
+                [
+                    new MenuOperation("KEY_MENU"),
+                    new MenuOperation("KEY_ENTER", Repeat: 2),
+                    new MenuOperation("KEY_DOWN"),
+                    new MenuOperation("KEY_ENTER")
+                ],
+                true),
+            new MenuTransition(
+                "to-color-red",
+                "normal",
+                "color-red",
+                [
+                    new MenuOperation("KEY_MENU"),
+                    new MenuOperation("KEY_ENTER"),
+                    new MenuOperation("KEY_DOWN"),
+                    new MenuOperation("KEY_ENTER", Repeat: 2)
+                ],
+                true)
+        ],
+        [
+            new MenuAnchor(
+                "normal",
+                "Return to normal video",
+                "normal",
+                [new MenuOperation("KEY_RETURN")],
+                true)
+        ],
+        new MenuTimingProfile(150, 800, 300, true));
 
     private sealed class RecordingTarget : IMenuCommandTarget
     {
