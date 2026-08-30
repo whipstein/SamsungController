@@ -128,13 +128,13 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
             </div>
         }
     </div>
-    <p class="field-note">Values are predictions based on YAML defaults and changes sent during this page session. Controls changed elsewhere can make those predictions inaccurate.</p>
+    <p class="field-note">Values are predictions based on menu-definition defaults and changes sent during this page session. Controls changed elsewhere can make those predictions inaccurate.</p>
     @if (ConfirmFactoryReset)
     {
         <div class="factory-reset-confirmation" role="alert">
             <div>
                 <strong>Reset picture settings to factory defaults?</strong>
-                <span>SamsungController will execute <b>@SelectedFactoryResetNode?.Path</b>, choose <b>@SelectedFactoryResetChoice</b>, return to normal video, and then apply every staged value from known YAML defaults. This changes all settings covered by that TV reset.</span>
+                <span>SamsungController will execute <b>@SelectedFactoryResetNode?.Path</b>, choose <b>@SelectedFactoryResetChoice</b>, return to normal video, and then apply every staged value from known menu-definition defaults. This changes all settings covered by that TV reset.</span>
             </div>
             <button class="secondary-action" @onclick="CancelFactoryReset" disabled="@IsBusy">Cancel</button>
             <button class="primary-action danger-action" @onclick="ResetAndApplyAllAsync" disabled="@IsBusy">Yes — reset and apply all</button>
@@ -146,7 +146,7 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
 {
     <section class="panel panel-empty picture-controls-empty">
         <strong>@(Controls.Count == 0 ? "No verified menu controls are available" : "No controls match this filter")</strong>
-        <span>@(Controls.Count == 0 ? "Define values and bounds in YAML, then complete the generated route verification." : "Choose another menu tab or clear the search text.")</span>
+        <span>@(Controls.Count == 0 ? "Define values and bounds in the menu file, then complete the generated route verification." : "Choose another menu tab or clear the search text.")</span>
         <a href="menu/build">Open Build &amp; Verify →</a>
     </section>
 }

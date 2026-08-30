@@ -174,7 +174,8 @@ internal static class MenuTopologyOutlinePlanner
             definition.Anchors.Values,
             definition.Timing,
             definition.Configurations.Values,
-            definition.ActiveConfigurationId);
+            definition.ActiveConfigurationId,
+            definition.Verification);
         new MenuDefinitionValidator().ValidateAndThrow(candidate);
 
         var preview = new MenuTopologyOutlinePreview(

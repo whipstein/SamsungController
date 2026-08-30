@@ -96,7 +96,8 @@ public static class TopologyRouteGenerator
             definition.Anchors.Values,
             definition.Timing,
             definition.Configurations.Values,
-            definition.ActiveConfigurationId);
+            definition.ActiveConfigurationId,
+            definition.Verification);
     }
 
     private static bool CanGenerateFromSeed(

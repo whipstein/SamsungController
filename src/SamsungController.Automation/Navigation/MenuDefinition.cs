@@ -14,6 +14,22 @@ public sealed record MenuConfiguration(
     string Name,
     string? Conditions = null);
 
+public sealed record MenuVerificationDisplay(
+    string Model,
+    string Firmware,
+    string Signal,
+    string PictureMode,
+    string Input);
+
+public sealed record MenuVerificationRecord(
+    string Id,
+    string Fingerprint,
+    DateTimeOffset VerifiedAtUtc);
+
+public sealed record MenuVerificationManifest(
+    MenuVerificationDisplay Display,
+    IReadOnlyList<MenuVerificationRecord> Checks);
+
 public sealed record MenuTimingProfile(
     int DefaultDelayMilliseconds = 150,
     int ScreenChangeDelayMilliseconds = 800,
@@ -136,7 +152,8 @@ public sealed class MenuDefinition
         IEnumerable<MenuAnchor> anchors,
         MenuTimingProfile? timing = null,
         IEnumerable<MenuConfiguration>? configurations = null,
-        string? activeConfigurationId = null)
+        string? activeConfigurationId = null,
+        MenuVerificationManifest? verification = null)
     {
         Id = id;
         Name = name;
@@ -153,6 +170,7 @@ public sealed class MenuDefinition
         ActiveConfigurationId = string.IsNullOrWhiteSpace(activeConfigurationId)
             ? null
             : activeConfigurationId.Trim();
+        Verification = verification;
     }
 
     public string Id { get; }
@@ -175,6 +193,8 @@ public sealed class MenuDefinition
 
     public string? ActiveConfigurationId { get; }
 
+    public MenuVerificationManifest? Verification { get; }
+
     public IEnumerable<MenuTransition> ApplicableTransitions => _transitions.Values.Where(
         transition => IsApplicableToActiveConfiguration(transition.ConfigurationId));
 
@@ -196,7 +216,8 @@ public sealed class MenuDefinition
         Anchors.Values,
         Timing,
         Configurations.Values,
-        configurationId);
+        configurationId,
+        Verification);
 
     public MenuNode GetRequiredNode(string nodeId) =>
         _nodes.TryGetValue(nodeId, out var node)

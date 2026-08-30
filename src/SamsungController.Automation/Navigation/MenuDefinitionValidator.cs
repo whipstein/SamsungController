@@ -37,6 +37,7 @@ public sealed class MenuDefinitionValidator
         ValidateIdentifier("definition", definition.Id, errors);
         ValidateRequired("definition", "name", definition.Name, errors);
         ValidateRequired("definition", "model", definition.Model, errors);
+        ValidateVerification(definition.Verification, errors);
         foreach (var configuration in definition.Configurations.Values)
         {
             var location = $"configuration '{configuration.Id}'";
@@ -545,6 +546,49 @@ public sealed class MenuDefinitionValidator
         if (errors.Count > 0)
         {
             throw new MenuDefinitionValidationException(errors);
+        }
+    }
+
+    private static void ValidateVerification(
+        MenuVerificationManifest? verification,
+        ICollection<MenuDefinitionValidationError> errors)
+    {
+        if (verification is null)
+        {
+            return;
+        }
+
+        ValidateRequired("verification display", "model", verification.Display.Model, errors);
+        ValidateRequired("verification display", "firmware", verification.Display.Firmware, errors);
+        ValidateRequired("verification display", "signal", verification.Display.Signal, errors);
+        ValidateRequired("verification display", "pictureMode", verification.Display.PictureMode, errors);
+        ValidateRequired("verification display", "input", verification.Display.Input, errors);
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var check in verification.Checks)
+        {
+            var location = $"verification check '{check.Id}'";
+            ValidateRequired(location, "id", check.Id, errors);
+            if (!ids.Add(check.Id))
+            {
+                errors.Add(new MenuDefinitionValidationError(
+                    location,
+                    "A verification check ID can appear only once."));
+            }
+
+            if (check.Fingerprint.Length != 64
+                || !check.Fingerprint.All(Uri.IsHexDigit))
+            {
+                errors.Add(new MenuDefinitionValidationError(
+                    location,
+                    "fingerprint must be a 64-character SHA-256 hexadecimal value."));
+            }
+
+            if (check.VerifiedAtUtc == default)
+            {
+                errors.Add(new MenuDefinitionValidationError(
+                    location,
+                    "verifiedAt must be a valid timestamp."));
+            }
         }
     }
 

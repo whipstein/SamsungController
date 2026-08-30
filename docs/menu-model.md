@@ -47,7 +47,12 @@ the control channel is authorized. It prioritizes a target named
 `normal-video`, then falls back to another verified anchor. No additional anchor
 or reset commands are inserted before later navigation or validation runs.
 
-## Version 1 YAML
+## Version 1 YAML and JSON
+
+Menu definitions can be stored as YAML (the default) or JSON with the same
+version 1 schema and validation. See the
+[menu definition file format tutorial](menu-definition-file-format.md) for the
+complete raw topology/settings reference and equivalent examples.
 
 The bundled, deliberately unverified template is
 [`samples/menus/menu.example.yaml`](../samples/menus/menu.example.yaml). Its basic
@@ -64,6 +69,19 @@ context:
   signal: unrecorded
   pictureMode: unrecorded
   input: unrecorded
+
+# Added and maintained by the File Verification page after visual testing.
+verification:
+  display:
+    model: S95F
+    firmware: "1296"
+    signal: SDR
+    pictureMode: Filmmaker Mode
+    input: Home Theater System
+  checks:
+    - id: display
+      fingerprint: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      verifiedAt: "2026-08-30T15:30:00.0000000+00:00"
 
 configurations:
   - id: standard
@@ -189,6 +207,15 @@ transitions:
       - key: KEY_MENU
 ```
 
+The `verification` mapping is optional until the profile is tested. Do not copy
+its records between definitions or edit fingerprints by hand. The complete
+verification workspace derives the required checks from the current definition and
+stores a result only after visual confirmation. Each fingerprint includes the
+declared display context plus the relevant route, timing, control options,
+bounds, or condition. A later file edit therefore invalidates only records whose
+behavior changed. The persistent header reports the file as fully verified only
+when every derived check has a matching record.
+
 `configurations` keeps alternate layouts in one TV model file. Use `hiddenWhen`
 for row-presence changes driven by modeled value-bearing nodes. Use a named
 configuration when rows reorder, when an unmodeled condition changes the layout,
@@ -244,7 +271,7 @@ restore the declared defaults or reproduce that change in Menu Controls before
 relying on a calculated route.
 
 Parent relationships on nodes control tree presentation only. Within each parent,
-the YAML node sequence is the persistent custom order used to mirror the TV.
+the node-array sequence is the persistent custom order used to mirror the TV.
 Build & Verify can move siblings up or down and can temporarily display every
 branch alphabetically without changing that saved custom order. Tree order does
 not imply that navigation is possible; the verified Menu page follows the saved
@@ -282,7 +309,7 @@ exact override is absent or unverified, or an older definition has no return
 strategy, resolution falls through the root/deeper scripts and ultimately the
 anchor's ordinary `steps` fallback.
 
-Unknown YAML fields, missing node references, parent cycles, invalid actions,
+Unknown file fields, missing node references, parent cycles, invalid actions,
 unsafe repeat counts, and excessive delays fail validation before any command
 can be planned or sent.
 
@@ -294,16 +321,17 @@ can be planned or sent.
    profile and enter the model number and firmware version. The default
    definition name uses those two values. The generated file ID also appends
    signal type, picture mode, and input/source when their value is more specific
-   than `any`. The YAML is stored in the per-user configuration directory and
+   than `any`. YAML is created by default; JSON can be selected in the profile
+   form. The definition is stored in the per-user configuration directory and
    loaded automatically. Reusing an existing file ID opens a destructive
    replacement confirmation instead of failing silently or overwriting it
    immediately.
 4. Still in **Define menu**, describe and select the settings-dependent layout that
-   is currently visible. **Menu outline** automatically loads the selected YAML
+   is currently visible. **Menu outline** automatically loads the selected file's
    branch as an indented outline in a 20-line editor with synchronized line numbers.
    Tree-aware vertical guides appear only inside populated indentation branches and
    stop when a later item returns to a shallower level. Edit it directly or use
-   **Reload branch from YAML** to discard unsaved text.
+   **Reload branch from file** to discard unsaved text.
    Add the expected menu positions with two spaces per level, choose **Preview
    changes**, and then choose **Save & keep editing** or **Save & continue** to
    advance to recording. Any text edit invalidates the preview and requires a new one. Invalid
@@ -360,9 +388,9 @@ can be planned or sent.
 6. Use the embedded remote. Every successfully sent button controls the TV and
    is captured; failed sends are not recorded. The system timing profile supplies
    waits unless a button has a custom override in the timing lab.
-7. Stop the recording. The UI atomically adds it to the active YAML, generates
+7. Stop the recording. The UI atomically adds it to the active definition, generates
    descendant routes, and opens **Verify coverage**. Generated transitions retain
-   their seed and validation-group metadata in YAML so they can be regenerated
+   their seed and validation-group metadata in the file so they can be regenerated
    after topology edits.
 8. Edit the **System-wide timing** profile, select a traversal, and
    place the TV at that traversal's source before choosing **Test system
@@ -389,7 +417,7 @@ can be planned or sent.
    switches between cards. Every successful
    confirmation immediately synchronizes the
    current-menu indicator to the confirmed target, including after the third
-   pass reloads the YAML; that third accepted pass then runs the verified anchor
+   pass reloads the definition; that third accepted pass then runs the verified anchor
    return automatically.
 
 For a slider, topology verification ends with the slider row highlighted. Do not
@@ -410,7 +438,7 @@ application can invalidate the page's predicted starting value.
 
 Menu Controls evaluates `disabledWhen` and `hiddenWhen` against predicted values.
 A staged update orders controlling settings before their dependents. A
-conditional child that is disabled under the YAML defaults does not need to be
+conditional child that is disabled under the declared defaults does not need to be
 added to the default-state coverage checklist: after its controller enables it,
 the page reaches the verified containing submenu and derives the child's Up/Down
 offset from the enabled sibling order. This is intended for rows such as 20 Point
@@ -443,13 +471,13 @@ Menu Controls stores desired values in the local application settings for the
 active menu-definition ID. Indexed cells are keyed by selector, selector option,
 and slider node, so all 20 Point percentages or Custom Color rows survive an
 application restart. These personal target values are not written to the shared
-TV topology YAML.
+TV topology file.
 
 **Reset & apply all** lists verified confirmation nodes whose ID or label contains
 `reset`, preferring `reset-picture`. After explicit user confirmation it
 navigates to that node, opens its confirmation dialog, selects the chosen reset
 action, and runs the verified return-to-video anchor. The controller then resets
-its predictions to every declared YAML `defaultValue` and applies the saved
+its predictions to every declared `defaultValue` and applies the saved
 profile in dependency order, followed by indexed grid rows in their declared
 option order. The chosen confirmation determines reset scope; selecting Reset
 Picture does not perform a full television ownership/device factory reset.

@@ -7,7 +7,7 @@
     <div class="panel-label">
         <span>MENU AUTHORING STUDIO</span>
         <span class="@(Authoring.IsRecording ? "recording-indicator active" : "recording-indicator")">
-            @(Authoring.IsRecording ? "● RECORDING" : "UI → TV → YAML → 3× VERIFY")
+            @(Authoring.IsRecording ? "● RECORDING" : "UI → TV → FILE → 3× VERIFY")
         </span>
     </div>
 
@@ -70,6 +70,13 @@
                 <label><span>Signal</span><input value="@DefinitionSignal" @oninput="HandleDefinitionSignalChanged" placeholder="SDR" /></label>
                 <label><span>Picture mode</span><input value="@DefinitionPictureMode" @oninput="HandleDefinitionPictureModeChanged" placeholder="e.g. Movie" /></label>
                 <label class="wide-field"><span>Input/source</span><input value="@DefinitionInput" @oninput="HandleDefinitionInputChanged" placeholder="e.g. HDMI 1" /></label>
+                <label>
+                    <span>File format</span>
+                    <select @bind="DefinitionFormat">
+                        <option value="@MenuDefinitionFileFormat.Yaml">YAML · default</option>
+                        <option value="@MenuDefinitionFileFormat.Json">JSON</option>
+                    </select>
+                </label>
             </div>
             <div class="definition-identity-actions">
                 <button class="secondary-action" @onclick="UseGeneratedDefinitionIdentity" disabled="@(!CanGenerateDefinitionIdentity)">Regenerate name + file ID</button>
@@ -91,7 +98,7 @@
                     </div>
                 </div>
             }
-            <p class="field-note">The YAML file is created in SamsungController's per-user configuration directory and becomes the active definition.</p>
+            <p class="field-note">The @MenuDefinitionFileFormats.Label(DefinitionFormat) file is created in SamsungController's per-user configuration directory and becomes the active definition. YAML is the default.</p>
         </div>
     }
 
@@ -182,7 +189,7 @@
                                             }
                                         </select>
                                     </label>
-                                    <button class="secondary-action" @onclick="LoadCurrentTopologyOutline" disabled="@(!CanEditMenuTree)">Reload branch from YAML</button>
+                                    <button class="secondary-action" @onclick="LoadCurrentTopologyOutline" disabled="@(!CanEditMenuTree)">Reload branch from file</button>
                                 </div>
                                 <label class="bulk-topology-outline">
                                     <span>MENU OUTLINE</span>
@@ -229,7 +236,7 @@
                                     <input type="checkbox" checked="@KeepUnlistedTopologyNodes" @onchange="HandleKeepUnlistedChanged" disabled="@(!CanEditMenuTree)" />
                                     <span>
                                         <strong>This is a partial outline · keep omitted menu items</strong>
-                                        <small>Leave this off for normal editing so deleting a line removes that item from YAML. Enable it only when the text intentionally describes part of the selected branch. Items used by recordings remain protected.</small>
+                                        <small>Leave this off for normal editing so deleting a line removes that item from the definition file. Enable it only when the text intentionally describes part of the selected branch. Items used by recordings remain protected.</small>
                                     </span>
                                 </label>
                                 <div class="bulk-topology-actions">
@@ -280,7 +287,7 @@
                     @if (FineAdjustmentsExpanded)
                     {
                     <div class="menu-tree-toolbar">
-                        <p class="menu-tree-intro">Review the complete on-screen hierarchy here, or make a precise one-item edit. Custom order is saved to YAML and can mirror the TV; alphabetical order is a temporary viewing aid. Red has no recorded command; yellow is recorded and needs verification.</p>
+                        <p class="menu-tree-intro">Review the complete on-screen hierarchy here, or make a precise one-item edit. Custom order is saved to the definition file and can mirror the TV; alphabetical order is a temporary viewing aid. Red has no recorded command; yellow is recorded and needs verification.</p>
                         <label>
                             <span>TREE ORDER</span>
                             <select @bind="TreeOrdering">
@@ -1116,7 +1123,7 @@
                                     </div>
                                     <div class="timing-editor-actions">
                                         <button class="secondary-action" @onclick="UseSystemTimingForAllSteps" disabled="@IsBusy">Use system for all</button>
-                                        <button class="secondary-action" @onclick="() => SaveCandidateTimingAsync(candidate)" disabled="@(!CanSaveCandidateTiming)">Save to YAML</button>
+                                        <button class="secondary-action" @onclick="() => SaveCandidateTimingAsync(candidate)" disabled="@(!CanSaveCandidateTiming)">Save to file</button>
                                         <button class="primary-action" @onclick="() => SaveAndReplayTimingAsync(candidate)" disabled="@(!CanSaveAndReplayTiming)">Save + replay <span>▶</span></button>
                                     </div>
                                 </div>
@@ -1234,6 +1241,7 @@
     private string DefinitionSignal { get; set; } = "any";
     private string DefinitionPictureMode { get; set; } = "any";
     private string DefinitionInput { get; set; } = "any";
+    private MenuDefinitionFileFormat DefinitionFormat { get; set; } = MenuDefinitionFileFormat.Yaml;
     private bool DefinitionNameWasEdited { get; set; }
     private bool DefinitionIdWasEdited { get; set; }
 
@@ -2105,7 +2113,8 @@
         DefinitionFirmware,
         DefinitionSignal,
         DefinitionPictureMode,
-        DefinitionInput);
+        DefinitionInput,
+        DefinitionFormat);
 
     private async Task CreateDefinitionAsync()
     {

@@ -390,6 +390,202 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
     }
 
+    public MenuDefinitionVerificationSnapshot GetMenuDefinitionVerificationSnapshot()
+    {
+        lock (_sync)
+        {
+            if (_menuDefinition is not { } definition)
+            {
+                return new MenuDefinitionVerificationSnapshot(
+                    null,
+                    null,
+                    "No menu definition loaded",
+                    null,
+                    false,
+                    0,
+                    0,
+                    0,
+                    null,
+                    []);
+            }
+
+            var plan = MenuDefinitionVerificationPlanner.Create(definition);
+            var controlVerification = GetMenuControlVerificationSnapshot();
+            var records = (definition.Verification?.Checks ?? [])
+                .GroupBy(record => record.Id, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Last(), StringComparer.OrdinalIgnoreCase);
+            var checks = plan.Checks.Select(check =>
+            {
+                var verified = records.TryGetValue(check.Id, out var record)
+                    && record.Fingerprint.Equals(check.Fingerprint, StringComparison.OrdinalIgnoreCase);
+                return new MenuDefinitionVerificationCheckSummary(
+                    check.Id,
+                    check.Kind,
+                    check.Label,
+                    check.Description,
+                    verified,
+                    HasExistingVerificationEvidence(definition, check, controlVerification),
+                    string.IsNullOrWhiteSpace(check.ConfigurationId)
+                    || check.ConfigurationId.Equals(
+                        definition.ActiveConfigurationId,
+                        StringComparison.OrdinalIgnoreCase),
+                    check.TargetNodeId,
+                    check.ConfigurationId,
+                    check.Kind == MenuVerificationCheckKind.Route ? check.SourceItemId : null,
+                    check.Kind == MenuVerificationCheckKind.Route && check.SourceItemId is { } itemId
+                        ? GetMenuValidationPasses(MenuAuthoringItemKind.Transition, itemId)
+                        : 0,
+                    MenuValidationSession.RequiredPasses,
+                    check.Kind == MenuVerificationCheckKind.Route
+                    && check.SourceItemId is { } activeItemId
+                    && _menuValidation is { AwaitingConfirmation: true } activeValidation
+                    && activeValidation.Kind == MenuAuthoringItemKind.Transition
+                    && activeValidation.ItemId.Equals(activeItemId, StringComparison.OrdinalIgnoreCase),
+                    verified ? record!.VerifiedAtUtc : null);
+            }).ToArray();
+            var currentRecordKeys = plan.Checks
+                .Select(check => $"{check.Id}\u001f{check.Fingerprint}")
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var staleCount = (definition.Verification?.Checks ?? []).Count(record =>
+                !currentRecordKeys.Contains($"{record.Id}\u001f{record.Fingerprint}"));
+            var verifiedCount = checks.Count(check => check.Verified);
+            return new MenuDefinitionVerificationSnapshot(
+                definition.Name,
+                GetMenuDefinitionPath(_settings),
+                MenuDefinitionVerificationPlanner.FormatDisplay(plan.Display),
+                definition.Verification is null
+                    ? null
+                    : MenuDefinitionVerificationPlanner.FormatDisplay(definition.Verification.Display),
+                checks.Length > 0 && verifiedCount == checks.Length,
+                verifiedCount,
+                checks.Length,
+                staleCount,
+                checks.Where(check => check.Verified)
+                    .Select(check => check.VerifiedAtUtc)
+                    .Max(),
+                checks);
+        }
+    }
+
+    public async Task<MenuDefinitionVerificationSnapshot> ConfirmMenuDefinitionVerificationCheckAsync(
+        string checkId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(checkId);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("record menu-definition verification");
+        EnsureNoMenuRecording("record menu-definition verification");
+
+        MenuDefinition definition;
+        MenuDefinitionVerificationPlan plan;
+        MenuDefinitionVerificationCheck check;
+        MenuControlVerificationSnapshot controlVerification;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+            plan = MenuDefinitionVerificationPlanner.Create(definition);
+            check = plan.Checks.FirstOrDefault(item => item.Id.Equals(
+                        checkId.Trim(),
+                        StringComparison.OrdinalIgnoreCase))
+                    ?? throw new InvalidOperationException(
+                        $"Verification check '{checkId.Trim()}' is no longer required by the loaded menu definition.");
+            controlVerification = GetMenuControlVerificationSnapshot();
+        }
+
+        if (RequiresExistingVerificationEvidence(check.Kind)
+            && !HasExistingVerificationEvidence(definition, check, controlVerification))
+        {
+            throw new InvalidOperationException(
+                "Complete this route, anchor, return script, or timing test in Build & Verify before recording it in the menu verification manifest.");
+        }
+
+        var updated = AddVerificationRecords(definition, plan, [check]);
+        await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
+        lock (_sync)
+        {
+            _menuAuthoringStatus = $"File verification recorded · {check.Label}";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
+        return GetMenuDefinitionVerificationSnapshot();
+    }
+
+    public async Task<MenuDefinitionVerificationSnapshot> CarryForwardExistingMenuVerificationAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("carry forward menu-definition verification");
+        EnsureNoMenuRecording("carry forward menu-definition verification");
+
+        MenuDefinition definition;
+        MenuDefinitionVerificationPlan plan;
+        MenuControlVerificationSnapshot controlVerification;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+            plan = MenuDefinitionVerificationPlanner.Create(definition);
+            controlVerification = GetMenuControlVerificationSnapshot();
+        }
+
+        var ready = plan.Checks
+            .Where(check => HasExistingVerificationEvidence(definition, check, controlVerification))
+            .ToArray();
+        if (ready.Length == 0)
+        {
+            throw new InvalidOperationException(
+                "No existing verified routes, timing, sliders, or selections are ready to carry forward.");
+        }
+
+        var updated = AddVerificationRecords(definition, plan, ready);
+        await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
+        lock (_sync)
+        {
+            _menuAuthoringStatus = $"Carried {ready.Length} existing verification checks into the menu-file manifest";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
+        return GetMenuDefinitionVerificationSnapshot();
+    }
+
+    public async Task<MenuDefinitionVerificationSnapshot> ReopenMenuDefinitionVerificationCheckAsync(
+        string checkId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(checkId);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("reopen menu-definition verification");
+        EnsureNoMenuRecording("reopen menu-definition verification");
+        MenuDefinition definition;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+        }
+
+        if (definition.Verification is null)
+        {
+            return GetMenuDefinitionVerificationSnapshot();
+        }
+
+        var manifest = definition.Verification with
+        {
+            Checks = definition.Verification.Checks
+                .Where(record => !record.Id.Equals(checkId.Trim(), StringComparison.OrdinalIgnoreCase))
+                .ToArray()
+        };
+        var updated = CopyMenuDefinition(
+            definition,
+            verification: manifest,
+            replaceVerification: true);
+        await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
+        NotifyChanged();
+        return GetMenuDefinitionVerificationSnapshot();
+    }
+
     public MenuControlProfileSnapshot GetMenuControlProfileSnapshot()
     {
         lock (_sync)
@@ -854,7 +1050,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 preserveMenuState: preserveMenuState);
             lock (_sync)
             {
-                _navigationStatus = "YAML reloaded · topology routes and validation items regenerated";
+                _navigationStatus = "Menu file reloaded · topology routes and validation items regenerated";
                 _menuAuthoringStatus = "Menu definition reloaded from disk";
             }
 
@@ -942,6 +1138,14 @@ public sealed class SamsungControllerService : IAsyncDisposable
         MenuDefinitionCreationRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (!Enum.IsDefined(request.Format))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(request),
+                request.Format,
+                "Choose YAML or JSON for the menu definition file.");
+        }
+
         var model = request.Model.Trim();
         var firmware = NormalizeContextValue(request.Firmware);
         var signal = NormalizeContextValue(request.Signal);
@@ -980,7 +1184,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         var path = Path.Combine(
             _configurationDirectory,
             "menu-definitions",
-            $"{definition.Id}.yaml");
+            $"{definition.Id}{MenuDefinitionFileFormats.Extension(request.Format)}");
         return (definition, path);
     }
 
@@ -1115,7 +1319,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             anchors,
             definition.Timing,
             configurations,
-            configuration.Id);
+            configuration.Id,
+            definition.Verification);
         new MenuDefinitionValidator().ValidateAndThrow(updated);
         await UpdateSettingsAsync(
                 current => current with { MenuConfigurationId = configuration.Id },
@@ -1178,7 +1383,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             definition.Anchors.Values,
             definition.Timing,
             configurations,
-            definition.ActiveConfigurationId);
+            definition.ActiveConfigurationId,
+            definition.Verification);
         new MenuDefinitionValidator().ValidateAndThrow(updated);
         await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
         lock (_sync)
@@ -1231,8 +1437,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
         lock (_sync)
         {
             _menuAuthoringStatus = plan.Preview.HasChanges
-                ? $"Menu topology saved to YAML · {plan.Preview.AddedNodeCount} added · {plan.Preview.UpdatedNodeCount} updated · {plan.Preview.RemovedNodeCount} removed"
-                : "Menu topology already matches the outline · no YAML changes were needed";
+                ? $"Menu topology saved to file · {plan.Preview.AddedNodeCount} added · {plan.Preview.UpdatedNodeCount} updated · {plan.Preview.RemovedNodeCount} removed"
+                : "Menu topology already matches the outline · no file changes were needed";
             _menuAuthoringError = null;
         }
 
@@ -1605,7 +1811,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         installed.GetPath(request.TargetNodeId));
                 _menuAuthoringStatus = coverageRouteCount > 0
                     ? $"Traversal saved · topology generated {coverageRouteCount} branch coverage test(s)"
-                    : $"Draft {request.Kind.ToString().ToLowerInvariant()} saved to YAML · ready for validation";
+                    : $"Draft {request.Kind.ToString().ToLowerInvariant()} saved to file · ready for validation";
                 _menuAuthoringError = null;
             }
         }
@@ -1663,8 +1869,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _menuValidation = delaysChanged ? null : previousDraftValidation;
             _menuTimingValidation = delaysChanged ? null : previousTimingValidation;
             _menuAuthoringStatus = delaysChanged
-                ? "System timing saved to YAML · profile validation reset to 0/3"
-                : "System timing saved to YAML";
+                ? "System timing saved to file · profile validation reset to 0/3"
+                : "System timing saved to file";
             _menuAuthoringError = null;
         }
 
@@ -1853,7 +2059,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 Timing = session.Timing with { Verified = true }
             };
             _menuAuthoringStatus =
-                $"System timing verified · {MenuTimingValidationSession.RequiredPasses}/{MenuTimingValidationSession.RequiredPasses} passes saved to YAML";
+                $"System timing verified · {MenuTimingValidationSession.RequiredPasses}/{MenuTimingValidationSession.RequiredPasses} passes saved to file";
             _menuAuthoringError = null;
         }
 
@@ -1921,8 +2127,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _menuTimingValidation = previousTimingValidation;
             _menuReturnValidation = activeScriptChanged ? null : previousReturnValidation;
             _menuAuthoringStatus = atMenuRootChanged || belowMenuRootChanged
-                ? "Return-to-video scripts saved to YAML · changed scripts require 3/3 validation"
-                : "Return-to-video scripts saved to YAML";
+                ? "Return-to-video scripts saved to file · changed scripts require 3/3 validation"
+                : "Return-to-video scripts saved to file";
             _menuAuthoringError = null;
         }
 
@@ -2399,7 +2605,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 AwaitingConfirmation = false
             };
             _menuAuthoringStatus =
-                $"Return script verified · {MenuReturnValidationSession.RequiredPasses}/{MenuReturnValidationSession.RequiredPasses} passes saved to YAML";
+                $"Return script verified · {MenuReturnValidationSession.RequiredPasses}/{MenuReturnValidationSession.RequiredPasses} passes saved to file";
             _menuAuthoringError = null;
         }
 
@@ -2507,7 +2713,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 0,
                 false,
                 expectedTargetPath);
-            _menuAuthoringStatus = "System timing and button overrides saved to YAML · validation restarted at 0/3";
+            _menuAuthoringStatus = "System timing and button overrides saved to file · validation restarted at 0/3";
             _menuAuthoringError = null;
         }
 
@@ -2844,7 +3050,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         }),
             definition.Timing,
             definition.Configurations.Values,
-            definition.ActiveConfigurationId);
+            definition.ActiveConfigurationId,
+            definition.Verification);
         new MenuDefinitionValidator().ValidateAndThrow(updated);
         await PersistActiveMenuDefinitionAsync(updated, cancellationToken).ConfigureAwait(false);
         lock (_sync)
@@ -2933,8 +3140,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _menuAuthoringStatus = coveredRouteCount > 1
                 ? $"Topology branch verified · {coveredRouteCount} generated routes promoted together"
                 : hasIntegratedReturn
-                ? $"Verified traversal and its recorded return · passed {MenuValidationSession.RequiredPasses}/{MenuValidationSession.RequiredPasses} together and saved to YAML"
-                : $"Verified · {session.ItemId} passed {MenuValidationSession.RequiredPasses}/{MenuValidationSession.RequiredPasses} and YAML was updated";
+                ? $"Verified traversal and its recorded return · passed {MenuValidationSession.RequiredPasses}/{MenuValidationSession.RequiredPasses} together and saved to file"
+                : $"Verified · {session.ItemId} passed {MenuValidationSession.RequiredPasses}/{MenuValidationSession.RequiredPasses} and the menu file was updated";
             _menuAuthoringError = null;
         }
 
@@ -4693,12 +4900,62 @@ public sealed class SamsungControllerService : IAsyncDisposable
         return result;
     }
 
+    private static bool RequiresExistingVerificationEvidence(MenuVerificationCheckKind kind) =>
+        kind is MenuVerificationCheckKind.Timing
+            or MenuVerificationCheckKind.Anchor
+            or MenuVerificationCheckKind.ReturnScript
+            or MenuVerificationCheckKind.Route;
+
+    private static bool HasExistingVerificationEvidence(
+        MenuDefinition definition,
+        MenuDefinitionVerificationCheck check,
+        MenuControlVerificationSnapshot controlVerification) => check.Kind switch
+    {
+        MenuVerificationCheckKind.SliderBehavior => definition.Verification is null
+            && controlVerification.SlidersVerified,
+        MenuVerificationCheckKind.Selection => definition.Verification is null
+            && check.TargetNodeId is { } nodeId
+            && controlVerification.ConfirmedSelectionNodeIds.Contains(
+                nodeId,
+                StringComparer.OrdinalIgnoreCase),
+        _ => check.ExistingEvidenceReady
+    };
+
+    private static MenuDefinition AddVerificationRecords(
+        MenuDefinition definition,
+        MenuDefinitionVerificationPlan plan,
+        IReadOnlyList<MenuDefinitionVerificationCheck> verifiedChecks)
+    {
+        var currentChecks = plan.Checks.ToDictionary(
+            check => check.Id,
+            StringComparer.OrdinalIgnoreCase);
+        var records = (definition.Verification?.Checks ?? [])
+            .Where(record => currentChecks.TryGetValue(record.Id, out var current)
+                && current.Fingerprint.Equals(record.Fingerprint, StringComparison.OrdinalIgnoreCase))
+            .ToDictionary(record => record.Id, StringComparer.OrdinalIgnoreCase);
+        var now = DateTimeOffset.UtcNow;
+        foreach (var check in verifiedChecks)
+        {
+            records[check.Id] = new MenuVerificationRecord(check.Id, check.Fingerprint, now);
+        }
+
+        var manifest = new MenuVerificationManifest(
+            plan.Display,
+            records.Values.OrderBy(record => record.Id, StringComparer.OrdinalIgnoreCase).ToArray());
+        return CopyMenuDefinition(
+            definition,
+            verification: manifest,
+            replaceVerification: true);
+    }
+
     private static MenuDefinition CopyMenuDefinition(
         MenuDefinition definition,
         IEnumerable<MenuTransition>? transitions = null,
         IEnumerable<MenuAnchor>? anchors = null,
         MenuTimingProfile? timing = null,
-        IEnumerable<MenuNode>? nodes = null) =>
+        IEnumerable<MenuNode>? nodes = null,
+        MenuVerificationManifest? verification = null,
+        bool replaceVerification = false) =>
         new(
             definition.Id,
             definition.Name,
@@ -4709,7 +4966,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             anchors ?? definition.Anchors.Values,
             timing ?? definition.Timing,
             definition.Configurations.Values,
-            definition.ActiveConfigurationId);
+            definition.ActiveConfigurationId,
+            replaceVerification ? verification : definition.Verification);
 
     private static MenuConfiguration NormalizeMenuConfigurationRequest(
         MenuConfigurationEditRequest request) => new(
@@ -4867,7 +5125,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             anchors,
             definition.Timing,
             definition.Configurations.Values,
-            definition.ActiveConfigurationId);
+            definition.ActiveConfigurationId,
+            definition.Verification);
         new MenuDefinitionValidator().ValidateAndThrow(candidate);
     }
 
@@ -4933,7 +5192,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             anchors,
             definition.Timing,
             definition.Configurations.Values,
-            definition.ActiveConfigurationId);
+            definition.ActiveConfigurationId,
+            definition.Verification);
         new MenuDefinitionValidator().ValidateAndThrow(updated);
         return updated;
     }
@@ -4942,7 +5202,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
         MenuDefinition definition,
         CancellationToken cancellationToken)
     {
-        definition = TopologyRouteGenerator.Regenerate(definition);
+        definition = MenuDefinitionVerificationReconciler.Reconcile(
+            TopologyRouteGenerator.Regenerate(definition));
         new MenuDefinitionValidator().ValidateAndThrow(definition);
         await _menuDefinitionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -6257,7 +6518,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             definition.Anchors.Values,
             definition.Timing,
             definition.Configurations.Values,
-            definition.ActiveConfigurationId);
+            definition.ActiveConfigurationId,
+            definition.Verification);
         var regenerated = TopologyRouteGenerator.Regenerate(adjusted);
         var verifiedGroupIds = definition.Transitions.Values
             .Where(transition => transition.GeneratedFromTopology
@@ -6294,7 +6556,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             regenerated.Anchors.Values,
             regenerated.Timing,
             regenerated.Configurations.Values,
-            regenerated.ActiveConfigurationId);
+            regenerated.ActiveConfigurationId,
+            regenerated.Verification);
     }
 
     private static bool IsNewlyVisibleConditionalRoute(
@@ -7221,8 +7484,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
         var parsed = await new MenuDefinitionParser()
             .ParseFileAsync(path, cancellationToken)
             .ConfigureAwait(false);
-        var definition = TopologyRouteGenerator.Regenerate(
-            MigrateLegacyReturnReplacement(NormalizeInitialMenuTiming(parsed)));
+        var definition = MenuDefinitionVerificationReconciler.Reconcile(
+            TopologyRouteGenerator.Regenerate(
+                MigrateLegacyReturnReplacement(NormalizeInitialMenuTiming(parsed))));
         new MenuDefinitionValidator().ValidateAndThrow(definition);
         return definition;
     }

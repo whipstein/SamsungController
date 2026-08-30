@@ -510,6 +510,37 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task NewDefinitionCanUseJsonAndSubsequentEditsPreserveJson()
+    {
+        Directory.CreateDirectory(_directory);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+
+        await controller.CreateMenuDefinitionAsync(new MenuDefinitionCreationRequest(
+            "json-tv",
+            "JSON TV",
+            "S95F",
+            "1296",
+            "SDR",
+            "Filmmaker Mode",
+            "HDMI 1",
+            MenuDefinitionFileFormat.Json));
+        await controller.CreateMenuNodeAsync(new MenuNodeEditRequest(
+            "settings",
+            "Settings",
+            "tv-interface",
+            null));
+
+        var path = controller.GetMenuNavigationSnapshot().DefinitionPath;
+        var content = await File.ReadAllTextAsync(path);
+        var reparsed = await new MenuDefinitionParser().ParseFileAsync(path);
+
+        Assert.EndsWith("json-tv.json", path, StringComparison.Ordinal);
+        Assert.StartsWith("{", content.TrimStart(), StringComparison.Ordinal);
+        Assert.Equal("Settings", reparsed.Nodes["settings"].Label);
+    }
+
+    [Fact]
     public async Task MenuTreeCanBeDefinedAndRenamedBeforeRecordingRoutes()
     {
         Directory.CreateDirectory(_directory);
@@ -2306,6 +2337,92 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         var reset = reloaded.GetMenuControlVerificationSnapshot();
         Assert.False(reset.SelectionsVerified);
         Assert.Equal(0, reset.ConfirmedSelectionCount);
+    }
+
+    [Fact]
+    public async Task YamlVerificationPersistsAndOnlyReopensChangedCheck()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: complete-verification
+            name: Complete Verification
+            model: S95F
+            context:
+              firmware: 1296
+              signal: SDR
+              pictureMode: Filmmaker Mode
+              input: Home Theater System
+            nodes:
+              - id: normal-video
+                label: Normal video
+              - id: picture-mode
+                label: Picture Mode
+                parent: normal-video
+                controlType: selection
+                defaultValue: Standard
+                options: [Standard, Movie]
+            anchors:
+              - id: normal
+                label: Return to normal video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            transitions:
+              - id: open-picture-mode
+                from: normal-video
+                to: picture-mode
+                verified: true
+                steps:
+                  - key: KEY_MENU
+            """;
+        var (controller, _) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            var initial = controller.GetMenuDefinitionVerificationSnapshot();
+            Assert.False(initial.FullyVerified);
+            Assert.All(initial.Checks, check => Assert.False(check.Verified));
+            var routeCheck = Assert.Single(
+                initial.Checks,
+                check => check.Kind == MenuVerificationCheckKind.Route);
+            Assert.Equal("open-picture-mode", routeCheck.AuthoringItemId);
+            Assert.Equal(0, routeCheck.ValidationPasses);
+            Assert.Equal(3, routeCheck.RequiredValidationPasses);
+
+            await controller.CarryForwardExistingMenuVerificationAsync();
+            await controller.ConfirmMenuDefinitionVerificationCheckAsync("display");
+            var complete = await controller.ConfirmMenuDefinitionVerificationCheckAsync(
+                "control:selection:picture-mode");
+
+            Assert.True(complete.FullyVerified);
+            Assert.Equal(complete.RequiredCount, complete.VerifiedCount);
+
+            await controller.UpdateMenuNodeAsync(
+                "picture-mode",
+                new MenuNodeEditRequest(
+                    "picture-mode",
+                    "Picture Mode",
+                    "normal-video",
+                    null,
+                    MenuControlType.Selection,
+                    "Standard",
+                    SelectionOptions: ["Standard", "Movie", "Filmmaker Mode"]));
+            var edited = controller.GetMenuDefinitionVerificationSnapshot();
+
+            Assert.False(edited.FullyVerified);
+            var pending = Assert.Single(edited.Checks, check => !check.Verified);
+            Assert.Equal("control:selection:picture-mode", pending.Id);
+            Assert.All(
+                edited.Checks.Where(check => check.Id != pending.Id),
+                check => Assert.True(check.Verified));
+        }
+
+        var definitionPath = Path.Combine(_directory, "explicit-validation-menu.yaml");
+        var reparsed = await new MenuDefinitionParser().ParseFileAsync(definitionPath);
+        Assert.NotNull(reparsed.Verification);
+        Assert.Equal("S95F", reparsed.Verification.Display.Model);
+        Assert.Contains(reparsed.Verification.Checks, check => check.Id == "display");
     }
 
     [Fact]

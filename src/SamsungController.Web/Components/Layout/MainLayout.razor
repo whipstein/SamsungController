@@ -19,7 +19,8 @@
             <NavLink href="menu" Match="NavLinkMatch.All"><span class="nav-glyph">04</span>Menu</NavLink>
             <NavLink href="controls"><span class="nav-glyph">05</span>Menu Controls</NavLink>
             <NavLink href="menu/build"><span class="nav-glyph">06</span>Build &amp; Verify</NavLink>
-            <NavLink href="protocol"><span class="nav-glyph">07</span>Protocol</NavLink>
+            <NavLink href="verification"><span class="nav-glyph">07</span>File Verification</NavLink>
+            <NavLink href="protocol"><span class="nav-glyph">08</span>Protocol</NavLink>
         </nav>
 
         <div class="sidebar-foot">
@@ -103,6 +104,14 @@
                         <small>@ActiveMenuConfigurationLabel</small>
                     }
                 </div>
+
+                <a href="verification"
+                   class="persistent-verification-state @(Verification.FullyVerified ? "verified" : "required")"
+                   title="@VerificationStatusTitle">
+                    <span>MENU PROFILE</span>
+                    <strong>@VerificationStatusLabel</strong>
+                    <small>@VerificationStatusDetail</small>
+                </a>
             </div>
 
             @if (!string.IsNullOrWhiteSpace(ConnectionControlError))
@@ -213,6 +222,7 @@
     private ControllerSnapshot Snapshot { get; set; } = null!;
     private MenuAuthoringSnapshot Authoring { get; set; } = null!;
     private MenuNavigationSnapshot Navigation { get; set; } = null!;
+    private MenuDefinitionVerificationSnapshot Verification { get; set; } = null!;
     private IReadOnlyList<QuickAccessAction> QuickActions { get; set; } = [];
     private IReadOnlyList<MacroSummary> QuickMacros { get; set; } = [];
     private QuickAccessActionKind QuickEditorKind { get; set; } = QuickAccessActionKind.RemoteKey;
@@ -259,6 +269,17 @@
     private string ActiveMenuConfigurationLabel => Navigation.Configurations
         .FirstOrDefault(configuration => configuration.IsActive)?.Name
         ?? "Default menu configuration";
+    private string VerificationStatusLabel => Verification.RequiredCount == 0
+        ? "No verification plan"
+        : Verification.FullyVerified
+            ? "Fully verified"
+            : $"{Verification.RemainingCount} check{(Verification.RemainingCount == 1 ? "" : "s")} needed";
+    private string VerificationStatusDetail => Verification.RequiredCount == 0
+        ? "Load a menu definition"
+        : $"{Verification.VerifiedCount}/{Verification.RequiredCount} · {Verification.CurrentDisplay}";
+    private string VerificationStatusTitle => Verification.FullyVerified
+        ? "The loaded menu definition is fully verified for its recorded display combination. Open the verification workspace."
+        : "The loaded menu definition is not fully verified. Open the verification workspace to review required checks.";
 
     private string StateClass => Snapshot.ConnectionState switch
     {
@@ -274,6 +295,7 @@
         Snapshot = Controller.GetSnapshot();
         Authoring = Controller.GetMenuAuthoringSnapshot();
         Navigation = Controller.GetMenuNavigationSnapshot();
+        Verification = Controller.GetMenuDefinitionVerificationSnapshot();
         QuickActions = Controller.GetQuickAccessActions();
         Controller.Changed += HandleControllerChanged;
         await Controller.InitializeAsync();
@@ -523,6 +545,7 @@
         Snapshot = Controller.GetSnapshot();
         Authoring = Controller.GetMenuAuthoringSnapshot();
         Navigation = Controller.GetMenuNavigationSnapshot();
+        Verification = Controller.GetMenuDefinitionVerificationSnapshot();
         QuickActions = Controller.GetQuickAccessActions();
     }
 

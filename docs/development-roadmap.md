@@ -2,7 +2,7 @@
 
 This document preserves the implementation plan and research direction that are useful to contributors. The main [README](../README.md) is intentionally limited to installing and using SamsungController.
 
-Status was reconciled with the repository on 2026-08-28. A checked box means the capability is present in the code and covered by automated tests where practical; it does not imply that every Samsung model or firmware has been tested.
+Status was reconciled with the repository on 2026-08-30. A checked box means the capability is present in the code and covered by automated tests where practical; it does not imply that every Samsung model or firmware has been tested.
 
 ## Completed foundation
 
@@ -13,6 +13,7 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 - [x] Build and run fake-transport tests on macOS, Windows, and Linux in CI.
 - [x] Keep application configuration human-readable and store user state outside the source tree.
 - [x] Exclude normal token and session-log paths from source control.
+- [x] Document the complete raw menu-definition topology and available settings with equivalent YAML and JSON examples.
 
 ### Samsung transport and pairing
 
@@ -83,15 +84,16 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 ### Menu authoring and validation
 
 - [x] Create new TV menu profiles entirely from the web UI.
+- [x] Read and write menu definitions as YAML or JSON through one validated schema, default new profiles to YAML, and preserve the selected format on later saves.
 - [x] Define, edit, delete, sort, and custom-order the overall menu tree before recording routes.
 - [x] Bulk-create or synchronize a full menu branch from an indented outline with stable-ID reuse and a safe change preview.
 - [x] Describe rows as sub-menus, bounded sliders, selections, submenu selections, indexed selection grids, switches, or confirmation dialogs with defaults, ordered choices, and conditional disabled/gray rules.
 - [x] Model conditionally hidden rows and descendants and recalculate live sibling offsets from predicted setting values.
-- [x] Store named settings-dependent menu configurations in one TV YAML and scope route verification/navigation to the active configuration.
+- [x] Store named settings-dependent menu configurations in one TV definition file and scope route verification/navigation to the active configuration.
 - [x] Distinguish unrecorded tree nodes in red and recorded-but-unverified nodes in yellow.
 - [x] Identify transitions by source and target instead of requiring a manual transition ID.
-- [x] Send buttons to the TV while recording and persist successful commands into draft YAML.
-- [x] Cancel, clear, undo, replace, and re-record a capture without hand-editing YAML.
+- [x] Send buttons to the TV while recording and persist successful commands into the draft definition file.
+- [x] Cancel, clear, undo, replace, and re-record a capture without hand-editing the definition file.
 - [x] Record forward traversal and target-specific return-to-video keys as one integrated command.
 - [x] Configure default menu-root, deeper-menu, and exact-state return scripts.
 - [x] Use a recorded return sequence while preparing the source during verification.
@@ -110,6 +112,9 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 - [x] Support submenu selections that choose from an ordered value list and return to the containing menu afterward.
 - [x] Present 20 Point percentages and Custom Color choices as fixed multi-slider grids.
 - [x] Persist a local desired-value profile and reapply it after an explicitly confirmed verified factory-reset command.
+- [x] Derive a complete verification checklist for routes, timing, return behavior, sliders, selections, switches, confirmations, and conditional visibility.
+- [x] Bind verification evidence to the exact display/context combination with per-check fingerprints and reopen only checks affected by a later definition edit.
+- [x] Provide one File Verification workspace and an always-visible app status that clearly distinguish fully verified from verification-required profiles.
 
 ### Read-only protocol research
 
@@ -154,7 +159,7 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 - [ ] Start with read-only diagnostics for picture mode, brightness, contrast, color, tint, color tone, gamma, shadow detail, peak brightness, contrast enhancer, white balance, color space, and HDR-related controls.
 - [ ] Define typed capabilities and value ranges per model, firmware, mode, and signal context.
 - [ ] Add direct writes only after reads, rollback behavior, and repeatable validation are understood.
-- [ ] Continue to use verified menu navigation when a safe direct API is unavailable.
+- [x] Continue to use verified menu navigation when a safe direct API is unavailable.
 - [ ] Keep service-menu and potentially destructive operations out of normal remote and macro workflows.
 
 ### Safety model
@@ -171,7 +176,7 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 - [ ] Add upgrade and configuration-migration handling before distributing installers or packaged services.
 - [ ] Design an explicit opt-in LAN mode for tablets or other computers.
 - [ ] Add authentication, request forgery protection, TLS guidance, network binding controls, and threat documentation before enabling LAN access.
-- [ ] Keep loopback-only hosting as the default.
+- [x] Keep loopback-only hosting as the default.
 
 ### Broader compatibility and usability
 
@@ -185,16 +190,17 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 1. Finish the intended local TV menu tree and collect three-pass results for each supported context.
 2. Convert sanitized session captures into deterministic replay tests before expanding protocol parsing.
 3. Extend read-only device and application research, clearly separating confirmed responses from inference.
-4. Prototype macro-plan preview and browser-based macro editing without adding new execution semantics.
+4. Add an expanded macro-plan/dry-run preview without adding new execution semantics.
 5. Define the capability and safety-classification model needed for direct picture reads and writes.
 6. Investigate direct picture reads first; expose writes only when validation, bounds, and recovery are in place.
-7. Package signed or checksummed release artifacts, then separately design authenticated opt-in LAN access.
+7. Add upgrade and configuration-migration handling for packaged releases, then separately design authenticated opt-in LAN access.
 
 ## Contributor references
 
 - [Architecture, transport, tokens, logging, and assumptions](architecture.md)
 - [Protocol observations and research envelopes](protocol.md)
 - [Macro engine format and validation](macros.md)
-- [Menu model, confidence, YAML, and authoring workflow](menu-model.md)
+- [Menu model, confidence, and authoring workflow](menu-model.md)
+- [Raw YAML/JSON menu-definition format tutorial](menu-definition-file-format.md)
 - [Generic research template](research-notes.md)
 - [Generic menu-definition template](../samples/menus/menu.example.yaml)

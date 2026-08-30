@@ -8,11 +8,17 @@ namespace SamsungController.Automation.Navigation;
 public sealed class MenuDefinitionParser
 {
     private static readonly HashSet<string> RootFields =
-        new(["version", "id", "name", "model", "context", "configurations", "timing", "nodes", "anchors", "transitions"], StringComparer.OrdinalIgnoreCase);
+        new(["version", "id", "name", "model", "context", "verification", "configurations", "timing", "nodes", "anchors", "transitions"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ContextFields =
         new(["firmware", "signal", "pictureMode", "input"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> TimingFields =
         new(["defaultDelay", "screenChangeDelay", "returnDelay", "verified"], StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> VerificationFields =
+        new(["display", "checks"], StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> VerificationDisplayFields =
+        new(["model", "firmware", "signal", "pictureMode", "input"], StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> VerificationCheckFields =
+        new(["id", "fingerprint", "verifiedAt"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ConfigurationFields =
         new(["id", "name", "conditions"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> NodeFields =
@@ -52,6 +58,7 @@ public sealed class MenuDefinitionParser
             ValidateVersion(RequiredScalar(fields, "version", "document root"));
 
             var context = ParseContext(fields.GetValueOrDefault("context"));
+            var verification = ParseVerification(fields.GetValueOrDefault("verification"));
             var configurations = fields.TryGetValue("configurations", out var configurationsNode)
                 ? ParseConfigurations(RequireSequence(configurationsNode, "configurations"))
                 : [];
@@ -73,7 +80,8 @@ public sealed class MenuDefinitionParser
                 transitions,
                 anchors,
                 timing,
-                configurations);
+                configurations,
+                verification: verification);
         }
         catch (MenuDefinitionParseException)
         {
@@ -106,6 +114,62 @@ public sealed class MenuDefinitionParser
             ParseTimingMilliseconds(fields, "screenChangeDelay", defaults.ScreenChangeDelayMilliseconds),
             ParseTimingMilliseconds(fields, "returnDelay", defaults.ReturnDelayMilliseconds),
             OptionalBoolean(fields, "verified", "timing", defaults.Verified));
+    }
+
+    private static MenuVerificationManifest? ParseVerification(YamlNode? node)
+    {
+        if (node is null)
+        {
+            return null;
+        }
+
+        var fields = ReadFields(RequireMapping(node, "verification"), "verification");
+        EnsureAllowedFields(fields, VerificationFields, "verification");
+        var displayFields = ReadFields(
+            RequireMapping(
+                fields.TryGetValue("display", out var displayNode)
+                    ? displayNode
+                    : throw new MenuDefinitionParseException("Missing required field 'display' in verification."),
+                "verification display"),
+            "verification display");
+        EnsureAllowedFields(displayFields, VerificationDisplayFields, "verification display");
+        var display = new MenuVerificationDisplay(
+            RequiredScalar(displayFields, "model", "verification display"),
+            RequiredScalar(displayFields, "firmware", "verification display"),
+            RequiredScalar(displayFields, "signal", "verification display"),
+            RequiredScalar(displayFields, "pictureMode", "verification display"),
+            RequiredScalar(displayFields, "input", "verification display"));
+
+        var checks = new List<MenuVerificationRecord>();
+        if (fields.TryGetValue("checks", out var checksNode))
+        {
+            var sequence = RequireSequence(checksNode, "verification checks");
+            for (var index = 0; index < sequence.Children.Count; index++)
+            {
+                var context = $"verification check {index + 1}";
+                var checkFields = ReadFields(
+                    RequireMapping(sequence.Children[index], context),
+                    context);
+                EnsureAllowedFields(checkFields, VerificationCheckFields, context);
+                var verifiedAtText = RequiredScalar(checkFields, "verifiedAt", context);
+                if (!DateTimeOffset.TryParse(
+                        verifiedAtText,
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.RoundtripKind,
+                        out var verifiedAt))
+                {
+                    throw new MenuDefinitionParseException(
+                        $"Expected an ISO-8601 timestamp for verifiedAt in {context}.");
+                }
+
+                checks.Add(new MenuVerificationRecord(
+                    RequiredScalar(checkFields, "id", context),
+                    RequiredScalar(checkFields, "fingerprint", context),
+                    verifiedAt));
+            }
+        }
+
+        return new MenuVerificationManifest(display, checks);
     }
 
     private static IReadOnlyList<MenuConfiguration> ParseConfigurations(YamlSequenceNode sequence)
@@ -147,7 +211,9 @@ public sealed class MenuDefinitionParser
         }
 
         var yaml = await File.ReadAllTextAsync(fullPath, cancellationToken).ConfigureAwait(false);
-        return Parse(yaml);
+        return MenuDefinitionFileFormats.DetectForRead(fullPath, yaml) == MenuDefinitionFileFormat.Json
+            ? new MenuDefinitionJsonSerializer().Parse(yaml)
+            : Parse(yaml);
     }
 
     private static MenuDefinitionContext ParseContext(YamlNode? node)

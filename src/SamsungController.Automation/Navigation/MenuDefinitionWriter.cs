@@ -21,6 +21,7 @@ public sealed class MenuDefinitionWriter
         AppendScalar(yaml, 2, "signal", definition.Context.Signal);
         AppendScalar(yaml, 2, "pictureMode", definition.Context.PictureMode);
         AppendScalar(yaml, 2, "input", definition.Context.Input);
+        AppendVerification(yaml, definition.Verification);
         if (definition.Configurations.Count > 0)
         {
             yaml.AppendLine();
@@ -124,6 +125,15 @@ public sealed class MenuDefinitionWriter
         return yaml.ToString();
     }
 
+    public string Serialize(
+        MenuDefinition definition,
+        MenuDefinitionFileFormat format) => format switch
+    {
+        MenuDefinitionFileFormat.Yaml => Serialize(definition),
+        MenuDefinitionFileFormat.Json => new MenuDefinitionJsonSerializer().Serialize(definition),
+        _ => throw new ArgumentOutOfRangeException(nameof(format), format, null)
+    };
+
     private static string FormatControlType(MenuControlType controlType) => controlType switch
     {
         MenuControlType.Submenu => "submenu",
@@ -135,6 +145,36 @@ public sealed class MenuDefinitionWriter
         MenuControlType.Confirmation => "confirmation",
         _ => throw new ArgumentOutOfRangeException(nameof(controlType), controlType, null)
     };
+
+    private static void AppendVerification(
+        StringBuilder yaml,
+        MenuVerificationManifest? verification)
+    {
+        if (verification is null)
+        {
+            return;
+        }
+
+        yaml.AppendLine();
+        yaml.AppendLine("verification:");
+        yaml.AppendLine("  display:");
+        AppendScalar(yaml, 4, "model", verification.Display.Model);
+        AppendScalar(yaml, 4, "firmware", verification.Display.Firmware);
+        AppendScalar(yaml, 4, "signal", verification.Display.Signal);
+        AppendScalar(yaml, 4, "pictureMode", verification.Display.PictureMode);
+        AppendScalar(yaml, 4, "input", verification.Display.Input);
+        yaml.AppendLine(verification.Checks.Count == 0 ? "  checks: []" : "  checks:");
+        foreach (var check in verification.Checks.OrderBy(item => item.Id, StringComparer.OrdinalIgnoreCase))
+        {
+            AppendListScalar(yaml, 4, "id", check.Id);
+            AppendScalar(yaml, 6, "fingerprint", check.Fingerprint);
+            AppendScalar(
+                yaml,
+                6,
+                "verifiedAt",
+                check.VerifiedAtUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+        }
+    }
 
     private static void AppendOptionalDecimal(
         StringBuilder yaml,
@@ -156,12 +196,16 @@ public sealed class MenuDefinitionWriter
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         var fullPath = Path.GetFullPath(path);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        var existingContent = File.Exists(fullPath)
+            ? await File.ReadAllTextAsync(fullPath, cancellationToken).ConfigureAwait(false)
+            : null;
+        var format = MenuDefinitionFileFormats.DetectForWrite(fullPath, existingContent);
         var temporaryPath = $"{fullPath}.{Guid.NewGuid():N}.tmp";
         try
         {
             await File.WriteAllTextAsync(
                     temporaryPath,
-                    Serialize(definition),
+                    Serialize(definition, format),
                     new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
                     cancellationToken)
                 .ConfigureAwait(false);

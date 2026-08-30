@@ -156,6 +156,37 @@ public sealed record MenuControlVerificationSnapshot(
     bool SelectionsVerified,
     IReadOnlyList<string> ConfirmedSelectionNodeIds);
 
+public sealed record MenuDefinitionVerificationCheckSummary(
+    string Id,
+    MenuVerificationCheckKind Kind,
+    string Label,
+    string Description,
+    bool Verified,
+    bool ExistingEvidenceReady,
+    bool IsForActiveConfiguration,
+    string? TargetNodeId,
+    string? ConfigurationId,
+    string? AuthoringItemId,
+    int ValidationPasses,
+    int RequiredValidationPasses,
+    bool AwaitingValidationConfirmation,
+    DateTimeOffset? VerifiedAtUtc);
+
+public sealed record MenuDefinitionVerificationSnapshot(
+    string? DefinitionName,
+    string? DefinitionPath,
+    string CurrentDisplay,
+    string? RecordedDisplay,
+    bool FullyVerified,
+    int VerifiedCount,
+    int RequiredCount,
+    int StaleRecordCount,
+    DateTimeOffset? LastVerifiedAtUtc,
+    IReadOnlyList<MenuDefinitionVerificationCheckSummary> Checks)
+{
+    public int RemainingCount => Math.Max(0, RequiredCount - VerifiedCount);
+}
+
 public sealed record MenuAnchorSummary(
     string Id,
     string Label,
@@ -208,7 +239,8 @@ public sealed record MenuDefinitionCreationRequest(
     string Firmware,
     string Signal,
     string PictureMode,
-    string Input);
+    string Input,
+    MenuDefinitionFileFormat Format = MenuDefinitionFileFormat.Yaml);
 
 public sealed record MenuDefinitionCreationPreview(
     string Id,

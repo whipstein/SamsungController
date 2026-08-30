@@ -10,7 +10,7 @@ The web interface is the recommended way to use the application. A command-line 
 - First-use TV authorization with host-specific token storage
 - Remote keys using `Click`, `Press`, and `Release` actions
 - Browser-edited YAML macros with variables, nested calls, explicit waits, progress, and three-pass visual verification
-- Verified, state-aware menu navigation and a guided menu-map builder
+- YAML-by-default or JSON menu definitions, verified state-aware navigation, and a guided menu-map builder
 - Compact menu-wide controls, fixed 20 Point/Custom Color grids, saved target profiles, and reset-then-apply synchronization
 - Persistent quick-access buttons and an expected-current-menu indicator
 - Searchable RX/TX protocol messages, redacted browser views, and NDJSON session logs
@@ -155,6 +155,7 @@ The top bar is available on every page:
 - **Quick access** runs pinned keys or behaviorally verified macros. A macro marked **Confirm before execution** asks “Are you sure?” before it sends anything. **Return to video** is included by default.
 - **+ Add** adds a Samsung key or a verified macro from the current catalog. Remote keys and macros can also be pinned from their own pages.
 - **Current menu** shows the leaf name of the menu position SamsungController expects to be active.
+- **Menu profile** remains visible across every page. Green means every current check is fingerprinted for the displayed model/firmware/signal/picture-mode/input combination; red shows how many checks remain and opens the complete verification workspace.
 
 The current-menu value is a prediction, not feedback from the TV. Samsung's remote WebSocket does not report the on-screen cursor. Its confidence falls when an unknown key, interrupted route, lost connection, or failed visual result makes the position uncertain.
 
@@ -197,13 +198,13 @@ The **Menu** page contains verified destinations only. Click a destination to ca
 
 If the expected position is unknown, run a verified anchor under **Resynchronize**. If a traversal reaches the wrong place, use its failure control. SamsungController captures the attempted keys for diagnosis, marks the prediction uncertain, and tries to return the TV to normal video.
 
-Menu definitions are model-, firmware-, input-, signal-, and picture-mode-sensitive. Do not assume a route verified in one SDR context is valid in HDR, on another input, or on different firmware. See [Menu definitions](docs/menu-model.md) for the data model and confidence rules.
+Menu definitions are model-, firmware-, input-, signal-, and picture-mode-sensitive. YAML is the default storage format; JSON is also supported with the same schema and validation. Do not assume a route verified in one SDR context is valid in HDR, on another input, or on different firmware. See [Menu definition file format](docs/menu-definition-file-format.md) for raw topology/settings syntax and [Menu definitions](docs/menu-model.md) for navigation and confidence rules.
 
 ### Menu Controls
 
 The **Menu Controls** page collects adjustable sliders, switches, selections, submenu selections, and indexed selection grids from every verified menu area. Choose the **Picture**, **Sound**, or other top-level menu tab, then search within that tab and work with compact cards grouped by their immediate TV-menu section. A normal control appears after its route has been verified. A conditionally disabled control can also appear when its containing section has a verified route; once enabled, SamsungController derives its position from the declared sibling order.
 
-Each card starts from its declared YAML default and tracks changes sent during the current application session. Sliders send Left/Right steps, switches send Select, and selections open the choice list, move from the predicted current option, and select the new option. A **submenu selection** performs the same value choice and then sends Return because the TV leaves that value list open. Choose **Update TV immediately** to send one change at a time, or choose **Wait for Apply** to stage several values. Staged dependencies are sent first: for example, 20 Point is enabled before its Interval/RGB controls, and Custom Color Space is selected before its Color/RGB controls. The page reevaluates every `disabledWhen` and `hiddenWhen` rule as its controlling value changes. A hidden row and its descendants disappear from Menu Controls and the verified menu map, and calculated routes remove them from sibling offsets.
+Each card starts from its declared menu-definition default and tracks changes sent during the current application session. Sliders send Left/Right steps, switches send Select, and selections open the choice list, move from the predicted current option, and select the new option. A **submenu selection** performs the same value choice and then sends Return because the TV leaves that value list open. Choose **Update TV immediately** to send one change at a time, or choose **Wait for Apply** to stage several values. Staged dependencies are sent first: for example, 20 Point is enabled before its Interval/RGB controls, and Custom Color Space is selected before its Color/RGB controls. The page reevaluates every `disabledWhen` and `hiddenWhen` rule as its controlling value changes. A hidden row and its descendants disappear from Menu Controls and the verified menu map, and calculated routes remove them from sibling offsets.
 
 An **indexed selection grid** turns every selector option into a fixed row and the consecutive sliders following it into columns. This is used for all 20 Point White Balance percentages and all Custom Color choices, allowing every RGB target to be edited before one Apply operation. Existing definitions with an `Interval` percentage selector or a `Color` selector containing Red/Green/Blue are recognized automatically; new definitions can declare `controlType: indexed-selection` explicitly. The selector itself is not exposed as an editable dropdown because SamsungController chooses the required row while applying each cell.
 
@@ -213,11 +214,11 @@ Choose **Stay on last adjusted item** to leave the final control visible for ins
 
 ### Build & Verify
 
-Use **Build & Verify** when the supplied menu definition does not match the TV, or when adding a model and firmware combination. It does not require hand-editing YAML.
+Use **Build & Verify** when the supplied menu definition does not match the TV, or when adding a model and firmware combination. It does not require hand-editing YAML or JSON.
 
 The page presents three setup stages and highlights the next required action:
 
-1. **Define menu:** create the TV profile, select the active layout, and enter the complete menu in its on-screen order. The generated filename starts with model and firmware and appends signal type, picture mode, and input/source when they are specific rather than `any`; for example, `qn90d-1296-sdr-filmmaker-mode-hdmi-1.yaml`. The outline editor shows 20 lines, synchronized line numbers, and tree-aware indentation guides. Use two spaces per level, preview changes, and save. Mark rows as submenus, bounded sliders, ordered selections, submenu selections that require Return after choosing, indexed selection grids, switches, or confirmation dialogs. Use `disabledWhen` for a row that remains gray and `hiddenWhen` for a row that disappears based on a modeled setting. Keep named configurations for reordered layouts or changes that cannot be expressed through modeled settings.
+1. **Define menu:** create the TV profile, choose YAML (the default) or JSON, select the active layout, and enter the complete menu in its on-screen order. The generated filename starts with model and firmware and appends signal type, picture mode, and input/source when they are specific rather than `any`; for example, `qn90d-1296-sdr-filmmaker-mode-hdmi-1.yaml` or `.json`. The outline editor shows 20 lines, synchronized line numbers, and tree-aware indentation guides. Use two spaces per level, preview changes, and save. Mark rows as submenus, bounded sliders, ordered selections, submenu selections that require Return after choosing, indexed selection grids, switches, or confirmation dialogs. Use `disabledWhen` for a row that remains gray and `hiddenWhen` for a row that disappears based on a modeled setting. Keep named configurations for reordered layouts or changes that cannot be expressed through modeled settings.
 2. **Define anchor:** choose the base menu, normally **Settings**. Define the return rule used exactly at that root (`KEY_RETURN` on the tested TV) and the rule used from any deeper state (`KEY_MENU, KEY_RETURN`). Save those rules, place the TV on normal video, and record only the keys that open the base menu. Successful buttons are sent to the TV and captured. This one entry recording seeds all topology-derived routes.
 3. **Verify coverage:** the page displays the complete calculated verification plan: the two anchor-return checks, any state-specific return exception, and one representative line item for every affected topology branch. Each return line has an explicit **Prepare start** action that sends its displayed generated route; no hidden reset commands are added. Three accepted passes promote all routes covered by a line item. You do not record or verify each destination separately.
 
@@ -232,6 +233,14 @@ Samsung does not report these setting values to the controller. `disabledWhen` k
 Collapsed authoring sections reopen when a setting inside them needs validation. Verified items then appear on the ordinary Menu page. Removing a verified setting also removes dependent descendants and routes; known-state anchor targets are protected.
 
 Return-to-video behavior can be defined at three levels: a menu-root default, a deeper-menu default, and an exact state override. A return sequence recorded with a transition takes part in that transition's verification and is used to prepare subsequent passes. Use the default scripts unless a specific TV state consistently requires different keys.
+
+### File Verification
+
+Open **File Verification** after Build & Verify and Menu Controls are working. This page is the final acceptance checklist for the loaded YAML or JSON file and its exact display combination. Start with **Carry forward existing verified work** to import valid timing, route, anchor, return-script, shared-slider, and selection evidence already recorded elsewhere in the app. Confirm the displayed model, firmware, signal, picture mode, and input/source, then finish any remaining switches, confirmation dialogs, and enabled/disabled/hidden conditions.
+
+For a visual control check, select **Open on TV**, exercise every declared state with the page's explicit-key remote, and select **Count visual pass** only when the physical display matches the loaded definition. An unverified menu-route line provides **Prepare start**, **Run test**, and its own **Count pass**/**Failed** confirmation in place; the third accepted pass promotes the route, returns to video when configured, and fingerprints it automatically. Specialized timing, anchor, or return-script work that is not ready links to its existing lab in **Build & Verify**. Selecting **Reopen** removes a mistaken result.
+
+Verification is saved in the menu definition itself, not only in local application settings. Each line has an ISO-8601 confirmation time and a SHA-256 fingerprint that includes the display combination and only the behavior relevant to that check. Editing a dropdown's options therefore reopens that dropdown; changing one route reopens that route; changing timing reopens timing. Unchanged results remain valid, removed results are pruned on the next confirmation, and the persistent header turns green automatically only when every currently required check matches.
 
 ### Protocol
 
@@ -401,7 +410,7 @@ Important contents include:
 | `settings.json` | Remembered host, connection options, macro/menu paths, quick access, and UI preferences. |
 | `tokens.json` | Host-specific Samsung authorization tokens. Keep private. |
 | `macros.yaml` | Default user macro catalog, if you create it. |
-| `menu-definitions/` | Active and draft menu definition YAML files created by the UI. |
+| `menu-definitions/` | Active and draft YAML or JSON menu definitions created by the UI. |
 | `sessions/*.ndjson` | Complete timestamped protocol messages for connected sessions. Keep private. |
 | `console-history.txt` | Up to 200 retained non-raw console commands. |
 
@@ -477,6 +486,7 @@ Keep the web server on loopback, keep pairing tokens and logs private, and prefe
 ## Additional documentation
 
 - [Macro format and safety](docs/macros.md)
+- [Menu definition file format tutorial](docs/menu-definition-file-format.md)
 - [Menu definitions and predicted navigation](docs/menu-model.md)
 - [Samsung protocol notes](docs/protocol.md)
 - [Initial Samsung key list](docs/samsung-keys.md)

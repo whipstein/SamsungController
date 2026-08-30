@@ -1,0 +1,351 @@
+@page "/verification"
+@implements IDisposable
+@inject SamsungControllerService Controller
+@using SamsungController.Automation.Navigation
+@using SamsungController.Core.Connection
+
+<PageTitle>File Verification · SamsungController</PageTitle>
+
+<section class="verification-page">
+    <header class="page-heading verification-heading">
+        <div>
+            <span class="eyebrow">DISPLAY-BOUND PROFILE</span>
+            <h1>Complete menu-file verification</h1>
+            <p>One checklist for every route, timing rule, control behavior, and conditional menu state carried by the loaded file.</p>
+        </div>
+        <HelpBubble Title="How complete verification works">
+            <ol>
+                <li>Confirm the physical display and viewing combination shown below.</li>
+                <li>Carry forward routes and controls already verified elsewhere in the app.</li>
+                <li>Use <strong>Open on TV</strong> and the verification remote for remaining visual checks.</li>
+                <li>Count a check only after the TV behaves exactly as described.</li>
+            </ol>
+            <p class="help-callout safe">Each result is fingerprinted inside the loaded YAML or JSON file. Editing only one route, option list, slider definition, timing value, or condition reopens only the affected check.</p>
+        </HelpBubble>
+    </header>
+
+    <div class="verification-hero @(VerificationState.FullyVerified ? "complete" : "required")">
+        <div class="verification-gauge" style="--verification-progress: @ProgressPercent%">
+            <strong>@VerificationState.VerifiedCount</strong>
+            <span>/ @VerificationState.RequiredCount</span>
+        </div>
+        <div>
+            <span>@(VerificationState.FullyVerified ? "FILE FULLY VERIFIED" : "VERIFICATION REQUIRED")</span>
+            <h2>@(VerificationState.FullyVerified ? "This file matches the recorded display combination." : $"{VerificationState.RemainingCount} check{(VerificationState.RemainingCount == 1 ? "" : "s")} remain before this file is trusted.")</h2>
+            <p>@VerificationState.CurrentDisplay</p>
+            @if (VerificationState.RecordedDisplay is { } recordedDisplay)
+            {
+                <small>Manifest display · @recordedDisplay</small>
+            }
+        </div>
+        <div class="verification-hero-actions">
+            <button class="secondary-action" @onclick="CarryForwardAsync" disabled="@IsBusy">Carry forward existing verified work</button>
+            @if (VerificationState.LastVerifiedAtUtc is { } lastVerified)
+            {
+                <small>Last confirmation · @lastVerified.ToLocalTime().ToString("g")</small>
+            }
+        </div>
+    </div>
+
+    @if (VerificationState.StaleRecordCount > 0)
+    {
+        <div class="verification-change-alert" role="status">
+            <strong>Menu-file changes detected</strong>
+            <span>@VerificationState.StaleRecordCount previous result@((VerificationState.StaleRecordCount == 1 ? " no longer matches" : "s no longer match")); the affected checks are open below.</span>
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <div class="feedback danger" role="alert">@ErrorMessage</div>
+    }
+    else if (!string.IsNullOrWhiteSpace(StatusMessage))
+    {
+        <div class="feedback" role="status">@StatusMessage</div>
+    }
+
+    <div class="verification-workspace">
+        <div class="verification-checklist">
+            @foreach (var group in Groups)
+            {
+                <section class="verification-group">
+                    <header>
+                        <div><span>@group.Index</span><strong>@group.Label</strong></div>
+                        <small>@group.Checks.Count(check => check.Verified) / @group.Checks.Count verified</small>
+                    </header>
+                    <div class="verification-checks">
+                        @foreach (var check in group.Checks)
+                        {
+                            <article class="verification-check @(check.Verified ? "verified" : "pending")">
+                                <div class="verification-check-state" aria-hidden="true">@(check.Verified ? "✓" : "!")</div>
+                                <div class="verification-check-copy">
+                                    <span>@FormatKind(check.Kind)@FormatConfiguration(check)</span>
+                                    <strong>@check.Label</strong>
+                                    <p>@check.Description</p>
+                                    @if (!check.Verified && check.Kind == MenuVerificationCheckKind.Route)
+                                    {
+                                        <small class="verification-route-progress">Route validation · @check.ValidationPasses/@check.RequiredValidationPasses passes</small>
+                                    }
+                                    @if (!check.Verified && RequiresBuildVerification(check) && !check.ExistingEvidenceReady)
+                                    {
+                                        <small class="verification-prerequisite">Needs its 3× visual pass in Build &amp; Verify.</small>
+                                    }
+                                    else if (!check.Verified && check.ExistingEvidenceReady)
+                                    {
+                                        <small class="verification-evidence">Existing verified evidence is ready to carry into this file.</small>
+                                    }
+                                    else if (check.VerifiedAtUtc is { } verifiedAt)
+                                    {
+                                        <small class="verification-evidence">Recorded @verifiedAt.ToLocalTime().ToString("g")</small>
+                                    }
+                                </div>
+                                <div class="verification-check-actions">
+                                    @if (check.AwaitingValidationConfirmation)
+                                    {
+                                        <button class="primary-action" @onclick="() => ConfirmRouteAsync(check, true)" disabled="@IsBusy">Count pass</button>
+                                        <button class="quiet-action" @onclick="() => ConfirmRouteAsync(check, false)" disabled="@IsBusy">Failed</button>
+                                    }
+                                    else if (!check.Verified && !check.ExistingEvidenceReady && check.AuthoringItemId is not null && check.IsForActiveConfiguration)
+                                    {
+                                        <button class="secondary-action" @onclick="() => PrepareRouteAsync(check)" disabled="@TvActionsDisabled">Prepare start</button>
+                                        <button class="primary-action" @onclick="() => RunRouteAsync(check)" disabled="@TvActionsDisabled">Run test</button>
+                                    }
+                                    else if (!check.Verified && !check.ExistingEvidenceReady && check.AuthoringItemId is not null)
+                                    {
+                                        <button class="secondary-action" disabled>Select @check.ConfigurationId layout above</button>
+                                    }
+                                    else if (CanOpenOnTv(check))
+                                    {
+                                        <button class="secondary-action" @onclick="() => OpenOnTvAsync(check)" disabled="@TvActionsDisabled">Open on TV</button>
+                                    }
+                                    @if (!check.AwaitingValidationConfirmation && check.Verified)
+                                    {
+                                        <button class="quiet-action" @onclick="() => ReopenAsync(check)" disabled="@IsBusy">Reopen</button>
+                                    }
+                                    else if (!check.AwaitingValidationConfirmation && (check.ExistingEvidenceReady || check.AuthoringItemId is null) && CanConfirm(check))
+                                    {
+                                        <button class="primary-action" @onclick="() => ConfirmAsync(check)" disabled="@IsBusy">@ConfirmationLabel(check)</button>
+                                    }
+                                    else if (!check.AwaitingValidationConfirmation && check.AuthoringItemId is null)
+                                    {
+                                        <a class="secondary-action" href="menu/build">Go to Build &amp; Verify</a>
+                                    }
+                                </div>
+                            </article>
+                        }
+                    </div>
+                </section>
+            }
+        </div>
+
+        <aside class="verification-remote-panel">
+            <div class="panel-label"><span>VISUAL TEST REMOTE</span><span>EXPLICIT KEYS</span></div>
+            <p>Open a control, use these keys to exercise every declared state, then count the matching check.</p>
+            <div class="verification-remote-top">
+                <button @onclick='() => SendKeyAsync("KEY_MENU")' disabled="@TvActionsDisabled">☰<small>Menu</small></button>
+                <button @onclick='() => SendKeyAsync("KEY_HOME")' disabled="@TvActionsDisabled">⌂<small>Home</small></button>
+            </div>
+            <div class="verification-dpad">
+                <button class="up" aria-label="Up" @onclick='() => SendKeyAsync("KEY_UP")' disabled="@TvActionsDisabled">↑</button>
+                <button class="left" aria-label="Left" @onclick='() => SendKeyAsync("KEY_LEFT")' disabled="@TvActionsDisabled">←</button>
+                <button class="enter" aria-label="Enter" @onclick='() => SendKeyAsync("KEY_ENTER")' disabled="@TvActionsDisabled">OK</button>
+                <button class="right" aria-label="Right" @onclick='() => SendKeyAsync("KEY_RIGHT")' disabled="@TvActionsDisabled">→</button>
+                <button class="down" aria-label="Down" @onclick='() => SendKeyAsync("KEY_DOWN")' disabled="@TvActionsDisabled">↓</button>
+            </div>
+            <button class="verification-return" @onclick='() => SendKeyAsync("KEY_RETURN")' disabled="@TvActionsDisabled">↩ <span>Return</span></button>
+            <small>The TV does not report its highlighted value. Visual confirmation remains the authority.</small>
+        </aside>
+    </div>
+</section>
+
+@code {
+    private ControllerSnapshot ControllerState { get; set; } = null!;
+    private MenuAuthoringSnapshot Authoring { get; set; } = null!;
+    private MenuDefinitionVerificationSnapshot VerificationState { get; set; } = null!;
+    private bool IsBusy { get; set; }
+    private string? StatusMessage { get; set; }
+    private string? ErrorMessage { get; set; }
+
+    private int ProgressPercent => VerificationState.RequiredCount == 0
+        ? 0
+        : VerificationState.VerifiedCount * 100 / VerificationState.RequiredCount;
+    private bool TvActionsDisabled => IsBusy
+        || ControllerState.ConnectionState != SamsungConnectionState.Connected
+        || ControllerState.MacroRunning
+        || ControllerState.NavigationRunning
+        || Authoring.IsRecording;
+    private IReadOnlyList<VerificationGroup> Groups =>
+    new[]
+    {
+        CreateGroup("01", "Display & timing", VerificationState.Checks.Where(check => check.Kind is MenuVerificationCheckKind.Display or MenuVerificationCheckKind.Timing)),
+        CreateGroup("02", "Menu locations & return paths", VerificationState.Checks.Where(check => check.Kind is MenuVerificationCheckKind.Anchor or MenuVerificationCheckKind.ReturnScript or MenuVerificationCheckKind.Route)),
+        CreateGroup("03", "Sliders, selections & actions", VerificationState.Checks.Where(check => check.Kind is MenuVerificationCheckKind.SliderBehavior or MenuVerificationCheckKind.Selection or MenuVerificationCheckKind.Switch or MenuVerificationCheckKind.Confirmation)),
+        CreateGroup("04", "Enabled, disabled & hidden states", VerificationState.Checks.Where(check => check.Kind == MenuVerificationCheckKind.ConditionalVisibility))
+    }.Where(group => group.Checks.Count > 0).ToArray();
+
+    protected override async Task OnInitializedAsync()
+    {
+        Refresh();
+        Controller.Changed += HandleControllerChanged;
+        await Controller.InitializeAsync();
+        Refresh();
+    }
+
+    private async Task CarryForwardAsync() => await RunAsync(async () =>
+    {
+        VerificationState = await Controller.CarryForwardExistingMenuVerificationAsync();
+        StatusMessage = "Existing verified timing, routes, slider behavior, and selections were fingerprinted into this menu definition.";
+    });
+
+    private async Task ConfirmAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
+    {
+        VerificationState = await Controller.ConfirmMenuDefinitionVerificationCheckAsync(check.Id);
+        StatusMessage = VerificationState.FullyVerified
+            ? "Complete verification recorded. The loaded menu definition and display combination are fully verified."
+            : $"Verification recorded for {check.Label}.";
+    });
+
+    private async Task ReopenAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
+    {
+        VerificationState = await Controller.ReopenMenuDefinitionVerificationCheckAsync(check.Id);
+        StatusMessage = $"{check.Label} reopened for another visual check.";
+    });
+
+    private async Task OpenOnTvAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
+    {
+        await Controller.NavigateToMenuNodeAsync(check.TargetNodeId!);
+        StatusMessage = $"Opened {check.Label}. Use the visual test remote, then count the result.";
+    });
+
+    private async Task PrepareRouteAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
+    {
+        await Controller.PrepareMenuAuthoringValidationSourceAsync(
+            MenuAuthoringItemKind.Transition,
+            check.AuthoringItemId!);
+        StatusMessage = $"Prepared the displayed start for {check.Label}. Manually correct the TV if needed, then run the test.";
+    });
+
+    private async Task RunRouteAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
+    {
+        await Controller.RunMenuAuthoringValidationAsync(
+            MenuAuthoringItemKind.Transition,
+            check.AuthoringItemId!);
+        StatusMessage = $"Inspect the TV, then count or fail {check.Label} on this line.";
+    });
+
+    private async Task ConfirmRouteAsync(
+        MenuDefinitionVerificationCheckSummary check,
+        bool passed) => await RunAsync(async () =>
+    {
+        await Controller.ConfirmMenuAuthoringValidationAsync(passed);
+        var refreshed = Controller.GetMenuDefinitionVerificationSnapshot();
+        var current = refreshed.Checks.FirstOrDefault(item => item.Id.Equals(
+            check.Id,
+            StringComparison.OrdinalIgnoreCase));
+        if (passed && current?.ExistingEvidenceReady == true && !current.Verified)
+        {
+            refreshed = await Controller.ConfirmMenuDefinitionVerificationCheckAsync(check.Id);
+        }
+
+        VerificationState = refreshed;
+        StatusMessage = !passed
+            ? $"{check.Label} failed. Its route pass count returned to zero."
+            : current?.ExistingEvidenceReady == true
+                ? $"{check.Label} completed 3/3 and was fingerprinted into this menu definition."
+                : $"Pass counted for {check.Label}. Prepare its displayed start for the next run.";
+    });
+
+    private async Task SendKeyAsync(string key) => await RunAsync(async () =>
+    {
+        await Controller.SendKeyAsync(key);
+        StatusMessage = $"Sent {key}.";
+    });
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        IsBusy = true;
+        ErrorMessage = null;
+        StatusMessage = null;
+        try
+        {
+            await action();
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = "Verification action cancelled.";
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = exception.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+            Refresh();
+        }
+    }
+
+    private void Refresh()
+    {
+        ControllerState = Controller.GetSnapshot();
+        Authoring = Controller.GetMenuAuthoringSnapshot();
+        VerificationState = Controller.GetMenuDefinitionVerificationSnapshot();
+    }
+
+    private void HandleControllerChanged()
+    {
+        Refresh();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private static bool RequiresBuildVerification(MenuDefinitionVerificationCheckSummary check) =>
+        check.Kind is MenuVerificationCheckKind.Timing
+            or MenuVerificationCheckKind.Anchor
+            or MenuVerificationCheckKind.ReturnScript
+            or MenuVerificationCheckKind.Route;
+
+    private static bool CanConfirm(MenuDefinitionVerificationCheckSummary check) =>
+        !RequiresBuildVerification(check) || check.ExistingEvidenceReady;
+
+    private static bool CanOpenOnTv(MenuDefinitionVerificationCheckSummary check) =>
+        check.TargetNodeId is not null
+        && check.IsForActiveConfiguration
+        && check.Kind is (MenuVerificationCheckKind.Selection
+            or MenuVerificationCheckKind.Switch
+            or MenuVerificationCheckKind.Confirmation
+            or MenuVerificationCheckKind.ConditionalVisibility
+            or MenuVerificationCheckKind.SliderBehavior);
+
+    private static string ConfirmationLabel(MenuDefinitionVerificationCheckSummary check) => check.Kind switch
+    {
+        MenuVerificationCheckKind.Display => "Confirm this display",
+        MenuVerificationCheckKind.Timing or MenuVerificationCheckKind.Anchor or MenuVerificationCheckKind.ReturnScript or MenuVerificationCheckKind.Route => "Record verified result",
+        _ => "Count visual pass"
+    };
+
+    private static string FormatKind(MenuVerificationCheckKind kind) => kind switch
+    {
+        MenuVerificationCheckKind.ConditionalVisibility => "CONDITIONAL STATE",
+        MenuVerificationCheckKind.SliderBehavior => "SHARED BEHAVIOR",
+        MenuVerificationCheckKind.ReturnScript => "RETURN SCRIPT",
+        _ => kind.ToString().ToUpperInvariant()
+    };
+
+    private static string FormatConfiguration(MenuDefinitionVerificationCheckSummary check) =>
+        string.IsNullOrWhiteSpace(check.ConfigurationId)
+            ? string.Empty
+            : $" · {check.ConfigurationId}{(check.IsForActiveConfiguration ? "" : " · inactive layout")}";
+
+    private static VerificationGroup CreateGroup(
+        string index,
+        string label,
+        IEnumerable<MenuDefinitionVerificationCheckSummary> checks) =>
+        new(index, label, checks.ToArray());
+
+    public void Dispose() => Controller.Changed -= HandleControllerChanged;
+
+    private sealed record VerificationGroup(
+        string Index,
+        string Label,
+        IReadOnlyList<MenuDefinitionVerificationCheckSummary> Checks);
+}

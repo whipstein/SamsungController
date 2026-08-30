@@ -244,6 +244,162 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Assert.True(generated.IsValidationRoute);
     }
 
+    [Fact]
+    public void VerificationManifestRoundTripsWithDisplayFingerprintAndTimestamp()
+    {
+        var display = new MenuVerificationDisplay(
+            "S95F",
+            "1296",
+            "SDR",
+            "Filmmaker Mode",
+            "Home Theater System");
+        var verifiedAt = new DateTimeOffset(2026, 8, 30, 15, 30, 0, TimeSpan.Zero);
+        var definition = new MenuDefinition(
+            "verified-menu",
+            "Verified menu",
+            "S95F",
+            new MenuDefinitionContext("1296", "SDR", "Filmmaker Mode", "Home Theater System"),
+            [new MenuNode("normal-video", "Normal video")],
+            [],
+            [],
+            verification: new MenuVerificationManifest(
+                display,
+                [new MenuVerificationRecord("display", new string('a', 64), verifiedAt)]));
+
+        var yaml = new MenuDefinitionWriter().Serialize(definition);
+        var reparsed = new MenuDefinitionParser().Parse(yaml);
+
+        Assert.Equal(display, reparsed.Verification!.Display);
+        var check = Assert.Single(reparsed.Verification.Checks);
+        Assert.Equal("display", check.Id);
+        Assert.Equal(new string('a', 64), check.Fingerprint);
+        Assert.Equal(verifiedAt, check.VerifiedAtUtc);
+        Assert.Contains("verification:", yaml, StringComparison.Ordinal);
+        Assert.Contains("verifiedAt:", yaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task JsonDefinitionRoundTripsWithTheSameSchemaAndKeepsJsonOnSave()
+    {
+        var verifiedAt = new DateTimeOffset(2026, 8, 30, 18, 45, 0, TimeSpan.Zero);
+        var definition = new MenuDefinition(
+            "json-menu",
+            "JSON menu",
+            "S95F",
+            new MenuDefinitionContext("1296", "SDR", "Filmmaker Mode", "HDMI 1"),
+            [
+                new MenuNode("normal-video", "Normal video"),
+                new MenuNode("settings", "Settings", "normal-video"),
+                new MenuNode(
+                    "brightness",
+                    "Brightness",
+                    "settings",
+                    ControlType: MenuControlType.Slider,
+                    DefaultValue: "50",
+                    MinimumValue: 0,
+                    MaximumValue: 100),
+                new MenuNode(
+                    "picture-mode",
+                    "Picture Mode",
+                    "settings",
+                    ControlType: MenuControlType.Selection,
+                    DefaultValue: "Filmmaker Mode",
+                    SelectionOptions: ["Standard", "Filmmaker Mode"])
+            ],
+            [
+                new MenuTransition(
+                    "open-settings",
+                    "normal-video",
+                    "settings",
+                    [new MenuOperation("KEY_MENU", DelayAfter: TimeSpan.FromMilliseconds(800))],
+                    true,
+                    ConfigurationId: "default")
+            ],
+            [
+                new MenuAnchor(
+                    "normal-video-anchor",
+                    "Normal video",
+                    "normal-video",
+                    [new MenuOperation("KEY_RETURN")],
+                    true,
+                    ReturnStrategy: new MenuReturnStrategy(
+                        "settings",
+                        new MenuReturnScript([new MenuOperation("KEY_RETURN")], true),
+                        new MenuReturnScript([
+                            new MenuOperation("KEY_MENU"),
+                            new MenuOperation("KEY_RETURN")
+                        ], true)),
+                    ValidationSourceNodeId: "settings",
+                    ConfigurationId: "default")
+            ],
+            new MenuTimingProfile(150, 800, 300, true),
+            [new MenuConfiguration("default", "Default", "Game Mode = Off")],
+            verification: new MenuVerificationManifest(
+                new MenuVerificationDisplay(
+                    "S95F",
+                    "1296",
+                    "SDR",
+                    "Filmmaker Mode",
+                    "HDMI 1"),
+                [new MenuVerificationRecord("display", new string('b', 64), verifiedAt)]));
+        var path = Path.Combine(_directory, "menu.json");
+
+        await new MenuDefinitionWriter().WriteFileAsync(path, definition);
+        var firstContent = await File.ReadAllTextAsync(path);
+        var reparsed = await new MenuDefinitionParser().ParseFileAsync(path);
+        await new MenuDefinitionWriter().WriteFileAsync(path, reparsed);
+        var secondContent = await File.ReadAllTextAsync(path);
+
+        Assert.StartsWith("{", firstContent.TrimStart(), StringComparison.Ordinal);
+        Assert.StartsWith("{", secondContent.TrimStart(), StringComparison.Ordinal);
+        Assert.Equal(definition.Id, reparsed.Id);
+        Assert.Equal(definition.Context, reparsed.Context);
+        Assert.Equal(definition.Timing, reparsed.Timing);
+        Assert.Equal(MenuControlType.Slider, reparsed.Nodes["brightness"].ControlType);
+        Assert.Equal(100m, reparsed.Nodes["brightness"].MaximumValue);
+        Assert.Equal(["Standard", "Filmmaker Mode"], reparsed.Nodes["picture-mode"].SelectionOptions);
+        Assert.Equal("KEY_MENU", Assert.Single(reparsed.Transitions.Values).Operations[0].Key);
+        Assert.Equal(verifiedAt, Assert.Single(reparsed.Verification!.Checks).VerifiedAtUtc);
+    }
+
+    [Fact]
+    public async Task ExtensionlessJsonIsDetectedByItsContentAndPreservedOnSave()
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "menu-definition");
+        await File.WriteAllTextAsync(
+            path,
+            """
+            {
+              "version": 1,
+              "id": "detected-json",
+              "name": "Detected JSON",
+              "model": "Samsung TV",
+              "nodes": [{ "id": "normal-video", "label": "Normal video" }],
+              "anchors": [],
+              "transitions": []
+            }
+            """);
+
+        var definition = await new MenuDefinitionParser().ParseFileAsync(path);
+        await new MenuDefinitionWriter().WriteFileAsync(path, definition);
+
+        Assert.Equal("detected-json", definition.Id);
+        Assert.StartsWith(
+            "{",
+            (await File.ReadAllTextAsync(path)).TrimStart(),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void InvalidJsonReportsJsonSyntaxFailure()
+    {
+        var exception = Assert.Throws<MenuDefinitionParseException>(
+            () => new MenuDefinitionJsonSerializer().Parse("{ \"version\": 1,"));
+
+        Assert.Contains("Invalid menu definition JSON", exception.Message, StringComparison.Ordinal);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_directory))

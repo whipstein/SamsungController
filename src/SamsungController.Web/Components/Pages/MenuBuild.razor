@@ -20,6 +20,7 @@
             <p class="help-callout">Red tree nodes have no route. Yellow nodes have a recorded or topology-generated draft that still needs coverage validation. Normal-color nodes are verified.</p>
             <p>A route is valid only in the configuration where it was recorded. SamsungController cannot detect external setting changes, so choose the matching configuration explicitly.</p>
             <p>When you add or edit menu items later, the list is recalculated. Unchanged branches keep their verification; only affected coverage returns to the list.</p>
+            <p>New profiles use YAML by default. Choose JSON in the profile form when another tool will generate or consume the menu file; both formats have identical fields and validation.</p>
             <p>Do not approve a failed pass. Manually restore the TV if needed, correct the topology, add an explicit exception, or adjust the waits and replay it.</p>
         </HelpBubble>
         <a class="secondary-action menu-authoring-link" href="menu">View verified menus <span>→</span></a>
@@ -38,6 +39,7 @@
         <div><span>Model</span><strong>@(Navigation.Model ?? "—")</strong></div>
         <div><span>Firmware</span><strong>@(Navigation.Context?.Firmware ?? "—")</strong></div>
         <div><span>Context</span><strong>@ContextLabel</strong></div>
+        <div><span>File format</span><strong>@DefinitionFormatLabel</strong></div>
         <div title="@ActiveConfiguration?.Conditions">
             <span>Menu configuration</span>
             <strong>@(ActiveConfiguration?.Name ?? "Default menu configuration")</strong>
@@ -45,7 +47,7 @@
     </div>
     <div class="definition-editor">
         <label>
-            <span>Menu definition YAML</span>
+            <span>Menu definition YAML or JSON</span>
             <input @bind="DefinitionPath" disabled="@Navigation.IsRunning" />
         </label>
         <button class="secondary-action" @onclick="LoadDefinitionAsync" disabled="@(Navigation.IsRunning || IsLoading)">@(IsLoading ? "Validating…" : "Load & validate")</button>
@@ -65,6 +67,14 @@
     private string ContextLabel => Navigation.Context is null
         ? "—"
         : $"{Navigation.Context.Signal} · {Navigation.Context.PictureMode} · {Navigation.Context.Input}";
+    private string DefinitionFormatLabel => Path.GetExtension(Navigation.DefinitionPath)
+        .ToLowerInvariant() switch
+    {
+        ".json" => "JSON",
+        ".yaml" or ".yml" => "YAML",
+        "" when string.IsNullOrWhiteSpace(Navigation.DefinitionPath) => "—",
+        _ => "Auto-detected"
+    };
     private MenuConfigurationSummary? ActiveConfiguration => Navigation.Configurations
         .FirstOrDefault(configuration => configuration.IsActive);
 
