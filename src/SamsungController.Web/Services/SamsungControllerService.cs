@@ -4956,10 +4956,16 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 _ => false
             })
             .Where(node => !IsMenuNodePermanentlyDisabled(definition, node)
-                && !IsMenuNodeOrAncestorDisabled(definition, node, effectiveValues)
-                && !IsMenuNodeOrAncestorHidden(definition, node, effectiveValues))
+                && (check.Kind != MenuVerificationCheckKind.Confirmation
+                    || (node.SelectionOptions ?? []).Contains(
+                        "Cancel",
+                        StringComparer.OrdinalIgnoreCase)))
             .Where(node => HasVerifiedPictureControlRoute(effectiveDefinition, node.Id)
                 || HasConditionalAncestorWithVerifiedParent(definition, node))
+            .Where(node => CanAutomaticallyMakeMenuNodeAvailable(
+                definition,
+                node,
+                effectiveValues))
             .OrderBy(node => confirmed.Contains(node.Id))
             .ThenBy(node => !node.Id.Equals(
                 plannedTarget.Id,
@@ -4987,10 +4993,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
 
         var nextValue = SelectAlternateMenuControlValue(node, currentValue);
-        await ApplyMenuControlValuesAsync(
-                [new MenuControlValueUpdate(node.Id, currentValue, nextValue)],
+        await ApplyMenuDefinitionVerificationValueAsync(
+                definition,
+                node,
+                currentValue,
+                nextValue,
                 effectiveValues,
-                returnToNormalVideo: false,
                 cancellationToken)
             .ConfigureAwait(false);
         return new MenuDefinitionVerificationTestResult(
@@ -5128,23 +5136,25 @@ public sealed class SamsungControllerService : IAsyncDisposable
         if (currentValue.Equals(expectedValue, StringComparison.OrdinalIgnoreCase))
         {
             var comparisonValue = SelectAlternateMenuControlValue(controller, currentValue);
-            await ApplyMenuControlValuesAsync(
-                    [new MenuControlValueUpdate(controller.Id, currentValue, comparisonValue)],
+            await ApplyMenuDefinitionVerificationValueAsync(
+                    definition,
+                    controller,
+                    currentValue,
+                    comparisonValue,
                     effectiveValues,
-                    returnToNormalVideo: false,
                     cancellationToken)
                 .ConfigureAwait(false);
-            effectiveValues[controller.Id] = comparisonValue;
             currentValue = comparisonValue;
         }
 
-        await ApplyMenuControlValuesAsync(
-                [new MenuControlValueUpdate(controller.Id, currentValue, expectedValue)],
+        await ApplyMenuDefinitionVerificationValueAsync(
+                definition,
+                controller,
+                currentValue,
+                expectedValue,
                 effectiveValues,
-                returnToNormalVideo: false,
                 cancellationToken)
             .ConfigureAwait(false);
-        effectiveValues[controller.Id] = expectedValue;
         if (!string.IsNullOrWhiteSpace(affectedCondition.Node.ParentId))
         {
             await NavigateToMenuNodeAsync(
@@ -5160,6 +5170,205 @@ public sealed class SamsungControllerService : IAsyncDisposable
             definition.GetPath(affectedCondition.Node.Id),
             null,
             $"Set {controller.Label} to {expectedValue}. Confirm that {affectedCondition.Node.Label} is {expectedBehavior}.");
+    }
+
+    private async Task ApplyMenuDefinitionVerificationValueAsync(
+        MenuDefinition definition,
+        MenuNode node,
+        string currentValue,
+        string nextValue,
+        Dictionary<string, string> effectiveValues,
+        CancellationToken cancellationToken)
+    {
+        var updates = CreateMenuAvailabilityUpdates(
+                definition,
+                node,
+                effectiveValues)
+            .Append(new MenuControlValueUpdate(node.Id, currentValue, nextValue))
+            .ToArray();
+        await ApplyMenuControlValuesAsync(
+                updates,
+                effectiveValues,
+                returnToNormalVideo: false,
+                cancellationToken)
+            .ConfigureAwait(false);
+        foreach (var update in updates)
+        {
+            effectiveValues[update.NodeId] = update.ToValue;
+        }
+    }
+
+    private static bool CanAutomaticallyMakeMenuNodeAvailable(
+        MenuDefinition definition,
+        MenuNode node,
+        IReadOnlyDictionary<string, string> effectiveValues)
+    {
+        try
+        {
+            CreateMenuAvailabilityUpdates(definition, node, effectiveValues);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private static IReadOnlyList<MenuControlValueUpdate> CreateMenuAvailabilityUpdates(
+        MenuDefinition definition,
+        MenuNode target,
+        IReadOnlyDictionary<string, string> effectiveValues)
+    {
+        var projectedValues = new Dictionary<string, string>(
+            effectiveValues,
+            StringComparer.OrdinalIgnoreCase);
+        var updates = new List<MenuControlValueUpdate>();
+        var completed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var visiting = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void MakeAvailable(MenuNode node)
+        {
+            if (completed.Contains(node.Id))
+            {
+                return;
+            }
+
+            if (!visiting.Add(node.Id))
+            {
+                throw new InvalidOperationException(
+                    $"Conditional availability cycle encountered at '{definition.GetPath(node.Id)}'.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(node.ParentId))
+            {
+                MakeAvailable(definition.GetRequiredNode(node.ParentId));
+            }
+
+            if (node.Disabled)
+            {
+                throw new InvalidOperationException(
+                    $"'{definition.GetPath(node.Id)}' is permanently disabled.");
+            }
+
+            var conditions = (node.DisabledWhen ?? [])
+                .Select(condition => (
+                    condition.SettingNodeId,
+                    condition.EqualsValue))
+                .Concat((node.HiddenWhen ?? []).Select(condition => (
+                    condition.SettingNodeId,
+                    condition.EqualsValue)))
+                .GroupBy(
+                    condition => condition.SettingNodeId,
+                    StringComparer.OrdinalIgnoreCase);
+            foreach (var group in conditions)
+            {
+                if (!projectedValues.TryGetValue(group.Key, out var controllerValue))
+                {
+                    throw new InvalidOperationException(
+                        $"Conditional controller '{definition.GetPath(group.Key)}' does not have a predicted value.");
+                }
+
+                var blockedValues = group
+                    .Select(condition => condition.EqualsValue)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                if (!blockedValues.Contains(controllerValue))
+                {
+                    continue;
+                }
+
+                var controller = definition.GetRequiredNode(group.Key);
+                MakeAvailable(controller);
+                controllerValue = projectedValues[controller.Id];
+                if (!blockedValues.Contains(controllerValue))
+                {
+                    continue;
+                }
+
+                var availableValue = SelectMenuControlValueOutside(
+                    controller,
+                    controllerValue,
+                    blockedValues);
+                var existingIndex = updates.FindIndex(update => update.NodeId.Equals(
+                    controller.Id,
+                    StringComparison.OrdinalIgnoreCase));
+                if (existingIndex >= 0)
+                {
+                    updates[existingIndex] = updates[existingIndex] with
+                    {
+                        ToValue = availableValue
+                    };
+                }
+                else
+                {
+                    updates.Add(new MenuControlValueUpdate(
+                        controller.Id,
+                        controllerValue,
+                        availableValue));
+                }
+
+                projectedValues[controller.Id] = availableValue;
+            }
+
+            visiting.Remove(node.Id);
+            completed.Add(node.Id);
+        }
+
+        MakeAvailable(target);
+        if (IsMenuNodeOrAncestorDisabled(definition, target, projectedValues)
+            || IsMenuNodeOrAncestorHidden(definition, target, projectedValues))
+        {
+            throw new InvalidOperationException(
+                $"No automatic setting combination makes '{definition.GetPath(target.Id)}' available.");
+        }
+
+        return updates;
+    }
+
+    private static string SelectMenuControlValueOutside(
+        MenuNode node,
+        string currentValue,
+        IReadOnlySet<string> excludedValues)
+    {
+        IEnumerable<string> candidates = node.ControlType switch
+        {
+            MenuControlType.Switch => ["off", "on"],
+            MenuControlType.Selection
+                or MenuControlType.SubmenuSelection
+                or MenuControlType.IndexedSelection => node.SelectionOptions ?? [],
+            MenuControlType.Slider => CreateAlternateSliderValues(node, currentValue),
+            _ => []
+        };
+        return candidates.FirstOrDefault(candidate =>
+                   !candidate.Equals(currentValue, StringComparison.OrdinalIgnoreCase)
+                   && !excludedValues.Contains(candidate))
+               ?? throw new InvalidOperationException(
+                   $"'{node.Label}' has no declared value that makes the dependent menu item available.");
+    }
+
+    private static IEnumerable<string> CreateAlternateSliderValues(
+        MenuNode node,
+        string currentValue)
+    {
+        var current = decimal.Parse(currentValue, CultureInfo.InvariantCulture);
+        if (node.MinimumValue is { } minimum)
+        {
+            yield return minimum.ToString("G29", CultureInfo.InvariantCulture);
+        }
+
+        if (node.MaximumValue is { } maximum)
+        {
+            yield return maximum.ToString("G29", CultureInfo.InvariantCulture);
+        }
+
+        if (node.MaximumValue is null || current + 1 <= node.MaximumValue)
+        {
+            yield return (current + 1).ToString("G29", CultureInfo.InvariantCulture);
+        }
+
+        if (node.MinimumValue is null || current - 1 >= node.MinimumValue)
+        {
+            yield return (current - 1).ToString("G29", CultureInfo.InvariantCulture);
+        }
     }
 
     private static string SelectAlternateMenuControlValue(

@@ -2590,6 +2590,11 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
               - id: normal-video
                 label: Normal video
                 children:
+                  - id: pixel-refresh
+                    label: Pixel Refresh
+                    controlType: confirmation
+                    defaultValue: Start Now
+                    options: [Start Now, Start After TV Off]
                   - id: reset-picture
                     label: Reset Picture
                     controlType: confirmation
@@ -2603,6 +2608,12 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 steps:
                   - key: KEY_RETURN
             transitions:
+              - id: open-pixel-refresh
+                from: normal-video
+                to: pixel-refresh
+                verified: true
+                steps:
+                  - key: KEY_HOME
               - id: open-reset-picture
                 from: normal-video
                 to: reset-picture
@@ -2626,6 +2637,74 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task FileVerificationGuidedSelectionEnablesConditionalPrerequisites()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: guided-indexed-selection-verification
+            name: Guided Indexed Selection Verification
+            model: Test TV
+            nodes:
+              - id: normal-video
+                label: Normal video
+                children:
+                  - id: white-balance
+                    label: White Balance
+                    children:
+                      - id: twenty-point
+                        label: 20 Point
+                        children:
+                          - id: twenty-point-enabled
+                            label: 20 Point
+                            controlType: switch
+                            defaultValue: off
+                          - id: interval
+                            label: Interval
+                            controlType: selection
+                            defaultValue: 5%
+                            options: [5%, 10%, 15%]
+                            disabledWhen:
+                              - setting: twenty-point-enabled
+                                equals: off
+            anchors:
+              - id: normal
+                label: Return to normal video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            transitions:
+              - id: open-twenty-point
+                from: normal-video
+                to: twenty-point
+                verified: true
+                steps:
+                  - key: KEY_MENU
+              - id: open-twenty-point-enabled
+                from: normal-video
+                to: twenty-point-enabled
+                verified: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_ENTER
+            """;
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            var result = await controller.RunMenuDefinitionVerificationTestAsync(
+                "control:indexed-selection-behavior");
+
+            Assert.Equal("interval", result.TargetNodeId);
+            var navigation = controller.GetMenuNavigationSnapshot();
+            Assert.Equal("on", navigation.ControlValues["twenty-point-enabled"]);
+            Assert.Equal("10%", navigation.ControlValues["interval"]);
+            Assert.Contains("KEY_ENTER", GetSentKeys(transport));
+            Assert.Contains("KEY_DOWN", GetSentKeys(transport));
+        }
+    }
+
+    [Fact]
     public async Task FileVerificationGuidedConditionalTestSetsControllerAndOpensAffectedMenu()
     {
         const string yaml =
@@ -2641,11 +2720,18 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                   - id: settings
                     label: Settings
                     children:
+                      - id: master
+                        label: Master
+                        controlType: switch
+                        defaultValue: off
                       - id: autorun
                         label: Autorun
                         controlType: selection
                         defaultValue: Off
                         options: [Off, On]
+                        disabledWhen:
+                          - setting: master
+                            equals: off
                       - id: dependent-row
                         label: Dependent Row
                         controlType: action
@@ -2666,6 +2752,13 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 verified: true
                 steps:
                   - key: KEY_MENU
+              - id: open-master
+                from: normal-video
+                to: master
+                verified: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_ENTER
               - id: open-autorun
                 from: normal-video
                 to: autorun
@@ -2683,6 +2776,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             Assert.Equal("dependent-row", result.TargetNodeId);
             Assert.Contains("visible but gray", result.ActionDescription, StringComparison.Ordinal);
             var navigation = controller.GetMenuNavigationSnapshot();
+            Assert.Equal("on", navigation.ControlValues["master"]);
             Assert.Equal("On", navigation.ControlValues["autorun"]);
             Assert.Equal("settings", navigation.State.NodeId);
         }

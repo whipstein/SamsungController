@@ -216,7 +216,10 @@ public static class MenuDefinitionVerificationPlanner
                 continue;
             }
 
-            var representative = SelectRepresentative(definition, nodes);
+            var representative = SelectRepresentative(
+                definition,
+                nodes,
+                preferSafeCancel: controlType == MenuControlType.Confirmation);
             var (id, kind, label, behavior) = controlType switch
             {
                 MenuControlType.Selection => (
@@ -318,8 +321,13 @@ public static class MenuDefinitionVerificationPlanner
 
     private static MenuNode SelectRepresentative(
         MenuDefinition definition,
-        IEnumerable<MenuNode> nodes) => nodes
-        .OrderByDescending(node => definition.ApplicableTransitions.Any(transition =>
+        IEnumerable<MenuNode> nodes,
+        bool preferSafeCancel = false) => nodes
+        .OrderByDescending(node => preferSafeCancel
+            && (node.SelectionOptions ?? []).Contains(
+                "Cancel",
+                StringComparer.OrdinalIgnoreCase))
+        .ThenByDescending(node => definition.ApplicableTransitions.Any(transition =>
             transition.Verified
             && transition.ToNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase)))
         .ThenBy(node => (node.DisabledWhen?.Count ?? 0) + (node.HiddenWhen?.Count ?? 0))

@@ -102,6 +102,10 @@
                                     {
                                         <small class="verification-test-result">@PendingVisualTest!.ActionDescription</small>
                                     }
+                                    else if (IsGuidedTestError(check))
+                                    {
+                                        <small class="verification-test-error">@GuidedTestErrorMessage</small>
+                                    }
                                 </div>
                                 <div class="verification-check-actions">
                                     @if (IsPendingVisualTest(check))
@@ -125,7 +129,7 @@
                                     }
                                     else if (!check.Verified && !check.ExistingEvidenceReady && CanRunGuidedTest(check))
                                     {
-                                        <button class="primary-action" @onclick="() => RunGuidedTestAsync(check)" disabled="@TvActionsDisabled">Run guided test</button>
+                                        <button class="primary-action" @onclick="() => RunGuidedTestAsync(check)" disabled="@TvActionsDisabled">@(IsRunningGuidedTest(check) ? "Preparing test…" : "Run guided test")</button>
                                     }
                                     else if (!check.Verified && !check.IsForActiveConfiguration && IsGuidedVisualCheck(check))
                                     {
@@ -181,6 +185,9 @@
     private MenuDefinitionVerificationSnapshot VerificationState { get; set; } = null!;
     private MenuControlVerificationSnapshot ControlVerification { get; set; } = null!;
     private MenuDefinitionVerificationTestResult? PendingVisualTest { get; set; }
+    private string? ActiveGuidedCheckId { get; set; }
+    private string? GuidedTestErrorCheckId { get; set; }
+    private string? GuidedTestErrorMessage { get; set; }
     private bool IsBusy { get; set; }
     private string? StatusMessage { get; set; }
     private string? ErrorMessage { get; set; }
@@ -238,11 +245,24 @@
         StatusMessage = $"Opened {check.Label} without changing its recorded verification result.";
     });
 
-    private async Task RunGuidedTestAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
+    private async Task RunGuidedTestAsync(MenuDefinitionVerificationCheckSummary check)
     {
-        PendingVisualTest = await Controller.RunMenuDefinitionVerificationTestAsync(check.Id);
-        StatusMessage = PendingVisualTest.ActionDescription;
-    });
+        ActiveGuidedCheckId = check.Id;
+        GuidedTestErrorCheckId = null;
+        GuidedTestErrorMessage = null;
+        await RunAsync(async () =>
+        {
+            PendingVisualTest = await Controller.RunMenuDefinitionVerificationTestAsync(check.Id);
+            StatusMessage = PendingVisualTest.ActionDescription;
+        });
+        if (!string.IsNullOrWhiteSpace(ErrorMessage))
+        {
+            GuidedTestErrorCheckId = check.Id;
+            GuidedTestErrorMessage = ErrorMessage;
+        }
+
+        ActiveGuidedCheckId = null;
+    }
 
     private async Task ConfirmGuidedTestAsync(
         MenuDefinitionVerificationCheckSummary check,
@@ -396,6 +416,14 @@
 
     private bool IsPendingVisualTest(MenuDefinitionVerificationCheckSummary check) =>
         PendingVisualTest?.CheckId.Equals(check.Id, StringComparison.OrdinalIgnoreCase) == true;
+
+    private bool IsRunningGuidedTest(MenuDefinitionVerificationCheckSummary check) =>
+        IsBusy
+        && ActiveGuidedCheckId?.Equals(check.Id, StringComparison.OrdinalIgnoreCase) == true;
+
+    private bool IsGuidedTestError(MenuDefinitionVerificationCheckSummary check) =>
+        GuidedTestErrorCheckId?.Equals(check.Id, StringComparison.OrdinalIgnoreCase) == true
+        && !string.IsNullOrWhiteSpace(GuidedTestErrorMessage);
 
     private static bool CanRunGuidedTest(MenuDefinitionVerificationCheckSummary check) =>
         CanOpenOnTv(check)
