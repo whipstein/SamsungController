@@ -611,7 +611,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 Expert Settings
                   Adaptive Picture {switch; default=on}
                   Brightness {slider; default=50; min=0; max=100; disabledWhen=adaptive-picture=on}
-                  Color Tone {selection; default=Warm2; options=Standard|Warm1|Warm2}
+                  Color Tone {selection; default=Warm2; options=Standard|Warm1|Warm2; hiddenWhen=adaptive-picture=on}
                   Contrast
                   Reset Picture {confirmation; default=Cancel; options=Reset|Cancel}
               Sound
@@ -646,6 +646,8 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         Assert.Equal(MenuControlType.Selection, colorTone.ControlType);
         Assert.Equal("Warm2", colorTone.DefaultValue);
         Assert.Equal(["Standard", "Warm1", "Warm2"], colorTone.SelectionOptions);
+        Assert.True(colorTone.IsHiddenByDefault);
+        Assert.Equal("adaptive-picture", Assert.Single(colorTone.HiddenWhen).SettingNodeId);
         var resetPicture = snapshot.Nodes.Single(node => node.Id == "reset-picture");
         Assert.Equal(MenuControlType.Confirmation, resetPicture.ControlType);
         Assert.Equal("Cancel", resetPicture.DefaultValue);
@@ -1661,6 +1663,224 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             var result = controller.GetSnapshot();
             Assert.Equal("Red", result.MenuLabel);
             Assert.Equal(MenuStateConfidence.Synchronized, result.MenuConfidence);
+        }
+    }
+
+    [Fact]
+    public async Task MenuControlsRecalculateOffsetsWhenASelectionHidesASibling()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: hidden-picture-selection
+            name: Hidden Picture Selection
+            model: Test TV
+            timing:
+              defaultDelay: 50ms
+              screenChangeDelay: 50ms
+              returnDelay: 50ms
+            nodes:
+              - id: normal-video
+                label: Normal video
+              - id: picture
+                label: Picture
+                parent: normal-video
+              - id: picture-mode
+                label: Picture Mode
+                parent: picture
+                controlType: selection
+                defaultValue: Standard
+                options: [Standard, Movie]
+              - id: dynamic-detail
+                label: Dynamic Detail
+                parent: picture
+                controlType: slider
+                defaultValue: 0
+                minimumValue: 0
+                maximumValue: 10
+                hiddenWhen:
+                  - setting: picture-mode
+                    equals: Standard
+              - id: sharpness
+                label: Sharpness
+                parent: picture
+                controlType: slider
+                defaultValue: 0
+                minimumValue: 0
+                maximumValue: 10
+                disabledWhen:
+                  - setting: picture-mode
+                    equals: Movie
+            anchors:
+              - id: normal
+                label: Return to normal video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            transitions:
+              - id: open-picture
+                from: normal-video
+                to: picture
+                verified: true
+                steps:
+                  - key: KEY_MENU
+              - id: open-picture-mode
+                from: normal-video
+                to: picture-mode
+                verified: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_ENTER
+            """;
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            await controller.ApplyMenuControlValuesAsync(
+                [
+                    new MenuControlValueUpdate("dynamic-detail", "0", "2"),
+                    new MenuControlValueUpdate("picture-mode", "Standard", "Movie")
+                ],
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["picture-mode"] = "Standard",
+                    ["dynamic-detail"] = "0",
+                    ["sharpness"] = "0"
+                },
+                returnToNormalVideo: false);
+
+            Assert.Equal(
+                [
+                    "KEY_MENU", "KEY_ENTER",
+                    "KEY_ENTER", "KEY_DOWN", "KEY_ENTER",
+                    "KEY_DOWN", "KEY_RIGHT", "KEY_RIGHT"
+                ],
+                GetSentKeys(transport));
+
+            transport.SentMessages.Clear();
+            await controller.ApplyMenuControlValuesAsync(
+                [
+                    new MenuControlValueUpdate("picture-mode", "Movie", "Standard"),
+                    new MenuControlValueUpdate("sharpness", "0", "1")
+                ],
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["picture-mode"] = "Movie",
+                    ["dynamic-detail"] = "2",
+                    ["sharpness"] = "0"
+                },
+                returnToNormalVideo: false);
+
+            Assert.Equal(
+                ["KEY_ENTER", "KEY_UP", "KEY_ENTER", "KEY_DOWN", "KEY_RIGHT"],
+                GetSentKeys(transport).TakeLast(5));
+            var snapshot = controller.GetMenuNavigationSnapshot();
+            Assert.Equal("Standard", snapshot.ControlValues["picture-mode"]);
+            Assert.True(snapshot.Nodes.Single(node => node.Id == "dynamic-detail").IsHiddenByDefault);
+        }
+    }
+
+    [Fact]
+    public async Task VerifiedMenuNavigationUsesPredictedHiddenSiblingOffsets()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: hidden-navigation
+            name: Hidden Navigation
+            model: Test TV
+            timing:
+              defaultDelay: 50ms
+              screenChangeDelay: 50ms
+              returnDelay: 50ms
+            nodes:
+              - id: normal-video
+                label: Normal video
+              - id: settings
+                label: Settings
+                parent: normal-video
+              - id: game-mode
+                label: Game Mode
+                parent: settings
+                controlType: switch
+                defaultValue: off
+              - id: optional-tools
+                label: Optional Tools
+                parent: settings
+                hiddenWhen:
+                  - setting: game-mode
+                    equals: on
+              - id: sound
+                label: Sound
+                parent: settings
+            anchors:
+              - id: normal
+                label: Return to normal video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            transitions:
+              - id: open-settings
+                from: normal-video
+                to: settings
+                verified: true
+                steps:
+                  - key: KEY_MENU
+              - id: topology-open-settings-to-game-mode
+                from: normal-video
+                to: game-mode
+                verified: true
+                generatedFromTopology: true
+                topologySeed: open-settings
+                validationGroup: topology-open-settings-game-mode
+                validationRoute: true
+                steps:
+                  - key: KEY_MENU
+              - id: topology-open-settings-to-optional-tools
+                from: normal-video
+                to: optional-tools
+                verified: true
+                generatedFromTopology: true
+                topologySeed: open-settings
+                validationGroup: topology-open-settings-optional-tools
+                validationRoute: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_DOWN
+                  - key: KEY_ENTER
+              - id: topology-open-settings-to-sound
+                from: normal-video
+                to: sound
+                verified: true
+                generatedFromTopology: true
+                topologySeed: open-settings
+                validationGroup: topology-open-settings-sound
+                validationRoute: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_DOWN
+                    repeat: 2
+                  - key: KEY_ENTER
+            """;
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            await controller.ApplyMenuControlValuesAsync(
+                [new MenuControlValueUpdate("game-mode", "off", "on")],
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["game-mode"] = "off"
+                },
+                returnToNormalVideo: false);
+
+            transport.SentMessages.Clear();
+            var plan = controller.CreateNavigationPlan("sound");
+            await controller.ExecuteNavigationPlanAsync();
+
+            Assert.True(plan.UsesCalculatedRoute);
+            Assert.Equal(["KEY_DOWN", "KEY_ENTER"], GetSentKeys(transport));
+            Assert.Equal("on", controller.GetMenuNavigationSnapshot().ControlValues["game-mode"]);
         }
     }
 

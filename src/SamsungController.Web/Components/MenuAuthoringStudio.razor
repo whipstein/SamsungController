@@ -19,7 +19,7 @@
         <div class="authoring-intro-actions">
             <HelpBubble Title="Menu-authoring workflow" ButtonText="Workflow help">
                 <ol>
-                    <li><strong>Define menu:</strong> identify the TV and enter the complete visible hierarchy in its on-screen order. Add a configuration only when settings change which rows exist or where they appear.</li>
+                    <li><strong>Define menu:</strong> identify the TV and enter its complete hierarchy in on-screen order. Add hidden rules for setting-dependent rows; use a configuration when the layout reorders or cannot be modeled by a setting.</li>
                     <li><strong>Define anchor:</strong> choose the base menu such as Settings, define how root and deeper positions return to normal video, then record the keys that open that menu from normal video.</li>
                     <li><strong>Verify coverage:</strong> SamsungController selects the smallest representative set it can infer from the topology. Confirm each displayed line item three times; covered routes are promoted together.</li>
                 </ol>
@@ -171,7 +171,7 @@
                                     }
                                 </div>
                                 <div class="menu-outline-step setup-step-anchor" @ref="TopologyStepElement">
-                                <p>Paste the visible hierarchy using two spaces per level. Add control details as <code>{slider; default=50; min=0; max=100}</code>, <code>{selection; default=Warm2; options=Standard|Warm1|Warm2}</code>, <code>{switch; default=off}</code>, or <code>{confirmation; default=Cancel; options=Reset|Cancel}</code>. A disabled rule uses a setting's stable ID: <code>{slider; default=50; min=0; max=100; disabledWhen=adaptive-picture=on}</code>. Add <code>[stable-id]</code> last only when identity must be explicit.</p>
+                                <p>Paste the hierarchy using two spaces per level. Add control details as <code>{slider; default=50; min=0; max=100}</code>, <code>{selection; default=Warm2; options=Standard|Warm1|Warm2}</code>, <code>{switch; default=off}</code>, or <code>{confirmation; default=Cancel; options=Reset|Cancel}</code>. Use a setting's stable ID for <code>disabledWhen=adaptive-picture=on</code> when a row stays gray, or <code>hiddenWhen=game-mode=on</code> when it disappears. Add <code>[stable-id]</code> last only when identity must be explicit.</p>
                                 <div class="bulk-topology-controls">
                                     <label>
                                         <span>PLACE OUTLINE UNDER</span>
@@ -469,6 +469,51 @@
                                                 <input @bind="condition.EqualsValue" placeholder="Value" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
                                             }
                                             <button type="button" class="recorded-step-delete" aria-label="Remove disabled rule" @onclick="() => RemoveNodeDisabledCondition(conditionIndex)" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">×</button>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                            <div class="node-disabled-rule-editor node-hidden-rule-editor">
+                                <header>
+                                    <span><b>HIDDEN / REMOVED RULES</b><small>The item and its descendants disappear from menu order when any listed setting equals the specified value.</small></span>
+                                    <button class="secondary-action" @onclick="AddNodeHiddenCondition" disabled="@(!CanAddNodeHiddenCondition)">+ Add rule</button>
+                                </header>
+                                @if (NodeEditorHiddenConditions.Count == 0)
+                                {
+                                    <p>Always present under the declared settings.</p>
+                                }
+                                else
+                                {
+                                    @for (var index = 0; index < NodeEditorHiddenConditions.Count; index++)
+                                    {
+                                        var conditionIndex = index;
+                                        var condition = NodeEditorHiddenConditions[conditionIndex];
+                                        var conditionValues = GetDisabledConditionChoices(condition.SettingNodeId);
+                                        <div class="node-disabled-rule-row">
+                                            <span>Hidden when</span>
+                                            <select @bind="condition.SettingNodeId" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">
+                                                <option value="">Choose setting</option>
+                                                @foreach (var setting in AvailableDisabledConditionSettings)
+                                                {
+                                                    <option value="@setting.Id">@setting.Path · @FormatControlType(setting.ControlType)</option>
+                                                }
+                                            </select>
+                                            <span>equals</span>
+                                            @if (conditionValues.Count > 0)
+                                            {
+                                                <select @bind="condition.EqualsValue" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">
+                                                    <option value="">Choose value</option>
+                                                    @foreach (var value in conditionValues)
+                                                    {
+                                                        <option value="@value">@value</option>
+                                                    }
+                                                </select>
+                                            }
+                                            else
+                                            {
+                                                <input @bind="condition.EqualsValue" placeholder="Value" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
+                                            }
+                                            <button type="button" class="recorded-step-delete" aria-label="Remove hidden rule" @onclick="() => RemoveNodeHiddenCondition(conditionIndex)" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">×</button>
                                         </div>
                                     }
                                 }
@@ -1115,6 +1160,7 @@
     private decimal? NodeEditorMaximumValue { get; set; }
     private List<SelectionOptionEdit> NodeEditorSelectionOptions { get; } = [];
     private List<NodeDisabledConditionEdit> NodeEditorDisabledConditions { get; } = [];
+    private List<NodeHiddenConditionEdit> NodeEditorHiddenConditions { get; } = [];
     private bool ConfirmMenuNodeDelete { get; set; }
     private string CustomKey { get; set; } = "KEY_SOURCE";
     private RemoteKeyAction CustomAction { get; set; } = RemoteKeyAction.Click;
@@ -1256,6 +1302,9 @@
         && NodeEditorSelectionOptions.Count < 100;
     private bool CanAddNodeDisabledCondition => CanEditMenuTree
         && NodeEditorDisabledConditions.Count < 20
+        && AvailableDisabledConditionSettings.Count > 0;
+    private bool CanAddNodeHiddenCondition => CanEditMenuTree
+        && NodeEditorHiddenConditions.Count < 20
         && AvailableDisabledConditionSettings.Count > 0;
     private bool CanStartRecording => !IsBusy && !Snapshot.MacroRunning && !Navigation.IsRunning &&
         (IsConnected || CanConnectForRecording) &&
@@ -1401,6 +1450,11 @@
             ? " disabled-default"
             : node.DisabledWhen.Count > 0
                 ? " conditionally-disabled"
+                : string.Empty)
+        + (node.IsHiddenByDefault
+            ? " hidden-default"
+            : node.HiddenWhen.Count > 0
+                ? " conditionally-hidden"
                 : string.Empty);
     private static string GetMenuTreeNodeStateTitle(MenuNodeSummary node) =>
         (node.HasDraftRoute
@@ -1412,6 +1466,11 @@
             ? ". Disabled under the declared default settings."
             : node.DisabledWhen.Count > 0
                 ? ". Conditionally disabled by another setting."
+                : string.Empty)
+        + (node.IsHiddenByDefault
+            ? ". Hidden under the declared default settings."
+            : node.HiddenWhen.Count > 0
+                ? ". Conditionally hidden by another setting."
                 : string.Empty);
     private bool CanEditMenuTree => !IsBusy && !Authoring.IsRecording
         && !Navigation.IsRunning && !Snapshot.MacroRunning
@@ -1438,6 +1497,9 @@
         && AreSliderBoundsValid
         && IsSelectionOptionsValid
         && NodeEditorDisabledConditions.All(condition =>
+            !string.IsNullOrWhiteSpace(condition.SettingNodeId)
+            && !string.IsNullOrWhiteSpace(condition.EqualsValue))
+        && NodeEditorHiddenConditions.All(condition =>
             !string.IsNullOrWhiteSpace(condition.SettingNodeId)
             && !string.IsNullOrWhiteSpace(condition.EqualsValue))
         && (IsAddingMenuNode
@@ -2103,6 +2165,7 @@
         NodeEditorMaximumValue = null;
         NodeEditorSelectionOptions.Clear();
         NodeEditorDisabledConditions.Clear();
+        NodeEditorHiddenConditions.Clear();
         ConfirmMenuNodeDelete = false;
         LocalError = null;
     }
@@ -2134,6 +2197,7 @@
             NodeEditorMaximumValue = null;
             NodeEditorSelectionOptions.Clear();
             NodeEditorDisabledConditions.Clear();
+            NodeEditorHiddenConditions.Clear();
             LocalError = null;
         }
     }
@@ -2157,6 +2221,9 @@
         NodeEditorDisabledConditions.Clear();
         NodeEditorDisabledConditions.AddRange(node.DisabledWhen.Select(condition =>
             new NodeDisabledConditionEdit(condition)));
+        NodeEditorHiddenConditions.Clear();
+        NodeEditorHiddenConditions.AddRange(node.HiddenWhen.Select(condition =>
+            new NodeHiddenConditionEdit(condition)));
         ConfirmMenuNodeDelete = false;
         LocalError = null;
     }
@@ -2232,6 +2299,27 @@
         LocalError = null;
     }
 
+    private void AddNodeHiddenCondition()
+    {
+        var settingId = AvailableDisabledConditionSettings
+            .FirstOrDefault(node => NodeEditorHiddenConditions.All(condition =>
+                !condition.SettingNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase)))?.Id
+            ?? AvailableDisabledConditionSettings.FirstOrDefault()?.Id
+            ?? string.Empty;
+        NodeEditorHiddenConditions.Add(new NodeHiddenConditionEdit(settingId, string.Empty));
+        LocalError = null;
+    }
+
+    private void RemoveNodeHiddenCondition(int index)
+    {
+        if (index >= 0 && index < NodeEditorHiddenConditions.Count)
+        {
+            NodeEditorHiddenConditions.RemoveAt(index);
+        }
+
+        LocalError = null;
+    }
+
     private void AddSelectionOption()
     {
         if (CanAddSelectionOption)
@@ -2281,6 +2369,13 @@
     private IReadOnlyList<MenuNodeDisabledCondition> CreateNodeDisabledConditions() =>
         NodeEditorDisabledConditions
             .Select(condition => new MenuNodeDisabledCondition(
+                condition.SettingNodeId,
+                condition.EqualsValue))
+            .ToArray();
+
+    private IReadOnlyList<MenuNodeHiddenCondition> CreateNodeHiddenConditions() =>
+        NodeEditorHiddenConditions
+            .Select(condition => new MenuNodeHiddenCondition(
                 condition.SettingNodeId,
                 condition.EqualsValue))
             .ToArray();
@@ -2339,7 +2434,8 @@
                 CreateNodeDisabledConditions(),
                 CreateSelectionOptions(),
                 NodeEditorMinimumValue,
-                NodeEditorMaximumValue);
+                NodeEditorMaximumValue,
+                CreateNodeHiddenConditions());
             await Controller.UpdateMenuNodeAsync(nodeId, request);
 
             Refresh();
@@ -2363,7 +2459,8 @@
             CreateNodeDisabledConditions(),
             CreateSelectionOptions(),
             NodeEditorMinimumValue,
-            NodeEditorMaximumValue);
+            NodeEditorMaximumValue,
+            CreateNodeHiddenConditions());
         await Controller.CreateMenuNodeAsync(request);
 
         Refresh();
@@ -3199,6 +3296,12 @@
                 $"{condition.SettingNodeId}={condition.EqualsValue}")));
         }
 
+        if (node.HiddenWhen.Count > 0)
+        {
+            details.Add("hiddenWhen=" + string.Join('|', node.HiddenWhen.Select(condition =>
+                $"{condition.SettingNodeId}={condition.EqualsValue}")));
+        }
+
         return "{" + string.Join("; ", details) + "}";
     }
 
@@ -3356,6 +3459,24 @@
         }
 
         public NodeDisabledConditionEdit(MenuNodeDisabledCondition condition)
+            : this(condition.SettingNodeId, condition.EqualsValue)
+        {
+        }
+
+        public string SettingNodeId { get; set; }
+
+        public string EqualsValue { get; set; }
+    }
+
+    private sealed class NodeHiddenConditionEdit
+    {
+        public NodeHiddenConditionEdit(string settingNodeId, string equalsValue)
+        {
+            SettingNodeId = settingNodeId;
+            EqualsValue = equalsValue;
+        }
+
+        public NodeHiddenConditionEdit(MenuNodeHiddenCondition condition)
             : this(condition.SettingNodeId, condition.EqualsValue)
         {
         }

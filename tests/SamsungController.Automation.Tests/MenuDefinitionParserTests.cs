@@ -27,6 +27,9 @@ public sealed class MenuDefinitionParserTests
         var disabledCondition = Assert.Single(definition.Nodes["picture"].DisabledWhen!);
         Assert.Equal("auto-picture", disabledCondition.SettingNodeId);
         Assert.Equal("on", disabledCondition.EqualsValue);
+        var hiddenCondition = Assert.Single(definition.Nodes["picture"].HiddenWhen!);
+        Assert.Equal("auto-picture", hiddenCondition.SettingNodeId);
+        Assert.Equal("on", hiddenCondition.EqualsValue);
         var anchor = definition.GetRequiredAnchor("normal");
         Assert.True(anchor.Verified);
         Assert.Equal(3, Assert.Single(anchor.Operations).Repeat);
@@ -171,6 +174,9 @@ public sealed class MenuDefinitionParserTests
               - Movie
               - Filmmaker Mode
             disabledWhen:
+              - setting: auto-picture
+                equals: on
+            hiddenWhen:
               - setting: auto-picture
                 equals: on
           - id: brightness

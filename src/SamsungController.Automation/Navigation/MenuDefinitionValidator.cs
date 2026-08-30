@@ -321,18 +321,47 @@ public sealed class MenuDefinitionValidator
             }
         }
 
-        var conditions = node.DisabledWhen ?? [];
-        if (conditions.Count > 20)
+        ValidateValueConditions(
+            definition,
+            node,
+            (node.DisabledWhen ?? []).Select(condition => (
+                condition.SettingNodeId,
+                condition.EqualsValue)),
+            "disabledWhen",
+            "disabled",
+            errors);
+        ValidateValueConditions(
+            definition,
+            node,
+            (node.HiddenWhen ?? []).Select(condition => (
+                condition.SettingNodeId,
+                condition.EqualsValue)),
+            "hiddenWhen",
+            "hidden",
+            errors);
+    }
+
+    private static void ValidateValueConditions(
+        MenuDefinition definition,
+        MenuNode node,
+        IEnumerable<(string SettingNodeId, string EqualsValue)> source,
+        string fieldName,
+        string behavior,
+        ICollection<MenuDefinitionValidationError> errors)
+    {
+        var conditions = source.ToArray();
+        var location = $"node '{node.Id}'";
+        if (conditions.Length > 20)
         {
             errors.Add(new MenuDefinitionValidationError(
                 location,
-                "A menu item can define at most 20 disabled conditions."));
+                $"A menu item can define at most 20 {behavior} conditions."));
         }
 
         var uniqueConditions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var condition in conditions)
         {
-            var conditionLocation = $"{location} disabledWhen";
+            var conditionLocation = $"{location} {fieldName}";
             ValidateIdentifier(conditionLocation, condition.SettingNodeId, errors);
             ValidateRequired(conditionLocation, "equals", condition.EqualsValue, errors);
             if (!uniqueConditions.Add($"{condition.SettingNodeId}\u001f{condition.EqualsValue}"))
@@ -352,7 +381,7 @@ public sealed class MenuDefinitionValidator
             {
                 errors.Add(new MenuDefinitionValidationError(
                     conditionLocation,
-                    "A menu item cannot disable itself based on its own value."));
+                    $"A menu item cannot make itself {behavior} based on its own value."));
             }
             else if (setting.ControlType is MenuControlType.Submenu
                      or MenuControlType.Confirmation)

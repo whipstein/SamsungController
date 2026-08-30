@@ -161,7 +161,8 @@ public static class TopologyRouteGenerator
 
             var selectableChildren = orderedNodes.Where(candidate =>
                     candidate.ParentId?.Equals(parent.Id, StringComparison.OrdinalIgnoreCase) == true
-                    && !IsDisabledByDefault(definition, candidate))
+                    && !IsDisabledByDefault(definition, candidate)
+                    && !IsHiddenByDefault(definition, candidate))
                 .ToArray();
             var childIndex = Array.FindIndex(selectableChildren, candidate =>
                 candidate.Id.Equals(child.Id, StringComparison.OrdinalIgnoreCase));
@@ -244,6 +245,13 @@ public static class TopologyRouteGenerator
 
     private static bool IsDisabledByDefault(MenuDefinition definition, MenuNode node) =>
         (node.DisabledWhen ?? []).Any(condition =>
+            definition.Nodes.TryGetValue(condition.SettingNodeId, out var setting)
+            && setting.DefaultValue?.Equals(
+                condition.EqualsValue,
+                StringComparison.OrdinalIgnoreCase) == true);
+
+    private static bool IsHiddenByDefault(MenuDefinition definition, MenuNode node) =>
+        (node.HiddenWhen ?? []).Any(condition =>
             definition.Nodes.TryGetValue(condition.SettingNodeId, out var setting)
             && setting.DefaultValue?.Equals(
                 condition.EqualsValue,

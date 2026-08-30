@@ -47,6 +47,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private readonly MenuTraversalRecorder _menuRecorder = new();
     private readonly Dictionary<string, int> _menuValidationPasses = new(
         StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _menuControlValues = new(
+        StringComparer.OrdinalIgnoreCase);
 
     private SamsungWebSettings _settings = new();
     private CancellationTokenSource? _macroSource;
@@ -175,6 +177,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 _menuDefinition = menuDefinition;
                 _menuStateTracker = menuStateTracker;
                 _menuNavigator = menuNavigator;
+                ResetMenuControlValues(menuDefinition);
                 _navigationError = navigationError;
                 _initialized = true;
             }
@@ -269,6 +272,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
         lock (_sync)
         {
             var definition = _menuDefinition;
+            var routeDefinition = definition is null
+                ? null
+                : CreateVisibilityAdjustedDefinition(definition, _menuControlValues);
             var nodes = definition is null
                 ? []
                 : definition.Nodes.Values.Select(node => new MenuNodeSummary(
@@ -278,22 +284,24 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         definition.GetDepth(node.Id),
                         node.Description,
                         node.ParentId,
-                        definition.ApplicableTransitions.Any(transition =>
+                        routeDefinition!.ApplicableTransitions.Any(transition =>
                             transition.Verified
                             && transition.ToNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase))
-                        || definition.ApplicableAnchors.Any(anchor =>
+                        || routeDefinition.ApplicableAnchors.Any(anchor =>
                             anchor.Verified
                             && anchor.TargetNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase)),
-                        definition.ApplicableTransitions.Any(transition =>
+                        routeDefinition.ApplicableTransitions.Any(transition =>
                             !transition.Verified
                             && transition.ToNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase))
-                        || definition.ApplicableAnchors.Any(anchor =>
+                        || routeDefinition.ApplicableAnchors.Any(anchor =>
                             !anchor.Verified
                             && anchor.TargetNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase)),
                         node.ControlType,
                         node.DefaultValue,
                         node.DisabledWhen ?? [],
                         IsMenuNodeDisabledByDefault(definition, node),
+                        node.HiddenWhen ?? [],
+                        IsMenuNodeHiddenByDefault(definition, node),
                         node.SelectionOptions ?? [],
                         node.MinimumValue,
                         node.MaximumValue))
@@ -336,7 +344,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 Volatile.Read(ref _navigationRunning) == 1,
                 _navigationStatus,
                 _navigationProgress,
-                _navigationError);
+                _navigationError,
+                new Dictionary<string, string>(
+                    _menuControlValues,
+                    StringComparer.OrdinalIgnoreCase));
         }
     }
 
@@ -2894,16 +2905,39 @@ public sealed class SamsungControllerService : IAsyncDisposable
     public NavigationPlan CreateNavigationPlan(string targetNodeId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(targetNodeId);
-        MenuNavigator navigator;
+        MenuDefinition definition;
+        MenuStateTracker tracker;
+        Dictionary<string, string> effectiveValues;
         lock (_sync)
         {
-            navigator = _menuNavigator
+            definition = _menuDefinition
                 ?? throw new InvalidOperationException(
                     _navigationError ?? "No valid menu definition is loaded.");
+            tracker = _menuStateTracker
+                ?? throw new InvalidOperationException(
+                    _navigationError ?? "No menu state tracker is available.");
+            effectiveValues = new Dictionary<string, string>(
+                _menuControlValues,
+                StringComparer.OrdinalIgnoreCase);
         }
 
         try
         {
+            var target = definition.GetRequiredNode(targetNodeId);
+            if (IsMenuNodeOrAncestorHidden(definition, target, effectiveValues))
+            {
+                throw new InvalidOperationException(
+                    $"'{definition.GetPath(target.Id)}' is hidden by the current predicted menu settings.");
+            }
+
+            var effectiveDefinition = CreateVisibilityAdjustedDefinition(
+                definition,
+                effectiveValues);
+            var navigator = new MenuNavigator(
+                effectiveDefinition,
+                tracker,
+                new WebMenuCommandTarget(_client),
+                _menuDelay);
             var plan = navigator.Plan(targetNodeId, includeDraftTransitions: false);
             lock (_sync)
             {
@@ -3070,14 +3104,19 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     foreach (var update in normalized)
                     {
                         var node = definition.GetRequiredNode(update.NodeId);
-                        if (IsMenuNodeDisabled(definition, node, effectiveValues))
+                        if (IsMenuNodeOrAncestorDisabled(definition, node, effectiveValues))
                         {
                             throw new InvalidOperationException(
                                 $"'{definition.GetPath(node.Id)}' is disabled by the current predicted menu settings.");
                         }
 
+                        if (IsMenuNodeOrAncestorHidden(definition, node, effectiveValues))
+                        {
+                            throw new InvalidOperationException(
+                                $"'{definition.GetPath(node.Id)}' is hidden by the current predicted menu settings.");
+                        }
+
                         await PreparePictureControlAsync(
-                                navigator,
                                 definition,
                                 tracker,
                                 node,
@@ -3092,6 +3131,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
                                     token)
                                 .ConfigureAwait(false);
                             effectiveValues[update.NodeId] = update.ToValue;
+                            lock (_sync)
+                            {
+                                _menuControlValues[update.NodeId] = update.ToValue;
+                            }
                             tracker.ConfirmNode(
                                 update.NodeId,
                                 $"Menu control '{definition.GetPath(update.NodeId)}' was adjusted to the predicted value '{update.ToValue}'.");
@@ -4337,6 +4380,14 @@ public sealed class SamsungControllerService : IAsyncDisposable
             condition.EqualsValue,
             StringComparison.OrdinalIgnoreCase) == true);
 
+    private static bool IsMenuNodeHiddenByDefault(
+        MenuDefinition definition,
+        MenuNode node) => (node.HiddenWhen ?? []).Any(condition =>
+        definition.Nodes.TryGetValue(condition.SettingNodeId, out var setting)
+        && setting.DefaultValue?.Equals(
+            condition.EqualsValue,
+            StringComparison.OrdinalIgnoreCase) == true);
+
     private static MenuNode NormalizeMenuNodeRequest(MenuNodeEditRequest request) =>
         new(
             request.Id.Trim(),
@@ -4355,7 +4406,13 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 .Select(option => option.Trim())
                 .ToArray() ?? [],
             request.MinimumValue,
-            request.MaximumValue);
+            request.MaximumValue,
+            request.HiddenWhen?
+                .Where(condition => condition is not null)
+                .Select(condition => new MenuNodeHiddenCondition(
+                    condition.SettingNodeId.Trim(),
+                    condition.EqualsValue.Trim()))
+                .ToArray() ?? []);
 
     private static MenuRecordingRequest NormalizeRecordingRequest(MenuRecordingRequest request) =>
         request with
@@ -5531,6 +5588,27 @@ public sealed class SamsungControllerService : IAsyncDisposable
         return values;
     }
 
+    private void ResetMenuControlValues(MenuDefinition? definition)
+    {
+        _menuControlValues.Clear();
+        if (definition is null)
+        {
+            return;
+        }
+
+        foreach (var node in definition.Nodes.Values.Where(node =>
+                     node.ControlType is MenuControlType.Slider
+                         or MenuControlType.Switch
+                         or MenuControlType.Selection
+                     && !string.IsNullOrWhiteSpace(node.DefaultValue)))
+        {
+            _menuControlValues[node.Id] = NormalizePictureControlValue(
+                definition,
+                node,
+                node.DefaultValue!);
+        }
+    }
+
     private static MenuControlValueUpdate[] OrderPictureControlUpdates(
         MenuDefinition definition,
         IReadOnlyList<MenuControlValueUpdate> updates)
@@ -5556,11 +5634,30 @@ public sealed class SamsungControllerService : IAsyncDisposable
             }
 
             var node = definition.GetRequiredNode(update.NodeId);
-            foreach (var condition in node.DisabledWhen ?? [])
+            var current = node;
+            var ancestors = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            while (ancestors.Add(current.Id))
             {
-                if (byNodeId.TryGetValue(condition.SettingNodeId, out var dependency))
+                foreach (var condition in current.DisabledWhen ?? [])
                 {
-                    Visit(dependency);
+                    if (byNodeId.TryGetValue(condition.SettingNodeId, out var dependency))
+                    {
+                        Visit(dependency);
+                    }
+                }
+
+                foreach (var condition in current.HiddenWhen ?? [])
+                {
+                    if (byNodeId.TryGetValue(condition.SettingNodeId, out var dependency))
+                    {
+                        Visit(dependency);
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(current.ParentId)
+                    || !definition.Nodes.TryGetValue(current.ParentId, out current))
+                {
+                    break;
                 }
             }
 
@@ -5589,6 +5686,167 @@ public sealed class SamsungControllerService : IAsyncDisposable
             return value?.Equals(condition.EqualsValue, StringComparison.OrdinalIgnoreCase) == true;
         });
 
+    private static bool IsMenuNodeOrAncestorDisabled(
+        MenuDefinition definition,
+        MenuNode node,
+        IReadOnlyDictionary<string, string> effectiveValues)
+    {
+        var current = node;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (visited.Add(current.Id))
+        {
+            if (IsMenuNodeDisabled(definition, current, effectiveValues))
+            {
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(current.ParentId)
+                || !definition.Nodes.TryGetValue(current.ParentId, out current))
+            {
+                break;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsMenuNodeHidden(
+        MenuDefinition definition,
+        MenuNode node,
+        IReadOnlyDictionary<string, string> effectiveValues) =>
+        (node.HiddenWhen ?? []).Any(condition =>
+        {
+            var value = effectiveValues.TryGetValue(condition.SettingNodeId, out var knownValue)
+                ? knownValue
+                : definition.GetRequiredNode(condition.SettingNodeId).DefaultValue;
+            return value?.Equals(condition.EqualsValue, StringComparison.OrdinalIgnoreCase) == true;
+        });
+
+    private static bool IsMenuNodeOrAncestorHidden(
+        MenuDefinition definition,
+        MenuNode node,
+        IReadOnlyDictionary<string, string> effectiveValues)
+    {
+        var current = node;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (visited.Add(current.Id))
+        {
+            if (IsMenuNodeHidden(definition, current, effectiveValues))
+            {
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(current.ParentId)
+                || !definition.Nodes.TryGetValue(current.ParentId, out current))
+            {
+                break;
+            }
+        }
+
+        return false;
+    }
+
+    private static MenuDefinition CreateVisibilityAdjustedDefinition(
+        MenuDefinition definition,
+        IReadOnlyDictionary<string, string> effectiveValues)
+    {
+        if (!definition.Nodes.Values.Any(node =>
+                node.DisabledWhen is { Count: > 0 }
+                || node.HiddenWhen is { Count: > 0 }))
+        {
+            return definition;
+        }
+
+        var adjustedNodes = definition.Nodes.Values.Select(node =>
+            effectiveValues.TryGetValue(node.Id, out var value)
+                ? node with { DefaultValue = value }
+                : node).ToArray();
+        var adjusted = new MenuDefinition(
+            definition.Id,
+            definition.Name,
+            definition.Model,
+            definition.Context,
+            adjustedNodes,
+            definition.Transitions.Values,
+            definition.Anchors.Values,
+            definition.Timing,
+            definition.Configurations.Values,
+            definition.ActiveConfigurationId);
+        var regenerated = TopologyRouteGenerator.Regenerate(adjusted);
+        var verifiedGroupIds = definition.Transitions.Values
+            .Where(transition => transition.GeneratedFromTopology
+                && transition.Verified
+                && !string.IsNullOrWhiteSpace(transition.ValidationGroupId))
+            .GroupBy(
+                transition => transition.ValidationGroupId!,
+                StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.All(transition => transition.Verified)
+                && !string.IsNullOrWhiteSpace(group.First().TopologySeedTransitionId)
+                && definition.Transitions.TryGetValue(
+                    group.First().TopologySeedTransitionId!,
+                    out var seed)
+                && seed.Verified)
+            .Select(group => group.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var transitions = regenerated.Transitions.Values.Select(transition =>
+            transition.GeneratedFromTopology
+            && (transition.ValidationGroupId is not null
+                && verifiedGroupIds.Contains(transition.ValidationGroupId)
+                || IsNewlyVisibleConditionalRoute(
+                    definition,
+                    transition,
+                    effectiveValues))
+                ? transition with { Verified = true }
+                : transition).ToArray();
+        return new MenuDefinition(
+            regenerated.Id,
+            regenerated.Name,
+            regenerated.Model,
+            regenerated.Context,
+            regenerated.Nodes.Values,
+            transitions,
+            regenerated.Anchors.Values,
+            regenerated.Timing,
+            regenerated.Configurations.Values,
+            regenerated.ActiveConfigurationId);
+    }
+
+    private static bool IsNewlyVisibleConditionalRoute(
+        MenuDefinition definition,
+        MenuTransition transition,
+        IReadOnlyDictionary<string, string> effectiveValues)
+    {
+        if (!transition.GeneratedFromTopology
+            || string.IsNullOrWhiteSpace(transition.TopologySeedTransitionId)
+            || !definition.Transitions.TryGetValue(
+                transition.TopologySeedTransitionId,
+                out var seed)
+            || !seed.Verified
+            || !definition.Nodes.TryGetValue(transition.ToNodeId, out var current))
+        {
+            return false;
+        }
+
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (visited.Add(current.Id)
+               && !current.Id.Equals(seed.ToNodeId, StringComparison.OrdinalIgnoreCase))
+        {
+            if (IsMenuNodeHiddenByDefault(definition, current)
+                && !IsMenuNodeHidden(definition, current, effectiveValues))
+            {
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(current.ParentId)
+                || !definition.Nodes.TryGetValue(current.ParentId, out current))
+            {
+                break;
+            }
+        }
+
+        return false;
+    }
+
     private static bool HasVerifiedPictureControlRoute(MenuDefinition definition, string nodeId) =>
         definition.ApplicableTransitions.Any(transition =>
             transition.Verified
@@ -5609,37 +5867,82 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 && !string.IsNullOrWhiteSpace(node.DefaultValue)
                 && node.SelectionOptions is { Count: > 0 })
             .Where(node => HasVerifiedPictureControlRoute(definition, node.Id)
-                || node.DisabledWhen is { Count: > 0 }
-                && !string.IsNullOrWhiteSpace(node.ParentId)
-                && definition.GetRequiredNode(node.ParentId).ControlType == MenuControlType.Submenu
-                && HasVerifiedPictureControlRoute(definition, node.ParentId))
+                || HasConditionalAncestorWithVerifiedParent(definition, node))
             .Select(node => node.Id)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
 
+    private static bool HasConditionalAncestorWithVerifiedParent(
+        MenuDefinition definition,
+        MenuNode node)
+    {
+        var current = node;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (visited.Add(current.Id) && !string.IsNullOrWhiteSpace(current.ParentId))
+        {
+            var parent = definition.GetRequiredNode(current.ParentId);
+            if ((current.DisabledWhen is { Count: > 0 }
+                 || current.HiddenWhen is { Count: > 0 })
+                && parent.ControlType == MenuControlType.Submenu
+                && HasVerifiedPictureControlRoute(definition, parent.Id))
+            {
+                return true;
+            }
+
+            current = parent;
+        }
+
+        return false;
+    }
+
     private async Task PreparePictureControlAsync(
-        MenuNavigator navigator,
         MenuDefinition definition,
         MenuStateTracker tracker,
         MenuNode node,
         IReadOnlyDictionary<string, string> effectiveValues,
         CancellationToken cancellationToken)
     {
+        var effectiveDefinition = CreateVisibilityAdjustedDefinition(
+            definition,
+            effectiveValues);
         if (HasVerifiedPictureControlRoute(definition, node.Id))
         {
-            await navigator.PrepareStateAsync(node.Id, cancellationToken).ConfigureAwait(false);
+            await PrepareMenuStateForValuesAsync(
+                    definition,
+                    tracker,
+                    node.Id,
+                    effectiveValues,
+                    cancellationToken)
+                .ConfigureAwait(false);
             return;
         }
 
-        if (node.DisabledWhen is not { Count: > 0 }
-            || string.IsNullOrWhiteSpace(node.ParentId))
+        var hasDirectConditionalRoute = (node.DisabledWhen is { Count: > 0 }
+                                         || node.HiddenWhen is { Count: > 0 })
+                                        && !string.IsNullOrWhiteSpace(node.ParentId)
+                                        && HasVerifiedPictureControlRoute(
+                                            definition,
+                                            node.ParentId);
+        if (!hasDirectConditionalRoute)
         {
+            if (HasVerifiedPictureControlRoute(effectiveDefinition, node.Id))
+            {
+                await PrepareMenuStateForValuesAsync(
+                        definition,
+                        tracker,
+                        node.Id,
+                        effectiveValues,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+
             throw new InvalidOperationException(
                 $"Menu control '{definition.GetPath(node.Id)}' does not have a verified navigation route.");
         }
 
-        var parent = definition.GetRequiredNode(node.ParentId);
+        var parent = definition.GetRequiredNode(node.ParentId!);
         if (parent.ControlType != MenuControlType.Submenu
             || !HasVerifiedPictureControlRoute(definition, parent.Id))
         {
@@ -5649,7 +5952,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
         var selectableChildren = definition.Nodes.Values.Where(candidate =>
                 candidate.ParentId?.Equals(parent.Id, StringComparison.OrdinalIgnoreCase) == true
-                && !IsMenuNodeDisabled(definition, candidate, effectiveValues))
+                && !IsMenuNodeDisabled(definition, candidate, effectiveValues)
+                && !IsMenuNodeHidden(definition, candidate, effectiveValues))
             .ToArray();
         var childIndex = Array.FindIndex(selectableChildren, candidate =>
             candidate.Id.Equals(node.Id, StringComparison.OrdinalIgnoreCase));
@@ -5672,7 +5976,13 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
         else
         {
-            await navigator.PrepareStateAsync(parent.Id, cancellationToken).ConfigureAwait(false);
+            await PrepareMenuStateForValuesAsync(
+                    definition,
+                    tracker,
+                    parent.Id,
+                    effectiveValues,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
 
         if (offset != 0)
@@ -5692,6 +6002,33 @@ public sealed class SamsungControllerService : IAsyncDisposable
         tracker.ConfirmNode(
             node.Id,
             $"Reached conditionally enabled control '{definition.GetPath(node.Id)}' from its verified containing section.");
+    }
+
+    private async Task PrepareMenuStateForValuesAsync(
+        MenuDefinition definition,
+        MenuStateTracker tracker,
+        string targetNodeId,
+        IReadOnlyDictionary<string, string> effectiveValues,
+        CancellationToken cancellationToken)
+    {
+        var effectiveDefinition = CreateVisibilityAdjustedDefinition(
+            definition,
+            effectiveValues);
+        var navigator = new MenuNavigator(
+            effectiveDefinition,
+            tracker,
+            new WebMenuCommandTarget(_client),
+            _menuDelay);
+        navigator.ProgressChanged += HandleNavigationProgress;
+        try
+        {
+            await navigator.PrepareStateAsync(targetNodeId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            navigator.ProgressChanged -= HandleNavigationProgress;
+        }
     }
 
     private async Task ExecutePictureControlValueChangeAsync(
@@ -5953,6 +6290,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _menuDefinition = definition;
             _menuStateTracker = tracker;
             _menuNavigator = navigator;
+            ResetMenuControlValues(definition);
             _navigationPlan = null;
             _navigationProgress = null;
             _navigationStatus = "Menu definition loaded";

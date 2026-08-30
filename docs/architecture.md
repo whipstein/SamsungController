@@ -138,19 +138,24 @@ in-range default. Selections and confirmations persist ordered, unique choices
 and require their default to match one; for confirmations it means the initially
 highlighted action. Conditional
 `disabledWhen` rules reference another value-bearing node and retain gray rows in
-their ordered topology. Default-value evaluation is descriptive UI state rather
-than telemetry; it does not alter the planner's explicit recorded operations.
+their ordered topology. `hiddenWhen` rules remove matching rows and descendants
+from the effective topology. Default-value evaluation begins as descriptive UI
+state rather than telemetry; values sent through Menu Controls update an
+in-session prediction used by controls and calculated navigation.
 
 An indented-outline planner can add or synchronize an entire branch in one
 atomic write. It reuses matching stable IDs, previews additions, updates,
-reordering, removals, interaction types, defaults, bounds, choices, and disabled rules, and
+reordering, removals, interaction types, defaults, bounds, choices, disabled rules,
+and hidden rules, and
 refuses to remove nodes referenced by recorded behavior.
 
 Topology route generation treats recorded forward transitions as exceptional
 seeds. A seed that enters a descendant submenu produces deterministic absolute
 routes for every reachable child using declared sibling order, Down presses,
-and Enter for submenu children. Disabled rows under declared defaults are
-excluded from both targets and offsets. Generated routes are grouped by the
+and Enter for submenu children. Disabled or hidden rows under declared defaults
+are excluded from both targets and offsets. When a modeled value changes,
+generated topology routes are recalculated from the predicted values while
+retaining verified branch provenance. Generated routes are grouped by the
 first child below the seed target; only the longest route in each group appears
 as a visual coverage test. Three passes promote the group and its seed together.
 Regeneration preserves verified groups while their structural key sequences are
@@ -162,8 +167,9 @@ coverage groups into one calculated line-item count. Adding a node to an existin
 branch invalidates that branch group; adding an independent top-level branch
 creates a new group without disturbing verified siblings.
 
-Named menu configurations describe settings-dependent visible layouts inside a
-single model YAML. Routes and anchors may be configuration-scoped; planning,
+Named menu configurations describe reordered or otherwise unmodeled alternate
+layouts inside a single model YAML. Modeled row presence uses `hiddenWhen`.
+Routes and anchors may be configuration-scoped; planning,
 state observation, recording, validation queues, macro checks, and the ordinary
 Menu page consider only universal behavior plus the active configuration.
 Because the TV does not report these selection values, configuration choice is

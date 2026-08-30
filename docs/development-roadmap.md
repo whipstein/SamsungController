@@ -86,6 +86,7 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 - [x] Define, edit, delete, sort, and custom-order the overall menu tree before recording routes.
 - [x] Bulk-create or synchronize a full menu branch from an indented outline with stable-ID reuse and a safe change preview.
 - [x] Describe rows as sub-menus, bounded sliders, selections, switches, or confirmation dialogs with defaults, ordered choices, and conditional disabled/gray rules.
+- [x] Model conditionally hidden rows and descendants and recalculate live sibling offsets from predicted setting values.
 - [x] Store named settings-dependent menu configurations in one TV YAML and scope route verification/navigation to the active configuration.
 - [x] Distinguish unrecorded tree nodes in red and recorded-but-unverified nodes in yellow.
 - [x] Identify transitions by source and target instead of requiring a manual transition ID.

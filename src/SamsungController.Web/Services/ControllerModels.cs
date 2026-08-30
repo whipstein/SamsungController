@@ -113,6 +113,8 @@ public sealed record MenuNodeSummary(
     string? DefaultValue,
     IReadOnlyList<MenuNodeDisabledCondition> DisabledWhen,
     bool IsDisabledByDefault,
+    IReadOnlyList<MenuNodeHiddenCondition> HiddenWhen,
+    bool IsHiddenByDefault,
     IReadOnlyList<string> SelectionOptions,
     decimal? MinimumValue,
     decimal? MaximumValue);
@@ -166,7 +168,8 @@ public sealed record MenuNavigationSnapshot(
     bool IsRunning,
     string? Status,
     NavigationProgress? Progress,
-    string? Error);
+    string? Error,
+    IReadOnlyDictionary<string, string> ControlValues);
 
 public sealed record MenuTraversalFailureReport(
     string DraftTransitionId,
@@ -211,7 +214,8 @@ public sealed record MenuNodeEditRequest(
     IReadOnlyList<MenuNodeDisabledCondition>? DisabledWhen = null,
     IReadOnlyList<string>? SelectionOptions = null,
     decimal? MinimumValue = null,
-    decimal? MaximumValue = null);
+    decimal? MaximumValue = null,
+    IReadOnlyList<MenuNodeHiddenCondition>? HiddenWhen = null);
 
 public sealed record MenuTopologyOutlineRequest(
     string ParentNodeId,

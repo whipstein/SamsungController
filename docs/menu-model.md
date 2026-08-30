@@ -104,6 +104,9 @@ nodes:
     disabledWhen:
       - setting: adaptive-picture
         equals: on
+    hiddenWhen:
+      - setting: picture-mode
+        equals: Standard
 
   - id: picture-mode
     label: Picture Mode
@@ -153,8 +156,10 @@ transitions:
       - key: KEY_MENU
 ```
 
-`configurations` keeps settings-dependent visible layouts in one TV model file.
-Use one entry for each combination that changes row presence or order. The
+`configurations` keeps alternate layouts in one TV model file. Use `hiddenWhen`
+for row-presence changes driven by modeled value-bearing nodes. Use a named
+configuration when rows reorder, when an unmodeled condition changes the layout,
+or when a different verified route set is required. The
 `conditions` value is a human-readable checklist, not an expression evaluated
 from TV telemetry: Samsung does not report the highlighted row or these setting
 values over this control channel. The active configuration is selected in the
@@ -180,15 +185,20 @@ choice. Duplicate choices are rejected. Keep lists in the same order displayed
 by the TV. A submenu has no value. These declarations document the expected TV
 behavior; SamsungController cannot read the live value or highlighted choice.
 
-`disabledWhen` documents rows that remain visible and occupy their normal place
+`disabledWhen` documents rows that remain visible in their declared position
 in the menu but become unavailable or gray. Each condition names another
 value-bearing node and the value that disables this node. Multiple conditions
 use OR behavior: any matching condition disables the row. The declared defaults
-let the UI mark a row as disabled by default; changing a value on the TV does not
-automatically update that prediction. Disabled metadata never removes a node or
-rewrites its recorded key sequence, so traversal order continues to include a
-gray row unless a separately selected menu configuration describes a topology
-where that row is actually absent.
+let the UI mark a row as disabled by default.
+
+`hiddenWhen` documents rows that disappear entirely. It uses the same `setting`
+and `equals` entries and the same OR behavior. When a hidden rule matches, the
+row and all descendants are removed from Menu Controls, the verified menu map,
+and calculated sibling offsets. SamsungController orders a staged controlling
+change before its dependent rows and keeps the predicted values for the current
+application session. A change made with the physical remote cannot be observed;
+restore the declared defaults or reproduce that change in Menu Controls before
+relying on a calculated route.
 
 Parent relationships on nodes control tree presentation only. Within each parent,
 the YAML node sequence is the persistent custom order used to mirror the TV.
@@ -263,8 +273,10 @@ can be planned or sent.
    `Adaptive Picture {switch; default=off}`, or `Reset Picture {confirmation;
    default=Cancel; options=Reset|Cancel}`. The option order after
    `options=` is preserved. A dependent gray row can be written as `Brightness {slider;
-   default=50; min=0; max=100; disabledWhen=adaptive-picture=on}`; separate multiple disabling
-   conditions with `|`. The fine-adjustment editor exposes selection and
+   default=50; min=0; max=100; disabledWhen=adaptive-picture=on}`. A row that
+   disappears can use `Game HDR {submenu; hiddenWhen=game-mode=off}`. Separate
+   multiple conditions with `|`. The fine-adjustment editor exposes disabled and
+   hidden rules, selection and
    confirmation choices as an ordered add/remove/move list, and exposes slider
    boundaries as numeric fields. By default the outline synchronizes the complete
    selected branch, so deleting a line previews and saves that item as a removal.
@@ -349,14 +361,19 @@ deliberately separate from the three-pass route count because the TV does not
 return its setting value. Changes made with a physical remote or another
 application can invalidate the page's predicted starting value.
 
-Menu Controls evaluates `disabledWhen` against the values predicted on that
-page. A staged update orders controlling settings before their dependents. A
+Menu Controls evaluates `disabledWhen` and `hiddenWhen` against predicted values.
+A staged update orders controlling settings before their dependents. A
 conditional child that is disabled under the YAML defaults does not need to be
 added to the default-state coverage checklist: after its controller enables it,
 the page reaches the verified containing submenu and derives the child's Up/Down
 offset from the enabled sibling order. This is intended for rows such as 20 Point
 RGB controls and Custom Color Space controls that remain in the topology but
 cannot be selected in the default state.
+
+When a `hiddenWhen` rule changes, the row and descendants appear or disappear
+immediately and every later sibling offset is recalculated. The ordinary verified
+menu navigator uses the same in-session predictions. Default values are restored
+when the definition is reloaded or the application restarts.
 
 Slider value confirmation uses representative coverage rather than requiring
 every slider independently. Each distinct slider visually confirmed on the page

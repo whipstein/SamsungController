@@ -55,6 +55,10 @@ public sealed record MenuNodeDisabledCondition(
     string SettingNodeId,
     string EqualsValue);
 
+public sealed record MenuNodeHiddenCondition(
+    string SettingNodeId,
+    string EqualsValue);
+
 public sealed record MenuNode(
     string Id,
     string Label,
@@ -65,7 +69,8 @@ public sealed record MenuNode(
     IReadOnlyList<MenuNodeDisabledCondition>? DisabledWhen = null,
     IReadOnlyList<string>? SelectionOptions = null,
     decimal? MinimumValue = null,
-    decimal? MaximumValue = null);
+    decimal? MaximumValue = null,
+    IReadOnlyList<MenuNodeHiddenCondition>? HiddenWhen = null);
 
 public sealed record MenuOperation(
     string Key,

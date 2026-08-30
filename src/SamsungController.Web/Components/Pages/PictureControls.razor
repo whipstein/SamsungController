@@ -15,13 +15,13 @@
         <HelpBubble Title="Menu control behavior" ButtonText="Page help">
             <ul>
                 <li>Choose a top-level menu tab, then search or adjust controls grouped by their immediate TV menu section.</li>
-                <li>Switches and selections use their YAML defaults and dynamically apply declared <code>disabledWhen</code> rules.</li>
+                <li>Switches and selections use predicted values and dynamically apply declared <code>disabledWhen</code> and <code>hiddenWhen</code> rules.</li>
                 <li>Turning on 20 Point enables its Interval and RGB controls. Choosing Custom Color Space enables its Color and RGB controls.</li>
                 <li><strong>Immediate</strong> sends one changed control at a time. <strong>Apply button</strong> can stage a controller and its newly enabled settings together.</li>
                 <li>Confirm three different sliders visually to verify the shared slider behavior for this TV. Later slider changes no longer require individual confirmation.</li>
                 <li>Confirm each selection dropdown once. Its option list and ordering are stored separately from other selections.</li>
             </ul>
-            <p class="help-callout">A conditionally enabled control uses its verified containing-section route and the declared menu order after its controller has changed.</p>
+            <p class="help-callout">A conditionally enabled or visible control uses its verified containing-section route and the recalculated menu order after its controller has changed.</p>
         </HelpBubble>
         <a class="secondary-action menu-authoring-link" href="menu">Verified menus <span>→</span></a>
     </div>
@@ -276,7 +276,8 @@ else
         control.DesiredValue = value;
         control.Confirmed = false;
         control.AwaitingConfirmation = false;
-        ClearPendingValuesThatBecameDisabled();
+        ClearPendingValuesThatBecameUnavailable();
+        EnsureSelectedMenuArea();
         LocalError = null;
         LocalStatus = UpdateMode == PictureUpdateMode.Staged
             ? $"{control.Node.Label} staged at {value}."
@@ -500,9 +501,10 @@ else
         return option;
     }
 
-    private void ClearPendingValuesThatBecameDisabled()
+    private void ClearPendingValuesThatBecameUnavailable()
     {
-        foreach (var control in Controls.Where(IsControlDisabled))
+        foreach (var control in Controls.Where(control =>
+                     IsControlDisabled(control) || IsControlHidden(control)))
         {
             control.DesiredValue = control.AppliedValue;
             control.AwaitingConfirmation = false;
@@ -513,32 +515,61 @@ else
     private bool IsControlDisabled(PictureControlEdit control) =>
         control.Node.DisabledWhen.Any(condition =>
         {
-            var controller = Controls.FirstOrDefault(candidate => candidate.Node.Id.Equals(
-                condition.SettingNodeId,
-                StringComparison.OrdinalIgnoreCase));
-            var value = controller?.DesiredValue
-                ?? Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
-                    condition.SettingNodeId,
-                    StringComparison.OrdinalIgnoreCase))?.DefaultValue;
+            var value = GetPredictedValue(condition.SettingNodeId);
             return value?.Equals(condition.EqualsValue, StringComparison.OrdinalIgnoreCase) == true;
         });
+
+    private bool IsControlHidden(PictureControlEdit control)
+    {
+        var current = control.Node;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (visited.Add(current.Id))
+        {
+            if (current.HiddenWhen.Any(condition => GetPredictedValue(condition.SettingNodeId)
+                    ?.Equals(condition.EqualsValue, StringComparison.OrdinalIgnoreCase) == true))
+            {
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(current.ParentId))
+            {
+                break;
+            }
+
+            var parent = Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
+                current.ParentId,
+                StringComparison.OrdinalIgnoreCase));
+            if (parent is null)
+            {
+                break;
+            }
+
+            current = parent;
+        }
+
+        return false;
+    }
+
+    private string? GetPredictedValue(string nodeId) =>
+        Controls.FirstOrDefault(candidate => candidate.Node.Id.Equals(
+            nodeId,
+            StringComparison.OrdinalIgnoreCase))?.DesiredValue
+        ?? Navigation.ControlValues.GetValueOrDefault(nodeId)
+        ?? Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
+            nodeId,
+            StringComparison.OrdinalIgnoreCase))?.DefaultValue;
 
     private string GetDisabledReason(PictureControlEdit control)
     {
         var matches = control.Node.DisabledWhen.Where(condition =>
-        {
-            var controller = Controls.FirstOrDefault(candidate => candidate.Node.Id.Equals(
-                condition.SettingNodeId,
-                StringComparison.OrdinalIgnoreCase));
-            return controller?.DesiredValue.Equals(
+            GetPredictedValue(condition.SettingNodeId)?.Equals(
                 condition.EqualsValue,
-                StringComparison.OrdinalIgnoreCase) == true;
-        }).Select(condition =>
+                StringComparison.OrdinalIgnoreCase) == true).Select(condition =>
         {
-            var controller = Controls.First(candidate => candidate.Node.Id.Equals(
+            var setting = Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
                 condition.SettingNodeId,
                 StringComparison.OrdinalIgnoreCase));
-            return $"{controller.Node.Label} = {controller.DesiredValue}";
+            return $"{setting?.Label ?? condition.SettingNodeId} = {GetPredictedValue(condition.SettingNodeId)}";
         }).ToArray();
         return matches.Length == 0 ? "Unavailable in the predicted state" : $"Disabled while {string.Join(" or ", matches)}";
     }
@@ -566,7 +597,8 @@ else
     }
 
     private IReadOnlyList<PictureControlEdit> GetFilteredControls() => Controls.Where(control =>
-            !string.IsNullOrWhiteSpace(SelectedAreaId)
+            !IsControlHidden(control)
+            && !string.IsNullOrWhiteSpace(SelectedAreaId)
             && ResolveMenuArea(control.Node).Id.Equals(
                 SelectedAreaId,
                 StringComparison.OrdinalIgnoreCase)
@@ -579,7 +611,8 @@ else
     {
         var nodeOrder = Navigation.Nodes.Select((node, index) => (node.Id, index))
             .ToDictionary(item => item.Id, item => item.index, StringComparer.OrdinalIgnoreCase);
-        return Controls.Select(control => ResolveMenuArea(control.Node))
+        return Controls.Where(control => !IsControlHidden(control))
+            .Select(control => ResolveMenuArea(control.Node))
             .GroupBy(area => area.Id, StringComparer.OrdinalIgnoreCase)
             .Select(group => new MenuControlArea(group.Key, group.First().Label, group.Count()))
             .OrderBy(area => nodeOrder.GetValueOrDefault(area.Id, int.MaxValue))
@@ -678,7 +711,8 @@ else
                 continue;
             }
 
-            var defaultValue = NormalizeDefaultValue(node);
+            var defaultValue = Navigation.ControlValues.GetValueOrDefault(node.Id)
+                ?? NormalizeDefaultValue(node);
             if (defaultValue is not null)
             {
                 Controls.Add(new PictureControlEdit(node, defaultValue));
@@ -708,14 +742,28 @@ else
             return true;
         }
 
-        if (node.DisabledWhen.Count == 0 || string.IsNullOrWhiteSpace(node.ParentId))
+        var current = node;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (visited.Add(current.Id) && !string.IsNullOrWhiteSpace(current.ParentId))
         {
-            return false;
+            var parent = Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
+                current.ParentId,
+                StringComparison.OrdinalIgnoreCase));
+            if (parent is null)
+            {
+                break;
+            }
+
+            if ((current.DisabledWhen.Count > 0 || current.HiddenWhen.Count > 0)
+                && parent.HasVerifiedRoute)
+            {
+                return true;
+            }
+
+            current = parent;
         }
 
-        return Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
-            node.ParentId,
-            StringComparison.OrdinalIgnoreCase))?.HasVerifiedRoute == true;
+        return false;
     }
 
     private static bool IsSupportedControl(MenuNodeSummary node) => node.ControlType switch

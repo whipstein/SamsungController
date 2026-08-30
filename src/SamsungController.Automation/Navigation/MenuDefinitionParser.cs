@@ -16,8 +16,8 @@ public sealed class MenuDefinitionParser
     private static readonly HashSet<string> ConfigurationFields =
         new(["id", "name", "conditions"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> NodeFields =
-        new(["id", "label", "parent", "description", "controlType", "defaultValue", "minimumValue", "maximumValue", "options", "disabledWhen"], StringComparer.OrdinalIgnoreCase);
-    private static readonly HashSet<string> DisabledConditionFields =
+        new(["id", "label", "parent", "description", "controlType", "defaultValue", "minimumValue", "maximumValue", "options", "disabledWhen", "hiddenWhen"], StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> ValueConditionFields =
         new(["setting", "equals"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> AnchorFields =
         new(["id", "label", "target", "configuration", "verified", "description", "validationSource", "returnStrategy", "steps"], StringComparer.OrdinalIgnoreCase);
@@ -192,7 +192,12 @@ public sealed class MenuDefinitionParser
                         context)
                     : [],
                 OptionalDecimal(fields, "minimumValue", context),
-                OptionalDecimal(fields, "maximumValue", context)));
+                OptionalDecimal(fields, "maximumValue", context),
+                fields.TryGetValue("hiddenWhen", out var hiddenWhenNode)
+                    ? ParseHiddenConditions(
+                        RequireSequence(hiddenWhenNode, $"hiddenWhen in {context}"),
+                        context)
+                    : []));
         }
 
         return nodes;
@@ -223,8 +228,26 @@ public sealed class MenuDefinitionParser
         {
             var context = $"{nodeContext} disabled condition {index + 1}";
             var fields = ReadFields(RequireMapping(sequence.Children[index], context), context);
-            EnsureAllowedFields(fields, DisabledConditionFields, context);
+            EnsureAllowedFields(fields, ValueConditionFields, context);
             conditions.Add(new MenuNodeDisabledCondition(
+                RequiredScalar(fields, "setting", context),
+                RequiredScalar(fields, "equals", context)));
+        }
+
+        return conditions;
+    }
+
+    private static IReadOnlyList<MenuNodeHiddenCondition> ParseHiddenConditions(
+        YamlSequenceNode sequence,
+        string nodeContext)
+    {
+        var conditions = new List<MenuNodeHiddenCondition>(sequence.Children.Count);
+        for (var index = 0; index < sequence.Children.Count; index++)
+        {
+            var context = $"{nodeContext} hidden condition {index + 1}";
+            var fields = ReadFields(RequireMapping(sequence.Children[index], context), context);
+            EnsureAllowedFields(fields, ValueConditionFields, context);
+            conditions.Add(new MenuNodeHiddenCondition(
                 RequiredScalar(fields, "setting", context),
                 RequiredScalar(fields, "equals", context)));
         }

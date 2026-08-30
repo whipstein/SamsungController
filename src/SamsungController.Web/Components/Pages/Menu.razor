@@ -193,7 +193,7 @@
 
     private string? ErrorMessage => LocalError ?? Navigation.Error;
     private IReadOnlyList<MenuNodeSummary> VerifiedNodes => Navigation.Nodes
-        .Where(node => node.HasVerifiedRoute)
+        .Where(node => node.HasVerifiedRoute && !IsNodeHidden(node))
         .ToArray();
     private IReadOnlyList<MenuAnchorSummary> VerifiedAnchors => Navigation.Anchors
         .Where(anchor => anchor.Verified)
@@ -241,21 +241,66 @@
                     && node.MaximumValue is { } maximum
             ? $" · range {minimum:G29}–{maximum:G29}"
             : string.Empty;
-        if (node.DisabledWhen.Count == 0)
+        if (node.DisabledWhen.Count == 0 && node.HiddenWhen.Count == 0)
         {
             return control + defaultValue + range + options;
         }
 
-        var rules = node.DisabledWhen.Select(condition =>
+        var disabledRules = node.DisabledWhen.Select(condition =>
         {
             var setting = Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
                 condition.SettingNodeId,
                 StringComparison.OrdinalIgnoreCase));
             return $"{setting?.Label ?? condition.SettingNodeId} = {condition.EqualsValue}";
         });
-        return control + defaultValue + range + options
-               + (node.IsDisabledByDefault ? " · disabled by default when " : " · disabled when ")
-               + string.Join(" or ", rules);
+        var hiddenRules = node.HiddenWhen.Select(condition =>
+        {
+            var setting = Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
+                condition.SettingNodeId,
+                StringComparison.OrdinalIgnoreCase));
+            return $"{setting?.Label ?? condition.SettingNodeId} = {condition.EqualsValue}";
+        });
+        var disabled = node.DisabledWhen.Count == 0
+            ? string.Empty
+            : (node.IsDisabledByDefault ? " · disabled by default when " : " · disabled when ")
+              + string.Join(" or ", disabledRules);
+        var hidden = node.HiddenWhen.Count == 0
+            ? string.Empty
+            : (node.IsHiddenByDefault ? " · hidden by default when " : " · hidden when ")
+              + string.Join(" or ", hiddenRules);
+        return control + defaultValue + range + options + disabled + hidden;
+    }
+
+    private bool IsNodeHidden(MenuNodeSummary node)
+    {
+        var current = node;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (visited.Add(current.Id))
+        {
+            if (current.HiddenWhen.Any(condition => Navigation.ControlValues
+                    .GetValueOrDefault(condition.SettingNodeId)
+                    ?.Equals(condition.EqualsValue, StringComparison.OrdinalIgnoreCase) == true))
+            {
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(current.ParentId))
+            {
+                break;
+            }
+
+            var parent = Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
+                current.ParentId,
+                StringComparison.OrdinalIgnoreCase));
+            if (parent is null)
+            {
+                break;
+            }
+
+            current = parent;
+        }
+
+        return false;
     }
 
     protected override async Task OnInitializedAsync()

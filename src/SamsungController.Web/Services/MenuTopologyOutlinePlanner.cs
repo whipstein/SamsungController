@@ -70,6 +70,9 @@ internal static class MenuTopologyOutlinePlanner
             var disabledWhen = entry.DisabledWhenSpecified
                 ? entry.DisabledWhen
                 : existing?.DisabledWhen ?? [];
+            var hiddenWhen = entry.HiddenWhenSpecified
+                ? entry.HiddenWhen
+                : existing?.HiddenWhen ?? [];
             var selectionOptions = entry.SelectionOptionsSpecified
                 ? entry.SelectionOptions
                 : entry.ControlType is not null
@@ -97,7 +100,8 @@ internal static class MenuTopologyOutlinePlanner
                 disabledWhen,
                 selectionOptions,
                 minimumValue,
-                maximumValue);
+                maximumValue,
+                hiddenWhen);
             nodesById[node.Id] = node;
             if (!plannedChildren.TryGetValue(resolvedParentId, out var children))
             {
@@ -124,7 +128,8 @@ internal static class MenuTopologyOutlinePlanner
                      || existing.MinimumValue != node.MinimumValue
                      || existing.MaximumValue != node.MaximumValue
                      || !SequenceEqual(existing.SelectionOptions, node.SelectionOptions)
-                     || !ConditionsEqual(existing.DisabledWhen, node.DisabledWhen))
+                     || !ConditionsEqual(existing.DisabledWhen, node.DisabledWhen)
+                     || !HiddenConditionsEqual(existing.HiddenWhen, node.HiddenWhen))
             {
                 updatedCount++;
                 changes.Add($"Update {BuildPath(nodesById, node.Id)} [{node.Id}]");
@@ -271,6 +276,8 @@ internal static class MenuTopologyOutlinePlanner
         string? defaultValue = null;
         var disabledWhenSpecified = false;
         IReadOnlyList<MenuNodeDisabledCondition> disabledWhen = [];
+        var hiddenWhenSpecified = false;
+        IReadOnlyList<MenuNodeHiddenCondition> hiddenWhen = [];
         var selectionOptionsSpecified = false;
         IReadOnlyList<string> selectionOptions = [];
         var minimumValueSpecified = false;
@@ -307,6 +314,15 @@ internal static class MenuTopologyOutlinePlanner
                     disabledWhenSpecified = true;
                     disabledWhen = ParseDisabledConditions(
                         rawPart["disabledWhen=".Length..],
+                        lineNumber);
+                    continue;
+                }
+
+                if (rawPart.StartsWith("hiddenWhen=", StringComparison.OrdinalIgnoreCase))
+                {
+                    hiddenWhenSpecified = true;
+                    hiddenWhen = ParseHiddenConditions(
+                        rawPart["hiddenWhen=".Length..],
                         lineNumber);
                     continue;
                 }
@@ -368,6 +384,8 @@ internal static class MenuTopologyOutlinePlanner
             string.IsNullOrWhiteSpace(defaultValue) ? null : defaultValue,
             disabledWhenSpecified,
             disabledWhen,
+            hiddenWhenSpecified,
+            hiddenWhen,
             selectionOptionsSpecified,
             selectionOptions,
             minimumValueSpecified,
@@ -420,6 +438,33 @@ internal static class MenuTopologyOutlinePlanner
             }
 
             result.Add(new MenuNodeDisabledCondition(
+                rawCondition[..equals].Trim(),
+                rawCondition[(equals + 1)..].Trim()));
+        }
+
+        return result;
+    }
+
+    private static IReadOnlyList<MenuNodeHiddenCondition> ParseHiddenConditions(
+        string value,
+        int lineNumber)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return [];
+        }
+
+        var result = new List<MenuNodeHiddenCondition>();
+        foreach (var rawCondition in value.Split('|', StringSplitOptions.TrimEntries))
+        {
+            var equals = rawCondition.IndexOf('=');
+            if (equals <= 0 || equals == rawCondition.Length - 1)
+            {
+                throw new InvalidOperationException(
+                    $"Outline line {lineNumber} hiddenWhen entries must use setting-id=value.");
+            }
+
+            result.Add(new MenuNodeHiddenCondition(
                 rawCondition[..equals].Trim(),
                 rawCondition[(equals + 1)..].Trim()));
         }
@@ -717,6 +762,22 @@ internal static class MenuTopologyOutlinePlanner
                        StringComparison.Ordinal));
     }
 
+    private static bool HiddenConditionsEqual(
+        IReadOnlyList<MenuNodeHiddenCondition>? left,
+        IReadOnlyList<MenuNodeHiddenCondition>? right)
+    {
+        var leftItems = left ?? [];
+        var rightItems = right ?? [];
+        return leftItems.Count == rightItems.Count
+               && leftItems.Zip(rightItems).All(pair =>
+                   pair.First.SettingNodeId.Equals(
+                       pair.Second.SettingNodeId,
+                       StringComparison.OrdinalIgnoreCase)
+                   && pair.First.EqualsValue.Equals(
+                       pair.Second.EqualsValue,
+                       StringComparison.Ordinal));
+    }
+
     private static bool SequenceEqual(
         IReadOnlyList<string>? left,
         IReadOnlyList<string>? right)
@@ -739,6 +800,8 @@ internal static class MenuTopologyOutlinePlanner
         string? DefaultValue,
         bool DisabledWhenSpecified,
         IReadOnlyList<MenuNodeDisabledCondition> DisabledWhen,
+        bool HiddenWhenSpecified,
+        IReadOnlyList<MenuNodeHiddenCondition> HiddenWhen,
         bool SelectionOptionsSpecified,
         IReadOnlyList<string> SelectionOptions,
         bool MinimumValueSpecified,

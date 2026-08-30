@@ -69,6 +69,16 @@ public sealed class MenuDefinitionWriter
                     AppendScalar(yaml, 8, "equals", condition.EqualsValue);
                 }
             }
+
+            if (node.HiddenWhen is { Count: > 0 })
+            {
+                yaml.AppendLine("    hiddenWhen:");
+                foreach (var condition in node.HiddenWhen)
+                {
+                    AppendListScalar(yaml, 6, "setting", condition.SettingNodeId);
+                    AppendScalar(yaml, 8, "equals", condition.EqualsValue);
+                }
+            }
         }
 
         yaml.AppendLine();

@@ -628,6 +628,9 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .menu-tree-node.unrecorded .menu-tree-node-select span { color: var(--danger); }
 .menu-tree-node.disabled-default .menu-tree-node-select span { color: #7f8b90; text-decoration: line-through; text-decoration-thickness: 1px; }
 .menu-tree-node.conditionally-disabled:not(.disabled-default) .menu-tree-node-select span::after { content: " ◇"; color: var(--amber); }
+.menu-tree-node.hidden-default .menu-tree-node-select { opacity: .58; }
+.menu-tree-node.hidden-default .menu-tree-node-select span::after { content: " ⊘"; color: #d69cff; }
+.menu-tree-node.conditionally-hidden:not(.hidden-default) .menu-tree-node-select span::after { content: " ◈"; color: #d69cff; }
 .menu-tree-node-select small { color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .menu-tree-node-select small b { color: var(--muted); font-weight: 500; }
 .menu-tree-order-actions { display: flex; gap: 3px; padding-right: 5px; }
@@ -658,6 +661,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .node-disabled-rule-editor > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 9px; }
 .node-disabled-rule-editor > header span, .node-disabled-rule-editor > header b, .node-disabled-rule-editor > header small { display: block; }
 .node-disabled-rule-editor > header b { color: var(--amber); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; }
+.node-hidden-rule-editor > header b { color: #d69cff; }
 .node-disabled-rule-editor > header small { margin-top: 3px; color: var(--faint); font-size: 8px; line-height: 1.4; }
 .node-disabled-rule-editor > header .secondary-action { flex: 0 0 auto; padding: 7px 9px; font-size: 8px; }
 .node-disabled-rule-editor > p { margin: 0; color: var(--faint); font-size: 8px; }

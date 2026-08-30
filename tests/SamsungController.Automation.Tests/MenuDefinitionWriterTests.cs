@@ -34,7 +34,8 @@ public sealed class MenuDefinitionWriterTests : IDisposable
                     DefaultValue: "50",
                     DisabledWhen: [new MenuNodeDisabledCondition("adaptive-picture", "on")],
                     MinimumValue: 0,
-                    MaximumValue: 100),
+                    MaximumValue: 100,
+                    HiddenWhen: [new MenuNodeHiddenCondition("adaptive-picture", "off")]),
                 new MenuNode(
                     "picture-mode",
                     "Picture Mode",
@@ -113,6 +114,9 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         var disabledCondition = Assert.Single(reparsed.Nodes["brightness"].DisabledWhen!);
         Assert.Equal("adaptive-picture", disabledCondition.SettingNodeId);
         Assert.Equal("on", disabledCondition.EqualsValue);
+        var hiddenCondition = Assert.Single(reparsed.Nodes["brightness"].HiddenWhen!);
+        Assert.Equal("adaptive-picture", hiddenCondition.SettingNodeId);
+        Assert.Equal("off", hiddenCondition.EqualsValue);
         Assert.Equal(
             ["Standard", "Movie", "Filmmaker Mode"],
             reparsed.Nodes["picture-mode"].SelectionOptions);
