@@ -116,6 +116,7 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         var path = Path.Combine(_directory, "menu.yaml");
 
         await new MenuDefinitionWriter().WriteFileAsync(path, definition);
+        var writtenYaml = await File.ReadAllTextAsync(path);
         var reparsed = await new MenuDefinitionParser().ParseFileAsync(path);
 
         Assert.Equal(definition.Id, reparsed.Id);
@@ -125,7 +126,10 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         var configuration = Assert.Single(reparsed.Configurations.Values);
         Assert.Equal("standard", configuration.Id);
         Assert.Equal("Game Mode = Off", configuration.Conditions);
-        Assert.Contains("  verified: true", await File.ReadAllTextAsync(path), StringComparison.Ordinal);
+        Assert.Contains("  verified: true", writtenYaml, StringComparison.Ordinal);
+        Assert.Contains("    children:", writtenYaml, StringComparison.Ordinal);
+        Assert.Contains("        children:", writtenYaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("parent:", writtenYaml, StringComparison.Ordinal);
         Assert.Equal("Owner's settings", reparsed.Nodes["settings"].Description);
         Assert.Equal(MenuControlType.Switch, reparsed.Nodes["adaptive-picture"].ControlType);
         Assert.Equal("off", reparsed.Nodes["adaptive-picture"].DefaultValue);
@@ -201,6 +205,32 @@ public sealed class MenuDefinitionWriterTests : IDisposable
 
         Assert.Empty(reparsed.Anchors);
         Assert.Empty(reparsed.Transitions);
+    }
+
+    [Fact]
+    public void WriterRejectsChildrenUnderANonSubmenuNode()
+    {
+        var definition = new MenuDefinition(
+            "invalid-tree",
+            "Invalid Tree",
+            "Samsung TV",
+            new MenuDefinitionContext(),
+            [
+                new MenuNode(
+                    "picture-mode",
+                    "Picture Mode",
+                    ControlType: MenuControlType.Selection,
+                    DefaultValue: "Standard",
+                    SelectionOptions: ["Standard", "Movie"]),
+                new MenuNode("brightness", "Brightness", "picture-mode")
+            ],
+            [],
+            []);
+
+        var exception = Assert.Throws<MenuDefinitionValidationException>(
+            () => new MenuDefinitionWriter().Serialize(definition));
+
+        Assert.Contains("Only a submenu node can contain children", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -352,6 +382,8 @@ public sealed class MenuDefinitionWriterTests : IDisposable
 
         Assert.StartsWith("{", firstContent.TrimStart(), StringComparison.Ordinal);
         Assert.StartsWith("{", secondContent.TrimStart(), StringComparison.Ordinal);
+        Assert.Contains("\"children\"", firstContent, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"parent\"", firstContent, StringComparison.Ordinal);
         Assert.Equal(definition.Id, reparsed.Id);
         Assert.Equal(definition.Context, reparsed.Context);
         Assert.Equal(definition.Timing, reparsed.Timing);

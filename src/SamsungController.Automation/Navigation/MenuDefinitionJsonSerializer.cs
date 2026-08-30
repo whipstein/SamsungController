@@ -119,9 +119,7 @@ public sealed class MenuDefinitionJsonSerializer
             ["returnDelay"] = $"{definition.Timing.ReturnDelayMilliseconds}ms",
             ["verified"] = definition.Timing.Verified
         };
-        root["nodes"] = new JsonArray(definition.Nodes.Values
-            .Select(CreateNode)
-            .ToArray<JsonNode?>());
+        root["nodes"] = CreateNodes(definition);
         root["anchors"] = new JsonArray(definition.Anchors.Values
             .Select(CreateAnchor)
             .ToArray<JsonNode?>());
@@ -163,7 +161,22 @@ public sealed class MenuDefinitionJsonSerializer
         return result;
     }
 
-    private static JsonObject CreateNode(MenuNode node)
+    private static JsonArray CreateNodes(MenuDefinition definition)
+    {
+        var orderedNodes = definition.Nodes.Values.ToArray();
+        var childrenByParent = orderedNodes
+            .Where(node => !string.IsNullOrWhiteSpace(node.ParentId))
+            .GroupBy(node => node.ParentId!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.OrdinalIgnoreCase);
+        return new JsonArray(orderedNodes
+            .Where(node => string.IsNullOrWhiteSpace(node.ParentId))
+            .Select(node => (JsonNode?)CreateNode(node, childrenByParent))
+            .ToArray());
+    }
+
+    private static JsonObject CreateNode(
+        MenuNode node,
+        IReadOnlyDictionary<string, MenuNode[]> childrenByParent)
     {
         var result = new JsonObject
         {
@@ -171,7 +184,6 @@ public sealed class MenuDefinitionJsonSerializer
             ["label"] = node.Label,
             ["controlType"] = FormatControlType(node.ControlType)
         };
-        AddOptional(result, "parent", node.ParentId);
         AddOptional(result, "description", node.Description);
         AddOptional(result, "defaultValue", node.DefaultValue);
         if (node.MinimumValue is { } minimum)
@@ -197,6 +209,12 @@ public sealed class MenuDefinitionJsonSerializer
         {
             result["hiddenWhen"] = CreateConditions(node.HiddenWhen.Select(condition =>
                 (condition.SettingNodeId, condition.EqualsValue)));
+        }
+        if (childrenByParent.TryGetValue(node.Id, out var children))
+        {
+            result["children"] = new JsonArray(children
+                .Select(child => (JsonNode?)CreateNode(child, childrenByParent))
+                .ToArray());
         }
         return result;
     }

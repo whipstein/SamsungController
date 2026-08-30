@@ -24,33 +24,29 @@ timing:
   returnDelay: 300ms
   verified: true
 
+# Nest every menu's on-screen rows under children in their TV display order.
 nodes:
   - id: tv-interface
     label: TV interface
     description: Root for modeled TV interface states.
+    children:
+      - id: normal-video
+        label: Normal video
+        description: No TV menu is expected to be visible.
 
-  - id: normal-video
-    label: Normal video
-    parent: tv-interface
-    description: No TV menu is expected to be visible.
-
-  - id: settings
-    label: Settings
-    parent: tv-interface
-    description: Replace this with the settings surface shown by your TV.
-
-  - id: picture
-    label: Picture
-    parent: settings
-
-  - id: expert-settings
-    label: Expert settings
-    parent: picture
-
-  - id: example-setting
-    label: Example setting
-    parent: expert-settings
-    description: Rename or replace this node with a real setting from your TV.
+      - id: settings
+        label: Settings
+        description: Replace this with the settings surface shown by your TV.
+        children:
+          - id: picture
+            label: Picture
+            children:
+              - id: expert-settings
+                label: Expert settings
+                children:
+                  - id: example-setting
+                    label: Example setting
+                    description: Rename or replace this node with a real setting from your TV.
 
 anchors:
   - id: normal-video

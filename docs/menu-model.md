@@ -105,78 +105,70 @@ nodes:
   - id: settings
     label: Settings
     controlType: submenu
+    children:
+      - id: adaptive-picture
+        label: Adaptive Picture
+        controlType: switch
+        defaultValue: off
 
-  - id: adaptive-picture
-    label: Adaptive Picture
-    parent: settings
-    controlType: switch
-    defaultValue: off
+      - id: brightness
+        label: Brightness
+        controlType: slider
+        defaultValue: 50
+        minimumValue: 0
+        maximumValue: 100
+        disabledWhen:
+          - setting: adaptive-picture
+            equals: on
+        hiddenWhen:
+          - setting: picture-mode
+            equals: Standard
 
-  - id: brightness
-    label: Brightness
-    parent: settings
-    controlType: slider
-    defaultValue: 50
-    minimumValue: 0
-    maximumValue: 100
-    disabledWhen:
-      - setting: adaptive-picture
-        equals: on
-    hiddenWhen:
-      - setting: picture-mode
-        equals: Standard
+      - id: picture-mode
+        label: Picture Mode
+        controlType: selection
+        defaultValue: Filmmaker Mode
+        options:
+          - Standard
+          - Movie
+          - Filmmaker Mode
 
-  - id: picture-mode
-    label: Picture Mode
-    parent: settings
-    controlType: selection
-    defaultValue: Filmmaker Mode
-    options:
-      - Standard
-      - Movie
-      - Filmmaker Mode
+      - id: reset-picture
+        label: Reset Picture
+        controlType: confirmation
+        defaultValue: Cancel
+        options:
+          - Reset
+          - Cancel
 
-  - id: reset-picture
-    label: Reset Picture
-    parent: settings
-    controlType: confirmation
-    defaultValue: Cancel
-    options:
-      - Reset
-      - Cancel
+      - id: sound-output
+        label: Sound Output
+        controlType: submenu-selection
+        defaultValue: TV Speaker
+        options:
+          - TV Speaker
+          - Receiver
+          - Bluetooth Speaker
 
-  - id: sound-output
-    label: Sound Output
-    parent: settings
-    controlType: submenu-selection
-    defaultValue: TV Speaker
-    options:
-      - TV Speaker
-      - Receiver
-      - Bluetooth Speaker
+      - id: interval
+        label: Interval
+        controlType: indexed-selection
+        defaultValue: 5%
+        options: [5%, 10%, 15%, 20%]
 
-  - id: interval
-    label: Interval
-    parent: settings
-    controlType: indexed-selection
-    defaultValue: 5%
-    options: [5%, 10%, 15%, 20%]
+      - id: interval-red
+        label: Red
+        controlType: slider
+        defaultValue: 0
+        minimumValue: -50
+        maximumValue: 50
 
-  - id: interval-red
-    label: Red
-    parent: settings
-    controlType: slider
-    defaultValue: 0
-    minimumValue: -50
-    maximumValue: 50
-
-  - id: interval-green
-    label: Green
-    parent: settings
-    controlType: slider
-    defaultValue: 0
-    minimumValue: -50
-    maximumValue: 50
+      - id: interval-green
+        label: Green
+        controlType: slider
+        defaultValue: 0
+        minimumValue: -50
+        maximumValue: 50
 
 anchors:
   - id: normal-video
@@ -244,8 +236,8 @@ option. A normal selection opens its choices and choosing a value returns to the
 setting row automatically. A submenu selection opens a full value submenu;
 after choosing the value, SamsungController sends `KEY_RETURN` to return to the
 containing menu. An indexed selection renders each option as a fixed grid row
-and treats the consecutive slider nodes immediately following it under the same
-parent as columns. The selector is operated automatically during Apply and is
+and treats the consecutive slider nodes immediately following it in the same
+`children` array as columns. The selector is operated automatically during Apply and is
 not shown as a standalone dropdown. Existing `Interval` percentage selectors
 and `Color` selectors containing Red, Green, and Blue are recognized as indexed
 for compatibility. A confirmation is
@@ -273,8 +265,8 @@ application session. A change made with the physical remote cannot be observed;
 restore the declared defaults or reproduce that change in Menu Controls before
 relying on a calculated route.
 
-Parent relationships on nodes control tree presentation only. Within each parent,
-the node-array sequence is the persistent custom order used to mirror the TV.
+Nested `children` arrays control tree presentation. Within each submenu, the
+array sequence is the persistent custom order used to mirror the TV.
 Build & Verify can move siblings up or down and can temporarily display every
 branch alphabetically without changing that saved custom order. Tree order does
 not imply that navigation is possible; the verified Menu page follows the saved
@@ -312,7 +304,7 @@ exact override is absent or unverified, or an older definition has no return
 strategy, resolution falls through the root/deeper scripts and ultimately the
 anchor's ordinary `steps` fallback.
 
-Unknown file fields, missing node references, parent cycles, invalid actions,
+Unknown file fields, missing node references, invalid actions,
 unsafe repeat counts, and excessive delays fail validation before any command
 can be planned or sent.
 

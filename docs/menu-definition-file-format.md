@@ -51,11 +51,13 @@ menu definition
 └── verification (display-bound evidence maintained by the app)
 ```
 
-`nodes` are stored in TV display order. A node's `parent` creates the hierarchy;
-its position among other nodes with that same parent determines the generated
-Up/Down offset. Parent relationships alone do not prove that a route works.
-Anchors and transitions supply the executable keys, and verification records
-the visually tested behavior.
+`nodes` are a recursive tree. Each submenu stores its immediately visible rows
+in a `children` array, in the same order they appear on the TV. A child's
+position in that array determines the generated Up/Down offset. Nesting alone
+does not prove that a route works. Anchors and transitions supply the executable
+keys, and verification records the visually tested behavior. The containing
+array is the only way to declare a parent; a separate `parent` field is not part
+of the schema.
 
 ## Complete YAML example
 
@@ -86,59 +88,48 @@ nodes:
   - id: tv-interface
     label: TV interface
     controlType: submenu
-
-  - id: normal-video
-    label: Normal video
-    parent: tv-interface
-    controlType: submenu
-
-  - id: settings
-    label: Settings
-    parent: tv-interface
-    controlType: submenu
-
-  - id: picture
-    label: Picture
-    parent: settings
-    controlType: submenu
-
-  - id: picture-mode
-    label: Picture Mode
-    parent: picture
-    controlType: selection
-    defaultValue: Filmmaker Mode
-    options:
-      - Standard
-      - Movie
-      - Filmmaker Mode
-
-  - id: brightness
-    label: Brightness
-    parent: picture
-    description: Whole-number steps shown by the TV
-    controlType: slider
-    defaultValue: "50"
-    minimumValue: 0
-    maximumValue: 100
-
-  - id: contrast-enhancer
-    label: Contrast Enhancer
-    parent: picture
-    controlType: switch
-    defaultValue: off
-    disabledWhen:
-      - setting: picture-mode
-        equals: Filmmaker Mode
-    hiddenWhen:
-      - setting: picture-mode
-        equals: Standard
-
-  - id: reset-picture
-    label: Reset Picture
-    parent: picture
-    controlType: confirmation
-    defaultValue: Cancel
-    options: [Reset, Cancel]
+    children:
+      - id: normal-video
+        label: Normal video
+        controlType: submenu
+      - id: settings
+        label: Settings
+        controlType: submenu
+        children:
+          - id: picture
+            label: Picture
+            controlType: submenu
+            children:
+              - id: picture-mode
+                label: Picture Mode
+                controlType: selection
+                defaultValue: Filmmaker Mode
+                options:
+                  - Standard
+                  - Movie
+                  - Filmmaker Mode
+              - id: brightness
+                label: Brightness
+                description: Whole-number steps shown by the TV
+                controlType: slider
+                defaultValue: "50"
+                minimumValue: 0
+                maximumValue: 100
+              - id: contrast-enhancer
+                label: Contrast Enhancer
+                controlType: switch
+                defaultValue: off
+                disabledWhen:
+                  - setting: picture-mode
+                    equals: Filmmaker Mode
+                hiddenWhen:
+                  - setting: picture-mode
+                    equals: Standard
+              - id: reset-picture
+                label: Reset Picture
+                controlType: confirmation
+                defaultValue: Cancel
+                options: [Reset, Cancel]
 
 anchors:
   - id: normal-video-anchor
@@ -218,36 +209,43 @@ allowed.
     {
       "id": "tv-interface",
       "label": "TV interface",
-      "controlType": "submenu"
-    },
-    {
-      "id": "normal-video",
-      "label": "Normal video",
-      "parent": "tv-interface",
-      "controlType": "submenu"
-    },
-    {
-      "id": "settings",
-      "label": "Settings",
-      "parent": "tv-interface",
-      "controlType": "submenu"
-    },
-    {
-      "id": "picture-mode",
-      "label": "Picture Mode",
-      "parent": "settings",
-      "controlType": "selection",
-      "defaultValue": "Filmmaker Mode",
-      "options": ["Standard", "Movie", "Filmmaker Mode"]
-    },
-    {
-      "id": "brightness",
-      "label": "Brightness",
-      "parent": "settings",
-      "controlType": "slider",
-      "defaultValue": "50",
-      "minimumValue": 0,
-      "maximumValue": 100
+      "controlType": "submenu",
+      "children": [
+        {
+          "id": "normal-video",
+          "label": "Normal video",
+          "controlType": "submenu"
+        },
+        {
+          "id": "settings",
+          "label": "Settings",
+          "controlType": "submenu",
+          "children": [
+            {
+              "id": "picture",
+              "label": "Picture",
+              "controlType": "submenu",
+              "children": [
+                {
+                  "id": "picture-mode",
+                  "label": "Picture Mode",
+                  "controlType": "selection",
+                  "defaultValue": "Filmmaker Mode",
+                  "options": ["Standard", "Movie", "Filmmaker Mode"]
+                },
+                {
+                  "id": "brightness",
+                  "label": "Brightness",
+                  "controlType": "slider",
+                  "defaultValue": "50",
+                  "minimumValue": 0,
+                  "maximumValue": 100
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   ],
   "anchors": [
@@ -297,7 +295,7 @@ allowed.
 | `verification` | No | App-maintained display and behavioral fingerprints. |
 | `configurations` | No | Named alternate menu layouts. |
 | `timing` | No | Default waits; omitted fields use built-in defaults. |
-| `nodes` | Yes | At least one ordered topology node. |
+| `nodes` | Yes | At least one ordered root topology node; submenu descendants are nested under `children`. |
 | `anchors` | No | Deterministic known-state/recovery scripts. |
 | `transitions` | No | Directed key sequences between nodes. |
 
@@ -337,7 +335,7 @@ Every node requires `id` and `label`. These fields are optional:
 
 | Field | Meaning |
 | --- | --- |
-| `parent` | ID of the containing node. Omit for a root. Parent cycles are rejected. |
+| `children` | Ordered array of the rows immediately contained by a submenu. Valid only on `submenu` nodes. |
 | `description` | Notes for users and future development. |
 | `controlType` | Interaction type; defaults to `submenu`. |
 | `defaultValue` | Expected value after reset/startup. Required for every non-submenu. |
@@ -514,9 +512,8 @@ maintainer-only notes.
 ## Common errors
 
 - **Unknown field:** check spelling and whether the field belongs at that level.
-- **Missing node reference:** define the `parent`, `from`, `to`, `target`,
+- **Missing node reference:** define the referenced node in `nodes`, or correct the `from`, `to`, `target`,
   `setting`, `menuRoot`, or override node before referencing it.
-- **Parent cycle:** a node eventually points back to itself.
 - **Choice default not found:** add the exact default to `options`.
 - **Invalid slider:** provide both bounds and keep the default inside them.
 - **Invalid JSON:** remove comments/trailing commas and quote keys and strings.

@@ -14,6 +14,12 @@ public sealed class MenuDefinitionParserTests
         Assert.Equal("Test TV", definition.Model);
         Assert.Equal("1234.5", definition.Context.Firmware);
         Assert.Equal("Menu / Picture", definition.GetPath("picture"));
+        Assert.Equal("menu", definition.Nodes["picture"].ParentId);
+        Assert.Equal(
+            ["auto-picture", "picture", "brightness", "reset-picture", "sound-output", "interval", "interval-red"],
+            definition.Nodes.Values
+                .Where(node => node.ParentId == "menu")
+                .Select(node => node.Id));
         Assert.Equal(MenuControlType.Selection, definition.Nodes["picture"].ControlType);
         Assert.Equal("Movie", definition.Nodes["picture"].DefaultValue);
         Assert.Equal(
@@ -50,8 +56,8 @@ public sealed class MenuDefinitionParserTests
     public void UnknownFieldsAreRejectedInsteadOfIgnored()
     {
         var yaml = ValidYaml.Replace(
-            "    label: Picture",
-            "    label: Picture\n    guessedIndex: 4",
+            "        label: Picture",
+            "        label: Picture\n        guessedIndex: 4",
             StringComparison.Ordinal);
 
         var exception = Assert.Throws<MenuDefinitionParseException>(
@@ -69,6 +75,56 @@ public sealed class MenuDefinitionParserTests
             () => new MenuDefinitionParser().Parse(yaml));
 
         Assert.Contains("milliseconds", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParentFieldsAreRejectedInFavorOfNestedChildren()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: flat-menu
+            name: Flat Menu
+            model: Test TV
+            nodes:
+              - id: settings
+                label: Settings
+              - id: picture
+                label: Picture
+                parent: settings
+            """;
+
+        var exception = Assert.Throws<MenuDefinitionParseException>(
+            () => new MenuDefinitionParser().Parse(yaml));
+
+        Assert.Contains("parent", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Unknown field", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ChildrenAreOnlyValidForSubmenus()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: invalid-children
+            name: Invalid Children
+            model: Test TV
+            nodes:
+              - id: picture-mode
+                label: Picture Mode
+                controlType: selection
+                defaultValue: Standard
+                options: [Standard, Movie]
+                children:
+                  - id: brightness
+                    label: Brightness
+            """;
+
+        var exception = Assert.Throws<MenuDefinitionParseException>(
+            () => new MenuDefinitionParser().Parse(yaml));
+
+        Assert.Contains("only valid when controlType is submenu", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -167,63 +223,57 @@ public sealed class MenuDefinitionParserTests
             label: Normal video
           - id: menu
             label: Menu
-          - id: auto-picture
-            label: Auto Picture
-            parent: menu
-            controlType: switch
-            defaultValue: off
-          - id: picture
-            label: Picture
-            parent: menu
-            controlType: selection
-            defaultValue: Movie
-            options:
-              - Standard
-              - Movie
-              - Filmmaker Mode
-            disabledWhen:
-              - setting: auto-picture
-                equals: on
-            hiddenWhen:
-              - setting: auto-picture
-                equals: on
-          - id: brightness
-            label: Brightness
-            parent: menu
-            controlType: slider
-            defaultValue: 50
-            minimumValue: 0
-            maximumValue: 100
-          - id: reset-picture
-            label: Reset Picture
-            parent: menu
-            controlType: confirmation
-            defaultValue: Cancel
-            options:
-              - Reset
-              - Cancel
-          - id: sound-output
-            label: Sound Output
-            parent: menu
-            controlType: submenu-selection
-            defaultValue: Receiver
-            options:
-              - TV Speaker
-              - Receiver
-              - Bluetooth Speaker
-          - id: interval
-            label: Interval
-            parent: menu
-            controlType: indexed-selection
-            defaultValue: 5%
-            options: [5%, 10%, 15%]
-          - id: interval-red
-            label: Red
-            parent: menu
-            controlType: slider
-            defaultValue: 0
-            minimumValue: -50
-            maximumValue: 50
+            children:
+              - id: auto-picture
+                label: Auto Picture
+                controlType: switch
+                defaultValue: off
+              - id: picture
+                label: Picture
+                controlType: selection
+                defaultValue: Movie
+                options:
+                  - Standard
+                  - Movie
+                  - Filmmaker Mode
+                disabledWhen:
+                  - setting: auto-picture
+                    equals: on
+                hiddenWhen:
+                  - setting: auto-picture
+                    equals: on
+              - id: brightness
+                label: Brightness
+                controlType: slider
+                defaultValue: 50
+                minimumValue: 0
+                maximumValue: 100
+              - id: reset-picture
+                label: Reset Picture
+                controlType: confirmation
+                defaultValue: Cancel
+                options:
+                  - Reset
+                  - Cancel
+              - id: sound-output
+                label: Sound Output
+                controlType: submenu-selection
+                defaultValue: Receiver
+                options:
+                  - TV Speaker
+                  - Receiver
+                  - Bluetooth Speaker
+              - id: interval
+                label: Interval
+                controlType: indexed-selection
+                defaultValue: 5%
+                options: [5%, 10%, 15%]
+              - id: interval-red
+                label: Red
+                controlType: slider
+                defaultValue: 0
+                minimumValue: -50
+                maximumValue: 50
         anchors:
           - id: normal
             label: Back to video

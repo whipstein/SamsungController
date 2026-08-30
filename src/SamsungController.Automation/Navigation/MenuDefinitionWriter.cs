@@ -42,44 +42,14 @@ public sealed class MenuDefinitionWriter
         AppendBoolean(yaml, 2, "verified", definition.Timing.Verified);
         yaml.AppendLine();
         yaml.AppendLine("nodes:");
-        foreach (var node in definition.Nodes.Values)
+        var orderedNodes = definition.Nodes.Values.ToArray();
+        var childrenByParent = orderedNodes
+            .Where(node => !string.IsNullOrWhiteSpace(node.ParentId))
+            .GroupBy(node => node.ParentId!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.OrdinalIgnoreCase);
+        foreach (var node in orderedNodes.Where(node => string.IsNullOrWhiteSpace(node.ParentId)))
         {
-            AppendListScalar(yaml, 2, "id", node.Id);
-            AppendScalar(yaml, 4, "label", node.Label);
-            AppendOptionalScalar(yaml, 4, "parent", node.ParentId);
-            AppendOptionalScalar(yaml, 4, "description", node.Description);
-            AppendScalar(yaml, 4, "controlType", FormatControlType(node.ControlType));
-            AppendOptionalScalar(yaml, 4, "defaultValue", node.DefaultValue);
-            AppendOptionalDecimal(yaml, 4, "minimumValue", node.MinimumValue);
-            AppendOptionalDecimal(yaml, 4, "maximumValue", node.MaximumValue);
-            if (node.SelectionOptions is { Count: > 0 })
-            {
-                yaml.AppendLine("    options:");
-                foreach (var option in node.SelectionOptions)
-                {
-                    yaml.Append("      - ").AppendLine(Quote(option));
-                }
-            }
-
-            if (node.DisabledWhen is { Count: > 0 })
-            {
-                yaml.AppendLine("    disabledWhen:");
-                foreach (var condition in node.DisabledWhen)
-                {
-                    AppendListScalar(yaml, 6, "setting", condition.SettingNodeId);
-                    AppendScalar(yaml, 8, "equals", condition.EqualsValue);
-                }
-            }
-
-            if (node.HiddenWhen is { Count: > 0 })
-            {
-                yaml.AppendLine("    hiddenWhen:");
-                foreach (var condition in node.HiddenWhen)
-                {
-                    AppendListScalar(yaml, 6, "setting", condition.SettingNodeId);
-                    AppendScalar(yaml, 8, "equals", condition.EqualsValue);
-                }
-            }
+            AppendNode(yaml, node, childrenByParent, 2);
         }
 
         yaml.AppendLine();
@@ -145,6 +115,59 @@ public sealed class MenuDefinitionWriter
         MenuControlType.Confirmation => "confirmation",
         _ => throw new ArgumentOutOfRangeException(nameof(controlType), controlType, null)
     };
+
+    private static void AppendNode(
+        StringBuilder yaml,
+        MenuNode node,
+        IReadOnlyDictionary<string, MenuNode[]> childrenByParent,
+        int indentation)
+    {
+        var fieldIndentation = indentation + 2;
+        AppendListScalar(yaml, indentation, "id", node.Id);
+        AppendScalar(yaml, fieldIndentation, "label", node.Label);
+        AppendOptionalScalar(yaml, fieldIndentation, "description", node.Description);
+        AppendScalar(yaml, fieldIndentation, "controlType", FormatControlType(node.ControlType));
+        AppendOptionalScalar(yaml, fieldIndentation, "defaultValue", node.DefaultValue);
+        AppendOptionalDecimal(yaml, fieldIndentation, "minimumValue", node.MinimumValue);
+        AppendOptionalDecimal(yaml, fieldIndentation, "maximumValue", node.MaximumValue);
+        if (node.SelectionOptions is { Count: > 0 })
+        {
+            yaml.Append(' ', fieldIndentation).AppendLine("options:");
+            foreach (var option in node.SelectionOptions)
+            {
+                yaml.Append(' ', fieldIndentation + 2).Append("- ").AppendLine(Quote(option));
+            }
+        }
+
+        if (node.DisabledWhen is { Count: > 0 })
+        {
+            yaml.Append(' ', fieldIndentation).AppendLine("disabledWhen:");
+            foreach (var condition in node.DisabledWhen)
+            {
+                AppendListScalar(yaml, fieldIndentation + 2, "setting", condition.SettingNodeId);
+                AppendScalar(yaml, fieldIndentation + 4, "equals", condition.EqualsValue);
+            }
+        }
+
+        if (node.HiddenWhen is { Count: > 0 })
+        {
+            yaml.Append(' ', fieldIndentation).AppendLine("hiddenWhen:");
+            foreach (var condition in node.HiddenWhen)
+            {
+                AppendListScalar(yaml, fieldIndentation + 2, "setting", condition.SettingNodeId);
+                AppendScalar(yaml, fieldIndentation + 4, "equals", condition.EqualsValue);
+            }
+        }
+
+        if (childrenByParent.TryGetValue(node.Id, out var children))
+        {
+            yaml.Append(' ', fieldIndentation).AppendLine("children:");
+            foreach (var child in children)
+            {
+                AppendNode(yaml, child, childrenByParent, fieldIndentation + 2);
+            }
+        }
+    }
 
     private static void AppendVerification(
         StringBuilder yaml,

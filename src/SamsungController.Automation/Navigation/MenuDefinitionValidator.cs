@@ -62,6 +62,10 @@ public sealed class MenuDefinitionValidator
             return errors;
         }
 
+        var nodesWithChildren = definition.Nodes.Values
+            .Where(node => !string.IsNullOrWhiteSpace(node.ParentId))
+            .Select(node => node.ParentId!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var node in definition.Nodes.Values)
         {
             ValidateIdentifier($"node '{node.Id}'", node.Id, errors);
@@ -78,6 +82,13 @@ public sealed class MenuDefinitionValidator
                 errors.Add(new MenuDefinitionValidationError(
                     $"node '{node.Id}'",
                     "A node cannot be its own parent."));
+            }
+            if (node.ControlType != MenuControlType.Submenu
+                && nodesWithChildren.Contains(node.Id))
+            {
+                errors.Add(new MenuDefinitionValidationError(
+                    $"node '{node.Id}'",
+                    "Only a submenu node can contain children."));
             }
 
             ValidateMenuNodeBehavior(definition, node, errors);

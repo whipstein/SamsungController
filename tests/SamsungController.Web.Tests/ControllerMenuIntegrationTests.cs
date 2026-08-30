@@ -143,9 +143,9 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             nodes:
               - id: normal-video
                 label: Normal video
-              - id: settings
-                label: Settings
-                parent: normal-video
+                children:
+                  - id: settings
+                    label: Settings
             anchors: []
             transitions: []
             """;
@@ -189,37 +189,35 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             nodes:
               - id: normal-video
                 label: Normal video
-              - id: settings
-                label: Settings
-                parent: normal-video
-              - id: picture
-                label: Picture
-                parent: settings
-              - id: sound
-                label: Sound
-                parent: settings
-              - id: picture-mode
-                label: Picture Mode
-                parent: picture
-                controlType: selection
-                defaultValue: Movie
-                options: [Standard, Movie]
-              - id: expert
-                label: Expert Settings
-                parent: picture
-              - id: brightness
-                label: Brightness
-                parent: expert
-                controlType: slider
-                defaultValue: 25
-                minimumValue: 0
-                maximumValue: 50
-              - id: sound-output
-                label: Sound Output
-                parent: sound
-                controlType: selection
-                defaultValue: TV Speaker
-                options: [TV Speaker, Receiver]
+                children:
+                  - id: settings
+                    label: Settings
+                    children:
+                      - id: picture
+                        label: Picture
+                        children:
+                          - id: picture-mode
+                            label: Picture Mode
+                            controlType: selection
+                            defaultValue: Movie
+                            options: [Standard, Movie]
+                          - id: expert
+                            label: Expert Settings
+                            children:
+                              - id: brightness
+                                label: Brightness
+                                controlType: slider
+                                defaultValue: 25
+                                minimumValue: 0
+                                maximumValue: 50
+                      - id: sound
+                        label: Sound
+                        children:
+                          - id: sound-output
+                            label: Sound Output
+                            controlType: selection
+                            defaultValue: TV Speaker
+                            options: [TV Speaker, Receiver]
             anchors:
               - id: normal-video
                 label: Return to video
@@ -292,46 +290,43 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             nodes:
               - id: tv-interface
                 label: TV interface
-              - id: normal-video
-                label: Normal video
-                parent: tv-interface
-              - id: settings
-                label: Settings
-                parent: normal-video
-              - id: picture
-                label: Picture
-                parent: settings
-              - id: brightness
-                label: Brightness
-                parent: picture
-                controlType: slider
-                defaultValue: 25
-                minimumValue: 0
-                maximumValue: 50
-              - id: captions-enabled
-                label: Captions
-                parent: picture
-                controlType: switch
-                defaultValue: off
-              - id: digital-caption-options
-                label: Digital Caption Options
-                parent: picture
-                controlType: submenu
-                disabledWhen:
-                  - setting: captions-enabled
-                    equals: off
-              - id: background-color
-                label: Background Color
-                parent: digital-caption-options
-                controlType: selection
-                defaultValue: Default
-                options: [Default, Black]
-                disabledWhen:
-                  - setting: captions-enabled
-                    equals: off
-              - id: sound
-                label: Sound
-                parent: settings
+                children:
+                  - id: normal-video
+                    label: Normal video
+                    children:
+                      - id: settings
+                        label: Settings
+                        children:
+                          - id: picture
+                            label: Picture
+                            children:
+                              - id: brightness
+                                label: Brightness
+                                controlType: slider
+                                defaultValue: 25
+                                minimumValue: 0
+                                maximumValue: 50
+                              - id: captions-enabled
+                                label: Captions
+                                controlType: switch
+                                defaultValue: off
+                              - id: digital-caption-options
+                                label: Digital Caption Options
+                                controlType: submenu
+                                disabledWhen:
+                                  - setting: captions-enabled
+                                    equals: off
+                                children:
+                                  - id: background-color
+                                    label: Background Color
+                                    controlType: selection
+                                    defaultValue: Default
+                                    options: [Default, Black]
+                                    disabledWhen:
+                                      - setting: captions-enabled
+                                        equals: off
+                          - id: sound
+                            label: Sound
             anchors: []
             transitions: []
             """;
@@ -582,19 +577,16 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 "picture",
                 "Picture controls",
                 "settings",
-                "The Picture menu is visible",
-                MenuControlType.Selection,
-                "Filmmaker Mode",
-                SelectionOptions: ["Standard", "Movie", "Filmmaker Mode"]));
+                "The Picture menu is visible"));
 
         var snapshot = controller.GetMenuNavigationSnapshot();
         var picture = Assert.Single(snapshot.Nodes, node => node.Id == "picture");
         Assert.Equal("Picture controls", picture.Label);
         Assert.Equal("settings", picture.ParentId);
         Assert.Equal("TV interface / Settings / Picture controls", picture.Path);
-        Assert.Equal(MenuControlType.Selection, picture.ControlType);
-        Assert.Equal("Filmmaker Mode", picture.DefaultValue);
-        Assert.Equal(["Standard", "Movie", "Filmmaker Mode"], picture.SelectionOptions);
+        Assert.Equal(MenuControlType.Submenu, picture.ControlType);
+        Assert.Null(picture.DefaultValue);
+        Assert.Empty(picture.SelectionOptions);
 
         await controller.MoveMenuNodeAsync("sound", -1);
 
@@ -1069,17 +1061,16 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         var menuYaml = ExplicitValidationMenuYaml
             .Replace(
                 """
-                  - id: picture
-                    label: Picture
-                    parent: settings
+                    children:
+                      - id: picture
+                        label: Picture
                 """,
                 """
-                  - id: picture
-                    label: Picture
-                    parent: settings
-                  - id: sound
-                    label: Sound
-                    parent: settings
+                    children:
+                      - id: picture
+                        label: Picture
+                      - id: sound
+                        label: Sound
                 """,
                 StringComparison.Ordinal)
             .Replace(
@@ -1475,16 +1466,16 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             nodes:
               - id: normal-video
                 label: Normal video
-              - id: settings
-                label: Settings
-                parent: normal-video
-              - id: brightness
-                label: Brightness
-                parent: settings
-                controlType: slider
-                defaultValue: 25
-                minimumValue: 0
-                maximumValue: 50
+                children:
+                  - id: settings
+                    label: Settings
+                    children:
+                      - id: brightness
+                        label: Brightness
+                        controlType: slider
+                        defaultValue: 25
+                        minimumValue: 0
+                        maximumValue: 50
             anchors:
               - id: normal
                 label: Return to normal video
@@ -1543,27 +1534,26 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             nodes:
               - id: normal-video
                 label: Normal video
-              - id: settings
-                label: Settings
-                parent: normal-video
-              - id: advanced-enabled
-                label: Advanced Enabled
-                parent: settings
-                controlType: switch
-                defaultValue: off
-              - id: advanced
-                label: Advanced
-                parent: settings
-                disabledWhen:
-                  - setting: advanced-enabled
-                    equals: off
-              - id: brightness
-                label: Brightness
-                parent: advanced
-                controlType: slider
-                defaultValue: 50
-                minimumValue: 0
-                maximumValue: 100
+                children:
+                  - id: settings
+                    label: Settings
+                    children:
+                      - id: advanced-enabled
+                        label: Advanced Enabled
+                        controlType: switch
+                        defaultValue: off
+                      - id: advanced
+                        label: Advanced
+                        disabledWhen:
+                          - setting: advanced-enabled
+                            equals: off
+                        children:
+                          - id: brightness
+                            label: Brightness
+                            controlType: slider
+                            defaultValue: 50
+                            minimumValue: 0
+                            maximumValue: 100
             anchors:
               - id: normal
                 label: Return to normal video
@@ -1641,27 +1631,26 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             nodes:
               - id: normal-video
                 label: Normal video
-              - id: picture
-                label: Picture
-                parent: normal-video
-              - id: twenty-point
-                label: 20 Point
-                parent: picture
-              - id: twenty-point-enabled
-                label: 20 Point
-                parent: twenty-point
-                controlType: switch
-                defaultValue: off
-              - id: red
-                label: Red
-                parent: twenty-point
-                controlType: slider
-                defaultValue: 0
-                minimumValue: -50
-                maximumValue: 50
-                disabledWhen:
-                  - setting: twenty-point-enabled
-                    equals: off
+                children:
+                  - id: picture
+                    label: Picture
+                    children:
+                      - id: twenty-point
+                        label: 20 Point
+                        children:
+                          - id: twenty-point-enabled
+                            label: 20 Point
+                            controlType: switch
+                            defaultValue: off
+                          - id: red
+                            label: Red
+                            controlType: slider
+                            defaultValue: 0
+                            minimumValue: -50
+                            maximumValue: 50
+                            disabledWhen:
+                              - setting: twenty-point-enabled
+                                equals: off
             anchors:
               - id: normal
                 label: Return to normal video
@@ -1725,32 +1714,31 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             nodes:
               - id: normal-video
                 label: Normal video
-              - id: picture
-                label: Picture
-                parent: normal-video
-              - id: color-space-settings
-                label: Color Space Settings
-                parent: picture
-              - id: color-space
-                label: Color Space
-                parent: color-space-settings
-                controlType: selection
-                defaultValue: Auto
-                options: [Auto, Normal, Native, Custom]
-              - id: red
-                label: Red
-                parent: color-space-settings
-                controlType: slider
-                defaultValue: 50
-                minimumValue: 0
-                maximumValue: 100
-                disabledWhen:
-                  - setting: color-space
-                    equals: Auto
-                  - setting: color-space
-                    equals: Normal
-                  - setting: color-space
-                    equals: Native
+                children:
+                  - id: picture
+                    label: Picture
+                    children:
+                      - id: color-space-settings
+                        label: Color Space Settings
+                        children:
+                          - id: color-space
+                            label: Color Space
+                            controlType: selection
+                            defaultValue: Auto
+                            options: [Auto, Normal, Native, Custom]
+                          - id: red
+                            label: Red
+                            controlType: slider
+                            defaultValue: 50
+                            minimumValue: 0
+                            maximumValue: 100
+                            disabledWhen:
+                              - setting: color-space
+                                equals: Auto
+                              - setting: color-space
+                                equals: Normal
+                              - setting: color-space
+                                equals: Native
             anchors:
               - id: normal
                 label: Return to normal video
@@ -1818,12 +1806,12 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             nodes:
               - id: normal-video
                 label: Normal video
-              - id: sound-output
-                label: Sound Output
-                parent: normal-video
-                controlType: submenu-selection
-                defaultValue: TV Speaker
-                options: [TV Speaker, Receiver, Bluetooth Speaker]
+                children:
+                  - id: sound-output
+                    label: Sound Output
+                    controlType: submenu-selection
+                    defaultValue: TV Speaker
+                    options: [TV Speaker, Receiver, Bluetooth Speaker]
             anchors:
               - id: normal
                 label: Return to normal video
@@ -1881,29 +1869,27 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             nodes:
               - id: normal-video
                 label: Normal video
-              - id: white-balance
-                label: 20 Point White Balance
-                parent: normal-video
-              - id: interval
-                label: Interval
-                parent: white-balance
-                controlType: selection
-                defaultValue: 5%
-                options: [5%, 10%, 15%]
-              - id: red
-                label: Red
-                parent: white-balance
-                controlType: slider
-                defaultValue: 0
-                minimumValue: -50
-                maximumValue: 50
-              - id: green
-                label: Green
-                parent: white-balance
-                controlType: slider
-                defaultValue: 0
-                minimumValue: -50
-                maximumValue: 50
+                children:
+                  - id: white-balance
+                    label: 20 Point White Balance
+                    children:
+                      - id: interval
+                        label: Interval
+                        controlType: selection
+                        defaultValue: 5%
+                        options: [5%, 10%, 15%]
+                      - id: red
+                        label: Red
+                        controlType: slider
+                        defaultValue: 0
+                        minimumValue: -50
+                        maximumValue: 50
+                      - id: green
+                        label: Green
+                        controlType: slider
+                        defaultValue: 0
+                        minimumValue: -50
+                        maximumValue: 50
             anchors:
               - id: normal
                 label: Return to normal video
@@ -1997,22 +1983,21 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             nodes:
               - id: normal-video
                 label: Normal video
-              - id: picture
-                label: Picture
-                parent: normal-video
-              - id: brightness
-                label: Brightness
-                parent: picture
-                controlType: slider
-                defaultValue: 25
-                minimumValue: 0
-                maximumValue: 50
-              - id: reset-picture
-                label: Reset Picture
-                parent: picture
-                controlType: confirmation
-                defaultValue: Reset
-                options: [Reset, Cancel]
+                children:
+                  - id: picture
+                    label: Picture
+                    children:
+                      - id: brightness
+                        label: Brightness
+                        controlType: slider
+                        defaultValue: 25
+                        minimumValue: 0
+                        maximumValue: 50
+                      - id: reset-picture
+                        label: Reset Picture
+                        controlType: confirmation
+                        defaultValue: Reset
+                        options: [Reset, Cancel]
             anchors:
               - id: normal
                 label: Return to normal video
@@ -2072,35 +2057,33 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             nodes:
               - id: normal-video
                 label: Normal video
-              - id: picture
-                label: Picture
-                parent: normal-video
-              - id: picture-mode
-                label: Picture Mode
-                parent: picture
-                controlType: selection
-                defaultValue: Standard
-                options: [Standard, Movie]
-              - id: dynamic-detail
-                label: Dynamic Detail
-                parent: picture
-                controlType: slider
-                defaultValue: 0
-                minimumValue: 0
-                maximumValue: 10
-                hiddenWhen:
-                  - setting: picture-mode
-                    equals: Standard
-              - id: sharpness
-                label: Sharpness
-                parent: picture
-                controlType: slider
-                defaultValue: 0
-                minimumValue: 0
-                maximumValue: 10
-                disabledWhen:
-                  - setting: picture-mode
-                    equals: Movie
+                children:
+                  - id: picture
+                    label: Picture
+                    children:
+                      - id: picture-mode
+                        label: Picture Mode
+                        controlType: selection
+                        defaultValue: Standard
+                        options: [Standard, Movie]
+                      - id: dynamic-detail
+                        label: Dynamic Detail
+                        controlType: slider
+                        defaultValue: 0
+                        minimumValue: 0
+                        maximumValue: 10
+                        hiddenWhen:
+                          - setting: picture-mode
+                            equals: Standard
+                      - id: sharpness
+                        label: Sharpness
+                        controlType: slider
+                        defaultValue: 0
+                        minimumValue: 0
+                        maximumValue: 10
+                        disabledWhen:
+                          - setting: picture-mode
+                            equals: Movie
             anchors:
               - id: normal
                 label: Return to normal video
@@ -2186,23 +2169,21 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             nodes:
               - id: normal-video
                 label: Normal video
-              - id: settings
-                label: Settings
-                parent: normal-video
-              - id: game-mode
-                label: Game Mode
-                parent: settings
-                controlType: switch
-                defaultValue: off
-              - id: optional-tools
-                label: Optional Tools
-                parent: settings
-                hiddenWhen:
-                  - setting: game-mode
-                    equals: on
-              - id: sound
-                label: Sound
-                parent: settings
+                children:
+                  - id: settings
+                    label: Settings
+                    children:
+                      - id: game-mode
+                        label: Game Mode
+                        controlType: switch
+                        defaultValue: off
+                      - id: optional-tools
+                        label: Optional Tools
+                        hiddenWhen:
+                          - setting: game-mode
+                            equals: on
+                      - id: sound
+                        label: Sound
             anchors:
               - id: normal
                 label: Return to normal video
@@ -2286,27 +2267,25 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             nodes:
               - id: normal-video
                 label: Normal video
-              - id: brightness
-                label: Brightness
-                parent: normal-video
-                controlType: slider
-                defaultValue: 25
-                minimumValue: 0
-                maximumValue: 50
-              - id: contrast
-                label: Contrast
-                parent: normal-video
-                controlType: slider
-                defaultValue: 25
-                minimumValue: 0
-                maximumValue: 50
-              - id: color
-                label: Color
-                parent: normal-video
-                controlType: slider
-                defaultValue: 25
-                minimumValue: 0
-                maximumValue: 50
+                children:
+                  - id: brightness
+                    label: Brightness
+                    controlType: slider
+                    defaultValue: 25
+                    minimumValue: 0
+                    maximumValue: 50
+                  - id: contrast
+                    label: Contrast
+                    controlType: slider
+                    defaultValue: 25
+                    minimumValue: 0
+                    maximumValue: 50
+                  - id: color
+                    label: Color
+                    controlType: slider
+                    defaultValue: 25
+                    minimumValue: 0
+                    maximumValue: 50
             anchors:
               - id: normal
                 label: Return to normal video
@@ -2368,18 +2347,17 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             nodes:
               - id: normal-video
                 label: Normal video
-              - id: picture-mode
-                label: Picture Mode
-                parent: normal-video
-                controlType: selection
-                defaultValue: Standard
-                options: [Standard, Movie, Filmmaker Mode]
-              - id: color-tone
-                label: Color Tone
-                parent: normal-video
-                controlType: selection
-                defaultValue: Standard
-                options: [Standard, Warm1, Warm2]
+                children:
+                  - id: picture-mode
+                    label: Picture Mode
+                    controlType: selection
+                    defaultValue: Standard
+                    options: [Standard, Movie, Filmmaker Mode]
+                  - id: color-tone
+                    label: Color Tone
+                    controlType: selection
+                    defaultValue: Standard
+                    options: [Standard, Warm1, Warm2]
             anchors:
               - id: normal
                 label: Return to normal video
@@ -2454,12 +2432,12 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             nodes:
               - id: normal-video
                 label: Normal video
-              - id: picture-mode
-                label: Picture Mode
-                parent: normal-video
-                controlType: selection
-                defaultValue: Standard
-                options: [Standard, Movie]
+                children:
+                  - id: picture-mode
+                    label: Picture Mode
+                    controlType: selection
+                    defaultValue: Standard
+                    options: [Standard, Movie]
             anchors:
               - id: normal
                 label: Return to normal video
@@ -3318,15 +3296,14 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         nodes:
           - id: tv-interface
             label: TV interface
-          - id: normal-video
-            label: Normal video
-            parent: tv-interface
-          - id: settings-overlay
-            label: Settings overlay
-            parent: tv-interface
-          - id: expert-settings
-            label: Expert settings
-            parent: settings-overlay
+            children:
+              - id: normal-video
+                label: Normal video
+              - id: settings-overlay
+                label: Settings overlay
+                children:
+                  - id: expert-settings
+                    label: Expert settings
         anchors:
           - id: normal-video
             label: Return to normal video
@@ -3377,9 +3354,9 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             label: Normal video
           - id: settings
             label: Settings
-          - id: picture-clarity
-            label: Picture Clarity Settings
-            parent: settings
+            children:
+              - id: picture-clarity
+                label: Picture Clarity Settings
         anchors:
           - id: normal
             label: Normal video
@@ -3449,9 +3426,9 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             label: Normal video
           - id: settings
             label: Settings
-          - id: picture
-            label: Picture
-            parent: settings
+            children:
+              - id: picture
+                label: Picture
         anchors:
           - id: normal
             label: Return to normal video

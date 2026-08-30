@@ -22,7 +22,7 @@ public sealed class MenuDefinitionParser
     private static readonly HashSet<string> ConfigurationFields =
         new(["id", "name", "conditions"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> NodeFields =
-        new(["id", "label", "parent", "description", "controlType", "defaultValue", "minimumValue", "maximumValue", "options", "disabledWhen", "hiddenWhen"], StringComparer.OrdinalIgnoreCase);
+        new(["id", "label", "children", "description", "controlType", "defaultValue", "minimumValue", "maximumValue", "options", "disabledWhen", "hiddenWhen"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ValueConditionFields =
         new(["setting", "equals"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> AnchorFields =
@@ -235,17 +235,29 @@ public sealed class MenuDefinitionParser
     private static IReadOnlyList<MenuNode> ParseNodes(YamlSequenceNode sequence)
     {
         var nodes = new List<MenuNode>(sequence.Children.Count);
+        ParseNodes(sequence, nodes, null, "node");
+        return nodes;
+    }
+
+    private static void ParseNodes(
+        YamlSequenceNode sequence,
+        ICollection<MenuNode> nodes,
+        string? containingNodeId,
+        string contextPrefix)
+    {
         for (var index = 0; index < sequence.Children.Count; index++)
         {
-            var context = $"node {index + 1}";
+            var context = $"{contextPrefix} {index + 1}";
             var fields = ReadFields(RequireMapping(sequence.Children[index], context), context);
             EnsureAllowedFields(fields, NodeFields, context);
+            var id = RequiredScalar(fields, "id", context);
+            var controlType = ParseControlType(OptionalScalar(fields, "controlType"), context);
             nodes.Add(new MenuNode(
-                RequiredScalar(fields, "id", context),
+                id,
                 RequiredScalar(fields, "label", context),
-                OptionalScalar(fields, "parent"),
+                containingNodeId,
                 OptionalScalar(fields, "description"),
-                ParseControlType(OptionalScalar(fields, "controlType"), context),
+                controlType,
                 OptionalScalar(fields, "defaultValue"),
                 fields.TryGetValue("disabledWhen", out var disabledWhenNode)
                     ? ParseDisabledConditions(
@@ -264,9 +276,22 @@ public sealed class MenuDefinitionParser
                         RequireSequence(hiddenWhenNode, $"hiddenWhen in {context}"),
                         context)
                     : []));
-        }
 
-        return nodes;
+            if (fields.TryGetValue("children", out var childrenNode))
+            {
+                if (controlType != MenuControlType.Submenu)
+                {
+                    throw new MenuDefinitionParseException(
+                        $"'children' in {context} is only valid when controlType is submenu.");
+                }
+
+                ParseNodes(
+                    RequireSequence(childrenNode, $"children in {context}"),
+                    nodes,
+                    id,
+                    $"child of '{id}'");
+            }
+        }
     }
 
     private static MenuControlType ParseControlType(string? value, string context)
