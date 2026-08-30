@@ -141,6 +141,10 @@ nodes:
           - Reset
           - Cancel
 
+      - id: smart-calibration
+        label: Smart Calibration
+        controlType: action
+
       - id: sound-output
         label: Sound Output
         controlType: submenu-selection
@@ -226,8 +230,8 @@ the active configuration. A verified route from another configuration never
 contributes to direct or calculated navigation.
 
 Each node also describes how the highlighted row behaves. `controlType` is
-`submenu`, `slider`, `selection`, `submenu-selection`, `indexed-selection`, `switch`, or
-`confirmation`; older definitions
+`submenu`, `slider`, `selection`, `submenu-selection`, `indexed-selection`, `switch`,
+`confirmation`, or `action`; older definitions
 that omit it continue to load as `submenu`. Sliders require numeric
 `minimumValue` and `maximumValue` boundaries plus a numeric `defaultValue` inside
 that range. Switches require `on` or `off`. A selection and a submenu selection
@@ -244,7 +248,10 @@ for compatibility. A confirmation is
 an action dialog rather than a persistent setting; it requires at least two
 ordered `options`, and its `defaultValue` records the initially highlighted
 choice. Duplicate choices are rejected. Keep lists in the same order displayed
-by the TV. A submenu has no value. These declarations document the expected TV
+by the TV. A submenu has no value. An `action` is a leaf row that starts a TV
+function, such as Smart Calibration; generated navigation stops with that row
+highlighted and deliberately omits the final OK/Enter. It has no default,
+options, bounds, or children. These declarations document the expected TV
 behavior; SamsungController cannot read the live value or highlighted choice.
 
 `disabledWhen` documents rows that remain visible in their declared position
@@ -338,8 +345,8 @@ can be planned or sent.
    {selection; default=Filmmaker Mode; options=Standard|Movie|Filmmaker Mode}`,
    `Sound Output {submenu-selection; default=TV Speaker; options=TV Speaker|Receiver|Bluetooth Speaker}`,
    `Interval {indexed-selection; default=5%; options=5%|10%|15%|20%}` followed by its slider rows,
-   `Adaptive Picture {switch; default=off}`, or `Reset Picture {confirmation;
-   default=Cancel; options=Reset|Cancel}`. The option order after
+   `Adaptive Picture {switch; default=off}`, `Reset Picture {confirmation;
+   default=Cancel; options=Reset|Cancel}`, or `Smart Calibration {action}`. The option order after
    `options=` is preserved. A dependent gray row can be written as `Brightness {slider;
    default=50; min=0; max=100; disabledWhen=adaptive-picture=on}`. A row that
    disappears can use `Game HDR {submenu; hiddenWhen=game-mode=off}`. Separate

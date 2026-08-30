@@ -181,6 +181,43 @@ public sealed class TopologyRouteGeneratorTests
     }
 
     [Fact]
+    public void ActionRouteStopsOnTheRowWithoutLaunchingIt()
+    {
+        var definition = new MenuDefinition(
+            "action-topology",
+            "Action Topology",
+            "Test TV",
+            new MenuDefinitionContext(),
+            [
+                new MenuNode("normal-video", "Normal video"),
+                new MenuNode("settings", "Settings", "normal-video"),
+                new MenuNode("picture", "Picture", "settings"),
+                new MenuNode(
+                    "smart-calibration",
+                    "Smart Calibration",
+                    "picture",
+                    ControlType: MenuControlType.Action)
+            ],
+            [
+                new MenuTransition(
+                    "open-settings",
+                    "normal-video",
+                    "settings",
+                    [new MenuOperation("KEY_MENU")])
+            ],
+            []);
+
+        var generated = TopologyRouteGenerator.Regenerate(definition);
+        var route = Assert.Single(generated.Transitions.Values, transition =>
+            transition.GeneratedFromTopology
+            && transition.ToNodeId == "smart-calibration");
+
+        Assert.Equal(
+            ["KEY_MENU", "KEY_ENTER"],
+            route.Operations.Select(operation => operation.Key));
+    }
+
+    [Fact]
     public void AddingOneMenuItemInvalidatesOnlyItsAffectedCoverageBranch()
     {
         var initial = TopologyRouteGenerator.Regenerate(CreateDefinition());

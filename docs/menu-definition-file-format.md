@@ -108,6 +108,9 @@ nodes:
                   - Standard
                   - Movie
                   - Filmmaker Mode
+              - id: smart-calibration
+                label: Smart Calibration
+                controlType: action
               - id: brightness
                 label: Brightness
                 description: Whole-number steps shown by the TV
@@ -234,6 +237,11 @@ allowed.
                   "options": ["Standard", "Movie", "Filmmaker Mode"]
                 },
                 {
+                  "id": "smart-calibration",
+                  "label": "Smart Calibration",
+                  "controlType": "action"
+                },
+                {
                   "id": "brightness",
                   "label": "Brightness",
                   "controlType": "slider",
@@ -338,7 +346,7 @@ Every node requires `id` and `label`. These fields are optional:
 | `children` | Ordered array of the rows immediately contained by a submenu. Valid only on `submenu` nodes. |
 | `description` | Notes for users and future development. |
 | `controlType` | Interaction type; defaults to `submenu`. |
-| `defaultValue` | Expected value after reset/startup. Required for every non-submenu. |
+| `defaultValue` | Expected value after reset/startup. Required for value-bearing controls; forbidden for `submenu` and `action`. |
 | `minimumValue`, `maximumValue` | Numeric slider boundaries; both are required for sliders only. |
 | `options` | Ordered values for choice controls. |
 | `disabledWhen` | OR-list of conditions that leave this row present but gray/unavailable. Descendants inherit this state. |
@@ -355,6 +363,7 @@ Supported `controlType` values are:
 | `indexed-selection` | Options and at least one immediately following sibling slider | Renders options as fixed grid rows with following sliders as columns. |
 | `switch` | `defaultValue` equal to `on` or `off` | Sends Select and toggles the predicted state. |
 | `confirmation` | `defaultValue` plus at least two ordered `options` | Models an action dialog such as Reset/Cancel, not a persistent setting. |
+| `action` | No default, bounds, options, or children | Models a row that starts a TV function. Routes stop with the row highlighted and never press OK automatically. |
 
 Options are case-insensitively unique, limited to 100 entries and 100 characters
 per entry, and must contain the declared default. For an indexed selection, keep

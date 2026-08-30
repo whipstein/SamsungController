@@ -203,17 +203,19 @@ public sealed class MenuDefinitionValidator
         {
             errors.Add(new MenuDefinitionValidationError(
                 location,
-                "Control type must be Submenu, Slider, Selection, SubmenuSelection, IndexedSelection, Switch, or Confirmation."));
+                "Control type must be Submenu, Slider, Selection, SubmenuSelection, IndexedSelection, Switch, Confirmation, or Action."));
         }
 
         var hasDefaultValue = !string.IsNullOrWhiteSpace(node.DefaultValue);
-        if (node.ControlType == MenuControlType.Submenu && hasDefaultValue)
+        var isValuelessControl = node.ControlType is MenuControlType.Submenu
+            or MenuControlType.Action;
+        if (isValuelessControl && hasDefaultValue)
         {
             errors.Add(new MenuDefinitionValidationError(
                 location,
-                "A submenu cannot have a default value."));
+                $"A {node.ControlType.ToString().ToLowerInvariant()} cannot have a default value."));
         }
-        else if (node.ControlType != MenuControlType.Submenu && !hasDefaultValue)
+        else if (!isValuelessControl && !hasDefaultValue)
         {
             errors.Add(new MenuDefinitionValidationError(
                 location,
@@ -406,7 +408,8 @@ public sealed class MenuDefinitionValidator
                     $"A menu item cannot make itself {behavior} based on its own value."));
             }
             else if (setting.ControlType is MenuControlType.Submenu
-                     or MenuControlType.Confirmation)
+                     or MenuControlType.Confirmation
+                     or MenuControlType.Action)
             {
                 errors.Add(new MenuDefinitionValidationError(
                     conditionLocation,

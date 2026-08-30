@@ -66,7 +66,8 @@ public enum MenuControlType
     SubmenuSelection,
     IndexedSelection,
     Switch,
-    Confirmation
+    Confirmation,
+    Action
 }
 
 public sealed record MenuNodeDisabledCondition(

@@ -631,6 +631,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             Normal video [normal-video]
             Settings [settings]
               Picture
+                Smart Calibration {action}
                 Expert Settings
                   Adaptive Picture {switch; default=on}
                   Brightness {slider; default=50; min=0; max=100; disabledWhen=adaptive-picture=on}
@@ -643,8 +644,8 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         var request = new MenuTopologyOutlineRequest("tv-interface", outline);
         var preview = controller.PreviewMenuTopologyOutline(request);
 
-        Assert.Equal(11, preview.OutlineNodeCount);
-        Assert.Equal(10, preview.AddedNodeCount);
+        Assert.Equal(12, preview.OutlineNodeCount);
+        Assert.Equal(11, preview.AddedNodeCount);
         Assert.Equal(0, preview.RemovedNodeCount);
         await controller.ApplyMenuTopologyOutlineAsync(request);
 
@@ -652,9 +653,12 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         Assert.Equal(
             [
                 "tv-interface", "normal-video", "settings", "picture",
-                "expert-settings", "adaptive-picture", "brightness", "color-tone", "contrast", "reset-picture", "sound", "sound-output"
+                "smart-calibration", "expert-settings", "adaptive-picture", "brightness", "color-tone", "contrast", "reset-picture", "sound", "sound-output"
             ],
             snapshot.Nodes.Select(node => node.Id));
+        var smartCalibration = snapshot.Nodes.Single(node => node.Id == "smart-calibration");
+        Assert.Equal(MenuControlType.Action, smartCalibration.ControlType);
+        Assert.Null(smartCalibration.DefaultValue);
         Assert.Equal("expert-settings", snapshot.Nodes.Single(node => node.Id == "brightness").ParentId);
         var adaptivePicture = snapshot.Nodes.Single(node => node.Id == "adaptive-picture");
         Assert.Equal(MenuControlType.Switch, adaptivePicture.ControlType);

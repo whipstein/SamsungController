@@ -47,6 +47,10 @@ nodes:
                   - id: example-setting
                     label: Example setting
                     description: Rename or replace this node with a real setting from your TV.
+              - id: example-tv-function
+                label: Example TV function
+                description: Navigation highlights this row but does not press OK to start it.
+                controlType: action
 
 anchors:
   - id: normal-video

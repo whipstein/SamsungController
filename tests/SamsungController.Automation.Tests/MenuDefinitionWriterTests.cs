@@ -71,7 +71,12 @@ public sealed class MenuDefinitionWriterTests : IDisposable
                     ControlType: MenuControlType.Slider,
                     DefaultValue: "0",
                     MinimumValue: -50,
-                    MaximumValue: 50)
+                    MaximumValue: 50),
+                new MenuNode(
+                    "smart-calibration",
+                    "Smart Calibration",
+                    "settings",
+                    ControlType: MenuControlType.Action)
             ],
             [
                 new MenuTransition(
@@ -158,6 +163,8 @@ public sealed class MenuDefinitionWriterTests : IDisposable
             reparsed.Nodes["sound-output"].SelectionOptions);
         Assert.Equal(MenuControlType.IndexedSelection, reparsed.Nodes["interval"].ControlType);
         Assert.Equal(["5%", "10%", "15%"], reparsed.Nodes["interval"].SelectionOptions);
+        Assert.Equal(MenuControlType.Action, reparsed.Nodes["smart-calibration"].ControlType);
+        Assert.Null(reparsed.Nodes["smart-calibration"].DefaultValue);
         Assert.True(reparsed.Anchors["normal"].Verified);
         Assert.Equal("standard", reparsed.Anchors["normal"].ConfigurationId);
         Assert.Equal("settings", reparsed.Anchors["normal"].ValidationSourceNodeId);
@@ -334,7 +341,12 @@ public sealed class MenuDefinitionWriterTests : IDisposable
                     "settings",
                     ControlType: MenuControlType.Selection,
                     DefaultValue: "Filmmaker Mode",
-                    SelectionOptions: ["Standard", "Filmmaker Mode"])
+                    SelectionOptions: ["Standard", "Filmmaker Mode"]),
+                new MenuNode(
+                    "smart-calibration",
+                    "Smart Calibration",
+                    "settings",
+                    ControlType: MenuControlType.Action)
             ],
             [
                 new MenuTransition(
@@ -390,6 +402,7 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Assert.Equal(MenuControlType.Slider, reparsed.Nodes["brightness"].ControlType);
         Assert.Equal(100m, reparsed.Nodes["brightness"].MaximumValue);
         Assert.Equal(["Standard", "Filmmaker Mode"], reparsed.Nodes["picture-mode"].SelectionOptions);
+        Assert.Equal(MenuControlType.Action, reparsed.Nodes["smart-calibration"].ControlType);
         Assert.Equal("KEY_MENU", Assert.Single(reparsed.Transitions.Values).Operations[0].Key);
         Assert.Equal(verifiedAt, Assert.Single(reparsed.Verification!.Checks).VerifiedAtUtc);
     }

@@ -132,9 +132,11 @@ referenced branches must first have their traversal, anchor, or return definitio
 removed.
 
 Nodes also carry interaction metadata: submenu, bounded slider, selection,
-submenu selection, indexed selection, switch, or confirmation dialog, plus a required declared default for
-value-bearing controls. Sliders validate numeric minimum/maximum bounds and an
-in-range default. Selections, submenu selections, and confirmations persist ordered, unique choices
+submenu selection, indexed selection, switch, confirmation dialog, or
+non-activated TV function, plus a required declared default for value-bearing
+controls. Sliders validate numeric minimum/maximum bounds and an in-range
+default. Action rows are valueless leaves whose routes stop before activation.
+Selections, submenu selections, and confirmations persist ordered, unique choices
 and require their default to match one; for confirmations it means the initially
 highlighted action. A submenu selection uses the selection option model but
 sends Return after choosing so execution ends back in the containing menu. An

@@ -372,6 +372,7 @@
                                         <option value="@MenuControlType.IndexedSelection">Indexed selection grid</option>
                                         <option value="@MenuControlType.Switch">Switch</option>
                                         <option value="@MenuControlType.Confirmation">Confirmation dialog</option>
+                                        <option value="@MenuControlType.Action">TV function (do not activate)</option>
                                     </select>
                                 </label>
                                 @if (NodeEditorControlType is MenuControlType.Selection or MenuControlType.SubmenuSelection or MenuControlType.IndexedSelection or MenuControlType.Confirmation)
@@ -1307,6 +1308,7 @@
     private IReadOnlyList<MenuNodeSummary> AvailableDisabledConditionSettings => Navigation.Nodes
         .Where(node => node.ControlType is not MenuControlType.Submenu
             and not MenuControlType.Confirmation
+            and not MenuControlType.Action
             && !node.Id.Equals(EditingNodeId, StringComparison.OrdinalIgnoreCase))
         .OrderBy(node => node.Path, StringComparer.OrdinalIgnoreCase)
         .ToArray();
@@ -1531,6 +1533,7 @@
     private bool IsNodeEditorDefaultValid => NodeEditorControlType switch
     {
         MenuControlType.Submenu => string.IsNullOrWhiteSpace(NodeEditorDefaultValue),
+        MenuControlType.Action => string.IsNullOrWhiteSpace(NodeEditorDefaultValue),
         MenuControlType.Switch => NodeEditorDefaultValue.Equals("on", StringComparison.OrdinalIgnoreCase)
             || NodeEditorDefaultValue.Equals("off", StringComparison.OrdinalIgnoreCase),
         MenuControlType.Selection => SelectionOptionChoices.Any(option => option.Equals(
@@ -2266,7 +2269,7 @@
             NodeEditorMaximumValue = null;
         }
 
-        if (NodeEditorControlType == MenuControlType.Submenu)
+        if (NodeEditorControlType is MenuControlType.Submenu or MenuControlType.Action)
         {
             NodeEditorDefaultValue = string.Empty;
             NodeEditorSelectionOptions.Clear();
@@ -3301,6 +3304,7 @@
         MenuControlType.IndexedSelection => "Indexed selection grid",
         MenuControlType.Switch => "Switch",
         MenuControlType.Confirmation => "Confirmation",
+        MenuControlType.Action => "TV function",
         _ => controlType.ToString()
     };
 
@@ -3420,6 +3424,7 @@
                                             + ". Initially highlighted: "
                                             + node.DefaultValue
                                             + ".",
+            MenuControlType.Action => "Selecting this row starts a TV function. SamsungController navigates to and verifies the highlighted row, but never presses OK automatically.",
             _ => "Follow the recorded interaction."
         };
     }

@@ -87,7 +87,7 @@ Status was reconciled with the repository on 2026-08-30. A checked box means the
 - [x] Read and write menu definitions as YAML or JSON through one validated schema, default new profiles to YAML, and preserve the selected format on later saves.
 - [x] Define, edit, delete, sort, and custom-order the overall menu tree before recording routes.
 - [x] Bulk-create or synchronize a full menu branch from an indented outline with stable-ID reuse and a safe change preview.
-- [x] Describe rows as sub-menus, bounded sliders, selections, submenu selections, indexed selection grids, switches, or confirmation dialogs with defaults, ordered choices, and conditional disabled/gray rules.
+- [x] Describe rows as sub-menus, bounded sliders, selections, submenu selections, indexed selection grids, switches, confirmation dialogs, or non-activated TV functions with the appropriate defaults, ordered choices, and conditional disabled/gray rules.
 - [x] Model conditionally hidden rows and descendants and recalculate live sibling offsets from predicted setting values.
 - [x] Store named settings-dependent menu configurations in one TV definition file and scope route verification/navigation to the active configuration.
 - [x] Distinguish unrecorded tree nodes in red and recorded-but-unverified nodes in yellow.

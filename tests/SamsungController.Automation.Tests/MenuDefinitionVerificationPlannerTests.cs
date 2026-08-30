@@ -47,6 +47,7 @@ public sealed class MenuDefinitionVerificationPlannerTests
                 new MenuNode("mode", "Mode", "settings", ControlType: MenuControlType.Selection, DefaultValue: "Movie", SelectionOptions: ["Standard", "Movie"]),
                 new MenuNode("enhancer", "Enhancer", "settings", ControlType: MenuControlType.Switch, DefaultValue: "off"),
                 new MenuNode("reset", "Reset", "settings", ControlType: MenuControlType.Confirmation, DefaultValue: "Cancel", SelectionOptions: ["Reset", "Cancel"]),
+                new MenuNode("smart-calibration", "Smart Calibration", "settings", ControlType: MenuControlType.Action),
                 new MenuNode("conditional", "Conditional", "settings", DisabledWhen: [new MenuNodeDisabledCondition("enhancer", "off")])
             ],
             [new MenuTransition("open-settings", "normal-video", "settings", [new MenuOperation("KEY_MENU")], true)],
@@ -62,7 +63,8 @@ public sealed class MenuDefinitionVerificationPlannerTests
                     new MenuReturnScript([new MenuOperation("KEY_MENU"), new MenuOperation("KEY_RETURN")], true)))],
             new MenuTimingProfile(150, 800, 300, true));
 
-        var kinds = MenuDefinitionVerificationPlanner.Create(definition).Checks
+        var checks = MenuDefinitionVerificationPlanner.Create(definition).Checks;
+        var kinds = checks
             .Select(check => check.Kind)
             .ToHashSet();
 
@@ -76,6 +78,10 @@ public sealed class MenuDefinitionVerificationPlannerTests
         Assert.Contains(MenuVerificationCheckKind.Switch, kinds);
         Assert.Contains(MenuVerificationCheckKind.Confirmation, kinds);
         Assert.Contains(MenuVerificationCheckKind.ConditionalVisibility, kinds);
+        Assert.DoesNotContain(
+            checks,
+            check => check.Id.StartsWith("control:", StringComparison.Ordinal)
+                && check.TargetNodeId == "smart-calibration");
     }
 
     [Fact]
@@ -117,6 +123,49 @@ public sealed class MenuDefinitionVerificationPlannerTests
         var reconciled = MenuDefinitionVerificationReconciler.Reconcile(edited);
 
         Assert.False(reconciled.Transitions["open-settings"].Verified);
+        Assert.DoesNotContain(
+            reconciled.Verification!.Checks,
+            record => record.Id.StartsWith("route:", StringComparison.Ordinal));
+        Assert.Contains(reconciled.Verification.Checks, record => record.Id == "display");
+    }
+
+    [Fact]
+    public void ReconcileRemovesRouteManifestEvidenceWhenTheRouteNeedsValidation()
+    {
+        var draft = new MenuDefinition(
+            "draft-route",
+            "Draft route",
+            "S95F",
+            new MenuDefinitionContext("1296", "SDR", "Movie", "HDMI 1"),
+            [
+                new MenuNode("normal-video", "Normal video"),
+                new MenuNode("settings", "Settings", "normal-video")
+            ],
+            [new MenuTransition(
+                "open-settings",
+                "normal-video",
+                "settings",
+                [new MenuOperation("KEY_MENU")],
+                false)],
+            []);
+        var plan = MenuDefinitionVerificationPlanner.Create(draft);
+        var withStaleManifest = new MenuDefinition(
+            draft.Id,
+            draft.Name,
+            draft.Model,
+            draft.Context,
+            draft.Nodes.Values,
+            draft.Transitions.Values,
+            draft.Anchors.Values,
+            verification: new MenuVerificationManifest(
+                plan.Display,
+                plan.Checks.Select(check => new MenuVerificationRecord(
+                    check.Id,
+                    check.Fingerprint,
+                    DateTimeOffset.UtcNow)).ToArray()));
+
+        var reconciled = MenuDefinitionVerificationReconciler.Reconcile(withStaleManifest);
+
         Assert.DoesNotContain(
             reconciled.Verification!.Checks,
             record => record.Id.StartsWith("route:", StringComparison.Ordinal));

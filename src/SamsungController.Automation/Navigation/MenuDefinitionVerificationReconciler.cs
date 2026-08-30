@@ -14,7 +14,9 @@ public static class MenuDefinitionVerificationReconciler
         var checks = plan.Checks.ToDictionary(check => check.Id, StringComparer.OrdinalIgnoreCase);
         var staleIds = manifest.Checks
             .Where(record => !checks.TryGetValue(record.Id, out var current)
-                || !current.Fingerprint.Equals(record.Fingerprint, StringComparison.OrdinalIgnoreCase))
+                || !current.Fingerprint.Equals(record.Fingerprint, StringComparison.OrdinalIgnoreCase)
+                || current.Kind == MenuVerificationCheckKind.Route
+                && !current.ExistingEvidenceReady)
             .Select(record => record.Id)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (staleIds.Count == 0)
@@ -23,7 +25,8 @@ public static class MenuDefinitionVerificationReconciler
         }
 
         var validRecords = manifest.Checks
-            .Where(record => checks.TryGetValue(record.Id, out var current)
+            .Where(record => !staleIds.Contains(record.Id)
+                && checks.TryGetValue(record.Id, out var current)
                 && current.Fingerprint.Equals(record.Fingerprint, StringComparison.OrdinalIgnoreCase))
             .ToArray();
         var timing = staleIds.Contains("timing")

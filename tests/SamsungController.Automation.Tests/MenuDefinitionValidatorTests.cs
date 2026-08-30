@@ -121,4 +121,50 @@ public sealed class MenuDefinitionValidatorTests
         Assert.Contains(errors, error => error.Message.Contains("at least two available choices", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(errors, error => error.Message.Contains("Confirmation default", StringComparison.OrdinalIgnoreCase));
     }
+
+    [Fact]
+    public void ActionIsAValuelessLeafControl()
+    {
+        var valid = new MenuDefinition(
+            "action",
+            "Action",
+            "TV",
+            new MenuDefinitionContext(),
+            [
+                new MenuNode("menu", "Menu"),
+                new MenuNode(
+                    "smart-calibration",
+                    "Smart Calibration",
+                    "menu",
+                    ControlType: MenuControlType.Action)
+            ],
+            [],
+            []);
+        var invalid = new MenuDefinition(
+            "invalid-action",
+            "Invalid Action",
+            "TV",
+            new MenuDefinitionContext(),
+            [
+                new MenuNode("menu", "Menu"),
+                new MenuNode(
+                    "smart-calibration",
+                    "Smart Calibration",
+                    "menu",
+                    ControlType: MenuControlType.Action,
+                    DefaultValue: "start"),
+                new MenuNode("child", "Child", "smart-calibration")
+            ],
+            [],
+            []);
+
+        Assert.Empty(new MenuDefinitionValidator().Validate(valid));
+        var errors = new MenuDefinitionValidator().Validate(invalid);
+        Assert.Contains(errors, error => error.Message.Contains(
+            "cannot have a default value",
+            StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(errors, error => error.Message.Contains(
+            "Only a submenu node can contain children",
+            StringComparison.OrdinalIgnoreCase));
+    }
 }

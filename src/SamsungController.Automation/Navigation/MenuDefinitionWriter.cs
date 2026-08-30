@@ -113,6 +113,7 @@ public sealed class MenuDefinitionWriter
         MenuControlType.IndexedSelection => "indexed-selection",
         MenuControlType.Switch => "switch",
         MenuControlType.Confirmation => "confirmation",
+        MenuControlType.Action => "action",
         _ => throw new ArgumentOutOfRangeException(nameof(controlType), controlType, null)
     };
 

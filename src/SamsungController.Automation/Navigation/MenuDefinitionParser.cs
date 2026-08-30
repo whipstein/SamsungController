@@ -307,7 +307,7 @@ public sealed class MenuDefinitionParser
                && Enum.IsDefined(result)
             ? result
             : throw new MenuDefinitionParseException(
-                $"'controlType' in {context} must be submenu, slider, selection, submenu-selection, indexed-selection, switch, or confirmation.");
+                $"'controlType' in {context} must be submenu, slider, selection, submenu-selection, indexed-selection, switch, confirmation, or action.");
     }
 
     private static IReadOnlyList<MenuNodeDisabledCondition> ParseDisabledConditions(
