@@ -393,6 +393,10 @@ submenu automatically makes all of its descendants unavailable. The visual
 editor exposes the same behavior as **Always disabled**, and the outline editor
 accepts either `{submenu; disabled}` or `{submenu; disabled=true}`.
 
+A disabled row remains part of the TV's cursor order, so generated Up/Down
+offsets count it even though SamsungController will not execute it as a target.
+Only a hidden row is removed from directional offsets.
+
 Use `disabledWhen` only when availability depends on another modeled setting.
 
 Both conditional fields contain objects with `setting` and `equals`:

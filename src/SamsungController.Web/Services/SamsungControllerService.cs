@@ -6759,12 +6759,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 $"Menu control '{definition.GetPath(node.Id)}' needs a verified route to its containing section.");
         }
 
-        var selectableChildren = definition.Nodes.Values.Where(candidate =>
+        var navigableChildren = definition.Nodes.Values.Where(candidate =>
                 candidate.ParentId?.Equals(parent.Id, StringComparison.OrdinalIgnoreCase) == true
-                && !IsMenuNodeDisabled(definition, candidate, effectiveValues)
                 && !IsMenuNodeHidden(definition, candidate, effectiveValues))
             .ToArray();
-        var childIndex = Array.FindIndex(selectableChildren, candidate =>
+        var childIndex = Array.FindIndex(navigableChildren, candidate =>
             candidate.Id.Equals(node.Id, StringComparison.OrdinalIgnoreCase));
         if (childIndex < 0)
         {
@@ -6775,7 +6774,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         var currentNodeId = tracker.Current.NodeId;
         var currentChildIndex = string.IsNullOrWhiteSpace(currentNodeId)
             ? -1
-            : Array.FindIndex(selectableChildren, candidate => candidate.Id.Equals(
+            : Array.FindIndex(navigableChildren, candidate => candidate.Id.Equals(
                 currentNodeId,
                 StringComparison.OrdinalIgnoreCase));
         var offset = childIndex;

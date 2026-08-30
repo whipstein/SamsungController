@@ -1701,6 +1701,9 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                             label: 20 Point
                             controlType: switch
                             defaultValue: off
+                          - id: unavailable
+                            label: Unavailable
+                            disabled: true
                           - id: red
                             label: Red
                             controlType: slider
@@ -1749,7 +1752,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 returnToNormalVideo: false);
 
             Assert.Equal(
-                ["KEY_MENU", "KEY_ENTER", "KEY_ENTER", "KEY_DOWN", "KEY_RIGHT", "KEY_RIGHT"],
+                ["KEY_MENU", "KEY_ENTER", "KEY_ENTER", "KEY_DOWN", "KEY_DOWN", "KEY_RIGHT", "KEY_RIGHT"],
                 GetSentKeys(transport));
             var result = controller.GetSnapshot();
             Assert.Equal("Red", result.MenuLabel);

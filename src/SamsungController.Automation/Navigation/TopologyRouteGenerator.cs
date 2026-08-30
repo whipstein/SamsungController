@@ -160,12 +160,17 @@ public static class TopologyRouteGenerator
                 return false;
             }
 
-            var selectableChildren = orderedNodes.Where(candidate =>
+            if (IsDisabledByDefault(definition, child))
+            {
+                operations = [];
+                return false;
+            }
+
+            var navigableChildren = orderedNodes.Where(candidate =>
                     candidate.ParentId?.Equals(parent.Id, StringComparison.OrdinalIgnoreCase) == true
-                    && !IsDisabledByDefault(definition, candidate)
                     && !IsHiddenByDefault(definition, candidate))
                 .ToArray();
-            var childIndex = Array.FindIndex(selectableChildren, candidate =>
+            var childIndex = Array.FindIndex(navigableChildren, candidate =>
                 candidate.Id.Equals(child.Id, StringComparison.OrdinalIgnoreCase));
             if (childIndex < 0)
             {

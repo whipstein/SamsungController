@@ -260,7 +260,8 @@ behavior; SamsungController cannot read the live value or highlighted choice.
 `disabled: true` documents a row that remains visible but is permanently gray
 and unavailable. Do not also add `disabledWhen` to that row. A permanently
 disabled submenu makes all descendants unavailable, removes the branch from
-generated executable routes, and requires only one representative visual
+generated executable destinations, but the visible disabled row still counts
+in Up/Down offsets to later siblings. It requires only one representative visual
 behavior check rather than checks for every control below it.
 
 `disabledWhen` documents rows that remain visible in their declared position

@@ -78,7 +78,7 @@ public sealed class TopologyRouteGeneratorTests
     }
 
     [Fact]
-    public void SkipsDisabledBranchesAndDoesNotCountTheirRowsInDirectionalOffsets()
+    public void SkipsDisabledBranchesButCountsTheirRowsInDirectionalOffsets()
     {
         var definition = new MenuDefinition(
             "disabled-topology",
@@ -141,7 +141,7 @@ public sealed class TopologyRouteGeneratorTests
         Assert.DoesNotContain(routes, transition => transition.ToNodeId == "unavailable-detail");
         var sound = Assert.Single(routes, transition => transition.ToNodeId == "sound");
         Assert.Equal(["KEY_MENU", "KEY_DOWN", "KEY_ENTER"], sound.Operations.Select(step => step.Key));
-        Assert.Equal(1, sound.Operations[1].Repeat);
+        Assert.Equal(3, sound.Operations[1].Repeat);
     }
 
     [Fact]
