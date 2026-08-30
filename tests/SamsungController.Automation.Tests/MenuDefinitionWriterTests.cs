@@ -56,7 +56,22 @@ public sealed class MenuDefinitionWriterTests : IDisposable
                     "settings",
                     ControlType: MenuControlType.SubmenuSelection,
                     DefaultValue: "Receiver",
-                    SelectionOptions: ["TV Speaker", "Receiver", "Bluetooth Speaker"])
+                    SelectionOptions: ["TV Speaker", "Receiver", "Bluetooth Speaker"]),
+                new MenuNode(
+                    "interval",
+                    "Interval",
+                    "settings",
+                    ControlType: MenuControlType.IndexedSelection,
+                    DefaultValue: "5%",
+                    SelectionOptions: ["5%", "10%", "15%"]),
+                new MenuNode(
+                    "interval-red",
+                    "Red",
+                    "settings",
+                    ControlType: MenuControlType.Slider,
+                    DefaultValue: "0",
+                    MinimumValue: -50,
+                    MaximumValue: 50)
             ],
             [
                 new MenuTransition(
@@ -137,6 +152,8 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Assert.Equal(
             ["TV Speaker", "Receiver", "Bluetooth Speaker"],
             reparsed.Nodes["sound-output"].SelectionOptions);
+        Assert.Equal(MenuControlType.IndexedSelection, reparsed.Nodes["interval"].ControlType);
+        Assert.Equal(["5%", "10%", "15%"], reparsed.Nodes["interval"].SelectionOptions);
         Assert.True(reparsed.Anchors["normal"].Verified);
         Assert.Equal("standard", reparsed.Anchors["normal"].ConfigurationId);
         Assert.Equal("settings", reparsed.Anchors["normal"].ValidationSourceNodeId);

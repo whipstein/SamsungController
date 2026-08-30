@@ -1737,6 +1737,197 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task IndexedSelectionAppliesEveryFixedRowWithoutExposingSelectorChoice()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: indexed-selection
+            name: Indexed Selection
+            model: Test TV
+            timing:
+              defaultDelay: 50ms
+              screenChangeDelay: 50ms
+              returnDelay: 50ms
+            nodes:
+              - id: normal-video
+                label: Normal video
+              - id: white-balance
+                label: 20 Point White Balance
+                parent: normal-video
+              - id: interval
+                label: Interval
+                parent: white-balance
+                controlType: selection
+                defaultValue: 5%
+                options: [5%, 10%, 15%]
+              - id: red
+                label: Red
+                parent: white-balance
+                controlType: slider
+                defaultValue: 0
+                minimumValue: -50
+                maximumValue: 50
+              - id: green
+                label: Green
+                parent: white-balance
+                controlType: slider
+                defaultValue: 0
+                minimumValue: -50
+                maximumValue: 50
+            anchors:
+              - id: normal
+                label: Return to normal video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            transitions:
+              - id: open-interval
+                from: normal-video
+                to: interval
+                verified: true
+                steps:
+                  - key: KEY_MENU
+              - id: open-red
+                from: normal-video
+                to: red
+                verified: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_DOWN
+              - id: open-green
+                from: normal-video
+                to: green
+                verified: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_DOWN
+                    repeat: 2
+            """;
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            await controller.ApplyIndexedMenuControlValuesAsync(
+                [
+                    new MenuIndexedControlValueUpdate("interval", "5%", "red", "0", "1"),
+                    new MenuIndexedControlValueUpdate("interval", "10%", "red", "0", "2"),
+                    new MenuIndexedControlValueUpdate("interval", "10%", "green", "0", "-1")
+                ],
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["interval"] = "5%",
+                    ["red"] = "0",
+                    ["green"] = "0"
+                },
+                returnToNormalVideo: false);
+
+            Assert.Equal(
+                [
+                    "KEY_MENU", "KEY_DOWN", "KEY_RIGHT",
+                    "KEY_UP", "KEY_ENTER", "KEY_DOWN", "KEY_ENTER",
+                    "KEY_DOWN", "KEY_RIGHT", "KEY_RIGHT",
+                    "KEY_DOWN", "KEY_LEFT"
+                ],
+                GetSentKeys(transport));
+            var snapshot = controller.GetMenuNavigationSnapshot();
+            Assert.Equal("10%", snapshot.ControlValues["interval"]);
+            Assert.Equal("2", snapshot.ControlValues["red"]);
+            Assert.Equal("-1", snapshot.ControlValues["green"]);
+
+            var verification = await controller.ConfirmMenuSelectionBehaviorAsync("interval");
+            Assert.Contains("interval", verification.ConfirmedSelectionNodeIds);
+            await controller.SaveMenuControlProfileAsync(
+            [
+                new MenuControlProfileValue("red", "1", "interval", "5%"),
+                new MenuControlProfileValue("red", "2", "interval", "10%"),
+                new MenuControlProfileValue("green", "-1", "interval", "10%")
+            ]);
+        }
+
+        await using var reloaded = CreateController();
+        await reloaded.InitializeAsync();
+        var profile = reloaded.GetMenuControlProfileSnapshot();
+        Assert.Equal("indexed-selection", profile.DefinitionId);
+        Assert.Equal(3, profile.Values.Count);
+    }
+
+    [Fact]
+    public async Task FactoryResetConfirmationRestoresDeclaredControlDefaults()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: factory-reset
+            name: Factory Reset
+            model: Test TV
+            timing:
+              defaultDelay: 50ms
+              screenChangeDelay: 50ms
+              returnDelay: 50ms
+            nodes:
+              - id: normal-video
+                label: Normal video
+              - id: picture
+                label: Picture
+                parent: normal-video
+              - id: brightness
+                label: Brightness
+                parent: picture
+                controlType: slider
+                defaultValue: 25
+                minimumValue: 0
+                maximumValue: 50
+              - id: reset-picture
+                label: Reset Picture
+                parent: picture
+                controlType: confirmation
+                defaultValue: Reset
+                options: [Reset, Cancel]
+            anchors:
+              - id: normal
+                label: Return to normal video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            transitions:
+              - id: open-brightness
+                from: normal-video
+                to: brightness
+                verified: true
+                steps:
+                  - key: KEY_MENU
+              - id: open-reset-picture
+                from: normal-video
+                to: reset-picture
+                verified: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_DOWN
+            """;
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            await controller.ApplyMenuControlValuesAsync(
+                [new MenuControlValueUpdate("brightness", "25", "27")],
+                new Dictionary<string, string> { ["brightness"] = "25" },
+                returnToNormalVideo: true);
+            Assert.Equal("27", controller.GetMenuNavigationSnapshot().ControlValues["brightness"]);
+            transport.SentMessages.Clear();
+
+            await controller.ResetMenuControlsToFactoryDefaultsAsync("reset-picture", "Reset");
+
+            Assert.Equal(
+                ["KEY_MENU", "KEY_DOWN", "KEY_ENTER", "KEY_ENTER", "KEY_RETURN"],
+                GetSentKeys(transport));
+            var snapshot = controller.GetMenuNavigationSnapshot();
+            Assert.Equal("25", snapshot.ControlValues["brightness"]);
+            Assert.Equal("normal-video", snapshot.State.NodeId);
+        }
+    }
+
+    [Fact]
     public async Task MenuControlsRecalculateOffsetsWhenASelectionHidesASibling()
     {
         const string yaml =

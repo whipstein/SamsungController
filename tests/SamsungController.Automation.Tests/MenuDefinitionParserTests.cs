@@ -30,6 +30,8 @@ public sealed class MenuDefinitionParserTests
         Assert.Equal(
             ["TV Speaker", "Receiver", "Bluetooth Speaker"],
             definition.Nodes["sound-output"].SelectionOptions);
+        Assert.Equal(MenuControlType.IndexedSelection, definition.Nodes["interval"].ControlType);
+        Assert.Equal(["5%", "10%", "15%"], definition.Nodes["interval"].SelectionOptions);
         var disabledCondition = Assert.Single(definition.Nodes["picture"].DisabledWhen!);
         Assert.Equal("auto-picture", disabledCondition.SettingNodeId);
         Assert.Equal("on", disabledCondition.EqualsValue);
@@ -209,6 +211,19 @@ public sealed class MenuDefinitionParserTests
               - TV Speaker
               - Receiver
               - Bluetooth Speaker
+          - id: interval
+            label: Interval
+            parent: menu
+            controlType: indexed-selection
+            defaultValue: 5%
+            options: [5%, 10%, 15%]
+          - id: interval-red
+            label: Red
+            parent: menu
+            controlType: slider
+            defaultValue: 0
+            minimumValue: -50
+            maximumValue: 50
         anchors:
           - id: normal
             label: Back to video

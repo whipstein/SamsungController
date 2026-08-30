@@ -137,6 +137,29 @@ nodes:
       - Receiver
       - Bluetooth Speaker
 
+  - id: interval
+    label: Interval
+    parent: settings
+    controlType: indexed-selection
+    defaultValue: 5%
+    options: [5%, 10%, 15%, 20%]
+
+  - id: interval-red
+    label: Red
+    parent: settings
+    controlType: slider
+    defaultValue: 0
+    minimumValue: -50
+    maximumValue: 50
+
+  - id: interval-green
+    label: Green
+    parent: settings
+    controlType: slider
+    defaultValue: 0
+    minimumValue: -50
+    maximumValue: 50
+
 anchors:
   - id: normal-video
     label: Return to normal video
@@ -184,7 +207,7 @@ the active configuration. A verified route from another configuration never
 contributes to direct or calculated navigation.
 
 Each node also describes how the highlighted row behaves. `controlType` is
-`submenu`, `slider`, `selection`, `submenu-selection`, `switch`, or
+`submenu`, `slider`, `selection`, `submenu-selection`, `indexed-selection`, `switch`, or
 `confirmation`; older definitions
 that omit it continue to load as `submenu`. Sliders require numeric
 `minimumValue` and `maximumValue` boundaries plus a numeric `defaultValue` inside
@@ -193,7 +216,12 @@ each require an ordered `options` list plus a `defaultValue` that matches one
 option. A normal selection opens its choices and choosing a value returns to the
 setting row automatically. A submenu selection opens a full value submenu;
 after choosing the value, SamsungController sends `KEY_RETURN` to return to the
-containing menu. A confirmation is
+containing menu. An indexed selection renders each option as a fixed grid row
+and treats the consecutive slider nodes immediately following it under the same
+parent as columns. The selector is operated automatically during Apply and is
+not shown as a standalone dropdown. Existing `Interval` percentage selectors
+and `Color` selectors containing Red, Green, and Blue are recognized as indexed
+for compatibility. A confirmation is
 an action dialog rather than a persistent setting; it requires at least two
 ordered `options`, and its `defaultValue` records the initially highlighted
 choice. Duplicate choices are rejected. Keep lists in the same order displayed
@@ -286,13 +314,14 @@ can be planned or sent.
    the stable ID, for example `Brightness {slider; default=50; min=0; max=100}`, `Picture Mode
    {selection; default=Filmmaker Mode; options=Standard|Movie|Filmmaker Mode}`,
    `Sound Output {submenu-selection; default=TV Speaker; options=TV Speaker|Receiver|Bluetooth Speaker}`,
+   `Interval {indexed-selection; default=5%; options=5%|10%|15%|20%}` followed by its slider rows,
    `Adaptive Picture {switch; default=off}`, or `Reset Picture {confirmation;
    default=Cancel; options=Reset|Cancel}`. The option order after
    `options=` is preserved. A dependent gray row can be written as `Brightness {slider;
    default=50; min=0; max=100; disabledWhen=adaptive-picture=on}`. A row that
    disappears can use `Game HDR {submenu; hiddenWhen=game-mode=off}`. Separate
    multiple conditions with `|`. The fine-adjustment editor exposes disabled and
-   hidden rules, selection, submenu-selection, and
+   hidden rules, selection, submenu-selection, indexed-selection, and
    confirmation choices as an ordered add/remove/move list, and exposes slider
    boundaries as numeric fields. By default the outline synchronizes the complete
    selected branch, so deleting a line previews and saves that item as a removal.
@@ -407,6 +436,23 @@ verification is persisted for the saved TV address and later changes no longer
 request routine confirmation. Selection verification resets for a different TV,
 when system-wide menu delays change, or from Menu Controls. Switches are not
 promoted by either coverage type and continue to request visual confirmation.
+
+### Saved profile and factory-reset synchronization
+
+Menu Controls stores desired values in the local application settings for the
+active menu-definition ID. Indexed cells are keyed by selector, selector option,
+and slider node, so all 20 Point percentages or Custom Color rows survive an
+application restart. These personal target values are not written to the shared
+TV topology YAML.
+
+**Reset & apply all** lists verified confirmation nodes whose ID or label contains
+`reset`, preferring `reset-picture`. After explicit user confirmation it
+navigates to that node, opens its confirmation dialog, selects the chosen reset
+action, and runs the verified return-to-video anchor. The controller then resets
+its predictions to every declared YAML `defaultValue` and applies the saved
+profile in dependency order, followed by indexed grid rows in their declared
+option order. The chosen confirmation determines reset scope; selecting Reset
+Picture does not perform a full television ownership/device factory reset.
 
 After initial verification, editing the outline or fine-adjustment tree runs the
 same generator again. A group whose generated key sequences and membership are

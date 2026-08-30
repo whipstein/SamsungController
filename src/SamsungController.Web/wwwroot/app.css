@@ -856,6 +856,10 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .picture-control-summary strong { font-size: 11px; }
 .picture-control-summary small { margin-top: 3px; color: var(--muted); font-size: 8px; }
 .picture-apply-action { width: auto; min-width: 175px; gap: 18px; white-space: nowrap; }
+.factory-reset-confirmation { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; margin-top: 13px; padding: 12px; border: 1px solid rgba(255,107,107,.35); border-radius: 7px; background: rgba(255,107,107,.045); }
+.factory-reset-confirmation strong, .factory-reset-confirmation span { display: block; }
+.factory-reset-confirmation strong { color: #ff8c8c; font-size: 11px; }
+.factory-reset-confirmation span { margin-top: 4px; color: var(--muted); font-size: 8px; line-height: 1.5; }
 .menu-control-tabs { display: flex; gap: 2px; margin-top: 15px; overflow-x: auto; border-bottom: 1px solid var(--line-strong); scrollbar-width: thin; }
 .menu-control-tab { display: flex; flex: 0 0 auto; align-items: center; justify-content: center; gap: 9px; min-width: 92px; padding: 10px 13px 9px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); cursor: pointer; font: 9px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .04em; }
 .menu-control-tab:hover:not(:disabled) { background: rgba(124,231,220,.04); color: var(--text); }
@@ -877,6 +881,16 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .menu-control-verification-actions .secondary-action { width: auto; white-space: nowrap; }
 .picture-control-sections { display: grid; gap: 14px; }
 .picture-control-section { padding: 15px; }
+.indexed-control-section.disabled { opacity: .55; }
+.indexed-control-table-wrap { overflow-x: auto; }
+.indexed-control-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.indexed-control-table th, .indexed-control-table td { min-width: 88px; padding: 7px; border: 1px solid var(--line); text-align: center; }
+.indexed-control-table thead th { background: #0a1720; color: var(--cyan); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .05em; }
+.indexed-control-table thead th small { display: block; margin-top: 3px; color: var(--faint); font-size: 6px; }
+.indexed-control-table tbody th { width: 92px; background: rgba(124,231,220,.035); color: var(--ink); font: 9px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.indexed-control-table td.pending { background: rgba(242,181,107,.06); }
+.indexed-control-table td input { width: 64px; padding: 6px; text-align: center; font-size: 9px; }
+.indexed-control-table td small { display: block; margin-top: 3px; color: var(--faint); font-size: 6px; }
 .picture-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 15px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
 .picture-section-heading span { display: block; color: var(--cyan); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .1em; }
 .picture-section-heading h2 { margin: 3px 0 0; font-size: 16px; }

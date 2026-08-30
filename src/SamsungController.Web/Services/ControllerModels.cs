@@ -129,6 +129,23 @@ public sealed record MenuControlValueUpdate(
     string FromValue,
     string ToValue);
 
+public sealed record MenuIndexedControlValueUpdate(
+    string SelectorNodeId,
+    string SelectorValue,
+    string NodeId,
+    string FromValue,
+    string ToValue);
+
+public sealed record MenuControlProfileValue(
+    string NodeId,
+    string Value,
+    string? SelectorNodeId = null,
+    string? SelectorValue = null);
+
+public sealed record MenuControlProfileSnapshot(
+    string? DefinitionId,
+    IReadOnlyList<MenuControlProfileValue> Values);
+
 public sealed record MenuControlVerificationSnapshot(
     int ConfirmedSliderCount,
     int RequiredSliderCount,

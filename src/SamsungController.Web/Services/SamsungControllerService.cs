@@ -390,6 +390,68 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
     }
 
+    public MenuControlProfileSnapshot GetMenuControlProfileSnapshot()
+    {
+        lock (_sync)
+        {
+            if (_menuDefinition is null
+                || !_menuDefinition.Id.Equals(
+                    _settings.MenuControlProfileDefinitionId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return new MenuControlProfileSnapshot(_menuDefinition?.Id, []);
+            }
+
+            return new MenuControlProfileSnapshot(
+                _menuDefinition.Id,
+                (_settings.MenuControlProfileValues ?? []).ToArray());
+        }
+    }
+
+    public async Task SaveMenuControlProfileAsync(
+        IReadOnlyList<MenuControlProfileValue> values,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        MenuDefinition definition;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+        }
+
+        if (values.Count > 5000)
+        {
+            throw new InvalidOperationException("A menu-control profile can store at most 5,000 values.");
+        }
+
+        var normalized = values.Select(value => NormalizeMenuControlProfileValue(
+                definition,
+                value))
+            .ToArray();
+        var uniqueKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in normalized)
+        {
+            var key = $"{value.SelectorNodeId}\u001f{value.SelectorValue}\u001f{value.NodeId}";
+            if (!uniqueKeys.Add(key))
+            {
+                throw new InvalidOperationException(
+                    $"Menu-control profile value '{key}' is duplicated.");
+            }
+        }
+
+        await UpdateSettingsAsync(
+                current => current with
+                {
+                    MenuControlProfileDefinitionId = definition.Id,
+                    MenuControlProfileValues = normalized
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+        NotifyChanged();
+    }
+
     public MenuAuthoringSnapshot GetMenuAuthoringSnapshot()
     {
         lock (_sync)
@@ -3007,6 +3069,106 @@ public sealed class SamsungControllerService : IAsyncDisposable
             cancellationToken);
     }
 
+    public async Task ResetMenuControlsToFactoryDefaultsAsync(
+        string confirmationNodeId,
+        string confirmationChoice,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(confirmationNodeId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(confirmationChoice);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("reset menu controls to factory defaults");
+        EnsureNoMenuRecording("reset menu controls to factory defaults");
+        if (_client.State != SamsungConnectionState.Connected)
+        {
+            throw new InvalidOperationException("Connect to the TV before resetting menu controls.");
+        }
+
+        MenuDefinition definition;
+        MenuStateTracker tracker;
+        MenuNode resetNode;
+        MenuAnchor returnAnchor;
+        Dictionary<string, string> effectiveValues;
+        string choice;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+            tracker = _menuStateTracker
+                ?? throw new InvalidOperationException("No menu state tracker is available.");
+            resetNode = definition.GetRequiredNode(confirmationNodeId.Trim());
+            if (resetNode.ControlType != MenuControlType.Confirmation)
+            {
+                throw new InvalidOperationException(
+                    $"'{definition.GetPath(resetNode.Id)}' is not a confirmation control.");
+            }
+
+            choice = (resetNode.SelectionOptions ?? []).FirstOrDefault(option => option.Equals(
+                         confirmationChoice.Trim(),
+                         StringComparison.OrdinalIgnoreCase))
+                     ?? throw new InvalidOperationException(
+                         $"Confirmation '{definition.GetPath(resetNode.Id)}' does not offer '{confirmationChoice.Trim()}'.");
+            returnAnchor = FindReturnToVideoAnchor(definition)
+                ?? throw new InvalidOperationException(
+                    "A return-to-normal-video anchor is required for factory reset synchronization.");
+            if (!returnAnchor.Verified)
+            {
+                throw new InvalidOperationException(
+                    "Verify the return-to-normal-video anchor before using factory reset synchronization.");
+            }
+
+            effectiveValues = CreateEffectivePictureControlValues(
+                definition,
+                _menuControlValues);
+        }
+
+        if (IsMenuNodeOrAncestorDisabled(definition, resetNode, effectiveValues))
+        {
+            throw new InvalidOperationException(
+                $"'{definition.GetPath(resetNode.Id)}' is disabled by the current predicted menu settings.");
+        }
+
+        if (IsMenuNodeOrAncestorHidden(definition, resetNode, effectiveValues))
+        {
+            throw new InvalidOperationException(
+                $"'{definition.GetPath(resetNode.Id)}' is hidden by the current predicted menu settings.");
+        }
+
+        var operations = CreateConfirmationOperations(resetNode, choice);
+        await RunNavigationAsync(
+                $"Factory reset · {definition.GetPath(resetNode.Id)}",
+                async (navigator, token) =>
+                {
+                    await PreparePictureControlAsync(
+                            definition,
+                            tracker,
+                            resetNode,
+                            effectiveValues,
+                            token)
+                        .ConfigureAwait(false);
+                    await ExecutePictureControlOperationsAsync(
+                            $"Confirm {choice} · {definition.GetPath(resetNode.Id)}",
+                            definition.GetPath(resetNode.Id),
+                            definition.GetPath(resetNode.Id),
+                            operations,
+                            definition.Timing,
+                            token)
+                        .ConfigureAwait(false);
+                    tracker.ConfirmNode(
+                        resetNode.Id,
+                        $"Confirmed '{choice}' for '{definition.GetPath(resetNode.Id)}'.");
+                    await navigator.ExecuteAnchorAsync(returnAnchor.Id, token)
+                        .ConfigureAwait(false);
+                    lock (_sync)
+                    {
+                        ResetMenuControlValues(definition);
+                    }
+                },
+                clearPlanOnSuccess: true,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public Task ApplyMenuSliderValuesAsync(
         IReadOnlyList<MenuSliderValueUpdate> updates,
         bool returnToNormalVideo,
@@ -3168,6 +3330,187 @@ public sealed class SamsungControllerService : IAsyncDisposable
             .ConfigureAwait(false);
     }
 
+    public async Task ApplyIndexedMenuControlValuesAsync(
+        IReadOnlyList<MenuIndexedControlValueUpdate> updates,
+        IReadOnlyDictionary<string, string> knownValues,
+        bool returnToNormalVideo,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(updates);
+        ArgumentNullException.ThrowIfNull(knownValues);
+        if (updates.Count == 0)
+        {
+            throw new InvalidOperationException("Choose at least one indexed menu value to apply.");
+        }
+
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("apply indexed menu control values");
+        EnsureNoMenuRecording("apply indexed menu control values");
+        if (_client.State != SamsungConnectionState.Connected)
+        {
+            throw new InvalidOperationException("Connect to the TV before applying indexed menu controls.");
+        }
+
+        MenuDefinition definition;
+        MenuStateTracker tracker;
+        MenuAnchor? returnAnchor;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+            tracker = _menuStateTracker
+                ?? throw new InvalidOperationException("No menu state tracker is available.");
+            returnAnchor = returnToNormalVideo
+                ? FindReturnToVideoAnchor(definition)
+                : null;
+        }
+
+        var normalized = updates.Select(update => ValidateIndexedControlUpdate(
+                definition,
+                update))
+            .ToArray();
+        if (normalized.Select(update =>
+                $"{update.SelectorNodeId}\u001f{update.SelectorValue}\u001f{update.NodeId}")
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count() != normalized.Length)
+        {
+            throw new InvalidOperationException(
+                "Each indexed slider can appear only once for each selector value in an apply operation.");
+        }
+
+        if (returnToNormalVideo && returnAnchor?.Verified != true)
+        {
+            throw new InvalidOperationException(
+                "A verified return-to-normal-video anchor is required for the selected exit behavior.");
+        }
+
+        var effectiveValues = CreateEffectivePictureControlValues(definition, knownValues);
+        var orderedGroups = normalized
+            .GroupBy(update => update.SelectorNodeId, StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var selector = definition.GetRequiredNode(group.Key);
+                var optionOrder = (selector.SelectionOptions ?? [])
+                    .Select((option, index) => (option, index))
+                    .ToDictionary(item => item.option, item => item.index, StringComparer.OrdinalIgnoreCase);
+                return new
+                {
+                    Selector = selector,
+                    Rows = group.GroupBy(update => update.SelectorValue, StringComparer.OrdinalIgnoreCase)
+                        .OrderBy(row => optionOrder[row.Key])
+                        .ToArray()
+                };
+            })
+            .ToArray();
+        var lastTargetNodeId = normalized[^1].NodeId;
+        await RunNavigationAsync(
+                $"Apply {normalized.Length} indexed menu value{(normalized.Length == 1 ? string.Empty : "s")}",
+                async (navigator, token) =>
+                {
+                    foreach (var group in orderedGroups)
+                    {
+                        var selector = group.Selector;
+                        if (IsMenuNodeOrAncestorDisabled(definition, selector, effectiveValues)
+                            || IsMenuNodeOrAncestorHidden(definition, selector, effectiveValues))
+                        {
+                            throw new InvalidOperationException(
+                                $"Indexed selector '{definition.GetPath(selector.Id)}' is unavailable under the current predicted settings.");
+                        }
+
+                        var currentSelectorValue = effectiveValues[selector.Id];
+                        foreach (var row in group.Rows)
+                        {
+                            if (!currentSelectorValue.Equals(row.Key, StringComparison.OrdinalIgnoreCase))
+                            {
+                                await PreparePictureControlAsync(
+                                        definition,
+                                        tracker,
+                                        selector,
+                                        effectiveValues,
+                                        token)
+                                    .ConfigureAwait(false);
+                                var selectorUpdate = new MenuControlValueUpdate(
+                                    selector.Id,
+                                    currentSelectorValue,
+                                    row.Key);
+                                await ExecutePictureControlValueChangeAsync(
+                                        definition,
+                                        selectorUpdate,
+                                        token)
+                                    .ConfigureAwait(false);
+                                currentSelectorValue = row.Key;
+                                effectiveValues[selector.Id] = row.Key;
+                                lock (_sync)
+                                {
+                                    _menuControlValues[selector.Id] = row.Key;
+                                }
+
+                                tracker.ConfirmNode(
+                                    selector.Id,
+                                    $"Indexed selector '{definition.GetPath(selector.Id)}' was set to '{row.Key}'.");
+                            }
+
+                            foreach (var update in row)
+                            {
+                                var node = definition.GetRequiredNode(update.NodeId);
+                                effectiveValues[node.Id] = update.FromValue;
+                                if (IsMenuNodeOrAncestorDisabled(definition, node, effectiveValues)
+                                    || IsMenuNodeOrAncestorHidden(definition, node, effectiveValues))
+                                {
+                                    throw new InvalidOperationException(
+                                        $"Indexed control '{definition.GetPath(node.Id)}' is unavailable under the current predicted settings.");
+                                }
+
+                                await PreparePictureControlAsync(
+                                        definition,
+                                        tracker,
+                                        node,
+                                        effectiveValues,
+                                        token)
+                                    .ConfigureAwait(false);
+                                await ExecutePictureControlValueChangeAsync(
+                                        definition,
+                                        new MenuControlValueUpdate(
+                                            node.Id,
+                                            update.FromValue,
+                                            update.ToValue),
+                                        token)
+                                    .ConfigureAwait(false);
+                                effectiveValues[node.Id] = update.ToValue;
+                                lock (_sync)
+                                {
+                                    _menuControlValues[node.Id] = update.ToValue;
+                                }
+
+                                tracker.ConfirmNode(
+                                    node.Id,
+                                    $"Indexed value '{row.Key} / {node.Label}' was adjusted to '{update.ToValue}'.");
+                                lastTargetNodeId = node.Id;
+                            }
+                        }
+                    }
+
+                    if (returnAnchor is not null)
+                    {
+                        try
+                        {
+                            await navigator.ExecuteAnchorAsync(returnAnchor.Id, token)
+                                .ConfigureAwait(false);
+                        }
+                        catch
+                        {
+                            tracker.ConfirmNode(
+                                lastTargetNodeId,
+                                "Indexed values were applied, but the requested return to normal video failed; the last adjusted control remains the expected state.");
+                            throw;
+                        }
+                    }
+                },
+                clearPlanOnSuccess: true,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<MenuControlVerificationSnapshot> ConfirmMenuSliderBehaviorAsync(
         string nodeId,
         CancellationToken cancellationToken = default)
@@ -3235,7 +3578,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 ?? throw new InvalidOperationException("No menu definition is loaded.");
             var node = definition.GetRequiredNode(nodeId.Trim());
             if (node.ControlType is not MenuControlType.Selection
-                and not MenuControlType.SubmenuSelection)
+                and not MenuControlType.SubmenuSelection
+                and not MenuControlType.IndexedSelection)
             {
                 throw new InvalidOperationException(
                     $"'{definition.GetPath(node.Id)}' is not defined as a selection control.");
@@ -5505,6 +5849,141 @@ public sealed class SamsungControllerService : IAsyncDisposable
         };
     }
 
+    private static MenuIndexedControlValueUpdate ValidateIndexedControlUpdate(
+        MenuDefinition definition,
+        MenuIndexedControlValueUpdate update)
+    {
+        ArgumentNullException.ThrowIfNull(update);
+        ArgumentException.ThrowIfNullOrWhiteSpace(update.SelectorNodeId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(update.SelectorValue);
+        ArgumentException.ThrowIfNullOrWhiteSpace(update.NodeId);
+        var selector = definition.GetRequiredNode(update.SelectorNodeId.Trim());
+        if (!IsIndexedSelectionNode(selector))
+        {
+            throw new InvalidOperationException(
+                $"'{definition.GetPath(selector.Id)}' is not defined as an indexed selection.");
+        }
+
+        var selectorValue = NormalizePictureControlValue(
+            definition,
+            selector,
+            update.SelectorValue);
+        var node = definition.GetRequiredNode(update.NodeId.Trim());
+        if (!GetIndexedSliderNodes(definition, selector).Any(candidate => candidate.Id.Equals(
+                node.Id,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException(
+                $"'{definition.GetPath(node.Id)}' is not a consecutive slider controlled by indexed selection '{definition.GetPath(selector.Id)}'.");
+        }
+
+        var normalized = ValidatePictureControlUpdate(
+            definition,
+            new MenuControlValueUpdate(node.Id, update.FromValue, update.ToValue));
+        return update with
+        {
+            SelectorNodeId = selector.Id,
+            SelectorValue = selectorValue,
+            NodeId = normalized.NodeId,
+            FromValue = normalized.FromValue,
+            ToValue = normalized.ToValue
+        };
+    }
+
+    private static MenuControlProfileValue NormalizeMenuControlProfileValue(
+        MenuDefinition definition,
+        MenuControlProfileValue value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentException.ThrowIfNullOrWhiteSpace(value.NodeId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(value.Value);
+        var hasSelectorId = !string.IsNullOrWhiteSpace(value.SelectorNodeId);
+        var hasSelectorValue = !string.IsNullOrWhiteSpace(value.SelectorValue);
+        if (hasSelectorId != hasSelectorValue)
+        {
+            throw new InvalidOperationException(
+                "An indexed profile value must define both selector node and selector value.");
+        }
+
+        if (hasSelectorId)
+        {
+            var normalized = ValidateIndexedControlUpdate(
+                definition,
+                new MenuIndexedControlValueUpdate(
+                    value.SelectorNodeId!,
+                    value.SelectorValue!,
+                    value.NodeId,
+                    value.Value,
+                    value.Value));
+            return new MenuControlProfileValue(
+                normalized.NodeId,
+                normalized.ToValue,
+                normalized.SelectorNodeId,
+                normalized.SelectorValue);
+        }
+
+        var update = ValidatePictureControlUpdate(
+            definition,
+            new MenuControlValueUpdate(value.NodeId, value.Value, value.Value));
+        return new MenuControlProfileValue(update.NodeId, update.ToValue);
+    }
+
+    private static IReadOnlyList<MenuNode> GetIndexedSliderNodes(
+        MenuDefinition definition,
+        MenuNode selector)
+    {
+        if (!IsIndexedSelectionNode(selector))
+        {
+            return [];
+        }
+
+        var nodes = definition.Nodes.Values.ToArray();
+        var selectorIndex = Array.FindIndex(nodes, node => node.Id.Equals(
+            selector.Id,
+            StringComparison.OrdinalIgnoreCase));
+        if (selectorIndex < 0)
+        {
+            return [];
+        }
+
+        var sliders = new List<MenuNode>();
+        for (var index = selectorIndex + 1; index < nodes.Length; index++)
+        {
+            var candidate = nodes[index];
+            if (candidate.ParentId?.Equals(selector.ParentId, StringComparison.OrdinalIgnoreCase) != true
+                || candidate.ControlType != MenuControlType.Slider)
+            {
+                break;
+            }
+
+            sliders.Add(candidate);
+        }
+
+        return sliders;
+    }
+
+    private static bool IsIndexedSelectionNode(MenuNode selector)
+    {
+        if (selector.ControlType == MenuControlType.IndexedSelection)
+        {
+            return true;
+        }
+
+        if (selector.ControlType != MenuControlType.Selection)
+        {
+            return false;
+        }
+
+        var options = selector.SelectionOptions ?? [];
+        return selector.Label.Equals("Interval", StringComparison.OrdinalIgnoreCase)
+               && options.Count > 1
+               && options.All(option => option.EndsWith('%'))
+            || selector.Label.Equals("Color", StringComparison.OrdinalIgnoreCase)
+               && new[] { "Red", "Green", "Blue" }.All(required => options.Contains(
+                   required,
+                   StringComparer.OrdinalIgnoreCase));
+    }
+
     private static string NormalizePictureControlValue(
         MenuDefinition definition,
         MenuNode node,
@@ -5553,6 +6032,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
             case MenuControlType.Selection:
             case MenuControlType.SubmenuSelection:
+            case MenuControlType.IndexedSelection:
                 var option = (node.SelectionOptions ?? []).FirstOrDefault(candidate =>
                     candidate.Equals(normalized, StringComparison.OrdinalIgnoreCase));
                 return option ?? throw new InvalidOperationException(
@@ -5574,6 +6054,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                          or MenuControlType.Switch
                          or MenuControlType.Selection
                          or MenuControlType.SubmenuSelection
+                         or MenuControlType.IndexedSelection
                      && !string.IsNullOrWhiteSpace(node.DefaultValue)))
         {
             values[node.Id] = NormalizePictureControlValue(
@@ -5604,6 +6085,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                          or MenuControlType.Switch
                          or MenuControlType.Selection
                          or MenuControlType.SubmenuSelection
+                         or MenuControlType.IndexedSelection
                      && !string.IsNullOrWhiteSpace(node.DefaultValue)))
         {
             _menuControlValues[node.Id] = NormalizePictureControlValue(
@@ -5869,6 +6351,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         return definition.Nodes.Values
             .Where(node => node.ControlType is MenuControlType.Selection
                     or MenuControlType.SubmenuSelection
+                    or MenuControlType.IndexedSelection
                 && !string.IsNullOrWhiteSpace(node.DefaultValue)
                 && node.SelectionOptions is { Count: > 0 })
             .Where(node => HasVerifiedPictureControlRoute(definition, node.Id)
@@ -6059,6 +6542,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 node,
                 update,
                 returnToContainingMenu: true),
+            MenuControlType.IndexedSelection => CreateSelectionValueOperations(
+                node,
+                update,
+                returnToContainingMenu: false),
             _ => throw new InvalidOperationException(
                 $"'{definition.GetPath(node.Id)}' is not an adjustable menu control.")
         };
@@ -6111,6 +6598,36 @@ public sealed class SamsungControllerService : IAsyncDisposable
             operations.Add(new MenuOperation("KEY_RETURN"));
         }
 
+        return operations;
+    }
+
+    private static IReadOnlyList<MenuOperation> CreateConfirmationOperations(
+        MenuNode node,
+        string choice)
+    {
+        var options = node.SelectionOptions ?? [];
+        var fromIndex = options.ToList().FindIndex(option => option.Equals(
+            node.DefaultValue,
+            StringComparison.OrdinalIgnoreCase));
+        var toIndex = options.ToList().FindIndex(option => option.Equals(
+            choice,
+            StringComparison.OrdinalIgnoreCase));
+        if (fromIndex < 0 || toIndex < 0)
+        {
+            throw new InvalidOperationException(
+                $"Confirmation '{node.Label}' has an invalid initial or requested choice.");
+        }
+
+        var operations = new List<MenuOperation> { new("KEY_ENTER") };
+        var difference = toIndex - fromIndex;
+        if (difference != 0)
+        {
+            operations.Add(new MenuOperation(
+                difference > 0 ? "KEY_DOWN" : "KEY_UP",
+                Repeat: Math.Abs(difference)));
+        }
+
+        operations.Add(new MenuOperation("KEY_ENTER"));
         return operations;
     }
 

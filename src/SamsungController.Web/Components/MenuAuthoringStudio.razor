@@ -171,7 +171,7 @@
                                     }
                                 </div>
                                 <div class="menu-outline-step setup-step-anchor" @ref="TopologyStepElement">
-                                <p>Paste the hierarchy using two spaces per level. Add control details as <code>{slider; default=50; min=0; max=100}</code>, <code>{selection; default=Warm2; options=Standard|Warm1|Warm2}</code>, <code>{switch; default=off}</code>, or <code>{confirmation; default=Cancel; options=Reset|Cancel}</code>. Use a setting's stable ID for <code>disabledWhen=adaptive-picture=on</code> when a row stays gray, or <code>hiddenWhen=game-mode=on</code> when it disappears. Add <code>[stable-id]</code> last only when identity must be explicit.</p>
+                                <p>Paste the hierarchy using two spaces per level. Add control details as <code>{slider; default=50; min=0; max=100}</code>, <code>{selection; default=Warm2; options=Standard|Warm1|Warm2}</code>, <code>{indexed-selection; default=5%; options=5%|10%|15%}</code>, <code>{switch; default=off}</code>, or <code>{confirmation; default=Cancel; options=Reset|Cancel}</code>. Place the indexed selection immediately before its slider columns. Use a setting's stable ID for <code>disabledWhen=adaptive-picture=on</code> when a row stays gray, or <code>hiddenWhen=game-mode=on</code> when it disappears. Add <code>[stable-id]</code> last only when identity must be explicit.</p>
                                 <div class="bulk-topology-controls">
                                     <label>
                                         <span>PLACE OUTLINE UNDER</span>
@@ -362,11 +362,12 @@
                                         <option value="@MenuControlType.Slider">Slider</option>
                                         <option value="@MenuControlType.Selection">Selection</option>
                                         <option value="@MenuControlType.SubmenuSelection">Submenu selection</option>
+                                        <option value="@MenuControlType.IndexedSelection">Indexed selection grid</option>
                                         <option value="@MenuControlType.Switch">Switch</option>
                                         <option value="@MenuControlType.Confirmation">Confirmation dialog</option>
                                     </select>
                                 </label>
-                                @if (NodeEditorControlType is MenuControlType.Selection or MenuControlType.SubmenuSelection or MenuControlType.Confirmation)
+                                @if (NodeEditorControlType is MenuControlType.Selection or MenuControlType.SubmenuSelection or MenuControlType.IndexedSelection or MenuControlType.Confirmation)
                                 {
                                     <label>
                                         <span>@(NodeEditorControlType == MenuControlType.Confirmation ? "Initially highlighted choice" : "Default selection")</span>
@@ -405,13 +406,13 @@
                                     </label>
                                 }
                             </div>
-                            @if (NodeEditorControlType is MenuControlType.Selection or MenuControlType.SubmenuSelection or MenuControlType.Confirmation)
+                            @if (NodeEditorControlType is MenuControlType.Selection or MenuControlType.SubmenuSelection or MenuControlType.IndexedSelection or MenuControlType.Confirmation)
                             {
                                 <div class="selection-option-editor">
                                     <header>
                                         <span>
                                             <b>@(NodeEditorControlType == MenuControlType.Confirmation ? "CONFIRMATION CHOICES" : "AVAILABLE SELECTIONS")</b>
-                                            <small>@(NodeEditorControlType == MenuControlType.Confirmation ? "List the dialog buttons in TV order. The initially highlighted choice must be one of them." : NodeEditorControlType == MenuControlType.SubmenuSelection ? "Keep these in TV order. After choosing a value, SamsungController sends Return to leave the value submenu." : "Keep these in the same order shown on the TV. The default must be one of them.")</small>
+                                            <small>@(NodeEditorControlType == MenuControlType.Confirmation ? "List the dialog buttons in TV order. The initially highlighted choice must be one of them." : NodeEditorControlType == MenuControlType.SubmenuSelection ? "Keep these in TV order. After choosing a value, SamsungController sends Return to leave the value submenu." : NodeEditorControlType == MenuControlType.IndexedSelection ? "Each option becomes a fixed grid row. Consecutive slider rows below this item become editable columns." : "Keep these in the same order shown on the TV. The default must be one of them.")</small>
                                         </span>
                                         <button type="button" class="secondary-action" @onclick="AddSelectionOption" disabled="@(!CanAddSelectionOption)">+ Add option</button>
                                     </header>
@@ -1301,6 +1302,7 @@
     private bool CanAddSelectionOption => CanEditMenuTree
         && NodeEditorControlType is MenuControlType.Selection
             or MenuControlType.SubmenuSelection
+            or MenuControlType.IndexedSelection
             or MenuControlType.Confirmation
         && NodeEditorSelectionOptions.Count < 100;
     private bool CanAddNodeDisabledCondition => CanEditMenuTree
@@ -1521,6 +1523,9 @@
         MenuControlType.SubmenuSelection => SelectionOptionChoices.Any(option => option.Equals(
             NodeEditorDefaultValue,
             StringComparison.OrdinalIgnoreCase)),
+        MenuControlType.IndexedSelection => SelectionOptionChoices.Any(option => option.Equals(
+            NodeEditorDefaultValue,
+            StringComparison.OrdinalIgnoreCase)),
         MenuControlType.Confirmation => SelectionOptionChoices.Any(option => option.Equals(
             NodeEditorDefaultValue,
             StringComparison.OrdinalIgnoreCase)),
@@ -1540,6 +1545,7 @@
         : NodeEditorMinimumValue is null && NodeEditorMaximumValue is null;
     private bool IsSelectionOptionsValid => NodeEditorControlType is MenuControlType.Selection
         or MenuControlType.SubmenuSelection
+        or MenuControlType.IndexedSelection
         or MenuControlType.Confirmation
         ? NodeEditorSelectionOptions.Count >= (NodeEditorControlType == MenuControlType.Confirmation ? 2 : 1)
           && NodeEditorSelectionOptions.All(option =>
@@ -2250,6 +2256,7 @@
         }
         else if (NodeEditorControlType is MenuControlType.Selection
                  or MenuControlType.SubmenuSelection
+                 or MenuControlType.IndexedSelection
                  or MenuControlType.Confirmation)
         {
             NodeEditorDefaultValue = string.Empty;
@@ -2294,6 +2301,7 @@
         {
             MenuControlType.Selection => setting.SelectionOptions,
             MenuControlType.SubmenuSelection => setting.SelectionOptions,
+            MenuControlType.IndexedSelection => setting.SelectionOptions,
             MenuControlType.Switch => ["off", "on"],
             _ => []
         };
@@ -2359,6 +2367,7 @@
         CanEditMenuTree
         && NodeEditorControlType is MenuControlType.Selection
             or MenuControlType.SubmenuSelection
+            or MenuControlType.IndexedSelection
             or MenuControlType.Confirmation
         && index >= 0
         && index < NodeEditorSelectionOptions.Count
@@ -3272,6 +3281,7 @@
         MenuControlType.Slider => "Slider",
         MenuControlType.Selection => "Selection",
         MenuControlType.SubmenuSelection => "Submenu selection",
+        MenuControlType.IndexedSelection => "Indexed selection grid",
         MenuControlType.Switch => "Switch",
         MenuControlType.Confirmation => "Confirmation",
         _ => controlType.ToString()
@@ -3281,9 +3291,12 @@
     {
         var details = new List<string>
         {
-            node.ControlType == MenuControlType.SubmenuSelection
-                ? "submenu-selection"
-                : node.ControlType.ToString().ToLowerInvariant()
+            node.ControlType switch
+            {
+                MenuControlType.SubmenuSelection => "submenu-selection",
+                MenuControlType.IndexedSelection => "indexed-selection",
+                _ => node.ControlType.ToString().ToLowerInvariant()
+            }
         };
         if (!string.IsNullOrWhiteSpace(node.DefaultValue))
         {
@@ -3352,6 +3365,10 @@
                                          + "."
                                          + defaultSuffix,
             MenuControlType.SubmenuSelection => "Press OK to open its value submenu, select a value, then press Return to leave it. Available: "
+                                                + string.Join(", ", node.SelectionOptions)
+                                                + "."
+                                                + defaultSuffix,
+            MenuControlType.IndexedSelection => "Each option is a fixed grid row for the consecutive sliders that follow this item. Options: "
                                                 + string.Join(", ", node.SelectionOptions)
                                                 + "."
                                                 + defaultSuffix,

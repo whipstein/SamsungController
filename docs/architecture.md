@@ -132,12 +132,15 @@ referenced branches must first have their traversal, anchor, or return definitio
 removed.
 
 Nodes also carry interaction metadata: submenu, bounded slider, selection,
-submenu selection, switch, or confirmation dialog, plus a required declared default for
+submenu selection, indexed selection, switch, or confirmation dialog, plus a required declared default for
 value-bearing controls. Sliders validate numeric minimum/maximum bounds and an
 in-range default. Selections, submenu selections, and confirmations persist ordered, unique choices
 and require their default to match one; for confirmations it means the initially
 highlighted action. A submenu selection uses the selection option model but
-sends Return after choosing so execution ends back in the containing menu. Conditional
+sends Return after choosing so execution ends back in the containing menu. An
+indexed selection turns its ordered options into fixed rows and consumes the
+consecutive slider siblings as columns. Desired normal and indexed values are
+stored in local per-user settings rather than shared menu-topology YAML. Conditional
 `disabledWhen` rules reference another value-bearing node and retain gray rows in
 their ordered topology. `hiddenWhen` rules remove matching rows and descendants
 from the effective topology. Default-value evaluation begins as descriptive UI

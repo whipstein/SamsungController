@@ -45,6 +45,10 @@ internal sealed record SamsungWebSettings
 
     public IReadOnlyList<string>? VerifiedSelectionNodeIds { get; init; }
 
+    public string? MenuControlProfileDefinitionId { get; init; }
+
+    public IReadOnlyList<MenuControlProfileValue>? MenuControlProfileValues { get; init; }
+
     public IReadOnlyList<QuickAccessAction>? QuickAccess { get; init; }
 
     public static async Task<SamsungWebSettings> LoadAsync(

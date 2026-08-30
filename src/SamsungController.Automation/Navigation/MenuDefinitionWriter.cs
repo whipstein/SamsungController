@@ -130,6 +130,7 @@ public sealed class MenuDefinitionWriter
         MenuControlType.Slider => "slider",
         MenuControlType.Selection => "selection",
         MenuControlType.SubmenuSelection => "submenu-selection",
+        MenuControlType.IndexedSelection => "indexed-selection",
         MenuControlType.Switch => "switch",
         MenuControlType.Confirmation => "confirmation",
         _ => throw new ArgumentOutOfRangeException(nameof(controlType), controlType, null)

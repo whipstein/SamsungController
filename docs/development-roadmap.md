@@ -85,7 +85,7 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 - [x] Create new TV menu profiles entirely from the web UI.
 - [x] Define, edit, delete, sort, and custom-order the overall menu tree before recording routes.
 - [x] Bulk-create or synchronize a full menu branch from an indented outline with stable-ID reuse and a safe change preview.
-- [x] Describe rows as sub-menus, bounded sliders, selections, submenu selections, switches, or confirmation dialogs with defaults, ordered choices, and conditional disabled/gray rules.
+- [x] Describe rows as sub-menus, bounded sliders, selections, submenu selections, indexed selection grids, switches, or confirmation dialogs with defaults, ordered choices, and conditional disabled/gray rules.
 - [x] Model conditionally hidden rows and descendants and recalculate live sibling offsets from predicted setting values.
 - [x] Store named settings-dependent menu configurations in one TV YAML and scope route verification/navigation to the active configuration.
 - [x] Distinguish unrecorded tree nodes in red and recorded-but-unverified nodes in yellow.
@@ -108,6 +108,8 @@ Status was reconciled with the repository on 2026-08-28. A checked box means the
 - [x] Promote shared slider behavior after three distinct TV-specific visual confirmations instead of verifying every slider.
 - [x] Persist individual TV-specific verification for selection dropdowns with distinct ordered option lists.
 - [x] Support submenu selections that choose from an ordered value list and return to the containing menu afterward.
+- [x] Present 20 Point percentages and Custom Color choices as fixed multi-slider grids.
+- [x] Persist a local desired-value profile and reapply it after an explicitly confirmed verified factory-reset command.
 
 ### Read-only protocol research
 

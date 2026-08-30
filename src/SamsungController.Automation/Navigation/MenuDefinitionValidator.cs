@@ -191,7 +191,7 @@ public sealed class MenuDefinitionValidator
         {
             errors.Add(new MenuDefinitionValidationError(
                 location,
-                "Control type must be Submenu, Slider, Selection, SubmenuSelection, Switch, or Confirmation."));
+                "Control type must be Submenu, Slider, Selection, SubmenuSelection, IndexedSelection, Switch, or Confirmation."));
         }
 
         var hasDefaultValue = !string.IsNullOrWhiteSpace(node.DefaultValue);
@@ -265,6 +265,7 @@ public sealed class MenuDefinitionValidator
         var selectionOptions = node.SelectionOptions ?? [];
         var isChoiceControl = node.ControlType is MenuControlType.Selection
             or MenuControlType.SubmenuSelection
+            or MenuControlType.IndexedSelection
             or MenuControlType.Confirmation;
         if (isChoiceControl)
         {
@@ -292,14 +293,22 @@ public sealed class MenuDefinitionValidator
         {
             errors.Add(new MenuDefinitionValidationError(
                 location,
-                "Only a selection, submenu selection, or confirmation can define available choices."));
+                "Only a selection, submenu selection, indexed selection, or confirmation can define available choices."));
         }
 
         if (selectionOptions.Count > 100)
         {
             errors.Add(new MenuDefinitionValidationError(
                 location,
-                "A selection, submenu selection, or confirmation can define at most 100 available choices."));
+                "A selection, submenu selection, indexed selection, or confirmation can define at most 100 available choices."));
+        }
+
+        if (node.ControlType == MenuControlType.IndexedSelection
+            && !HasConsecutiveSlider(definition, node))
+        {
+            errors.Add(new MenuDefinitionValidationError(
+                location,
+                "An indexed selection must be followed immediately by at least one slider under the same parent."));
         }
 
         var uniqueOptions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -389,10 +398,11 @@ public sealed class MenuDefinitionValidator
             {
                 errors.Add(new MenuDefinitionValidationError(
                     conditionLocation,
-                    $"Setting node '{condition.SettingNodeId}' must be a slider, selection, submenu selection, or switch."));
+                    $"Setting node '{condition.SettingNodeId}' must be a slider, selection, submenu selection, indexed selection, or switch."));
             }
             else if (setting.ControlType is MenuControlType.Selection
                          or MenuControlType.SubmenuSelection
+                         or MenuControlType.IndexedSelection
                      && !(setting.SelectionOptions ?? []).Any(option => option.Equals(
                          condition.EqualsValue,
                          StringComparison.OrdinalIgnoreCase)))
@@ -416,8 +426,23 @@ public sealed class MenuDefinitionValidator
     {
         MenuControlType.Selection => "Selection",
         MenuControlType.SubmenuSelection => "Submenu selection",
+        MenuControlType.IndexedSelection => "Indexed selection",
         _ => controlType.ToString()
     };
+
+    private static bool HasConsecutiveSlider(MenuDefinition definition, MenuNode selector)
+    {
+        var nodes = definition.Nodes.Values.ToArray();
+        var index = Array.FindIndex(nodes, node => node.Id.Equals(
+            selector.Id,
+            StringComparison.OrdinalIgnoreCase));
+        return index >= 0
+               && index + 1 < nodes.Length
+               && nodes[index + 1].ParentId?.Equals(
+                   selector.ParentId,
+                   StringComparison.OrdinalIgnoreCase) == true
+               && nodes[index + 1].ControlType == MenuControlType.Slider;
+    }
 
     private static void ValidateConfigurationReference(
         MenuDefinition definition,

@@ -17,7 +17,9 @@
                 <li>Choose a top-level menu tab, then search or adjust controls grouped by their immediate TV menu section.</li>
                 <li>Switches, selections, and submenu selections use predicted values and dynamically apply declared <code>disabledWhen</code> and <code>hiddenWhen</code> rules.</li>
                 <li>Turning on 20 Point enables its Interval and RGB controls. Choosing Custom Color Space enables its Color and RGB controls.</li>
+                <li>Interval percentages and Custom Color choices appear as fixed grid rows, so every RGB value can be staged together without manually changing the selector.</li>
                 <li><strong>Immediate</strong> sends one changed control at a time. <strong>Apply button</strong> can stage a controller and its newly enabled settings together.</li>
+                <li><strong>Save profile</strong> stores desired values locally. <strong>Reset &amp; apply all</strong> runs a verified reset confirmation, restores known defaults, and reapplies that profile.</li>
                 <li>Confirm three different sliders visually to verify the shared slider behavior for this TV. Later slider changes no longer require individual confirmation.</li>
                 <li>Confirm each selection control once. A submenu selection also sends Return after choosing its value.</li>
             </ul>
@@ -58,6 +60,20 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
             <strong>@(Snapshot.MenuLabel ?? "Unknown")</strong>
             <small>@Snapshot.MenuConfidence confidence</small>
         </div>
+        @if (FactoryResetCandidates.Count > 0)
+        {
+            <label>
+                <span>FACTORY RESET ROUTE</span>
+                <select @bind="SelectedFactoryResetNodeId" @bind:after="SelectFactoryResetNode" disabled="@IsBusy">
+                    @foreach (var candidate in FactoryResetCandidates)
+                    {
+                        <option value="@candidate.Id">@candidate.Path</option>
+                    }
+                </select>
+            </label>
+            <button class="secondary-action danger-action" @onclick="BeginFactoryReset" disabled="@(!CanBeginFactoryReset)">Reset &amp; apply all</button>
+        }
+        <button class="secondary-action" @onclick="SaveControlProfileAsync" disabled="@(!CanSaveControlProfile)">Save profile</button>
         <button class="primary-action picture-apply-action" @onclick="ApplyPendingAsync" disabled="@(!CanApplyPending)">
             @(IsBusy ? "Applying…" : $"Apply {PendingCount} change{(PendingCount == 1 ? string.Empty : "s")}") <span>▶</span>
         </button>
@@ -113,6 +129,17 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
         }
     </div>
     <p class="field-note">Values are predictions based on YAML defaults and changes sent during this page session. Controls changed elsewhere can make those predictions inaccurate.</p>
+    @if (ConfirmFactoryReset)
+    {
+        <div class="factory-reset-confirmation" role="alert">
+            <div>
+                <strong>Reset picture settings to factory defaults?</strong>
+                <span>SamsungController will execute <b>@SelectedFactoryResetNode?.Path</b>, choose <b>@SelectedFactoryResetChoice</b>, return to normal video, and then apply every staged value from known YAML defaults. This changes all settings covered by that TV reset.</span>
+            </div>
+            <button class="secondary-action" @onclick="CancelFactoryReset" disabled="@IsBusy">Cancel</button>
+            <button class="primary-action danger-action" @onclick="ResetAndApplyAllAsync" disabled="@IsBusy">Yes — reset and apply all</button>
+        </div>
+    }
 </section>
 
 @if (VisibleControlCount == 0)
@@ -126,6 +153,66 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
 else
 {
     <div class="picture-control-sections">
+        @foreach (var group in GetVisibleIndexedGroups())
+        {
+            var groupDisabled = IsIndexedGroupDisabled(group);
+            <section class="panel picture-control-section indexed-control-section @(groupDisabled ? "disabled" : string.Empty)">
+                <header class="picture-section-heading">
+                    <div>
+                        <span>FIXED VALUE GRID</span>
+                        <h2>@group.Label</h2>
+                        <p>@group.Path · each @group.Selector.Label option is fixed to one row</p>
+                    </div>
+                    @if (group.AwaitingConfirmation && !groupDisabled)
+                    {
+                        <button class="secondary-action" @onclick="() => ConfirmIndexedGroupAsync(group)" disabled="@IsBusy">TV grid matches ✓</button>
+                    }
+                    else
+                    {
+                        <small>@group.Rows.Count row@(group.Rows.Count == 1 ? string.Empty : "s")</small>
+                    }
+                </header>
+                @if (groupDisabled)
+                {
+                    <p class="picture-disabled-reason">@GetIndexedGroupDisabledReason(group)</p>
+                }
+                <div class="indexed-control-table-wrap">
+                    <table class="indexed-control-table">
+                        <thead>
+                            <tr>
+                                <th>@group.Selector.Label</th>
+                                @foreach (var slider in group.Sliders)
+                                {
+                                    <th>@slider.Label <small>@FormatValue(slider.MinimumValue ?? 0)–@FormatValue(slider.MaximumValue ?? 0)</small></th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in group.Rows)
+                            {
+                                <tr>
+                                    <th scope="row">@row.SelectorValue</th>
+                                    @foreach (var cell in row.Cells)
+                                    {
+                                        <td class="@(cell.Pending ? "pending" : string.Empty)">
+                                            <input type="number"
+                                                   min="@FormatValue(cell.Minimum)"
+                                                   max="@FormatValue(cell.Maximum)"
+                                                   step="1"
+                                                   value="@cell.DesiredValue"
+                                                   aria-label="@group.Label @row.SelectorValue @cell.Slider.Label"
+                                                   @onchange="args => ChangeIndexedCellAsync(group, cell, args.Value?.ToString())"
+                                                   disabled="@(IsBusy || groupDisabled)" />
+                                            <small>TV: @cell.AppliedValue</small>
+                                        </td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        }
         @foreach (var section in GetSections())
         {
             <section class="panel picture-control-section">
@@ -199,7 +286,8 @@ else
                                 </label>
                             }
                             else if (control.Node.ControlType is MenuControlType.Selection
-                                     or MenuControlType.SubmenuSelection)
+                                     or MenuControlType.SubmenuSelection
+                                     or MenuControlType.IndexedSelection)
                             {
                                 <label class="picture-selection-control">
                                     <span>SELECTED VALUE</span>
@@ -240,7 +328,9 @@ else
     private ControllerSnapshot Snapshot { get; set; } = null!;
     private MenuNavigationSnapshot Navigation { get; set; } = null!;
     private MenuControlVerificationSnapshot Verification { get; set; } = null!;
+    private MenuControlProfileSnapshot Profile { get; set; } = null!;
     private List<PictureControlEdit> Controls { get; } = [];
+    private List<IndexedControlGroupEdit> IndexedGroups { get; } = [];
     private PictureUpdateMode UpdateMode { get; set; } = PictureUpdateMode.Staged;
     private PictureExitBehavior ExitBehavior { get; set; } = PictureExitBehavior.Stay;
     private string SelectedAreaId { get; set; } = string.Empty;
@@ -248,12 +338,43 @@ else
     private string? LocalError { get; set; }
     private string? LocalStatus { get; set; }
     private bool IsBusy { get; set; }
+    private bool ConfirmFactoryReset { get; set; }
+    private string SelectedFactoryResetNodeId { get; set; } = string.Empty;
+    private string SelectedFactoryResetChoice { get; set; } = string.Empty;
 
-    private int PendingCount => Controls.Count(control => control.Pending && !IsControlDisabled(control));
-    private int VisibleControlCount => GetFilteredControls().Count;
+    private int PendingCount => Controls.Count(control =>
+            control.Pending
+            && !IsIndexedControl(control.Node.Id)
+            && !IsControlDisabled(control)
+            && !IsControlHidden(control))
+        + IndexedGroups.Sum(group => IsIndexedGroupDisabled(group)
+            ? 0
+            : group.Rows.Sum(row => row.Cells.Count(cell => cell.Pending)));
+    private int VisibleControlCount => GetFilteredControls().Count + GetVisibleIndexedGroups().Count;
     private bool CanApplyPending => PendingCount > 0
         && !IsBusy
         && Snapshot.ConnectionState == SamsungConnectionState.Connected
+        && !Snapshot.MacroRunning
+        && !Navigation.IsRunning;
+    private IReadOnlyList<MenuNodeSummary> FactoryResetCandidates => Navigation.Nodes
+        .Where(node => node.ControlType == MenuControlType.Confirmation
+            && node.HasVerifiedRoute
+            && (node.Id.Contains("reset", StringComparison.OrdinalIgnoreCase)
+                || node.Label.Contains("reset", StringComparison.OrdinalIgnoreCase)))
+        .OrderByDescending(node => node.Id.Equals("reset-picture", StringComparison.OrdinalIgnoreCase))
+        .ThenBy(node => node.Depth)
+        .ThenBy(node => node.Path, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+    private MenuNodeSummary? SelectedFactoryResetNode => FactoryResetCandidates.FirstOrDefault(node =>
+        node.Id.Equals(SelectedFactoryResetNodeId, StringComparison.OrdinalIgnoreCase));
+    private bool CanBeginFactoryReset => !IsBusy
+        && Snapshot.ConnectionState == SamsungConnectionState.Connected
+        && SelectedFactoryResetNode is not null
+        && !string.IsNullOrWhiteSpace(SelectedFactoryResetChoice)
+        && !Snapshot.MacroRunning
+        && !Navigation.IsRunning;
+    private bool CanSaveControlProfile => !IsBusy
+        && Controls.Count > 0
         && !Snapshot.MacroRunning
         && !Navigation.IsRunning;
 
@@ -300,12 +421,53 @@ else
                 control.Minimum,
                 control.Maximum)));
 
-    private Task ApplyPendingAsync() => ApplyAsync(
-        Controls.Where(control => control.Pending && !IsControlDisabled(control)).ToArray());
+    private Task ApplyPendingAsync() => ApplyChangesAsync(
+        Controls.Where(control =>
+                control.Pending
+                && !IsIndexedControl(control.Node.Id)
+                && !IsControlDisabled(control)
+                && !IsControlHidden(control))
+            .ToArray(),
+        GetPendingIndexedChanges());
 
     private async Task ApplyAsync(IReadOnlyList<PictureControlEdit> controls)
+        => await ApplyChangesAsync(controls, []).ConfigureAwait(false);
+
+    private async Task ChangeIndexedCellAsync(
+        IndexedControlGroupEdit group,
+        IndexedCellEdit cell,
+        string? rawValue)
     {
-        if (controls.Count == 0)
+        if (!decimal.TryParse(
+                rawValue,
+                NumberStyles.Number,
+                CultureInfo.InvariantCulture,
+                out var numericValue))
+        {
+            LocalError = $"Enter a whole-number value for {group.Label} / {cell.SelectorValue} / {cell.Slider.Label}.";
+            return;
+        }
+
+        cell.DesiredValue = FormatValue(Math.Clamp(
+            decimal.Truncate(numericValue),
+            cell.Minimum,
+            cell.Maximum));
+        group.AwaitingConfirmation = false;
+        LocalError = null;
+        LocalStatus = UpdateMode == PictureUpdateMode.Staged
+            ? $"{group.Label} · {cell.SelectorValue} · {cell.Slider.Label} staged at {cell.DesiredValue}."
+            : null;
+        if (UpdateMode == PictureUpdateMode.Immediate && cell.Pending)
+        {
+            await ApplyChangesAsync([], [new IndexedCellChange(group, cell)]);
+        }
+    }
+
+    private async Task ApplyChangesAsync(
+        IReadOnlyList<PictureControlEdit> controls,
+        IReadOnlyList<IndexedCellChange> indexedChanges)
+    {
+        if (controls.Count == 0 && indexedChanges.Count == 0)
         {
             return;
         }
@@ -315,32 +477,7 @@ else
         LocalStatus = null;
         try
         {
-            var knownValues = Controls.ToDictionary(
-                control => control.Node.Id,
-                control => control.AppliedValue,
-                StringComparer.OrdinalIgnoreCase);
-            await Controller.ApplyMenuControlValuesAsync(
-                controls.Select(control => new MenuControlValueUpdate(
-                        control.Node.Id,
-                        control.AppliedValue,
-                        control.DesiredValue))
-                    .ToArray(),
-                knownValues,
-                ExitBehavior == PictureExitBehavior.ReturnToVideo);
-            foreach (var control in controls)
-            {
-                control.AppliedValue = control.DesiredValue;
-                var behaviorIsVerified = control.Node.ControlType == MenuControlType.Slider
-                        && Verification.SlidersVerified
-                    || IsSelectionControl(control.Node.ControlType)
-                        && IsSelectionVerified(control);
-                control.AwaitingConfirmation = !behaviorIsVerified;
-                control.Confirmed = behaviorIsVerified;
-            }
-
-            LocalStatus = controls.All(control => !control.AwaitingConfirmation)
-                ? $"Applied {controls.Count} menu control{(controls.Count == 1 ? string.Empty : "s")}. The changed control behavior is already verified."
-                : $"Applied {controls.Count} menu control{(controls.Count == 1 ? string.Empty : "s")}. Confirm the displayed values on the TV.";
+            await ApplyChangesCoreAsync(controls, indexedChanges);
         }
         catch (OperationCanceledException)
         {
@@ -353,6 +490,203 @@ else
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    private async Task ApplyChangesCoreAsync(
+        IReadOnlyList<PictureControlEdit> controls,
+        IReadOnlyList<IndexedCellChange> indexedChanges)
+    {
+        if (controls.Count > 0)
+        {
+            var knownValues = CreateKnownControlValues();
+            await Controller.ApplyMenuControlValuesAsync(
+                controls.Select(control => new MenuControlValueUpdate(
+                        control.Node.Id,
+                        control.AppliedValue,
+                        control.DesiredValue))
+                    .ToArray(),
+                knownValues,
+                returnToNormalVideo: indexedChanges.Count == 0
+                    && ExitBehavior == PictureExitBehavior.ReturnToVideo);
+            foreach (var control in controls)
+            {
+                control.AppliedValue = control.DesiredValue;
+                var behaviorIsVerified = control.Node.ControlType == MenuControlType.Slider
+                        && Verification.SlidersVerified
+                    || IsSelectionControl(control.Node.ControlType)
+                        && IsSelectionVerified(control);
+                control.AwaitingConfirmation = !behaviorIsVerified;
+                control.Confirmed = behaviorIsVerified;
+            }
+        }
+
+        if (indexedChanges.Count > 0)
+        {
+            await Controller.ApplyIndexedMenuControlValuesAsync(
+                indexedChanges.Select(change => new MenuIndexedControlValueUpdate(
+                        change.Group.Selector.Id,
+                        change.Cell.SelectorValue,
+                        change.Cell.Slider.Id,
+                        change.Cell.AppliedValue,
+                        change.Cell.DesiredValue))
+                    .ToArray(),
+                CreateKnownControlValues(),
+                ExitBehavior == PictureExitBehavior.ReturnToVideo);
+            foreach (var change in indexedChanges)
+            {
+                change.Cell.AppliedValue = change.Cell.DesiredValue;
+            }
+
+            foreach (var group in indexedChanges.Select(change => change.Group).Distinct())
+            {
+                SynchronizeIndexedGroupControlPredictions(group, indexedChanges);
+                group.AwaitingConfirmation = !Verification.SlidersVerified
+                    || !IsSelectionVerified(group.Selector);
+            }
+        }
+
+        var total = controls.Count + indexedChanges.Count;
+        var needsConfirmation = controls.Any(control => control.AwaitingConfirmation)
+            || indexedChanges.Any(change => change.Group.AwaitingConfirmation);
+        await Controller.SaveMenuControlProfileAsync(CreateControlProfileValues());
+        LocalStatus = needsConfirmation
+            ? $"Applied {total} menu value{(total == 1 ? string.Empty : "s")}. Confirm the displayed values on the TV."
+            : $"Applied {total} menu value{(total == 1 ? string.Empty : "s")}. The changed control behavior is already verified.";
+    }
+
+    private void BeginFactoryReset()
+    {
+        ConfirmFactoryReset = true;
+        LocalError = null;
+        LocalStatus = null;
+    }
+
+    private void CancelFactoryReset() => ConfirmFactoryReset = false;
+
+    private void SelectFactoryResetNode()
+    {
+        var node = SelectedFactoryResetNode;
+        SelectedFactoryResetChoice = node?.SelectionOptions.FirstOrDefault(option => option.Equals(
+                "Reset",
+                StringComparison.OrdinalIgnoreCase))
+            ?? node?.SelectionOptions.FirstOrDefault(option => !option.Equals(
+                "Cancel",
+                StringComparison.OrdinalIgnoreCase))
+            ?? node?.SelectionOptions.FirstOrDefault()
+            ?? string.Empty;
+        ConfirmFactoryReset = false;
+    }
+
+    private async Task ResetAndApplyAllAsync()
+    {
+        var resetNode = SelectedFactoryResetNode;
+        if (resetNode is null || string.IsNullOrWhiteSpace(SelectedFactoryResetChoice))
+        {
+            LocalError = "Choose a verified factory-reset confirmation route.";
+            return;
+        }
+
+        IsBusy = true;
+        ConfirmFactoryReset = false;
+        LocalError = null;
+        LocalStatus = null;
+        try
+        {
+            await Controller.SaveMenuControlProfileAsync(CreateControlProfileValues());
+            await Controller.ResetMenuControlsToFactoryDefaultsAsync(
+                resetNode.Id,
+                SelectedFactoryResetChoice);
+            ResetAppliedValuesToDeclaredDefaults();
+            var controls = Controls.Where(control =>
+                    control.Pending
+                    && !IsIndexedControl(control.Node.Id)
+                    && !IsControlDisabled(control)
+                    && !IsControlHidden(control))
+                .ToArray();
+            var indexedChanges = GetPendingIndexedChanges();
+            if (controls.Length > 0 || indexedChanges.Count > 0)
+            {
+                await ApplyChangesCoreAsync(controls, indexedChanges);
+                LocalStatus = $"Factory reset completed. {LocalStatus}";
+            }
+            else
+            {
+                LocalStatus = "Factory reset completed. Every desired value already matches its declared factory default.";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            LocalError = "Factory reset and profile application was cancelled.";
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task SaveControlProfileAsync()
+    {
+        IsBusy = true;
+        LocalError = null;
+        try
+        {
+            await Controller.SaveMenuControlProfileAsync(CreateControlProfileValues());
+            Profile = Controller.GetMenuControlProfileSnapshot();
+            LocalStatus = $"Saved {Profile.Values.Count} desired menu values to the local profile.";
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private IReadOnlyList<MenuControlProfileValue> CreateControlProfileValues() => Controls
+        .Where(control => !IsIndexedControl(control.Node.Id))
+        .Select(control => new MenuControlProfileValue(
+            control.Node.Id,
+            control.DesiredValue))
+        .Concat(IndexedGroups.SelectMany(group => group.Rows.SelectMany(row => row.Cells.Select(cell =>
+            new MenuControlProfileValue(
+                cell.Slider.Id,
+                cell.DesiredValue,
+                group.Selector.Id,
+                row.SelectorValue)))))
+        .ToArray();
+
+    private void ResetAppliedValuesToDeclaredDefaults()
+    {
+        foreach (var control in Controls)
+        {
+            var defaultValue = NormalizeDefaultValue(control.Node);
+            if (defaultValue is not null)
+            {
+                control.AppliedValue = defaultValue;
+            }
+
+            control.AwaitingConfirmation = false;
+            control.Confirmed = false;
+        }
+
+        foreach (var group in IndexedGroups)
+        {
+            group.AwaitingConfirmation = false;
+            foreach (var cell in group.Rows.SelectMany(row => row.Cells))
+            {
+                var defaultValue = NormalizeDefaultValue(cell.Slider);
+                if (defaultValue is not null)
+                {
+                    cell.AppliedValue = defaultValue;
+                }
+            }
         }
     }
 
@@ -396,6 +730,35 @@ else
             {
                 LocalStatus = $"{control.Node.Label} visually confirmed at {control.AppliedValue}.";
             }
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task ConfirmIndexedGroupAsync(IndexedControlGroupEdit group)
+    {
+        IsBusy = true;
+        LocalError = null;
+        try
+        {
+            Verification = await Controller.ConfirmMenuSelectionBehaviorAsync(group.Selector.Id);
+            foreach (var slider in group.Sliders)
+            {
+                Verification = await Controller.ConfirmMenuSliderBehaviorAsync(slider.Id);
+                if (Verification.SlidersVerified)
+                {
+                    break;
+                }
+            }
+
+            group.AwaitingConfirmation = false;
+            LocalStatus = $"{group.Label} grid confirmed. Selector order and shared slider behavior are recorded for this TV.";
         }
         catch (Exception exception)
         {
@@ -511,18 +874,34 @@ else
             control.AwaitingConfirmation = false;
             control.Confirmed = false;
         }
+
+
+        foreach (var group in IndexedGroups.Where(group =>
+                     IsIndexedGroupDisabled(group) || IsIndexedGroupHidden(group)))
+        {
+            foreach (var cell in group.Rows.SelectMany(row => row.Cells))
+            {
+                cell.DesiredValue = cell.AppliedValue;
+            }
+
+            group.AwaitingConfirmation = false;
+        }
     }
 
-    private bool IsControlDisabled(PictureControlEdit control) =>
-        control.Node.DisabledWhen.Any(condition =>
+    private bool IsControlDisabled(PictureControlEdit control) => IsNodeDisabled(control.Node);
+
+    private bool IsNodeDisabled(MenuNodeSummary node) =>
+        node.DisabledWhen.Any(condition =>
         {
             var value = GetPredictedValue(condition.SettingNodeId);
             return value?.Equals(condition.EqualsValue, StringComparison.OrdinalIgnoreCase) == true;
         });
 
-    private bool IsControlHidden(PictureControlEdit control)
+    private bool IsControlHidden(PictureControlEdit control) => IsNodeHidden(control.Node);
+
+    private bool IsNodeHidden(MenuNodeSummary node)
     {
-        var current = control.Node;
+        var current = node;
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         while (visited.Add(current.Id))
         {
@@ -549,6 +928,95 @@ else
         }
 
         return false;
+    }
+
+    private bool IsIndexedControl(string nodeId) => IndexedGroups.Any(group =>
+        group.Selector.Id.Equals(nodeId, StringComparison.OrdinalIgnoreCase)
+        || group.Sliders.Any(slider => slider.Id.Equals(nodeId, StringComparison.OrdinalIgnoreCase)));
+
+    private bool IsIndexedGroupDisabled(IndexedControlGroupEdit group) =>
+        IsNodeDisabled(group.Selector) || group.Sliders.Any(IsNodeDisabled);
+
+    private bool IsIndexedGroupHidden(IndexedControlGroupEdit group) =>
+        IsNodeHidden(group.Selector) || group.Sliders.All(IsNodeHidden);
+
+    private string GetIndexedGroupDisabledReason(IndexedControlGroupEdit group)
+    {
+        var disabledNode = new[] { group.Selector }.Concat(group.Sliders)
+            .FirstOrDefault(IsNodeDisabled);
+        var control = disabledNode is null
+            ? null
+            : Controls.FirstOrDefault(candidate => candidate.Node.Id.Equals(
+                disabledNode.Id,
+                StringComparison.OrdinalIgnoreCase));
+        return control is null
+            ? "Unavailable under the current predicted settings"
+            : GetDisabledReason(control);
+    }
+
+    private IReadOnlyList<IndexedControlGroupEdit> GetVisibleIndexedGroups() => IndexedGroups
+        .Where(group => !IsIndexedGroupHidden(group)
+            && !string.IsNullOrWhiteSpace(SelectedAreaId)
+            && ResolveMenuArea(group.Selector).Id.Equals(
+                SelectedAreaId,
+                StringComparison.OrdinalIgnoreCase)
+            && (string.IsNullOrWhiteSpace(SearchText)
+                || group.Label.Contains(SearchText.Trim(), StringComparison.OrdinalIgnoreCase)
+                || group.Path.Contains(SearchText.Trim(), StringComparison.OrdinalIgnoreCase)
+                || group.Rows.Any(row => row.SelectorValue.Contains(
+                    SearchText.Trim(),
+                    StringComparison.OrdinalIgnoreCase))
+                || group.Sliders.Any(slider => slider.Label.Contains(
+                    SearchText.Trim(),
+                    StringComparison.OrdinalIgnoreCase))))
+        .ToArray();
+
+    private IReadOnlyList<IndexedCellChange> GetPendingIndexedChanges() => IndexedGroups
+        .Where(group => !IsIndexedGroupDisabled(group) && !IsIndexedGroupHidden(group))
+        .SelectMany(group => group.Rows.SelectMany(row => row.Cells
+            .Where(cell => cell.Pending)
+            .Select(cell => new IndexedCellChange(group, cell))))
+        .ToArray();
+
+    private Dictionary<string, string> CreateKnownControlValues() => Controls.ToDictionary(
+        control => control.Node.Id,
+        control => control.AppliedValue,
+        StringComparer.OrdinalIgnoreCase);
+
+    private void SynchronizeIndexedGroupControlPredictions(
+        IndexedControlGroupEdit group,
+        IReadOnlyList<IndexedCellChange> changes)
+    {
+        var groupChanges = changes.Where(change => ReferenceEquals(change.Group, group)).ToArray();
+        var lastSelectorValue = group.Rows
+            .Where(row => groupChanges.Any(change => change.Cell.SelectorValue.Equals(
+                row.SelectorValue,
+                StringComparison.OrdinalIgnoreCase)))
+            .LastOrDefault()?.SelectorValue;
+        var selectorControl = Controls.FirstOrDefault(control => control.Node.Id.Equals(
+            group.Selector.Id,
+            StringComparison.OrdinalIgnoreCase));
+        if (selectorControl is not null && lastSelectorValue is not null)
+        {
+            selectorControl.AppliedValue = lastSelectorValue;
+            selectorControl.DesiredValue = lastSelectorValue;
+        }
+
+        foreach (var slider in group.Sliders)
+        {
+            var lastCell = groupChanges.Select(change => change.Cell)
+                .LastOrDefault(cell => cell.Slider.Id.Equals(
+                    slider.Id,
+                    StringComparison.OrdinalIgnoreCase));
+            var sliderControl = Controls.FirstOrDefault(control => control.Node.Id.Equals(
+                slider.Id,
+                StringComparison.OrdinalIgnoreCase));
+            if (lastCell is not null && sliderControl is not null)
+            {
+                sliderControl.AppliedValue = lastCell.AppliedValue;
+                sliderControl.DesiredValue = lastCell.AppliedValue;
+            }
+        }
     }
 
     private string? GetPredictedValue(string nodeId) =>
@@ -599,6 +1067,7 @@ else
 
     private IReadOnlyList<PictureControlEdit> GetFilteredControls() => Controls.Where(control =>
             !IsControlHidden(control)
+            && !IsIndexedControl(control.Node.Id)
             && !string.IsNullOrWhiteSpace(SelectedAreaId)
             && ResolveMenuArea(control.Node).Id.Equals(
                 SelectedAreaId,
@@ -612,8 +1081,13 @@ else
     {
         var nodeOrder = Navigation.Nodes.Select((node, index) => (node.Id, index))
             .ToDictionary(item => item.Id, item => item.index, StringComparer.OrdinalIgnoreCase);
-        return Controls.Where(control => !IsControlHidden(control))
+        return Controls.Where(control => !IsControlHidden(control) && !IsIndexedControl(control.Node.Id))
             .Select(control => ResolveMenuArea(control.Node))
+            .Concat(IndexedGroups
+                .Where(group => !IsIndexedGroupHidden(group))
+                .SelectMany(group => Enumerable.Repeat(
+                    ResolveMenuArea(group.Selector),
+                    Math.Max(1, group.Rows.Count * group.Sliders.Count))))
             .GroupBy(area => area.Id, StringComparer.OrdinalIgnoreCase)
             .Select(group => new MenuControlArea(group.Key, group.First().Label, group.Count()))
             .OrderBy(area => nodeOrder.GetValueOrDefault(area.Id, int.MaxValue))
@@ -693,6 +1167,7 @@ else
         Snapshot = Controller.GetSnapshot();
         Navigation = Controller.GetMenuNavigationSnapshot();
         Verification = Controller.GetMenuControlVerificationSnapshot();
+        Profile = Controller.GetMenuControlProfileSnapshot();
     }
 
     private void ReconcileControls()
@@ -716,11 +1191,23 @@ else
                 ?? NormalizeDefaultValue(node);
             if (defaultValue is not null)
             {
-                Controls.Add(new PictureControlEdit(node, defaultValue));
+                var newEdit = new PictureControlEdit(node, defaultValue);
+                var profileValue = Profile.Values.FirstOrDefault(value =>
+                    string.IsNullOrWhiteSpace(value.SelectorNodeId)
+                    && value.NodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase));
+                if (profileValue is not null)
+                {
+                    newEdit.DesiredValue = NormalizeControlValueWithoutError(node, profileValue.Value)
+                        ?? defaultValue;
+                }
+
+                Controls.Add(newEdit);
             }
         }
 
+        ReconcileIndexedGroups();
         EnsureSelectedMenuArea();
+        EnsureFactoryResetSelection();
         foreach (var selection in Controls.Where(control =>
                      IsSelectionControl(control.Node.ControlType)))
         {
@@ -733,6 +1220,142 @@ else
             {
                 selection.Confirmed = false;
             }
+        }
+    }
+
+    private void ReconcileIndexedGroups()
+    {
+        var existingCells = IndexedGroups
+            .SelectMany(group => group.Rows.SelectMany(row => row.Cells.Select(cell => (
+                Key: $"{group.Selector.Id}\u001f{row.SelectorValue}\u001f{cell.Slider.Id}",
+                Cell: cell))))
+            .ToDictionary(item => item.Key, item => item.Cell, StringComparer.OrdinalIgnoreCase);
+        var awaitingBySelector = IndexedGroups.ToDictionary(
+            group => group.Selector.Id,
+            group => group.AwaitingConfirmation,
+            StringComparer.OrdinalIgnoreCase);
+        var nodes = Navigation.Nodes.ToArray();
+        IndexedGroups.Clear();
+        foreach (var selector in nodes.Where(node =>
+                     IsIndexedSelector(node)
+                     && IsSupportedControl(node)
+                     && HasUsableRoute(node)))
+        {
+            var selectorIndex = Array.FindIndex(nodes, node => node.Id.Equals(
+                selector.Id,
+                StringComparison.OrdinalIgnoreCase));
+            var sliders = new List<MenuNodeSummary>();
+            for (var index = selectorIndex + 1; index < nodes.Length; index++)
+            {
+                var candidate = nodes[index];
+                if (candidate.ParentId?.Equals(selector.ParentId, StringComparison.OrdinalIgnoreCase) != true
+                    || candidate.ControlType != MenuControlType.Slider)
+                {
+                    break;
+                }
+
+                if (IsSupportedControl(candidate) && HasUsableRoute(candidate))
+                {
+                    sliders.Add(candidate);
+                }
+            }
+
+            if (sliders.Count == 0)
+            {
+                continue;
+            }
+
+            var parent = Navigation.Nodes.FirstOrDefault(node => node.Id.Equals(
+                selector.ParentId,
+                StringComparison.OrdinalIgnoreCase));
+            var rows = selector.SelectionOptions.Select(option => new IndexedControlRowEdit(
+                    option,
+                    sliders.Select(slider =>
+                    {
+                        var key = $"{selector.Id}\u001f{option}\u001f{slider.Id}";
+                        if (existingCells.TryGetValue(key, out var existing))
+                        {
+                            existing.Slider = slider;
+                            return existing;
+                        }
+
+                        var cell = new IndexedCellEdit(
+                            option,
+                            slider,
+                            NormalizeDefaultValue(slider)!);
+                        var profileValue = Profile.Values.FirstOrDefault(value =>
+                            value.NodeId.Equals(slider.Id, StringComparison.OrdinalIgnoreCase)
+                            && value.SelectorNodeId?.Equals(
+                                selector.Id,
+                                StringComparison.OrdinalIgnoreCase) == true
+                            && value.SelectorValue?.Equals(
+                                option,
+                                StringComparison.OrdinalIgnoreCase) == true);
+                        if (profileValue is not null)
+                        {
+                            cell.DesiredValue = NormalizeControlValueWithoutError(
+                                    slider,
+                                    profileValue.Value)
+                                ?? cell.DesiredValue;
+                        }
+
+                        return cell;
+                    }).ToArray()))
+                .ToArray();
+            IndexedGroups.Add(new IndexedControlGroupEdit(
+                selector,
+                sliders,
+                rows,
+                parent?.Label ?? selector.Label,
+                parent?.Path ?? selector.Path,
+                awaitingBySelector.GetValueOrDefault(selector.Id)));
+        }
+    }
+
+    private static bool IsIndexedSelector(MenuNodeSummary node)
+    {
+        if (node.ControlType == MenuControlType.IndexedSelection)
+        {
+            return true;
+        }
+
+        if (node.ControlType != MenuControlType.Selection)
+        {
+            return false;
+        }
+
+        return node.Label.Equals("Interval", StringComparison.OrdinalIgnoreCase)
+               && node.SelectionOptions.Count > 1
+               && node.SelectionOptions.All(option => option.EndsWith('%'))
+            || node.Label.Equals("Color", StringComparison.OrdinalIgnoreCase)
+               && new[] { "Red", "Green", "Blue" }.All(required =>
+                   node.SelectionOptions.Contains(required, StringComparer.OrdinalIgnoreCase));
+    }
+
+    private void EnsureFactoryResetSelection()
+    {
+        var candidates = FactoryResetCandidates;
+        if (candidates.Count == 0)
+        {
+            SelectedFactoryResetNodeId = string.Empty;
+            SelectedFactoryResetChoice = string.Empty;
+            ConfirmFactoryReset = false;
+            return;
+        }
+
+        if (!candidates.Any(node => node.Id.Equals(
+                SelectedFactoryResetNodeId,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            SelectedFactoryResetNodeId = candidates[0].Id;
+        }
+
+        if (string.IsNullOrWhiteSpace(SelectedFactoryResetChoice)
+            || SelectedFactoryResetNode?.SelectionOptions.Contains(
+                SelectedFactoryResetChoice,
+                StringComparer.OrdinalIgnoreCase) != true)
+        {
+            SelectFactoryResetNode();
         }
     }
 
@@ -777,6 +1400,8 @@ else
             && node.SelectionOptions.Count > 0,
         MenuControlType.SubmenuSelection => !string.IsNullOrWhiteSpace(node.DefaultValue)
             && node.SelectionOptions.Count > 0,
+        MenuControlType.IndexedSelection => !string.IsNullOrWhiteSpace(node.DefaultValue)
+            && node.SelectionOptions.Count > 0,
         _ => false
     };
 
@@ -809,12 +1434,52 @@ else
             StringComparison.OrdinalIgnoreCase));
     }
 
+    private static string? NormalizeControlValueWithoutError(
+        MenuNodeSummary node,
+        string? rawValue)
+    {
+        if (string.IsNullOrWhiteSpace(rawValue))
+        {
+            return null;
+        }
+
+        if (node.ControlType == MenuControlType.Slider)
+        {
+            if (!decimal.TryParse(
+                    rawValue,
+                    NumberStyles.Number,
+                    CultureInfo.InvariantCulture,
+                    out var numericValue)
+                || node.MinimumValue is not { } minimum
+                || node.MaximumValue is not { } maximum)
+            {
+                return null;
+            }
+
+            return FormatValue(Math.Clamp(decimal.Truncate(numericValue), minimum, maximum));
+        }
+
+        if (node.ControlType == MenuControlType.Switch)
+        {
+            return rawValue.Equals("on", StringComparison.OrdinalIgnoreCase)
+                ? "on"
+                : rawValue.Equals("off", StringComparison.OrdinalIgnoreCase)
+                    ? "off"
+                    : null;
+        }
+
+        return node.SelectionOptions.FirstOrDefault(option => option.Equals(
+            rawValue,
+            StringComparison.OrdinalIgnoreCase));
+    }
+
     private static string GetControlTypeLabel(MenuControlType type) => type switch
     {
         MenuControlType.Slider => "SLIDER",
         MenuControlType.Switch => "SWITCH",
         MenuControlType.Selection => "SELECTION",
         MenuControlType.SubmenuSelection => "SUBMENU SELECTION",
+        MenuControlType.IndexedSelection => "INDEXED SELECTION",
         _ => type.ToString().ToUpperInvariant()
     };
 
@@ -845,12 +1510,17 @@ else
     }
 
     private bool IsSelectionVerified(PictureControlEdit control) =>
+        IsSelectionVerified(control.Node);
+
+    private bool IsSelectionVerified(MenuNodeSummary node) =>
         Verification.ConfirmedSelectionNodeIds.Contains(
-            control.Node.Id,
+            node.Id,
             StringComparer.OrdinalIgnoreCase);
 
     private static bool IsSelectionControl(MenuControlType controlType) =>
-        controlType is MenuControlType.Selection or MenuControlType.SubmenuSelection;
+        controlType is MenuControlType.Selection
+            or MenuControlType.SubmenuSelection
+            or MenuControlType.IndexedSelection;
 
     private static bool IsOn(string value) => value.Equals("on", StringComparison.OrdinalIgnoreCase);
 
@@ -896,4 +1566,42 @@ else
         int Order);
 
     private sealed record MenuControlArea(string Id, string Label, int ControlCount);
+
+    private sealed class IndexedControlGroupEdit(
+        MenuNodeSummary selector,
+        IReadOnlyList<MenuNodeSummary> sliders,
+        IReadOnlyList<IndexedControlRowEdit> rows,
+        string label,
+        string path,
+        bool awaitingConfirmation)
+    {
+        public MenuNodeSummary Selector { get; } = selector;
+        public IReadOnlyList<MenuNodeSummary> Sliders { get; } = sliders;
+        public IReadOnlyList<IndexedControlRowEdit> Rows { get; } = rows;
+        public string Label { get; } = label;
+        public string Path { get; } = path;
+        public bool AwaitingConfirmation { get; set; } = awaitingConfirmation;
+    }
+
+    private sealed record IndexedControlRowEdit(
+        string SelectorValue,
+        IReadOnlyList<IndexedCellEdit> Cells);
+
+    private sealed class IndexedCellEdit(
+        string selectorValue,
+        MenuNodeSummary slider,
+        string defaultValue)
+    {
+        public string SelectorValue { get; } = selectorValue;
+        public MenuNodeSummary Slider { get; set; } = slider;
+        public string AppliedValue { get; set; } = defaultValue;
+        public string DesiredValue { get; set; } = defaultValue;
+        public bool Pending => !DesiredValue.Equals(AppliedValue, StringComparison.OrdinalIgnoreCase);
+        public decimal Minimum => Slider.MinimumValue ?? 0;
+        public decimal Maximum => Slider.MaximumValue ?? 0;
+    }
+
+    private sealed record IndexedCellChange(
+        IndexedControlGroupEdit Group,
+        IndexedCellEdit Cell);
 }
