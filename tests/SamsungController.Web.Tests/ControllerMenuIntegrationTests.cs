@@ -1665,6 +1665,88 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task SliderBehaviorVerificationPromotesAfterThreeDifferentSlidersAndPersists()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: slider-verification
+            name: Slider Verification
+            model: Test TV
+            nodes:
+              - id: normal-video
+                label: Normal video
+              - id: brightness
+                label: Brightness
+                parent: normal-video
+                controlType: slider
+                defaultValue: 25
+                minimumValue: 0
+                maximumValue: 50
+              - id: contrast
+                label: Contrast
+                parent: normal-video
+                controlType: slider
+                defaultValue: 25
+                minimumValue: 0
+                maximumValue: 50
+              - id: color
+                label: Color
+                parent: normal-video
+                controlType: slider
+                defaultValue: 25
+                minimumValue: 0
+                maximumValue: 50
+            anchors:
+              - id: normal
+                label: Return to normal video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            transitions: []
+            """;
+        var (controller, _) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            var initial = controller.GetMenuControlVerificationSnapshot();
+            Assert.False(initial.SlidersVerified);
+            Assert.Equal(0, initial.ConfirmedSliderCount);
+
+            var first = await controller.ConfirmMenuSliderBehaviorAsync("brightness");
+            var duplicate = await controller.ConfirmMenuSliderBehaviorAsync("brightness");
+            var second = await controller.ConfirmMenuSliderBehaviorAsync("contrast");
+            var promoted = await controller.ConfirmMenuSliderBehaviorAsync("color");
+
+            Assert.Equal(1, first.ConfirmedSliderCount);
+            Assert.Equal(1, duplicate.ConfirmedSliderCount);
+            Assert.Equal(2, second.ConfirmedSliderCount);
+            Assert.True(promoted.SlidersVerified);
+            Assert.Equal(3, promoted.ConfirmedSliderCount);
+        }
+
+        await using var reloaded = CreateController();
+        await reloaded.InitializeAsync();
+        Assert.True(reloaded.GetMenuControlVerificationSnapshot().SlidersVerified);
+
+        await reloaded.UpdateMenuTimingProfileAsync(new MenuTimingProfile(
+            DefaultDelayMilliseconds: 151,
+            ScreenChangeDelayMilliseconds: 800,
+            ReturnDelayMilliseconds: 300));
+        Assert.Equal(0, reloaded.GetMenuControlVerificationSnapshot().ConfirmedSliderCount);
+
+        await reloaded.ConfirmMenuSliderBehaviorAsync("brightness");
+        await reloaded.ConfirmMenuSliderBehaviorAsync("contrast");
+        await reloaded.ConfirmMenuSliderBehaviorAsync("color");
+        Assert.True(reloaded.GetMenuControlVerificationSnapshot().SlidersVerified);
+
+        await reloaded.ResetMenuSliderBehaviorVerificationAsync();
+        var reset = reloaded.GetMenuControlVerificationSnapshot();
+        Assert.False(reset.SlidersVerified);
+        Assert.Equal(0, reset.ConfirmedSliderCount);
+    }
+
+    [Fact]
     public async Task NavigateBetweenVerifiedDestinationsUsesCalculatedRelativeRoute()
     {
         var allVerifiedYaml = ExplicitValidationMenuYaml.Replace(

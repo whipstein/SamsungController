@@ -18,6 +18,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private const int MacroProgressCapacity = 500;
     private const int DeviceInfoObservationCapacity = 20;
     private const int QuickAccessCapacity = 12;
+    private const int SliderVerificationRequiredCount = 3;
     private const string TraversalFailureDescription =
         "Traversal reported failed from the verified menu UI; captured keys and waits require timing or definition validation.";
     private static readonly QuickAccessAction DefaultReturnToVideoAction = new(
@@ -339,6 +340,26 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
     }
 
+    public MenuControlVerificationSnapshot GetMenuControlVerificationSnapshot()
+    {
+        lock (_sync)
+        {
+            var ids = _settings.Host?.Equals(
+                    _settings.SliderVerificationHost,
+                    StringComparison.OrdinalIgnoreCase) == true
+                ? (_settings.VerifiedSliderNodeIds ?? [])
+                    .Where(nodeId => !string.IsNullOrWhiteSpace(nodeId))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray()
+                : [];
+            return new MenuControlVerificationSnapshot(
+                ids.Length,
+                SliderVerificationRequiredCount,
+                ids.Length >= SliderVerificationRequiredCount,
+                ids);
+        }
+    }
+
     public MenuAuthoringSnapshot GetMenuAuthoringSnapshot()
     {
         lock (_sync)
@@ -470,19 +491,32 @@ public sealed class SamsungControllerService : IAsyncDisposable
             };
             await _client.ConnectAsync(options, cancellationToken).ConfigureAwait(false);
             await UpdateSettingsAsync(
-                    current => current with
+                    current =>
                     {
-                        Host = request.Host.Trim(),
-                        Name = string.IsNullOrWhiteSpace(request.DisplayName)
-                            ? "Samsung TV"
-                            : request.DisplayName.Trim(),
-                        Secure = request.Secure,
-                        Port = request.Port,
-                        AllowUntrustedCertificate = request.AllowUntrustedCertificate,
-                        KeepAliveIntervalSeconds = request.KeepAliveIntervalSeconds,
-                        KeepAliveTimeoutSeconds = request.KeepAliveTimeoutSeconds,
-                        PostConnectWarmupMilliseconds = request.PostConnectWarmupMilliseconds,
-                        ReconnectAfterIdleSeconds = request.ReconnectAfterIdleSeconds
+                        var host = request.Host.Trim();
+                        var sameSliderVerificationHost = current.Host?.Equals(
+                            host,
+                            StringComparison.OrdinalIgnoreCase) == true;
+                        return current with
+                        {
+                            Host = host,
+                            Name = string.IsNullOrWhiteSpace(request.DisplayName)
+                                ? "Samsung TV"
+                                : request.DisplayName.Trim(),
+                            Secure = request.Secure,
+                            Port = request.Port,
+                            AllowUntrustedCertificate = request.AllowUntrustedCertificate,
+                            KeepAliveIntervalSeconds = request.KeepAliveIntervalSeconds,
+                            KeepAliveTimeoutSeconds = request.KeepAliveTimeoutSeconds,
+                            PostConnectWarmupMilliseconds = request.PostConnectWarmupMilliseconds,
+                            ReconnectAfterIdleSeconds = request.ReconnectAfterIdleSeconds,
+                            SliderVerificationHost = sameSliderVerificationHost
+                                ? current.SliderVerificationHost
+                                : null,
+                            VerifiedSliderNodeIds = sameSliderVerificationHost
+                                ? current.VerifiedSliderNodeIds
+                                : []
+                        };
                     },
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -1536,6 +1570,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _menuAuthoringError = null;
         }
 
+        if (delaysChanged)
+        {
+            await ClearMenuSliderBehaviorVerificationAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         NotifyChanged();
     }
 
@@ -1619,6 +1659,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 ? $"System timing test · pass {session.Passes + 1}/{MenuTimingValidationSession.RequiredPasses}"
                 : "System timing saved · starting visual validation at 0/3";
             _menuAuthoringError = null;
+        }
+
+        if (delaysChanged)
+        {
+            await ClearMenuSliderBehaviorVerificationAsync(cancellationToken)
+                .ConfigureAwait(false);
         }
 
         NotifyChanged();
@@ -2367,6 +2413,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _menuAuthoringError = null;
         }
 
+        if (delaysChanged)
+        {
+            await ClearMenuSliderBehaviorVerificationAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         NotifyChanged();
     }
 
@@ -2931,15 +2983,15 @@ public sealed class SamsungControllerService : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(knownValues);
         if (updates.Count == 0)
         {
-            throw new InvalidOperationException("Choose at least one changed picture control to apply.");
+            throw new InvalidOperationException("Choose at least one changed menu control to apply.");
         }
 
         await InitializeAsync(cancellationToken).ConfigureAwait(false);
-        EnsureNoAutomationRunning("apply picture control values");
-        EnsureNoMenuRecording("apply picture control values");
+        EnsureNoAutomationRunning("apply menu control values");
+        EnsureNoMenuRecording("apply menu control values");
         if (_client.State != SamsungConnectionState.Connected)
         {
-            throw new InvalidOperationException("Connect to the TV before applying picture controls.");
+            throw new InvalidOperationException("Connect to the TV before applying menu controls.");
         }
 
         MenuDefinition definition;
@@ -2962,7 +3014,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             != normalized.Length)
         {
             throw new InvalidOperationException(
-                "Each picture control can appear only once in an apply operation.");
+                "Each menu control can appear only once in an apply operation.");
         }
 
         normalized = OrderPictureControlUpdates(definition, normalized);
@@ -2973,7 +3025,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 && !knownValue.Equals(update.FromValue, StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException(
-                    $"The predicted value for '{definition.GetPath(update.NodeId)}' changed from '{update.FromValue}' to '{knownValue}'. Refresh the picture controls before applying.");
+                    $"The predicted value for '{definition.GetPath(update.NodeId)}' changed from '{update.FromValue}' to '{knownValue}'. Refresh the menu controls before applying.");
             }
 
             effectiveValues[update.NodeId] = update.FromValue;
@@ -2987,7 +3039,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
         var lastTargetNodeId = normalized[^1].NodeId;
         await RunNavigationAsync(
-                $"Apply {normalized.Length} picture control{(normalized.Length == 1 ? string.Empty : "s")}",
+                $"Apply {normalized.Length} menu control{(normalized.Length == 1 ? string.Empty : "s")}",
                 async (navigator, token) =>
                 {
                     foreach (var update in normalized)
@@ -2996,7 +3048,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         if (IsMenuNodeDisabled(definition, node, effectiveValues))
                         {
                             throw new InvalidOperationException(
-                                $"'{definition.GetPath(node.Id)}' is disabled by the current predicted picture settings.");
+                                $"'{definition.GetPath(node.Id)}' is disabled by the current predicted menu settings.");
                         }
 
                         await PreparePictureControlAsync(
@@ -3017,12 +3069,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
                             effectiveValues[update.NodeId] = update.ToValue;
                             tracker.ConfirmNode(
                                 update.NodeId,
-                                $"Picture control '{definition.GetPath(update.NodeId)}' was adjusted to the predicted value '{update.ToValue}'.");
+                                $"Menu control '{definition.GetPath(update.NodeId)}' was adjusted to the predicted value '{update.ToValue}'.");
                         }
                         catch
                         {
                             tracker.MarkUnknown(
-                                $"Picture control adjustment for '{definition.GetPath(update.NodeId)}' did not complete.");
+                                $"Menu control adjustment for '{definition.GetPath(update.NodeId)}' did not complete.");
                             throw;
                         }
                     }
@@ -3038,7 +3090,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         {
                             tracker.ConfirmNode(
                                 lastTargetNodeId,
-                                "Picture control values were applied, but the requested return to normal video failed; the last adjusted control remains the expected state.");
+                                "Menu control values were applied, but the requested return to normal video failed; the last adjusted control remains the expected state.");
                             throw;
                         }
                     }
@@ -3046,6 +3098,60 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 clearPlanOnSuccess: true,
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    public async Task<MenuControlVerificationSnapshot> ConfirmMenuSliderBehaviorAsync(
+        string nodeId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(nodeId);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        string normalizedNodeId;
+        lock (_sync)
+        {
+            var definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+            var node = definition.GetRequiredNode(nodeId.Trim());
+            if (node.ControlType != MenuControlType.Slider)
+            {
+                throw new InvalidOperationException(
+                    $"'{definition.GetPath(node.Id)}' is not defined as a slider.");
+            }
+
+            normalizedNodeId = node.Id;
+        }
+
+        await UpdateSettingsAsync(
+                current =>
+                {
+                    var ids = current.Host?.Equals(
+                            current.SliderVerificationHost,
+                            StringComparison.OrdinalIgnoreCase) == true
+                        ? (current.VerifiedSliderNodeIds ?? []).ToList()
+                        : [];
+                    if (!ids.Contains(normalizedNodeId, StringComparer.OrdinalIgnoreCase))
+                    {
+                        ids.Add(normalizedNodeId);
+                    }
+
+                    return current with
+                    {
+                        SliderVerificationHost = current.Host,
+                        VerifiedSliderNodeIds = ids
+                    };
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+        NotifyChanged();
+        return GetMenuControlVerificationSnapshot();
+    }
+
+    public async Task ResetMenuSliderBehaviorVerificationAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        await ClearMenuSliderBehaviorVerificationAsync(cancellationToken).ConfigureAwait(false);
+        NotifyChanged();
     }
 
     public async Task<MenuTraversalFailureReport> ReportMenuTraversalFailureAsync(
@@ -5429,7 +5535,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             || string.IsNullOrWhiteSpace(node.ParentId))
         {
             throw new InvalidOperationException(
-                $"Picture control '{definition.GetPath(node.Id)}' does not have a verified navigation route.");
+                $"Menu control '{definition.GetPath(node.Id)}' does not have a verified navigation route.");
         }
 
         var parent = definition.GetRequiredNode(node.ParentId);
@@ -5437,7 +5543,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             || !HasVerifiedPictureControlRoute(definition, parent.Id))
         {
             throw new InvalidOperationException(
-                $"Picture control '{definition.GetPath(node.Id)}' needs a verified route to its containing section.");
+                $"Menu control '{definition.GetPath(node.Id)}' needs a verified route to its containing section.");
         }
 
         var selectableChildren = definition.Nodes.Values.Where(candidate =>
@@ -5449,7 +5555,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         if (childIndex < 0)
         {
             throw new InvalidOperationException(
-                $"Picture control '{definition.GetPath(node.Id)}' is not selectable under the current predicted settings.");
+                $"Menu control '{definition.GetPath(node.Id)}' is not selectable under the current predicted settings.");
         }
 
         var currentNodeId = tracker.Current.NodeId;
@@ -5504,7 +5610,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             MenuControlType.Switch => [new MenuOperation("KEY_ENTER")],
             MenuControlType.Selection => CreateSelectionValueOperations(node, update),
             _ => throw new InvalidOperationException(
-                $"'{definition.GetPath(node.Id)}' is not an adjustable picture control.")
+                $"'{definition.GetPath(node.Id)}' is not an adjustable menu control.")
         };
         var path = definition.GetPath(node.Id);
         await ExecutePictureControlOperationsAsync(
@@ -6213,6 +6319,15 @@ public sealed class SamsungControllerService : IAsyncDisposable
             transitions: transitions,
             anchors: anchors);
     }
+
+    private Task ClearMenuSliderBehaviorVerificationAsync(CancellationToken cancellationToken) =>
+        UpdateSettingsAsync(
+            current => current with
+            {
+                SliderVerificationHost = current.Host,
+                VerifiedSliderNodeIds = []
+            },
+            cancellationToken);
 
     private async Task UpdateSettingsAsync(
         Func<SamsungWebSettings, SamsungWebSettings> update,

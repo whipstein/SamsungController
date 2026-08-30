@@ -127,6 +127,12 @@ public sealed record MenuControlValueUpdate(
     string FromValue,
     string ToValue);
 
+public sealed record MenuControlVerificationSnapshot(
+    int ConfirmedSliderCount,
+    int RequiredSliderCount,
+    bool SlidersVerified,
+    IReadOnlyList<string> ConfirmedSliderNodeIds);
+
 public sealed record MenuAnchorSummary(
     string Id,
     string Label,

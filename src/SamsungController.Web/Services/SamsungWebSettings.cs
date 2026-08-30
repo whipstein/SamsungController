@@ -37,6 +37,10 @@ internal sealed record SamsungWebSettings
 
     public string? MenuConfigurationId { get; init; }
 
+    public string? SliderVerificationHost { get; init; }
+
+    public IReadOnlyList<string>? VerifiedSliderNodeIds { get; init; }
+
     public IReadOnlyList<QuickAccessAction>? QuickAccess { get; init; }
 
     public static async Task<SamsungWebSettings> LoadAsync(

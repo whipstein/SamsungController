@@ -1,23 +1,24 @@
+@page "/controls"
 @page "/picture-controls"
 @implements IDisposable
 @inject SamsungControllerService Controller
 
-<PageTitle>Picture Controls · SamsungController</PageTitle>
+<PageTitle>Menu Controls · SamsungController</PageTitle>
 
 <section class="page-heading compact-heading picture-controls-heading">
     <div>
-        <span class="eyebrow">PICTURE CONTROLS</span>
-        <h1>Adjust verified picture settings.</h1>
-        <p>Compact controls are grouped like the TV menu, with conditional settings enabled by their switches and selections.</p>
+        <span class="eyebrow">MENU CONTROLS</span>
+        <h1>Adjust verified menu settings.</h1>
+        <p>Compact controls cover every verified menu area and are grouped like the TV, with conditional settings enabled by their switches and selections.</p>
     </div>
     <div class="page-heading-actions">
-        <HelpBubble Title="Picture control behavior" ButtonText="Page help">
+        <HelpBubble Title="Menu control behavior" ButtonText="Page help">
             <ul>
-                <li>Controls are grouped by their immediate Picture menu section.</li>
+                <li>Use the menu-area filter or search, then adjust controls grouped by their immediate TV menu section.</li>
                 <li>Switches and selections use their YAML defaults and dynamically apply declared <code>disabledWhen</code> rules.</li>
                 <li>Turning on 20 Point enables its Interval and RGB controls. Choosing Custom Color Space enables its Color and RGB controls.</li>
                 <li><strong>Immediate</strong> sends one changed control at a time. <strong>Apply button</strong> can stage a controller and its newly enabled settings together.</li>
-                <li>Samsung does not report the displayed value, so confirm each result visually on the TV.</li>
+                <li>Confirm three different sliders visually to verify the shared slider behavior for this TV. Later slider changes no longer require individual confirmation.</li>
             </ul>
             <p class="help-callout">A conditionally enabled control uses its verified containing-section route and the declared menu order after its controller has changed.</p>
         </HelpBubble>
@@ -27,11 +28,11 @@
 
 @if (!string.IsNullOrWhiteSpace(LocalError))
 {
-    <div class="notice danger" role="alert"><strong>Picture controls need attention</strong><span>@LocalError</span></div>
+    <div class="notice danger" role="alert"><strong>Menu controls need attention</strong><span>@LocalError</span></div>
 }
 else if (!string.IsNullOrWhiteSpace(LocalStatus))
 {
-    <div class="notice" role="status"><strong>Picture controls</strong><span>@LocalStatus</span></div>
+    <div class="notice" role="status"><strong>Menu controls</strong><span>@LocalStatus</span></div>
 }
 
 <section class="panel picture-control-toolbar">
@@ -60,14 +61,39 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
             @(IsBusy ? "Applying…" : $"Apply {PendingCount} change{(PendingCount == 1 ? string.Empty : "s")}") <span>▶</span>
         </button>
     </div>
+    <div class="menu-control-filters">
+        <label>
+            <span>MENU AREA</span>
+            <select @bind="SelectedAreaId" disabled="@IsBusy">
+                <option value="*">All menu areas</option>
+                @foreach (var area in GetMenuAreas())
+                {
+                    <option value="@area.Id">@area.Label</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>SEARCH CONTROLS</span>
+            <input type="search" @bind="SearchText" @bind:event="oninput" placeholder="Name or menu path" disabled="@IsBusy" />
+        </label>
+        <div class="slider-verification-summary @(Verification.SlidersVerified ? "verified" : "unverified")">
+            <span>SHARED SLIDER VERIFICATION</span>
+            <strong>@(Verification.SlidersVerified ? "Verified for this TV" : $"{Verification.ConfirmedSliderCount}/{Verification.RequiredSliderCount} different sliders")</strong>
+            <small>@(Verification.SlidersVerified ? "Future slider updates do not require confirmation." : "Confirm successful slider values on the TV.")</small>
+        </div>
+        @if (Verification.ConfirmedSliderCount > 0)
+        {
+            <button class="secondary-action slider-verification-reset" @onclick="ResetSliderVerificationAsync" disabled="@IsBusy">Reset slider verification</button>
+        }
+    </div>
     <p class="field-note">Values are predictions based on YAML defaults and changes sent during this page session. Controls changed elsewhere can make those predictions inaccurate.</p>
 </section>
 
-@if (Controls.Count == 0)
+@if (VisibleControlCount == 0)
 {
     <section class="panel panel-empty picture-controls-empty">
-        <strong>No verified picture controls are available</strong>
-        <span>Define values and bounds in YAML, then complete the generated route verification.</span>
+        <strong>@(Controls.Count == 0 ? "No verified menu controls are available" : "No controls match this filter")</strong>
+        <span>@(Controls.Count == 0 ? "Define values and bounds in YAML, then complete the generated route verification." : "Choose another menu area or clear the search text.")</span>
         <a href="menu/build">Open Build &amp; Verify →</a>
     </section>
 }
@@ -79,8 +105,9 @@ else
             <section class="panel picture-control-section">
                 <header class="picture-section-heading">
                     <div>
-                        <span>PICTURE SECTION</span>
+                        <span>MENU SECTION</span>
                         <h2>@section.Label</h2>
+                        <p>@section.Path</p>
                     </div>
                     <small>@section.Controls.Count control@(section.Controls.Count == 1 ? string.Empty : "s")</small>
                 </header>
@@ -171,7 +198,7 @@ else
                                 }
                                 @if (control.AwaitingConfirmation && !disabled)
                                 {
-                                    <button class="secondary-action" @onclick="() => ConfirmControl(control)" disabled="@IsBusy">TV shows @control.AppliedValue ✓</button>
+                                    <button class="secondary-action" @onclick="() => ConfirmControlAsync(control)" disabled="@IsBusy">TV shows @control.AppliedValue ✓</button>
                                 }
                             </footer>
                         </article>
@@ -185,14 +212,18 @@ else
 @code {
     private ControllerSnapshot Snapshot { get; set; } = null!;
     private MenuNavigationSnapshot Navigation { get; set; } = null!;
+    private MenuControlVerificationSnapshot Verification { get; set; } = null!;
     private List<PictureControlEdit> Controls { get; } = [];
     private PictureUpdateMode UpdateMode { get; set; } = PictureUpdateMode.Staged;
     private PictureExitBehavior ExitBehavior { get; set; } = PictureExitBehavior.Stay;
+    private string SelectedAreaId { get; set; } = "*";
+    private string SearchText { get; set; } = string.Empty;
     private string? LocalError { get; set; }
     private string? LocalStatus { get; set; }
     private bool IsBusy { get; set; }
 
     private int PendingCount => Controls.Count(control => control.Pending && !IsControlDisabled(control));
+    private int VisibleControlCount => GetFilteredControls().Count;
     private bool CanApplyPending => PendingCount > 0
         && !IsBusy
         && Snapshot.ConnectionState == SamsungConnectionState.Connected
@@ -271,15 +302,19 @@ else
             foreach (var control in controls)
             {
                 control.AppliedValue = control.DesiredValue;
-                control.AwaitingConfirmation = true;
-                control.Confirmed = false;
+                var sliderIsGloballyVerified = control.Node.ControlType == MenuControlType.Slider
+                    && Verification.SlidersVerified;
+                control.AwaitingConfirmation = !sliderIsGloballyVerified;
+                control.Confirmed = sliderIsGloballyVerified;
             }
 
-            LocalStatus = $"Applied {controls.Count} picture control{(controls.Count == 1 ? string.Empty : "s")}. Confirm the displayed values on the TV.";
+            LocalStatus = controls.All(control => !control.AwaitingConfirmation)
+                ? $"Applied {controls.Count} menu control{(controls.Count == 1 ? string.Empty : "s")}. Shared slider behavior is already verified."
+                : $"Applied {controls.Count} menu control{(controls.Count == 1 ? string.Empty : "s")}. Confirm the displayed values on the TV.";
         }
         catch (OperationCanceledException)
         {
-            LocalError = "Picture-control update was cancelled.";
+            LocalError = "Menu-control update was cancelled.";
         }
         catch (Exception exception)
         {
@@ -291,12 +326,74 @@ else
         }
     }
 
-    private void ConfirmControl(PictureControlEdit control)
+    private async Task ConfirmControlAsync(PictureControlEdit control)
     {
-        control.AwaitingConfirmation = false;
-        control.Confirmed = true;
+        IsBusy = true;
         LocalError = null;
-        LocalStatus = $"{control.Node.Label} visually confirmed at {control.AppliedValue}.";
+        try
+        {
+            if (control.Node.ControlType == MenuControlType.Slider)
+            {
+                Verification = await Controller.ConfirmMenuSliderBehaviorAsync(control.Node.Id);
+            }
+
+            control.AwaitingConfirmation = false;
+            control.Confirmed = true;
+            if (Verification.SlidersVerified && control.Node.ControlType == MenuControlType.Slider)
+            {
+                foreach (var slider in Controls.Where(candidate =>
+                             candidate.Node.ControlType == MenuControlType.Slider))
+                {
+                    slider.AwaitingConfirmation = false;
+                    slider.Confirmed = true;
+                }
+
+                LocalStatus = $"{control.Node.Label} confirmed at {control.AppliedValue}. Shared slider behavior is now verified for this TV.";
+            }
+            else if (control.Node.ControlType == MenuControlType.Slider)
+            {
+                LocalStatus = $"{control.Node.Label} confirmed at {control.AppliedValue} · {Verification.ConfirmedSliderCount}/{Verification.RequiredSliderCount} different sliders verified.";
+            }
+            else
+            {
+                LocalStatus = $"{control.Node.Label} visually confirmed at {control.AppliedValue}.";
+            }
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task ResetSliderVerificationAsync()
+    {
+        IsBusy = true;
+        LocalError = null;
+        try
+        {
+            await Controller.ResetMenuSliderBehaviorVerificationAsync();
+            Verification = Controller.GetMenuControlVerificationSnapshot();
+            foreach (var slider in Controls.Where(control =>
+                         control.Node.ControlType == MenuControlType.Slider))
+            {
+                slider.AwaitingConfirmation = false;
+                slider.Confirmed = false;
+            }
+
+            LocalStatus = "Shared slider verification reset. Confirm three different sliders to verify it again.";
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     private string? NormalizeControlValue(PictureControlEdit control, string? rawValue)
@@ -387,7 +484,8 @@ else
     {
         var nodeOrder = Navigation.Nodes.Select((node, index) => (node.Id, index))
             .ToDictionary(item => item.Id, item => item.index, StringComparer.OrdinalIgnoreCase);
-        return Controls.GroupBy(control => control.Node.ParentId ?? "picture", StringComparer.OrdinalIgnoreCase)
+        return GetFilteredControls()
+            .GroupBy(control => control.Node.ParentId ?? "settings", StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
                 var sectionNode = Navigation.Nodes.FirstOrDefault(node => node.Id.Equals(
@@ -395,12 +493,66 @@ else
                     StringComparison.OrdinalIgnoreCase));
                 return new PictureControlSection(
                     group.Key,
-                    sectionNode?.Label ?? "Picture",
+                    sectionNode?.Label ?? "Settings",
+                    sectionNode?.Path ?? "Settings",
                     group.OrderBy(control => nodeOrder.GetValueOrDefault(control.Node.Id, int.MaxValue)).ToArray(),
                     nodeOrder.GetValueOrDefault(group.Key, int.MaxValue));
             })
             .OrderBy(section => section.Order)
             .ToArray();
+    }
+
+    private IReadOnlyList<PictureControlEdit> GetFilteredControls() => Controls.Where(control =>
+            (SelectedAreaId == "*"
+             || ResolveMenuArea(control.Node).Id.Equals(
+                 SelectedAreaId,
+                 StringComparison.OrdinalIgnoreCase))
+            && (string.IsNullOrWhiteSpace(SearchText)
+                || control.Node.Label.Contains(SearchText.Trim(), StringComparison.OrdinalIgnoreCase)
+                || control.Node.Path.Contains(SearchText.Trim(), StringComparison.OrdinalIgnoreCase)))
+        .ToArray();
+
+    private IReadOnlyList<MenuControlArea> GetMenuAreas()
+    {
+        var nodeOrder = Navigation.Nodes.Select((node, index) => (node.Id, index))
+            .ToDictionary(item => item.Id, item => item.index, StringComparer.OrdinalIgnoreCase);
+        return Controls.Select(control => ResolveMenuArea(control.Node))
+            .DistinctBy(area => area.Id, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(area => nodeOrder.GetValueOrDefault(area.Id, int.MaxValue))
+            .ThenBy(area => area.Label, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private MenuControlArea ResolveMenuArea(MenuNodeSummary node)
+    {
+        var current = node;
+        while (!string.IsNullOrWhiteSpace(current.ParentId))
+        {
+            var parent = Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
+                current.ParentId,
+                StringComparison.OrdinalIgnoreCase));
+            if (parent is null)
+            {
+                break;
+            }
+
+            if (parent.Id.Equals("settings", StringComparison.OrdinalIgnoreCase)
+                || parent.Label.Equals("Settings", StringComparison.OrdinalIgnoreCase))
+            {
+                return current.Id.Equals(node.Id, StringComparison.OrdinalIgnoreCase)
+                    ? new MenuControlArea(parent.Id, parent.Label)
+                    : new MenuControlArea(current.Id, current.Label);
+            }
+
+            if (parent.Id.Equals("normal-video", StringComparison.OrdinalIgnoreCase))
+            {
+                return new MenuControlArea(current.Id, current.Label);
+            }
+
+            current = parent;
+        }
+
+        return new MenuControlArea(current.Id, current.Label);
     }
 
     private void HandleControllerChanged()
@@ -417,23 +569,16 @@ else
     {
         Snapshot = Controller.GetSnapshot();
         Navigation = Controller.GetMenuNavigationSnapshot();
+        Verification = Controller.GetMenuControlVerificationSnapshot();
     }
 
     private void ReconcileControls()
     {
-        var pictureRoot = Navigation.Nodes.FirstOrDefault(node =>
-            node.Id.Equals("picture", StringComparison.OrdinalIgnoreCase))
-            ?? Navigation.Nodes.FirstOrDefault(node =>
-                node.Label.Equals("Picture", StringComparison.OrdinalIgnoreCase)
-                && node.ControlType == MenuControlType.Submenu);
         var existing = Controls.ToDictionary(control => control.Node.Id, StringComparer.OrdinalIgnoreCase);
-        var eligible = pictureRoot is null
-            ? []
-            : Navigation.Nodes.Where(node =>
-                    IsSupportedControl(node)
-                    && IsDescendantOf(node, pictureRoot.Id)
-                    && HasUsableRoute(node))
-                .ToArray();
+        var eligible = Navigation.Nodes.Where(node =>
+                IsSupportedControl(node)
+                && HasUsableRoute(node))
+            .ToArray();
         Controls.Clear();
         foreach (var node in eligible)
         {
@@ -509,24 +654,6 @@ else
             StringComparison.OrdinalIgnoreCase));
     }
 
-    private bool IsDescendantOf(MenuNodeSummary node, string ancestorId)
-    {
-        var parentId = node.ParentId;
-        while (!string.IsNullOrWhiteSpace(parentId))
-        {
-            if (parentId.Equals(ancestorId, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            parentId = Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
-                parentId,
-                StringComparison.OrdinalIgnoreCase))?.ParentId;
-        }
-
-        return false;
-    }
-
     private static string GetControlTypeLabel(MenuControlType type) => type switch
     {
         MenuControlType.Slider => "SLIDER",
@@ -535,8 +662,10 @@ else
         _ => type.ToString().ToUpperInvariant()
     };
 
-    private static string GetControlStateLabel(PictureControlEdit control, bool disabled) => disabled
+    private string GetControlStateLabel(PictureControlEdit control, bool disabled) => disabled
         ? "DISABLED"
+        : control.Node.ControlType == MenuControlType.Slider && Verification.SlidersVerified
+            ? "SLIDER VERIFIED"
         : control.Pending
             ? "PENDING"
             : control.AwaitingConfirmation
@@ -589,6 +718,9 @@ else
     private sealed record PictureControlSection(
         string Id,
         string Label,
+        string Path,
         IReadOnlyList<PictureControlEdit> Controls,
         int Order);
+
+    private sealed record MenuControlArea(string Id, string Label);
 }

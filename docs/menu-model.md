@@ -338,8 +338,9 @@ can be planned or sent.
 For a slider, topology verification ends with the slider row highlighted. Do not
 press Left or Right during that route test: the coverage result verifies only
 that the generated route reaches the correct control. After the route is
-verified, use **Picture Controls** to exercise the value behavior. That page
-groups sliders, switches, and selections by their immediate menu parent. It
+verified, use **Menu Controls** to exercise the value behavior. That page
+collects adjustable controls from every menu area and groups sliders, switches,
+and selections by their immediate menu parent. It
 sends one Left or Right key per whole-number slider step, Select for a switch,
 and Select plus ordered Up/Down movement for a selection. It then asks for
 visual confirmation of the predicted value. The value confirmation is
@@ -347,7 +348,7 @@ deliberately separate from the three-pass route count because the TV does not
 return its setting value. Changes made with a physical remote or another
 application can invalidate the page's predicted starting value.
 
-Picture Controls evaluates `disabledWhen` against the values predicted on that
+Menu Controls evaluates `disabledWhen` against the values predicted on that
 page. A staged update orders controlling settings before their dependents. A
 conditional child that is disabled under the YAML defaults does not need to be
 added to the default-state coverage checklist: after its controller enables it,
@@ -355,6 +356,16 @@ the page reaches the verified containing submenu and derives the child's Up/Down
 offset from the enabled sibling order. This is intended for rows such as 20 Point
 RGB controls and Custom Color Space controls that remain in the topology but
 cannot be selected in the default state.
+
+Slider value confirmation uses representative coverage rather than requiring
+every slider independently. Each distinct slider visually confirmed on the page
+adds one pass to the TV-specific shared slider profile. Three distinct sliders
+promote the profile; subsequent slider updates no longer request confirmation.
+Repeating one slider does not increase coverage. The profile is persisted for
+the saved TV address, resets automatically when a different TV address is saved,
+resets when system-wide menu delays change, and can be reset manually from Menu
+Controls. Switches and selections are not promoted by slider coverage because
+their Select and choice-list behavior is different.
 
 After initial verification, editing the outline or fine-adjustment tree runs the
 same generator again. A group whose generated key sequences and membership are

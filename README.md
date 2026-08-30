@@ -11,6 +11,7 @@ The web interface is the recommended way to use the application. A command-line 
 - Remote keys using `Click`, `Press`, and `Release` actions
 - Browser-edited YAML macros with variables, nested calls, explicit waits, progress, and three-pass visual verification
 - Verified, state-aware menu navigation and a guided menu-map builder
+- Compact menu-wide controls for verified sliders, switches, selections, and conditional settings
 - Persistent quick-access buttons and an expected-current-menu indicator
 - Searchable RX/TX protocol messages, redacted browser views, and NDJSON session logs
 - Interactive terminal console with persistent command history
@@ -198,13 +199,13 @@ If the expected position is unknown, run a verified anchor under **Resynchronize
 
 Menu definitions are model-, firmware-, input-, signal-, and picture-mode-sensitive. Do not assume a route verified in one SDR context is valid in HDR, on another input, or on different firmware. See [Menu definitions](docs/menu-model.md) for the data model and confidence rules.
 
-### Picture Controls
+### Menu Controls
 
-The **Picture Controls** page collects adjustable sliders, switches, and selections beneath Picture and groups the compact cards by their immediate TV-menu section. A normal control appears after its route has been verified. A conditionally disabled control can also appear when its containing section has a verified route; once enabled, SamsungController derives its position from the declared sibling order.
+The **Menu Controls** page collects adjustable sliders, switches, and selections from every verified menu area. Use the area filter or search, then work with compact cards grouped by their immediate TV-menu section. A normal control appears after its route has been verified. A conditionally disabled control can also appear when its containing section has a verified route; once enabled, SamsungController derives its position from the declared sibling order.
 
 Each card starts from its declared YAML default and tracks changes sent during the current page session. Sliders send Left/Right steps, switches send Select, and selections open the choice list, move from the predicted current option, and select the new option. Choose **Update TV immediately** to send one change at a time, or choose **Wait for Apply** to stage several values. Staged dependencies are sent first: for example, 20 Point is enabled before its Interval/RGB controls, and Custom Color Space is selected before its Color/RGB controls. The page reevaluates every `disabledWhen` rule as its controlling value changes.
 
-Choose **Stay on last adjusted item** to leave the final control visible for inspection, or **Exit to normal video** to run the verified return anchor afterward. After a successful send, compare the predicted value with the TV and select **TV shows …** to record the visual confirmation in the page. Route verification proves that a row can be reached; it does not prove the displayed setting value because the Samsung remote channel does not report values. If the TV was adjusted outside SamsungController, first restore the declared defaults or update the definition before relying on relative changes.
+Choose **Stay on last adjusted item** to leave the final control visible for inspection, or **Exit to normal video** to run the verified return anchor afterward. Route verification proves that a row can be reached; it does not prove the displayed setting value because the Samsung remote channel does not report values. Visually confirm three different sliders to promote the common slider behavior for the saved TV address. That result persists across restarts, and later slider changes no longer ask for individual confirmation. Use **Reset slider verification** if later results disagree. Saving different system-wide menu delays also resets this coverage because those delays affect every slider key sequence. Switches and selections continue to request visual confirmation because their interaction differs from a slider. If the TV was adjusted outside SamsungController, first restore the declared defaults or update the definition before relying on relative changes.
 
 ### Build & Verify
 
