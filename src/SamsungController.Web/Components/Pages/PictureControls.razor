@@ -16,6 +16,7 @@
                 <li>Choose a top-level menu tab, then search or adjust controls grouped by their immediate TV menu section.</li>
                 <li>Switches, selections, and submenu selections use predicted values and dynamically apply declared <code>disabledWhen</code> and <code>hiddenWhen</code> rules.</li>
                 <li>Turning on 20 Point enables its Interval and RGB controls. Choosing Custom Color Space enables its Color and RGB controls.</li>
+                <li>The first calibration tab contains Expert Settings and pins the 20 Point switch first. The Color tab places Color Space before its fixed-value grid.</li>
                 <li>Interval percentages and Custom Color choices appear as fixed grid rows, so every RGB value can be staged together without manually changing the selector.</li>
                 <li><strong>Adjust TV</strong> sends or stages commands. <strong>Enter current settings</strong> uses an independent local draft and never sends commands to the TV.</li>
                 <li><strong>Immediate</strong> sends one changed control at a time. <strong>Apply button</strong> can stage a controller and its newly enabled settings together.</li>
@@ -112,7 +113,7 @@ else
         <summary>
             <span>Update behavior</span>
             <small>@UpdateBehaviorSummary</small>
-            <b>@PendingCount pending</b>
+            <b class="@(PendingCount > 0 ? "pending" : "clear")" title="@PendingDetailsSummary">@PendingBadgeLabel</b>
         </summary>
         <div class="compact-update-panel-body">
             <div class="picture-control-options">
@@ -153,6 +154,26 @@ else
                     @(IsBusy ? "Applying…" : $"Apply {PendingCount} change{(PendingCount == 1 ? string.Empty : "s")}") <span>▶</span>
                 </button>
             </div>
+            @if (PendingCount > 0)
+            {
+                <div class="pending-target-explanation">
+                    <div>
+                        <span>SAVED TARGET DIFFERS FROM CURRENT PREDICTION</span>
+                        <strong>These values have not been sent in this session.</strong>
+                        <small>Samsung TVs do not report menu-setting values. Apply sends these targets, or use Enter current settings to record what is already on the TV.</small>
+                    </div>
+                    <ul>
+                        @foreach (var pending in GetPendingControlSummaries().Take(6))
+                        {
+                            <li><span>@pending.Label</span><b>@pending.AppliedValue</b><i>→</i><strong>@pending.DesiredValue</strong></li>
+                        }
+                        @if (PendingCount > 6)
+                        {
+                            <li class="pending-target-more">+ @(PendingCount - 6) more</li>
+                        }
+                    </ul>
+                </div>
+            }
             @if (ConfirmFactoryReset)
             {
                 <div class="factory-reset-confirmation" role="alert">
@@ -202,6 +223,25 @@ else
         else
         {
             <div class="expert-settings-content">
+                @if (GetExpertControls(SelectedExpertTab).Count > 0)
+                {
+                    <div class="picture-control-grid expert-control-grid">
+                        @foreach (var control in GetExpertControls(SelectedExpertTab))
+                        {
+                            var disabled = IsControlDisabled(control);
+                            <MenuControlCard Node="@control.Node"
+                                             Value="@GetControlDisplayValue(control)"
+                                             ReferenceValue="@control.AppliedValue"
+                                             Disabled="@disabled"
+                                             Busy="@IsBusy"
+                                             CurrentStateMode="@(WorkspaceMode == MenuWorkspaceMode.CurrentState)"
+                                             DisabledReason="@GetDisabledReason(control)"
+                                             StateClass="@GetControlCssClass(control, disabled)"
+                                             StateLabel="@GetControlStateLabel(control, disabled)"
+                                             ValueChanged="value => ChangeControlAsync(control, value)" />
+                        }
+                    </div>
+                }
                 @foreach (var group in GetExpertIndexedGroups(SelectedExpertTab))
                 {
                     var groupDisabled = IsIndexedGroupDisabled(group);
@@ -254,25 +294,6 @@ else
                             </table>
                         </div>
                     </section>
-                }
-                @if (GetExpertControls(SelectedExpertTab).Count > 0)
-                {
-                    <div class="picture-control-grid expert-control-grid">
-                        @foreach (var control in GetExpertControls(SelectedExpertTab))
-                        {
-                            var disabled = IsControlDisabled(control);
-                            <MenuControlCard Node="@control.Node"
-                                             Value="@GetControlDisplayValue(control)"
-                                             ReferenceValue="@control.AppliedValue"
-                                             Disabled="@disabled"
-                                             Busy="@IsBusy"
-                                             CurrentStateMode="@(WorkspaceMode == MenuWorkspaceMode.CurrentState)"
-                                             DisabledReason="@GetDisabledReason(control)"
-                                             StateClass="@GetControlCssClass(control, disabled)"
-                                             StateLabel="@GetControlStateLabel(control, disabled)"
-                                             ValueChanged="value => ChangeControlAsync(control, value)" />
-                        }
-                    </div>
                 }
             </div>
         }
@@ -419,7 +440,7 @@ else
     private List<IndexedControlGroupEdit> IndexedGroups { get; } = [];
     private Dictionary<string, string> CurrentStateDraft { get; } = new(StringComparer.OrdinalIgnoreCase);
     private MenuWorkspaceMode WorkspaceMode { get; set; } = MenuWorkspaceMode.AdjustTv;
-    private ExpertSettingsKind SelectedExpertTab { get; set; } = ExpertSettingsKind.TwoPointWhiteBalance;
+    private ExpertSettingsKind SelectedExpertTab { get; set; } = ExpertSettingsKind.ExpertSettings;
     private PictureUpdateMode UpdateMode { get; set; } = PictureUpdateMode.Staged;
     private PictureExitBehavior ExitBehavior { get; set; } = PictureExitBehavior.Stay;
     private string SelectedAreaId { get; set; } = string.Empty;
@@ -438,7 +459,7 @@ else
             && !IsIndexedControl(control.Node.Id)
             && !IsControlDisabled(control)
             && !IsControlHidden(control))
-        + IndexedGroups.Sum(group => IsIndexedGroupDisabled(group)
+        + IndexedGroups.Sum(group => IsIndexedGroupDisabled(group) || IsIndexedGroupHidden(group)
             ? 0
             : group.Rows.Sum(row => row.Cells.Count(cell => cell.Pending)));
     private int GeneralVisibleControlCount => GetFilteredControls().Count + GetVisibleGeneralIndexedGroups().Count;
@@ -454,6 +475,17 @@ else
                 item.cell.AppliedValue,
                 StringComparison.OrdinalIgnoreCase));
     private string UpdateBehaviorSummary => $"{(UpdateMode == PictureUpdateMode.Immediate ? "Immediate" : "Apply button")} · {(ExitBehavior == PictureExitBehavior.Stay ? "stay on item" : "return to video")}";
+    private string PendingBadgeLabel => PendingCount == 0
+        ? "Targets match"
+        : PendingCount == 1
+            ? "1 saved target differs"
+            : $"{PendingCount} saved targets differ";
+    private string PendingDetailsSummary => PendingCount == 0
+        ? "Every saved target matches the current TV prediction."
+        : string.Join(
+            "; ",
+            GetPendingControlSummaries().Take(4).Select(pending =>
+                $"{pending.Label}: {pending.AppliedValue} → {pending.DesiredValue}"));
     private bool MenuIsAvailable => DisplayVerification.FullyVerified;
     private bool CanApplyPending => PendingCount > 0
         && MenuIsAvailable
@@ -1162,7 +1194,30 @@ else
         .Where(control => !IsIndexedControl(control.Node.Id)
             && !IsControlHidden(control)
             && ClassifyExpertControl(control.Node) == kind)
+        .OrderBy(control => GetExpertControlPriority(kind, control.Node))
         .ToArray();
+
+    private static int GetExpertControlPriority(ExpertSettingsKind kind, MenuNodeSummary node)
+    {
+        if (kind == ExpertSettingsKind.ExpertSettings
+            && node.ControlType == MenuControlType.Switch
+            && (node.Label.Equals("20 Point", StringComparison.OrdinalIgnoreCase)
+                || node.Label.Equals("20pt", StringComparison.OrdinalIgnoreCase)
+                || node.Id.Contains("20-point", StringComparison.OrdinalIgnoreCase)
+                || node.Id.Contains("20pt", StringComparison.OrdinalIgnoreCase)))
+        {
+            return 0;
+        }
+
+        if (kind == ExpertSettingsKind.Color
+            && (node.Id.Equals("color-space", StringComparison.OrdinalIgnoreCase)
+                || node.Label.Equals("Color Space", StringComparison.OrdinalIgnoreCase)))
+        {
+            return 0;
+        }
+
+        return 1;
+    }
 
     private IReadOnlyList<IndexedControlGroupEdit> GetExpertIndexedGroups(ExpertSettingsKind kind) => IndexedGroups
         .Where(group => !IsIndexedGroupHidden(group)
@@ -1175,15 +1230,32 @@ else
 
     private static string GetExpertTabLabel(ExpertSettingsKind kind) => kind switch
     {
+        ExpertSettingsKind.ExpertSettings => "expert settings",
         ExpertSettingsKind.TwoPointWhiteBalance => "2pt white balance",
         ExpertSettingsKind.TwentyPointWhiteBalance => "20pt white balance",
         ExpertSettingsKind.Color => "color",
         _ => "expert"
     };
 
-    private static ExpertSettingsKind? ClassifyExpertControl(MenuNodeSummary node)
+    private ExpertSettingsKind? ClassifyExpertControl(MenuNodeSummary node)
     {
         var identity = $"{node.Id} {node.Label} {node.Path}";
+        if (node.ControlType == MenuControlType.Selection
+            && (node.Id.Equals("color-space", StringComparison.OrdinalIgnoreCase)
+                || node.Label.Equals("Color Space", StringComparison.OrdinalIgnoreCase)))
+        {
+            return ExpertSettingsKind.Color;
+        }
+
+        if (node.ControlType == MenuControlType.Switch
+            && (node.Label.Equals("20 Point", StringComparison.OrdinalIgnoreCase)
+                || node.Label.Equals("20pt", StringComparison.OrdinalIgnoreCase)
+                || node.Id.Contains("20-point", StringComparison.OrdinalIgnoreCase)
+                || node.Id.Contains("20pt", StringComparison.OrdinalIgnoreCase)))
+        {
+            return ExpertSettingsKind.ExpertSettings;
+        }
+
         if (identity.Contains("20 Point", StringComparison.OrdinalIgnoreCase)
             || identity.Contains("20pt", StringComparison.OrdinalIgnoreCase)
             || identity.Contains("20 pt", StringComparison.OrdinalIgnoreCase))
@@ -1203,6 +1275,16 @@ else
             || identity.Contains("2 pt", StringComparison.OrdinalIgnoreCase))
         {
             return ExpertSettingsKind.TwoPointWhiteBalance;
+        }
+
+        var parent = Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
+            node.ParentId ?? string.Empty,
+            StringComparison.OrdinalIgnoreCase));
+        if (parent is not null
+            && (parent.Label.Equals("Expert Settings", StringComparison.OrdinalIgnoreCase)
+                || parent.Id.Equals("expert-settings", StringComparison.OrdinalIgnoreCase)))
+        {
+            return ExpertSettingsKind.ExpertSettings;
         }
 
         return null;
@@ -1237,6 +1319,25 @@ else
         .SelectMany(group => group.Rows.SelectMany(row => row.Cells
             .Where(cell => cell.Pending)
             .Select(cell => new IndexedCellChange(group, cell))))
+        .ToArray();
+
+    private IReadOnlyList<PendingControlSummary> GetPendingControlSummaries() => Controls
+        .Where(control => control.Pending
+            && !IsIndexedControl(control.Node.Id)
+            && !IsControlDisabled(control)
+            && !IsControlHidden(control))
+        .Select(control => new PendingControlSummary(
+            control.Node.Label,
+            control.AppliedValue,
+            control.DesiredValue))
+        .Concat(IndexedGroups
+            .Where(group => !IsIndexedGroupDisabled(group) && !IsIndexedGroupHidden(group))
+            .SelectMany(group => group.Rows.SelectMany(row => row.Cells
+                .Where(cell => cell.Pending)
+                .Select(cell => new PendingControlSummary(
+                    $"{group.Label} · {cell.SelectorValue} · {cell.Slider.Label}",
+                    cell.AppliedValue,
+                    cell.DesiredValue)))))
         .ToArray();
 
     private Dictionary<string, string> CreateKnownControlValues() => Controls.ToDictionary(
@@ -1823,6 +1924,7 @@ else
 
     private static IReadOnlyList<ExpertSettingsTab> ExpertTabs { get; } =
     [
+        new(ExpertSettingsKind.ExpertSettings, "Expert settings"),
         new(ExpertSettingsKind.TwoPointWhiteBalance, "2pt white balance"),
         new(ExpertSettingsKind.TwentyPointWhiteBalance, "20pt white balance"),
         new(ExpertSettingsKind.Color, "Color")
@@ -1836,6 +1938,7 @@ else
 
     private enum ExpertSettingsKind
     {
+        ExpertSettings,
         TwoPointWhiteBalance,
         TwentyPointWhiteBalance,
         Color
@@ -1878,6 +1981,11 @@ else
     private sealed record MenuControlArea(string Id, string Label, int ControlCount);
 
     private sealed record ExpertSettingsTab(ExpertSettingsKind Kind, string Label);
+
+    private sealed record PendingControlSummary(
+        string Label,
+        string AppliedValue,
+        string DesiredValue);
 
     private sealed class IndexedControlGroupEdit(
         MenuNodeSummary selector,

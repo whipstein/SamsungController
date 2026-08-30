@@ -878,9 +878,23 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .compact-update-panel > summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 11px 14px; cursor: pointer; list-style-position: inside; }
 .compact-update-panel > summary span { color: var(--ink); font-size: 10px; font-weight: 700; }
 .compact-update-panel > summary small { overflow: hidden; color: var(--muted); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
-.compact-update-panel > summary b { padding: 3px 7px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--amber); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; }
+.compact-update-panel > summary b { padding: 3px 7px; border: 1px solid var(--line-strong); border-radius: 999px; font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; }
+.compact-update-panel > summary b.pending { border-color: rgba(242,181,107,.34); color: var(--amber); }
+.compact-update-panel > summary b.clear { border-color: rgba(124,231,220,.3); color: var(--cyan); }
 .compact-update-panel[open] > summary { border-bottom: 1px solid var(--line); }
 .compact-update-panel-body { padding: 13px 14px 14px; }
+.pending-target-explanation { display: grid; grid-template-columns: minmax(230px, .8fr) minmax(280px, 1.2fr); gap: 14px; align-items: start; margin-top: 12px; padding: 11px 12px; border: 1px solid rgba(242,181,107,.24); border-radius: 7px; background: rgba(242,181,107,.045); }
+.pending-target-explanation > div > span, .pending-target-explanation > div > strong, .pending-target-explanation > div > small { display: block; }
+.pending-target-explanation > div > span { color: var(--amber); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; }
+.pending-target-explanation > div > strong { margin-top: 4px; font-size: 10px; }
+.pending-target-explanation > div > small { margin-top: 4px; color: var(--muted); font-size: 7px; line-height: 1.45; }
+.pending-target-explanation ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.pending-target-explanation li { display: grid; grid-template-columns: minmax(110px, 1fr) auto auto auto; gap: 7px; align-items: center; padding: 5px 7px; border: 1px solid var(--line); border-radius: 5px; color: var(--muted); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.pending-target-explanation li span { overflow: hidden; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
+.pending-target-explanation li b { color: var(--faint); }
+.pending-target-explanation li i { color: var(--amber); font-style: normal; }
+.pending-target-explanation li strong { color: var(--amber); }
+.pending-target-explanation li.pending-target-more { display: block; color: var(--faint); text-align: center; }
 .picture-control-options { display: grid; grid-template-columns: minmax(190px, .8fr) minmax(210px, .9fr) minmax(160px, .7fr) auto; gap: 13px; align-items: end; }
 .picture-control-options label > span, .picture-control-summary > span { display: block; margin-bottom: 6px; color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .09em; }
 .picture-control-options select { width: 100%; }
@@ -916,7 +930,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .expert-settings-heading h2 { margin: 4px 0 0; font-size: 18px; }
 .expert-settings-heading p { margin: 4px 0 0; color: var(--muted); font-size: 8px; }
 .expert-settings-heading > small { color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; }
-.expert-settings-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin-bottom: 12px; }
+.expert-settings-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; margin-bottom: 12px; }
 .expert-settings-tabs button { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 38px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: #08131b; color: var(--muted); cursor: pointer; font: 9px ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .expert-settings-tabs button:hover:not(:disabled) { border-color: rgba(124,231,220,.4); color: var(--ink); }
 .expert-settings-tabs button.active { border-color: rgba(124,231,220,.5); background: rgba(124,231,220,.08); color: var(--cyan); }
@@ -1202,6 +1216,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .menu-workspace-tabs button { align-items: flex-start; flex-direction: column; gap: 4px; }
     .compact-update-panel > summary { grid-template-columns: minmax(0, 1fr) auto; }
     .compact-update-panel > summary small { grid-column: 1 / -1; grid-row: 2; }
+    .pending-target-explanation { grid-template-columns: 1fr; }
     .current-state-safety, .expert-settings-heading { align-items: flex-start; flex-direction: column; }
     .expert-settings-tabs { grid-template-columns: 1fr; }
     .picture-control-options { grid-template-columns: 1fr; }
