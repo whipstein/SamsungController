@@ -439,12 +439,20 @@
                             }
                             <div class="node-disabled-rule-editor">
                                 <header>
-                                    <span><b>DISABLED / GRAYED-OUT RULES</b><small>The item remains in menu order. It is disabled when any listed setting equals the specified value.</small></span>
+                                    <span><b>DISABLED / GRAYED-OUT RULES</b><small>The item remains in menu order. It is disabled when any listed setting equals the specified value. Descendants automatically inherit a disabled parent menu and do not need duplicate rules.</small></span>
                                     <button class="secondary-action" @onclick="AddNodeDisabledCondition" disabled="@(!CanAddNodeDisabledCondition)">+ Add rule</button>
                                 </header>
                                 @if (NodeEditorDisabledConditions.Count == 0)
                                 {
-                                    <p>Always enabled under the declared defaults.</p>
+                                    var inheritedDisabledAncestor = GetInheritedDisabledAncestorForEditor();
+                                    @if (inheritedDisabledAncestor is not null)
+                                    {
+                                        <p>Inherits disabled state from @inheritedDisabledAncestor.Path; no duplicate rule is needed.</p>
+                                    }
+                                    else
+                                    {
+                                        <p>Always enabled under the declared defaults.</p>
+                                    }
                                 }
                                 else
                                 {
@@ -3353,6 +3361,31 @@
         });
         return (node.IsDisabledByDefault ? "Disabled by default · " : "Disabled when ")
                + string.Join(" or ", rules);
+    }
+
+    private MenuNodeSummary? GetInheritedDisabledAncestorForEditor()
+    {
+        var parentId = NodeEditorParentId;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (!string.IsNullOrWhiteSpace(parentId) && visited.Add(parentId))
+        {
+            var parent = Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
+                parentId,
+                StringComparison.OrdinalIgnoreCase));
+            if (parent is null)
+            {
+                break;
+            }
+
+            if (parent.DisabledWhen.Count > 0)
+            {
+                return parent;
+            }
+
+            parentId = parent.ParentId;
+        }
+
+        return null;
     }
 
     private static string GetControlInteractionGuidance(MenuNodeSummary node)

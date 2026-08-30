@@ -259,7 +259,10 @@ behavior; SamsungController cannot read the live value or highlighted choice.
 in the menu but become unavailable or gray. Each condition names another
 value-bearing node and the value that disables this node. Multiple conditions
 use OR behavior: any matching condition disables the row. The declared defaults
-let the UI mark a row as disabled by default.
+let the UI mark a row as disabled by default. A disabled submenu makes every
+descendant unavailable automatically, so its children do not repeat the same
+`disabledWhen` rule. Enabling the submenu restores its descendants and their
+calculated routes.
 
 `hiddenWhen` documents rows that disappear entirely. It uses the same `setting`
 and `equals` entries and the same OR behavior. When a hidden rule matches, the

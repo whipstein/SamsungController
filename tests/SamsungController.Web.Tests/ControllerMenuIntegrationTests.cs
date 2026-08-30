@@ -1528,6 +1528,104 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task DisabledSubmenuStateFlowsToDescendantsAndRoutesReturnWhenEnabled()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: inherited-disabled-submenu
+            name: Inherited Disabled Submenu
+            model: Test TV
+            timing:
+              defaultDelay: 50ms
+              screenChangeDelay: 50ms
+              returnDelay: 50ms
+            nodes:
+              - id: normal-video
+                label: Normal video
+              - id: settings
+                label: Settings
+                parent: normal-video
+              - id: advanced-enabled
+                label: Advanced Enabled
+                parent: settings
+                controlType: switch
+                defaultValue: off
+              - id: advanced
+                label: Advanced
+                parent: settings
+                disabledWhen:
+                  - setting: advanced-enabled
+                    equals: off
+              - id: brightness
+                label: Brightness
+                parent: advanced
+                controlType: slider
+                defaultValue: 50
+                minimumValue: 0
+                maximumValue: 100
+            anchors:
+              - id: normal
+                label: Return to normal video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            transitions:
+              - id: open-settings
+                from: normal-video
+                to: settings
+                verified: true
+                steps:
+                  - key: KEY_MENU
+              - id: open-advanced-enabled
+                from: normal-video
+                to: advanced-enabled
+                verified: true
+                steps:
+                  - key: KEY_MENU
+            """;
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            var initial = controller.GetMenuNavigationSnapshot();
+            var advanced = initial.Nodes.Single(node => node.Id == "advanced");
+            var brightness = initial.Nodes.Single(node => node.Id == "brightness");
+
+            Assert.True(advanced.IsDisabledByDefault);
+            Assert.True(brightness.IsDisabledByDefault);
+            Assert.Empty(brightness.DisabledWhen);
+            Assert.False(brightness.HasVerifiedRoute);
+            var unavailable = Assert.Throws<InvalidOperationException>(
+                () => controller.CreateNavigationPlan("brightness"));
+            Assert.Contains("disabled", unavailable.Message, StringComparison.OrdinalIgnoreCase);
+
+            await controller.ApplyMenuControlValuesAsync(
+                [new MenuControlValueUpdate("advanced-enabled", "off", "on")],
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["advanced-enabled"] = "off",
+                    ["brightness"] = "50"
+                },
+                returnToNormalVideo: false);
+
+            var enabled = controller.GetMenuNavigationSnapshot();
+            Assert.True(enabled.Nodes.Single(node => node.Id == "brightness").HasVerifiedRoute);
+
+            await controller.ApplyMenuControlValuesAsync(
+                [new MenuControlValueUpdate("brightness", "50", "51")],
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["advanced-enabled"] = "on",
+                    ["brightness"] = "50"
+                },
+                returnToNormalVideo: false);
+
+            Assert.Contains("KEY_RIGHT", GetSentKeys(transport));
+        }
+    }
+
+    [Fact]
     public async Task PictureControlsApplyEnablingSwitchBeforeConditionalSlider()
     {
         const string yaml =

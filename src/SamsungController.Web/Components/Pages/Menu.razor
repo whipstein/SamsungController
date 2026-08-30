@@ -245,7 +245,10 @@
             : string.Empty;
         if (node.DisabledWhen.Count == 0 && node.HiddenWhen.Count == 0)
         {
-            return control + defaultValue + range + options;
+            var inheritedDisabled = node.IsDisabledByDefault
+                ? " · disabled because a parent menu is disabled"
+                : string.Empty;
+            return control + defaultValue + range + options + inheritedDisabled;
         }
 
         var disabledRules = node.DisabledWhen.Select(condition =>

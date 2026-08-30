@@ -99,6 +99,7 @@ public sealed class TopologyRouteGeneratorTests
                     "Advanced",
                     "settings",
                     DisabledWhen: [new MenuNodeDisabledCondition("adaptive", "on")]),
+                new MenuNode("advanced-detail", "Advanced Detail", "advanced"),
                 new MenuNode(
                     "game-options",
                     "Game Options",
@@ -128,6 +129,7 @@ public sealed class TopologyRouteGeneratorTests
             .ToArray();
 
         Assert.DoesNotContain(routes, transition => transition.ToNodeId == "advanced");
+        Assert.DoesNotContain(routes, transition => transition.ToNodeId == "advanced-detail");
         Assert.DoesNotContain(routes, transition => transition.ToNodeId == "game-options");
         var sound = Assert.Single(routes, transition => transition.ToNodeId == "sound");
         Assert.Equal(["KEY_MENU", "KEY_DOWN", "KEY_ENTER"], sound.Operations.Select(step => step.Key));

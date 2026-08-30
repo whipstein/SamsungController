@@ -343,7 +343,7 @@ Every node requires `id` and `label`. These fields are optional:
 | `defaultValue` | Expected value after reset/startup. Required for every non-submenu. |
 | `minimumValue`, `maximumValue` | Numeric slider boundaries; both are required for sliders only. |
 | `options` | Ordered values for choice controls. |
-| `disabledWhen` | OR-list of conditions that leave this row present but gray/unavailable. |
+| `disabledWhen` | OR-list of conditions that leave this row present but gray/unavailable. Descendants inherit this state. |
 | `hiddenWhen` | OR-list of conditions that remove this row and all descendants. |
 
 Supported `controlType` values are:
@@ -385,6 +385,11 @@ Multiple entries use **OR**, not AND: any match activates the behavior. The
 referenced setting must be a slider, selection, submenu selection, indexed
 selection, or switch. A condition cannot refer to its own node. Selection values
 must appear in that setting's options; switch values must be `on` or `off`.
+
+When a submenu is disabled, every descendant is also unavailable automatically.
+Define `disabledWhen` only on that submenu; repeating the same condition on its
+children is unnecessary. When the controlling value enables the submenu again,
+its descendants become available and generated routes use the inherited state.
 
 There is no separate “always disabled” boolean in version 1. Model a permanent
 gray row through a condition that is true in the applicable configuration, or

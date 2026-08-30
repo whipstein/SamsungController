@@ -359,6 +359,8 @@ else
     private IReadOnlyList<MenuNodeSummary> FactoryResetCandidates => Navigation.Nodes
         .Where(node => node.ControlType == MenuControlType.Confirmation
             && node.HasVerifiedRoute
+            && !IsNodeDisabled(node)
+            && !IsNodeHidden(node)
             && (node.Id.Contains("reset", StringComparison.OrdinalIgnoreCase)
                 || node.Label.Contains("reset", StringComparison.OrdinalIgnoreCase)))
         .OrderByDescending(node => node.Id.Equals("reset-picture", StringComparison.OrdinalIgnoreCase))
@@ -890,12 +892,40 @@ else
 
     private bool IsControlDisabled(PictureControlEdit control) => IsNodeDisabled(control.Node);
 
-    private bool IsNodeDisabled(MenuNodeSummary node) =>
-        node.DisabledWhen.Any(condition =>
+    private bool IsNodeDisabled(MenuNodeSummary node) => FindDisabledNode(node) is not null;
+
+    private MenuNodeSummary? FindDisabledNode(MenuNodeSummary node)
+    {
+        var current = node;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (visited.Add(current.Id))
         {
-            var value = GetPredictedValue(condition.SettingNodeId);
-            return value?.Equals(condition.EqualsValue, StringComparison.OrdinalIgnoreCase) == true;
-        });
+            if (current.DisabledWhen.Any(condition =>
+                    GetPredictedValue(condition.SettingNodeId)?.Equals(
+                        condition.EqualsValue,
+                        StringComparison.OrdinalIgnoreCase) == true))
+            {
+                return current;
+            }
+
+            if (string.IsNullOrWhiteSpace(current.ParentId))
+            {
+                break;
+            }
+
+            var parent = Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
+                current.ParentId,
+                StringComparison.OrdinalIgnoreCase));
+            if (parent is null)
+            {
+                break;
+            }
+
+            current = parent;
+        }
+
+        return null;
+    }
 
     private bool IsControlHidden(PictureControlEdit control) => IsNodeHidden(control.Node);
 
@@ -944,14 +974,9 @@ else
     {
         var disabledNode = new[] { group.Selector }.Concat(group.Sliders)
             .FirstOrDefault(IsNodeDisabled);
-        var control = disabledNode is null
-            ? null
-            : Controls.FirstOrDefault(candidate => candidate.Node.Id.Equals(
-                disabledNode.Id,
-                StringComparison.OrdinalIgnoreCase));
-        return control is null
+        return disabledNode is null
             ? "Unavailable under the current predicted settings"
-            : GetDisabledReason(control);
+            : GetDisabledReason(disabledNode);
     }
 
     private IReadOnlyList<IndexedControlGroupEdit> GetVisibleIndexedGroups() => IndexedGroups
@@ -1028,9 +1053,18 @@ else
             nodeId,
             StringComparison.OrdinalIgnoreCase))?.DefaultValue;
 
-    private string GetDisabledReason(PictureControlEdit control)
+    private string GetDisabledReason(PictureControlEdit control) =>
+        GetDisabledReason(control.Node);
+
+    private string GetDisabledReason(MenuNodeSummary node)
     {
-        var matches = control.Node.DisabledWhen.Where(condition =>
+        var disabledNode = FindDisabledNode(node);
+        if (disabledNode is null)
+        {
+            return "Unavailable in the predicted state";
+        }
+
+        var matches = disabledNode.DisabledWhen.Where(condition =>
             GetPredictedValue(condition.SettingNodeId)?.Equals(
                 condition.EqualsValue,
                 StringComparison.OrdinalIgnoreCase) == true).Select(condition =>
@@ -1040,7 +1074,14 @@ else
                 StringComparison.OrdinalIgnoreCase));
             return $"{setting?.Label ?? condition.SettingNodeId} = {GetPredictedValue(condition.SettingNodeId)}";
         }).ToArray();
-        return matches.Length == 0 ? "Unavailable in the predicted state" : $"Disabled while {string.Join(" or ", matches)}";
+        if (matches.Length == 0)
+        {
+            return "Unavailable in the predicted state";
+        }
+
+        return disabledNode.Id.Equals(node.Id, StringComparison.OrdinalIgnoreCase)
+            ? $"Disabled while {string.Join(" or ", matches)}"
+            : $"Disabled because parent menu {disabledNode.Label} is disabled while {string.Join(" or ", matches)}";
     }
 
     private IReadOnlyList<PictureControlSection> GetSections()

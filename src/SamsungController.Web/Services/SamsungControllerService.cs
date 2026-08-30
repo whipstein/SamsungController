@@ -3193,6 +3193,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
         try
         {
             var target = definition.GetRequiredNode(targetNodeId);
+            if (IsMenuNodeOrAncestorDisabled(definition, target, effectiveValues))
+            {
+                throw new InvalidOperationException(
+                    $"'{definition.GetPath(target.Id)}' is disabled by the current predicted menu settings.");
+            }
+
             if (IsMenuNodeOrAncestorHidden(definition, target, effectiveValues))
             {
                 throw new InvalidOperationException(
@@ -4977,11 +4983,30 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
     private static bool IsMenuNodeDisabledByDefault(
         MenuDefinition definition,
-        MenuNode node) => (node.DisabledWhen ?? []).Any(condition =>
-        definition.Nodes.TryGetValue(condition.SettingNodeId, out var setting)
-        && setting.DefaultValue?.Equals(
-            condition.EqualsValue,
-            StringComparison.OrdinalIgnoreCase) == true);
+        MenuNode node)
+    {
+        var current = node;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (visited.Add(current.Id))
+        {
+            if ((current.DisabledWhen ?? []).Any(condition =>
+                    definition.Nodes.TryGetValue(condition.SettingNodeId, out var setting)
+                    && setting.DefaultValue?.Equals(
+                        condition.EqualsValue,
+                        StringComparison.OrdinalIgnoreCase) == true))
+            {
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(current.ParentId)
+                || !definition.Nodes.TryGetValue(current.ParentId, out current))
+            {
+                break;
+            }
+        }
+
+        return false;
+    }
 
     private static bool IsMenuNodeHiddenByDefault(
         MenuDefinition definition,
@@ -6540,7 +6565,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             transition.GeneratedFromTopology
             && (transition.ValidationGroupId is not null
                 && verifiedGroupIds.Contains(transition.ValidationGroupId)
-                || IsNewlyVisibleConditionalRoute(
+                || IsNewlyAvailableConditionalRoute(
                     definition,
                     transition,
                     effectiveValues))
@@ -6560,7 +6585,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             regenerated.Verification);
     }
 
-    private static bool IsNewlyVisibleConditionalRoute(
+    private static bool IsNewlyAvailableConditionalRoute(
         MenuDefinition definition,
         MenuTransition transition,
         IReadOnlyDictionary<string, string> effectiveValues)
@@ -6580,8 +6605,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
         while (visited.Add(current.Id)
                && !current.Id.Equals(seed.ToNodeId, StringComparison.OrdinalIgnoreCase))
         {
-            if (IsMenuNodeHiddenByDefault(definition, current)
-                && !IsMenuNodeHidden(definition, current, effectiveValues))
+            if (IsMenuNodeDisabledByDefault(definition, current)
+                && !IsMenuNodeOrAncestorDisabled(definition, current, effectiveValues)
+                || IsMenuNodeHiddenByDefault(definition, current)
+                && !IsMenuNodeOrAncestorHidden(definition, current, effectiveValues))
             {
                 return true;
             }

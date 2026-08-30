@@ -244,12 +244,30 @@ public static class TopologyRouteGenerator
         MenuTransition route) =>
         definition.GetRequiredNode(route.ToNodeId).ControlType != MenuControlType.Confirmation;
 
-    private static bool IsDisabledByDefault(MenuDefinition definition, MenuNode node) =>
-        (node.DisabledWhen ?? []).Any(condition =>
-            definition.Nodes.TryGetValue(condition.SettingNodeId, out var setting)
-            && setting.DefaultValue?.Equals(
-                condition.EqualsValue,
-                StringComparison.OrdinalIgnoreCase) == true);
+    private static bool IsDisabledByDefault(MenuDefinition definition, MenuNode node)
+    {
+        var current = node;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (visited.Add(current.Id))
+        {
+            if ((current.DisabledWhen ?? []).Any(condition =>
+                    definition.Nodes.TryGetValue(condition.SettingNodeId, out var setting)
+                    && setting.DefaultValue?.Equals(
+                        condition.EqualsValue,
+                        StringComparison.OrdinalIgnoreCase) == true))
+            {
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(current.ParentId)
+                || !definition.Nodes.TryGetValue(current.ParentId, out current))
+            {
+                break;
+            }
+        }
+
+        return false;
+    }
 
     private static bool IsHiddenByDefault(MenuDefinition definition, MenuNode node) =>
         (node.HiddenWhen ?? []).Any(condition =>
