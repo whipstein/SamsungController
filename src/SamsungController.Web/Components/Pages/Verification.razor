@@ -11,16 +11,16 @@
         <div>
             <span class="eyebrow">DISPLAY-BOUND PROFILE</span>
             <h1>Complete menu-file verification</h1>
-            <p>One checklist for every route, timing rule, control behavior, and conditional menu state carried by the loaded file.</p>
+            <p>A compact representative checklist for the routes, interaction types, and conditional rules carried by the loaded file.</p>
         </div>
         <HelpBubble Title="How complete verification works">
             <ol>
                 <li>Confirm the physical display and viewing combination shown below.</li>
                 <li>Carry forward routes and controls already verified elsewhere in the app.</li>
-                <li>Use <strong>Open on TV</strong> and the verification remote for remaining visual checks.</li>
+                <li>Use <strong>Open on TV</strong> and the verification remote for each remaining representative behavior.</li>
                 <li>Count a check only after the TV behaves exactly as described.</li>
             </ol>
-            <p class="help-callout safe">Each result is fingerprinted inside the loaded YAML or JSON file. Editing only one route, option list, slider definition, timing value, or condition reopens only the affected check.</p>
+            <p class="help-callout safe">Equivalent controls and conditional effects are covered by representative behavior classes. Each class is fingerprinted inside the YAML or JSON file, so a relevant edit reopens that class without restoring a per-row checklist.</p>
         </HelpBubble>
     </header>
 
@@ -140,7 +140,7 @@
 
         <aside class="verification-remote-panel">
             <div class="panel-label"><span>VISUAL TEST REMOTE</span><span>EXPLICIT KEYS</span></div>
-            <p>Open a control, use these keys to exercise every declared state, then count the matching check.</p>
+            <p>Open the displayed representative, exercise its interaction, then count the shared behavior check.</p>
             <div class="verification-remote-top">
                 <button @onclick='() => SendKeyAsync("KEY_MENU")' disabled="@TvActionsDisabled">☰<small>Menu</small></button>
                 <button @onclick='() => SendKeyAsync("KEY_HOME")' disabled="@TvActionsDisabled">⌂<small>Home</small></button>
@@ -179,8 +179,8 @@
     {
         CreateGroup("01", "Display & timing", VerificationState.Checks.Where(check => check.Kind is MenuVerificationCheckKind.Display or MenuVerificationCheckKind.Timing)),
         CreateGroup("02", "Menu locations & return paths", VerificationState.Checks.Where(check => check.Kind is MenuVerificationCheckKind.Anchor or MenuVerificationCheckKind.ReturnScript or MenuVerificationCheckKind.Route)),
-        CreateGroup("03", "Sliders, selections & actions", VerificationState.Checks.Where(check => check.Kind is MenuVerificationCheckKind.SliderBehavior or MenuVerificationCheckKind.Selection or MenuVerificationCheckKind.Switch or MenuVerificationCheckKind.Confirmation)),
-        CreateGroup("04", "Enabled, disabled & hidden states", VerificationState.Checks.Where(check => check.Kind == MenuVerificationCheckKind.ConditionalVisibility))
+        CreateGroup("03", "Representative control behaviors", VerificationState.Checks.Where(check => check.Kind is MenuVerificationCheckKind.SliderBehavior or MenuVerificationCheckKind.Selection or MenuVerificationCheckKind.Switch or MenuVerificationCheckKind.Confirmation)),
+        CreateGroup("04", "Representative conditional behaviors", VerificationState.Checks.Where(check => check.Kind == MenuVerificationCheckKind.ConditionalVisibility))
     }.Where(group => group.Checks.Count > 0).ToArray();
 
     protected override async Task OnInitializedAsync()

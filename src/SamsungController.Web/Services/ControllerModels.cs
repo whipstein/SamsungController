@@ -154,7 +154,8 @@ public sealed record MenuControlVerificationSnapshot(
     int ConfirmedSelectionCount,
     int RequiredSelectionCount,
     bool SelectionsVerified,
-    IReadOnlyList<string> ConfirmedSelectionNodeIds);
+    IReadOnlyList<string> ConfirmedSelectionNodeIds,
+    IReadOnlyList<MenuControlType> VerifiedSelectionControlTypes);
 
 public sealed record MenuDefinitionVerificationCheckSummary(
     string Id,

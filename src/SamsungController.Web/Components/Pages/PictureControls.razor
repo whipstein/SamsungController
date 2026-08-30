@@ -109,9 +109,9 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
         @if (Verification.RequiredSelectionCount > 0)
         {
             <div class="selection-verification-summary @(Verification.SelectionsVerified ? "verified" : "unverified")">
-                <span>SELECTION VERIFICATION</span>
-                <strong>@(Verification.SelectionsVerified ? "All selections verified" : $"{Verification.ConfirmedSelectionCount}/{Verification.RequiredSelectionCount} selection controls")</strong>
-                <small>@(Verification.SelectionsVerified ? "Future updates use the verified option order and exit behavior." : "Each selection control needs one visual confirmation.")</small>
+                <span>SHARED SELECTION VERIFICATION</span>
+                <strong>@(Verification.SelectionsVerified ? "All selection behaviors verified" : $"{Verification.ConfirmedSelectionCount}/{Verification.RequiredSelectionCount} interaction types")</strong>
+                <small>@(Verification.SelectionsVerified ? "Controls with the same interaction type share this evidence." : "Confirm one ordinary, submenu, or indexed selection when that type exists.")</small>
             </div>
         }
         @if (Verification.ConfirmedSliderCount > 0 || Verification.ConfirmedSelectionCount > 0)
@@ -726,7 +726,7 @@ else
             }
             else if (IsSelectionControl(control.Node.ControlType))
             {
-                LocalStatus = $"{control.Node.Label} confirmed at {control.AppliedValue} · {Verification.ConfirmedSelectionCount}/{Verification.RequiredSelectionCount} selection controls verified.";
+                LocalStatus = $"{control.Node.Label} confirmed at {control.AppliedValue} · {Verification.ConfirmedSelectionCount}/{Verification.RequiredSelectionCount} selection interaction types verified.";
             }
             else
             {
@@ -814,7 +814,7 @@ else
                 selection.Confirmed = false;
             }
 
-            LocalStatus = "Selection verification reset. Confirm each selection control after changing it on the TV.";
+            LocalStatus = "Selection verification reset. Confirm one representative of each selection interaction type on the TV.";
         }
         catch (Exception exception)
         {
@@ -1554,9 +1554,11 @@ else
         IsSelectionVerified(control.Node);
 
     private bool IsSelectionVerified(MenuNodeSummary node) =>
-        Verification.ConfirmedSelectionNodeIds.Contains(
-            node.Id,
-            StringComparer.OrdinalIgnoreCase);
+        Verification.VerifiedSelectionControlTypes.Contains(
+            MenuControlBehaviorClassifier.GetEffectiveControlType(
+                node.ControlType,
+                node.Label,
+                node.SelectionOptions));
 
     private static bool IsSelectionControl(MenuControlType controlType) =>
         controlType is MenuControlType.Selection

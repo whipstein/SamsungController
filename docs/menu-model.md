@@ -209,8 +209,11 @@ verification workspace derives the required checks from the current definition a
 stores a result only after visual confirmation. Each fingerprint includes the
 declared display context plus the relevant route, timing, control options,
 bounds, or condition. A later file edit therefore invalidates only records whose
-behavior changed. The persistent header reports the file as fully verified only
-when every derived check has a matching record.
+behavior changed. Equivalent control types share one representative check, and
+conditional rows are sampled by disabled, hidden, or combined behavior class.
+The fingerprint for each class still includes every declared rule and affected
+node. The persistent header reports the file as fully verified only when every
+derived representative check has a matching record.
 
 `configurations` keeps alternate layouts in one TV model file. Use `hiddenWhen`
 for row-presence changes driven by modeled value-bearing nodes. Use a named
@@ -454,18 +457,20 @@ when the definition is reloaded or the application restarts.
 
 Slider value confirmation uses representative coverage rather than requiring
 every slider independently. Each distinct slider visually confirmed on the page
-adds one pass to the TV-specific shared slider profile. Three distinct sliders
-promote the profile; subsequent slider updates no longer request confirmation.
-Repeating one slider does not increase coverage. The profile is persisted for
-the saved TV address, resets automatically when a different TV address is saved,
-resets when system-wide menu delays change, and can be reset manually from Menu
-Controls. Selections and submenu selections are verified individually because
-each declares a different ordered option list and exit behavior. After one
-successful value confirmation, that selection control's
-verification is persisted for the saved TV address and later changes no longer
-request routine confirmation. Selection verification resets for a different TV,
-when system-wide menu delays change, or from Menu Controls. Switches are not
-promoted by either coverage type and continue to request visual confirmation.
+adds one pass to the TV-specific shared slider profile. Up to three distinct
+sliders promote the profile; a definition containing fewer sliders requires only
+those available. Repeating one slider does not increase coverage. The profile is
+persisted for the saved TV address, resets automatically when a different TV
+address is saved, resets when system-wide menu delays change, and can be reset
+manually from Menu Controls. Selections require one successful representative
+confirmation for each interaction type present: ordinary selection, submenu
+selection, and indexed selection. Controls of the same type then share that
+TV-specific behavior evidence. Their individual option lists remain in the
+menu-file verification fingerprint, so edits still reopen the shared behavior
+group. Selection verification resets for a different TV, when system-wide menu
+delays change, or from Menu Controls. Switches are not promoted by either routine
+coverage type and continue to request visual confirmation during normal updates;
+File Verification uses one shared switch-behavior check.
 
 ### Saved profile and factory-reset synchronization
 

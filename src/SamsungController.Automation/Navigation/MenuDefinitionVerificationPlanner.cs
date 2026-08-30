@@ -132,40 +132,20 @@ public static class MenuDefinitionVerificationPlanner
             .ToArray();
         if (sliders.Length > 0)
         {
+            var representativeCount = Math.Min(3, sliders.Length);
             Add(
                 checks,
                 display,
                 "control:slider-behavior",
                 MenuVerificationCheckKind.SliderBehavior,
                 "Shared slider behavior",
-                "Verify three representative sliders move by the expected amount and stay synchronized.",
-                $"three-distinct-sliders|left-right-increment|v1|{string.Join(";", sliders.Select(ControlShape))}",
+                $"Verify {representativeCount} representative slider{(representativeCount == 1 ? string.Empty : "s")} move by the expected amount. This covers all {sliders.Length} sliders that use the shared left/right behavior.",
+                $"{representativeCount}-distinct-sliders|left-right-increment|v2|{string.Join(";", sliders.Select(ControlShape))}",
                 sliders[0].Id);
         }
 
-        foreach (var node in definition.Nodes.Values.OrderBy(node => node.Id, StringComparer.OrdinalIgnoreCase))
-        {
-            var controlShape = ControlShape(node);
-            switch (node.ControlType)
-            {
-                case MenuControlType.Selection:
-                case MenuControlType.SubmenuSelection:
-                case MenuControlType.IndexedSelection:
-                    Add(checks, display, $"control:selection:{node.Id}", MenuVerificationCheckKind.Selection, $"Selection · {node.Label}", $"Verify every declared option and the exit behavior for {definition.GetPath(node.Id)}.", controlShape, node.Id);
-                    break;
-                case MenuControlType.Switch:
-                    Add(checks, display, $"control:switch:{node.Id}", MenuVerificationCheckKind.Switch, $"Switch · {node.Label}", $"Verify both switch states for {definition.GetPath(node.Id)}.", controlShape, node.Id);
-                    break;
-                case MenuControlType.Confirmation:
-                    Add(checks, display, $"control:confirmation:{node.Id}", MenuVerificationCheckKind.Confirmation, $"Confirmation · {node.Label}", $"Verify the declared choices and safe cancel path for {definition.GetPath(node.Id)}.", controlShape, node.Id);
-                    break;
-            }
-
-            if (node.DisabledWhen is { Count: > 0 } || node.HiddenWhen is { Count: > 0 })
-            {
-                Add(checks, display, $"condition:{node.Id}", MenuVerificationCheckKind.ConditionalVisibility, $"Conditions · {node.Label}", $"Verify when {definition.GetPath(node.Id)} is enabled, disabled, visible, or absent.", ConditionShape(definition, node), node.Id);
-            }
-        }
+        AddSharedControlChecks(checks, display, definition);
+        AddConditionalChecks(checks, display, definition);
 
         return new MenuDefinitionVerificationPlan(display, checks);
     }
@@ -205,6 +185,143 @@ public static class MenuDefinitionVerificationPlanner
             script.Verified,
             anchor.ConfigurationId);
     }
+
+    private static void AddSharedControlChecks(
+        ICollection<MenuDefinitionVerificationCheck> checks,
+        MenuVerificationDisplay display,
+        MenuDefinition definition)
+    {
+        var supportedTypes = new[]
+        {
+            MenuControlType.Selection,
+            MenuControlType.SubmenuSelection,
+            MenuControlType.IndexedSelection,
+            MenuControlType.Switch,
+            MenuControlType.Confirmation
+        };
+        foreach (var controlType in supportedTypes)
+        {
+            var nodes = definition.Nodes.Values
+                .Where(node => MenuControlBehaviorClassifier.GetEffectiveControlType(node)
+                    == controlType)
+                .OrderBy(node => node.Id, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (nodes.Length == 0)
+            {
+                continue;
+            }
+
+            var representative = SelectRepresentative(definition, nodes);
+            var (id, kind, label, behavior) = controlType switch
+            {
+                MenuControlType.Selection => (
+                    "control:selection-behavior",
+                    MenuVerificationCheckKind.Selection,
+                    "Shared selection behavior",
+                    "open, choose, and option-order behavior"),
+                MenuControlType.SubmenuSelection => (
+                    "control:submenu-selection-behavior",
+                    MenuVerificationCheckKind.Selection,
+                    "Shared submenu-selection behavior",
+                    "open, choose, and Return behavior"),
+                MenuControlType.IndexedSelection => (
+                    "control:indexed-selection-behavior",
+                    MenuVerificationCheckKind.Selection,
+                    "Shared indexed-selection behavior",
+                    "fixed selector order and indexed value editing"),
+                MenuControlType.Switch => (
+                    "control:switch-behavior",
+                    MenuVerificationCheckKind.Switch,
+                    "Shared switch behavior",
+                    "both switch states"),
+                MenuControlType.Confirmation => (
+                    "control:confirmation-behavior",
+                    MenuVerificationCheckKind.Confirmation,
+                    "Shared confirmation behavior",
+                    "dialog choices and the safe cancel path"),
+                _ => throw new ArgumentOutOfRangeException(nameof(controlType), controlType, null)
+            };
+            Add(
+                checks,
+                display,
+                id,
+                kind,
+                label,
+                $"Verify the {behavior} using {definition.GetPath(representative.Id)} as the representative. This single check covers all {nodes.Length} {ControlTypeLabel(controlType)} control{(nodes.Length == 1 ? string.Empty : "s")}.",
+                $"representative-control-coverage-v2|{controlType}|{string.Join(";", nodes.Select(ControlShape))}",
+                representative.Id);
+        }
+    }
+
+    private static void AddConditionalChecks(
+        ICollection<MenuDefinitionVerificationCheck> checks,
+        MenuVerificationDisplay display,
+        MenuDefinition definition)
+    {
+        var groups = definition.Nodes.Values
+            .Where(node => node.DisabledWhen is { Count: > 0 }
+                || node.HiddenWhen is { Count: > 0 })
+            .GroupBy(ConditionBehaviorClass, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase);
+        foreach (var group in groups)
+        {
+            var nodes = group
+                .OrderBy(node => node.Id, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var representative = SelectRepresentative(definition, nodes);
+            var controllerNodeId = nodes
+                .SelectMany(node => (node.DisabledWhen ?? [])
+                    .Select(condition => condition.SettingNodeId)
+                    .Concat((node.HiddenWhen ?? []).Select(condition => condition.SettingNodeId)))
+                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+                .First();
+            var controller = definition.GetRequiredNode(controllerNodeId);
+            var affected = nodes.Length == 1
+                ? definition.GetPath(representative.Id)
+                : $"{nodes.Length} related rows, including {definition.GetPath(representative.Id)}";
+            var distinctRuleCount = nodes
+                .Select(ConditionPredicate)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+            var (label, behavior) = group.Key switch
+            {
+                "disabled" => ("Shared disabled-row behavior", "becomes disabled and remains visible"),
+                "hidden" => ("Shared hidden-row behavior", "disappears and is removed from sibling offsets"),
+                "disabled-hidden" => ("Shared disabled/hidden behavior", "follows its declared disabled and hidden states"),
+                _ => throw new InvalidOperationException($"Unknown conditional behavior class '{group.Key}'.")
+            };
+            Add(
+                checks,
+                display,
+                $"condition:{group.Key}-behavior",
+                MenuVerificationCheckKind.ConditionalVisibility,
+                label,
+                $"Change {definition.GetPath(controller.Id)} and verify the representative {behavior}. This covers {affected} across {distinctRuleCount} declared conditional rule{(distinctRuleCount == 1 ? string.Empty : "s")}.",
+                $"representative-condition-coverage-v3|{group.Key}|{string.Join(";", nodes.Select(node => ConditionShape(definition, node)))}",
+                controller.Id);
+        }
+    }
+
+    private static MenuNode SelectRepresentative(
+        MenuDefinition definition,
+        IEnumerable<MenuNode> nodes) => nodes
+        .OrderByDescending(node => definition.ApplicableTransitions.Any(transition =>
+            transition.Verified
+            && transition.ToNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase)))
+        .ThenBy(node => (node.DisabledWhen?.Count ?? 0) + (node.HiddenWhen?.Count ?? 0))
+        .ThenBy(node => definition.GetDepth(node.Id))
+        .ThenBy(node => node.Id, StringComparer.OrdinalIgnoreCase)
+        .First();
+
+    private static string ControlTypeLabel(MenuControlType controlType) => controlType switch
+    {
+        MenuControlType.Selection => "selection",
+        MenuControlType.SubmenuSelection => "submenu-selection",
+        MenuControlType.IndexedSelection => "indexed-selection",
+        MenuControlType.Switch => "switch",
+        MenuControlType.Confirmation => "confirmation",
+        _ => controlType.ToString().ToLowerInvariant()
+    };
 
     private static void Add(
         ICollection<MenuDefinitionVerificationCheck> checks,
@@ -249,7 +366,27 @@ public static class MenuDefinitionVerificationPlanner
                     new MenuNodeDisabledCondition(condition.SettingNodeId, condition.EqualsValue)))
                 .Select(condition => definition.GetRequiredNode(condition.SettingNodeId))
                 .DistinctBy(setting => setting.Id, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(setting => setting.Id, StringComparer.OrdinalIgnoreCase)
                 .Select(ControlShape)));
+
+    private static string ConditionPredicate(MenuNode node) => string.Join(
+        "|",
+        $"disabled:{string.Join("&", (node.DisabledWhen ?? [])
+            .Select(condition => $"{condition.SettingNodeId}={condition.EqualsValue}")
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase))}",
+        $"hidden:{string.Join("&", (node.HiddenWhen ?? [])
+            .Select(condition => $"{condition.SettingNodeId}={condition.EqualsValue}")
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase))}");
+
+    private static string ConditionBehaviorClass(MenuNode node) =>
+        (node.DisabledWhen is { Count: > 0 }, node.HiddenWhen is { Count: > 0 }) switch
+        {
+            (true, true) => "disabled-hidden",
+            (true, false) => "disabled",
+            (false, true) => "hidden",
+            _ => throw new InvalidOperationException(
+                $"Menu node '{node.Id}' does not declare conditional behavior.")
+        };
 
     private static string Operations(IEnumerable<MenuOperation> operations) => string.Join(
         ";",

@@ -355,7 +355,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
     {
         lock (_sync)
         {
-            var sliderIds = _settings.Host?.Equals(
+            var availableSliderIds = (_menuDefinition?.Nodes.Values ?? [])
+                .Where(node => node.ControlType == MenuControlType.Slider)
+                .Select(node => node.Id)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var savedSliderIds = _settings.Host?.Equals(
                     _settings.SliderVerificationHost,
                     StringComparison.OrdinalIgnoreCase) == true
                 ? (_settings.VerifiedSliderNodeIds ?? [])
@@ -363,6 +367,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToArray()
                 : [];
+            var sliderIds = savedSliderIds
+                .Where(availableSliderIds.Contains)
+                .ToArray();
+            var requiredSliderCount = Math.Min(
+                SliderVerificationRequiredCount,
+                availableSliderIds.Count);
             var requiredSelectionIds = GetVerifiableSelectionNodeIds(_menuDefinition);
             var savedSelectionIds = _settings.Host?.Equals(
                     _settings.SelectionVerificationHost,
@@ -377,16 +387,27 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     nodeId,
                     StringComparer.OrdinalIgnoreCase))
                 .ToArray();
+            var requiredSelectionTypes = requiredSelectionIds
+                .Select(nodeId => MenuControlBehaviorClassifier.GetEffectiveControlType(
+                    _menuDefinition!.GetRequiredNode(nodeId)))
+                .Distinct()
+                .ToArray();
+            var verifiedSelectionTypes = confirmedSelectionIds
+                .Select(nodeId => MenuControlBehaviorClassifier.GetEffectiveControlType(
+                    _menuDefinition!.GetRequiredNode(nodeId)))
+                .Distinct()
+                .ToArray();
             return new MenuControlVerificationSnapshot(
                 sliderIds.Length,
-                SliderVerificationRequiredCount,
-                sliderIds.Length >= SliderVerificationRequiredCount,
+                requiredSliderCount,
+                requiredSliderCount > 0 && sliderIds.Length >= requiredSliderCount,
                 sliderIds,
-                confirmedSelectionIds.Length,
-                requiredSelectionIds.Length,
-                requiredSelectionIds.Length > 0
-                && confirmedSelectionIds.Length >= requiredSelectionIds.Length,
-                confirmedSelectionIds);
+                verifiedSelectionTypes.Length,
+                requiredSelectionTypes.Length,
+                requiredSelectionTypes.Length > 0
+                && verifiedSelectionTypes.Length >= requiredSelectionTypes.Length,
+                confirmedSelectionIds,
+                verifiedSelectionTypes);
         }
     }
 
@@ -4917,13 +4938,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
         MenuDefinitionVerificationCheck check,
         MenuControlVerificationSnapshot controlVerification) => check.Kind switch
     {
-        MenuVerificationCheckKind.SliderBehavior => definition.Verification is null
-            && controlVerification.SlidersVerified,
-        MenuVerificationCheckKind.Selection => definition.Verification is null
-            && check.TargetNodeId is { } nodeId
-            && controlVerification.ConfirmedSelectionNodeIds.Contains(
-                nodeId,
-                StringComparer.OrdinalIgnoreCase),
+        MenuVerificationCheckKind.SliderBehavior => controlVerification.SlidersVerified,
+        MenuVerificationCheckKind.Selection => check.TargetNodeId is { } nodeId
+            && controlVerification.VerifiedSelectionControlTypes.Contains(
+                MenuControlBehaviorClassifier.GetEffectiveControlType(
+                    definition.GetRequiredNode(nodeId))),
         _ => check.ExistingEvidenceReady
     };
 
@@ -6248,27 +6267,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
         return sliders;
     }
 
-    private static bool IsIndexedSelectionNode(MenuNode selector)
-    {
-        if (selector.ControlType == MenuControlType.IndexedSelection)
-        {
-            return true;
-        }
-
-        if (selector.ControlType != MenuControlType.Selection)
-        {
-            return false;
-        }
-
-        var options = selector.SelectionOptions ?? [];
-        return selector.Label.Equals("Interval", StringComparison.OrdinalIgnoreCase)
-               && options.Count > 1
-               && options.All(option => option.EndsWith('%'))
-            || selector.Label.Equals("Color", StringComparison.OrdinalIgnoreCase)
-               && new[] { "Red", "Green", "Blue" }.All(required => options.Contains(
-                   required,
-                   StringComparer.OrdinalIgnoreCase));
-    }
+    private static bool IsIndexedSelectionNode(MenuNode selector) =>
+        MenuControlBehaviorClassifier.GetEffectiveControlType(selector)
+        == MenuControlType.IndexedSelection;
 
     private static string NormalizePictureControlValue(
         MenuDefinition definition,

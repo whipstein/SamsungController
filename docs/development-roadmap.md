@@ -108,11 +108,11 @@ Status was reconciled with the repository on 2026-08-30. A checked box means the
 - [x] Expose verified sliders, switches, and selections from every menu area in a top-level tabbed, section-grouped control center.
 - [x] Apply conditional enablement in dependency order and derive enabled-child routes from verified containing sections.
 - [x] Promote shared slider behavior after three distinct TV-specific visual confirmations instead of verifying every slider.
-- [x] Persist individual TV-specific verification for selection dropdowns with distinct ordered option lists.
+- [x] Promote TV-specific selection behavior after one representative confirmation per interaction type while fingerprinting every declared option list.
 - [x] Support submenu selections that choose from an ordered value list and return to the containing menu afterward.
 - [x] Present 20 Point percentages and Custom Color choices as fixed multi-slider grids.
 - [x] Persist a local desired-value profile and reapply it after an explicitly confirmed verified factory-reset command.
-- [x] Derive a complete verification checklist for routes, timing, return behavior, sliders, selections, switches, confirmations, and conditional visibility.
+- [x] Derive a compact verification checklist using topology branches, shared control behaviors, and representative disabled/hidden behavior classes instead of per-control line items.
 - [x] Bind verification evidence to the exact display/context combination with per-check fingerprints and reopen only checks affected by a later definition edit.
 - [x] Provide one File Verification workspace and an always-visible app status that clearly distinguish fully verified from verification-required profiles.
 

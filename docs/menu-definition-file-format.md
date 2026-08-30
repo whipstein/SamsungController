@@ -32,7 +32,7 @@ sends any key. Raw editing is useful for bulk generation or review:
 3. Load the file with **Build & Verify > Load & validate**. Parse and validation
    errors are shown without sending TV commands.
 4. Review the recalculated checklist on **File Verification**. A behavioral
-   edit invalidates only checks whose fingerprints changed.
+   edit invalidates only representative groups whose fingerprints changed.
 
 Never copy a `verification` block from another file or manufacture its
 fingerprints. It is evidence for one exact file/display combination, not a flag
@@ -496,9 +496,13 @@ verification:
 
 `display` requires all five fields. Each check has an app-defined ID, a
 64-character SHA-256 hexadecimal fingerprint, and an ISO-8601 timestamp.
-Fingerprints include the display combination and the relevant behavior. Changing
-only a slider's bounds, for example, reopens the corresponding control check
-without invalidating unrelated routes.
+Fingerprints include the display combination and the relevant behavior. Controls
+sharing an interaction type are fingerprinted as one representative group.
+Conditional rows are fingerprinted in disabled, hidden, or combined behavior
+classes; each class fingerprint still includes every affected node and exact
+`disabledWhen`/`hiddenWhen` rule. Changing only a slider's bounds, for example,
+reopens the shared slider check without invalidating unrelated routes or
+restoring one check for every slider.
 
 ## YAML and JSON differences
 

@@ -5,7 +5,7 @@ namespace SamsungController.Automation.Tests;
 public sealed class MenuDefinitionVerificationPlannerTests
 {
     [Fact]
-    public void SelectionEditReopensOnlyAffectedVerificationCheck()
+    public void SelectionEditReopensOnlySharedSelectionVerificationCheck()
     {
         var original = CreateDefinition(["Standard", "Movie"]);
         var originalPlan = MenuDefinitionVerificationPlanner.Create(original);
@@ -29,7 +29,7 @@ public sealed class MenuDefinitionVerificationPlannerTests
             editedPlan.Checks.Single(check => check.Id == "timing")));
         Assert.False(MenuDefinitionVerificationPlanner.IsCurrent(
             edited,
-            editedPlan.Checks.Single(check => check.Id == "control:selection:picture-mode")));
+            editedPlan.Checks.Single(check => check.Id == "control:selection-behavior")));
     }
 
     [Fact]
@@ -45,6 +45,7 @@ public sealed class MenuDefinitionVerificationPlannerTests
                 new MenuNode("settings", "Settings", "normal-video"),
                 new MenuNode("brightness", "Brightness", "settings", ControlType: MenuControlType.Slider, DefaultValue: "25", MinimumValue: 0, MaximumValue: 50),
                 new MenuNode("mode", "Mode", "settings", ControlType: MenuControlType.Selection, DefaultValue: "Movie", SelectionOptions: ["Standard", "Movie"]),
+                new MenuNode("interval", "Interval", "settings", ControlType: MenuControlType.Selection, DefaultValue: "5%", SelectionOptions: ["5%", "10%"]),
                 new MenuNode("enhancer", "Enhancer", "settings", ControlType: MenuControlType.Switch, DefaultValue: "off"),
                 new MenuNode("reset", "Reset", "settings", ControlType: MenuControlType.Confirmation, DefaultValue: "Cancel", SelectionOptions: ["Reset", "Cancel"]),
                 new MenuNode("smart-calibration", "Smart Calibration", "settings", ControlType: MenuControlType.Action),
@@ -78,10 +79,70 @@ public sealed class MenuDefinitionVerificationPlannerTests
         Assert.Contains(MenuVerificationCheckKind.Switch, kinds);
         Assert.Contains(MenuVerificationCheckKind.Confirmation, kinds);
         Assert.Contains(MenuVerificationCheckKind.ConditionalVisibility, kinds);
+        Assert.Contains(
+            checks,
+            check => check.Id == "control:indexed-selection-behavior"
+                && check.TargetNodeId == "interval");
         Assert.DoesNotContain(
             checks,
             check => check.Id.StartsWith("control:", StringComparison.Ordinal)
                 && check.TargetNodeId == "smart-calibration");
+    }
+
+    [Fact]
+    public void EquivalentControlsAndConditionsCollapseIntoRepresentativeChecks()
+    {
+        var nodes = new List<MenuNode>
+        {
+            new("normal-video", "Normal video"),
+            new("settings", "Settings", "normal-video"),
+            new("mode", "Mode", "settings", ControlType: MenuControlType.Selection, DefaultValue: "Movie", SelectionOptions: ["Standard", "Movie"]),
+            new("enhancer", "Enhancer", "settings", ControlType: MenuControlType.Switch, DefaultValue: "off")
+        };
+        nodes.AddRange(Enumerable.Range(1, 100).Select(index => new MenuNode(
+            $"selection-{index}",
+            $"Selection {index}",
+            "settings",
+            ControlType: MenuControlType.Selection,
+            DefaultValue: "A",
+            SelectionOptions: ["A", "B"])));
+        nodes.AddRange(Enumerable.Range(1, 40).Select(index => new MenuNode(
+            $"conditional-{index}",
+            $"Conditional {index}",
+            "settings",
+            ControlType: MenuControlType.Slider,
+            DefaultValue: "0",
+            DisabledWhen:
+            [
+                index <= 20
+                    ? new MenuNodeDisabledCondition("enhancer", "off")
+                    : new MenuNodeDisabledCondition("mode", "Movie")
+            ],
+            MinimumValue: -10,
+            MaximumValue: 10)));
+        var definition = new MenuDefinition(
+            "representative",
+            "Representative",
+            "S95F",
+            new MenuDefinitionContext("1296", "SDR", "Movie", "HDMI 1"),
+            nodes,
+            [],
+            []);
+
+        var checks = MenuDefinitionVerificationPlanner.Create(definition).Checks;
+
+        Assert.Equal(6, checks.Count);
+        var selection = Assert.Single(
+            checks,
+            check => check.Kind == MenuVerificationCheckKind.Selection);
+        Assert.Equal("control:selection-behavior", selection.Id);
+        Assert.Contains("101 selection controls", selection.Description);
+        var condition = Assert.Single(
+            checks,
+            check => check.Kind == MenuVerificationCheckKind.ConditionalVisibility);
+        Assert.Contains("40 related rows", condition.Description);
+        Assert.Contains("2 declared conditional rules", condition.Description);
+        Assert.Equal("enhancer", condition.TargetNodeId);
     }
 
     [Fact]

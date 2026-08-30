@@ -1956,6 +1956,9 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
 
             var verification = await controller.ConfirmMenuSelectionBehaviorAsync("interval");
             Assert.Contains("interval", verification.ConfirmedSelectionNodeIds);
+            Assert.Contains(
+                MenuControlType.IndexedSelection,
+                verification.VerifiedSelectionControlTypes);
             await controller.SaveMenuControlProfileAsync(
             [
                 new MenuControlProfileValue("red", "1", "interval", "5%"),
@@ -2340,7 +2343,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task SelectionBehaviorVerificationTracksEachDropdownAndPersists()
+    public async Task SelectionBehaviorVerificationTracksEachInteractionTypeAndPersists()
     {
         const string yaml =
             """
@@ -2390,16 +2393,23 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             var initial = controller.GetMenuControlVerificationSnapshot();
             Assert.False(initial.SelectionsVerified);
             Assert.Equal(0, initial.ConfirmedSelectionCount);
-            Assert.Equal(2, initial.RequiredSelectionCount);
+            Assert.Equal(1, initial.RequiredSelectionCount);
 
             var first = await controller.ConfirmMenuSelectionBehaviorAsync("picture-mode");
             var duplicate = await controller.ConfirmMenuSelectionBehaviorAsync("picture-mode");
             var completed = await controller.ConfirmMenuSelectionBehaviorAsync("color-tone");
 
             Assert.Equal(1, first.ConfirmedSelectionCount);
+            Assert.True(first.SelectionsVerified);
             Assert.Equal(1, duplicate.ConfirmedSelectionCount);
             Assert.True(completed.SelectionsVerified);
-            Assert.Equal(2, completed.ConfirmedSelectionCount);
+            Assert.Equal(1, completed.ConfirmedSelectionCount);
+            Assert.Contains(MenuControlType.Selection, completed.VerifiedSelectionControlTypes);
+
+            await controller.ConfirmMenuDefinitionVerificationCheckAsync("display");
+            var carried = await controller.CarryForwardExistingMenuVerificationAsync();
+            Assert.True(carried.Checks.Single(check =>
+                check.Id == "control:selection-behavior").Verified);
         }
 
         await using var reloaded = CreateController();
@@ -2473,7 +2483,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             await controller.CarryForwardExistingMenuVerificationAsync();
             await controller.ConfirmMenuDefinitionVerificationCheckAsync("display");
             var complete = await controller.ConfirmMenuDefinitionVerificationCheckAsync(
-                "control:selection:picture-mode");
+                "control:selection-behavior");
 
             Assert.True(complete.FullyVerified);
             Assert.Equal(complete.RequiredCount, complete.VerifiedCount);
@@ -2492,7 +2502,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
 
             Assert.False(edited.FullyVerified);
             var pending = Assert.Single(edited.Checks, check => !check.Verified);
-            Assert.Equal("control:selection:picture-mode", pending.Id);
+            Assert.Equal("control:selection-behavior", pending.Id);
             Assert.All(
                 edited.Checks.Where(check => check.Id != pending.Id),
                 check => Assert.True(check.Verified));
