@@ -651,10 +651,14 @@
                         {
                             <button class="secondary-action" @onclick="PrepareSourceAsync" disabled="@(!CanPrepareSource)">Prepare source</button>
                         }
-                        <button class="primary-action" @onclick="StartRecording" disabled="@(!CanStartRecording)">
-                            Start live recording <span>●</span>
+                        <button class="primary-action" @onclick="StartRecordingAsync" disabled="@(!CanStartRecording)">
+                            @(IsConnected ? "Start live recording" : "Connect + start live recording") <span>●</span>
                         </button>
                     </div>
+                    @if (!CanStartRecording && RecordingUnavailableReason is { } recordingUnavailableReason)
+                    {
+                        <p class="field-note" role="status"><strong>Recording unavailable:</strong> @recordingUnavailableReason</p>
+                    }
                     @if (RecordingKind == MenuAuthoringItemKind.Transition && RecordReturnToVideo)
                     {
                         <p class="field-note">Recording has two phases: navigate to the target, then record how that target returns to normal video. Validation keeps them together as one draft.</p>
@@ -1193,7 +1197,8 @@
     private bool CanAddNodeDisabledCondition => CanEditMenuTree
         && NodeEditorDisabledConditions.Count < 20
         && AvailableDisabledConditionSettings.Count > 0;
-    private bool CanStartRecording => IsConnected && !IsBusy && !Snapshot.MacroRunning && !Navigation.IsRunning &&
+    private bool CanStartRecording => !IsBusy && !Snapshot.MacroRunning && !Navigation.IsRunning &&
+        (IsConnected || CanConnectForRecording) &&
         !string.IsNullOrWhiteSpace(ExistingTargetId)
         && SelectableRecordingTargets.Any(node => node.Id.Equals(
             ExistingTargetId,
@@ -1202,6 +1207,77 @@
             ? !string.IsNullOrWhiteSpace(SourceNodeId)
               && (!RecordReturnToVideo || ReturnToVideoAnchor is not null)
             : !string.IsNullOrWhiteSpace(RecordingId) && !string.IsNullOrWhiteSpace(RecordingLabel));
+    private bool CanConnectForRecording => Snapshot.ConnectionState is SamsungConnectionState.Disconnected
+            or SamsungConnectionState.Faulted
+        && !string.IsNullOrWhiteSpace(Snapshot.Host);
+    private string? RecordingUnavailableReason
+    {
+        get
+        {
+            if (IsBusy)
+            {
+                return "Wait for the current action to finish.";
+            }
+
+            if (Snapshot.MacroRunning)
+            {
+                return "Wait for the active macro to finish.";
+            }
+
+            if (Navigation.IsRunning)
+            {
+                return "Wait for the active menu traversal to finish.";
+            }
+
+            if (string.IsNullOrWhiteSpace(ExistingTargetId))
+            {
+                return SelectableRecordingTargets.Count == 0
+                    ? "No red, unrecorded target is available in this menu configuration."
+                    : "Choose a target node.";
+            }
+
+            if (SelectableRecordingTargets.All(node => !node.Id.Equals(
+                    ExistingTargetId,
+                    StringComparison.OrdinalIgnoreCase)))
+            {
+                return "The selected target is no longer available for recording. Choose another target.";
+            }
+
+            if (RecordingKind == MenuAuthoringItemKind.Transition
+                && string.IsNullOrWhiteSpace(SourceNodeId))
+            {
+                return "Choose a source control.";
+            }
+
+            if (RecordingKind == MenuAuthoringItemKind.Transition
+                && RecordReturnToVideo
+                && ReturnToVideoAnchor is null)
+            {
+                return "Create a return-to-video anchor before recording a route-specific return sequence.";
+            }
+
+            if (RecordingKind == MenuAuthoringItemKind.Anchor
+                && (string.IsNullOrWhiteSpace(RecordingId)
+                    || string.IsNullOrWhiteSpace(RecordingLabel)))
+            {
+                return "Enter an anchor ID and label.";
+            }
+
+            if (string.IsNullOrWhiteSpace(Snapshot.Host))
+            {
+                return "Save the TV IP address on the Connection page first.";
+            }
+
+            if (Snapshot.ConnectionState is not SamsungConnectionState.Connected
+                and not SamsungConnectionState.Disconnected
+                and not SamsungConnectionState.Faulted)
+            {
+                return $"Wait for the TV connection to finish changing state ({Snapshot.ConnectionState}).";
+            }
+
+            return null;
+        }
+    }
     private bool CanGenerateDefinitionIdentity => !string.IsNullOrWhiteSpace(DefinitionModel)
         && !string.IsNullOrWhiteSpace(DefinitionFirmware);
     private bool CanCreateDefinition => !IsBusy && PendingDefinitionReplacement is null
@@ -2240,27 +2316,37 @@
         InitializeNodeDefaults(force: true);
     });
 
-    private void StartRecording()
+    private Task StartRecordingAsync() => RunBusyAsync(async () =>
     {
-        LocalError = null;
-        try
+        if (!IsConnected)
         {
-            Controller.StartMenuRecording(new MenuRecordingRequest(
-                RecordingKind,
-                RecordingKind == MenuAuthoringItemKind.Anchor ? RecordingId : string.Empty,
-                RecordingKind == MenuAuthoringItemKind.Anchor ? RecordingLabel : GetTargetLabel(ExistingTargetId),
-                RecordingKind == MenuAuthoringItemKind.Transition ? SourceNodeId : null,
-                ExistingTargetId,
-                null,
-                null,
-                RecordReturnToVideo: RecordingKind == MenuAuthoringItemKind.Transition
-                                     && RecordReturnToVideo));
+            var snapshot = Controller.GetSnapshot();
+            var host = snapshot.Host
+                ?? throw new InvalidOperationException(
+                    "Save the TV IP address on the Connection page before recording.");
+            await Controller.ConnectAsync(new TvConnectionRequest(
+                snapshot.DisplayName,
+                host,
+                snapshot.Secure,
+                snapshot.Port,
+                snapshot.AllowUntrustedCertificate,
+                snapshot.KeepAliveIntervalSeconds,
+                snapshot.KeepAliveTimeoutSeconds,
+                snapshot.PostConnectWarmupMilliseconds,
+                snapshot.ReconnectAfterIdleSeconds));
         }
-        catch (Exception exception)
-        {
-            LocalError = exception.Message;
-        }
-    }
+
+        Controller.StartMenuRecording(new MenuRecordingRequest(
+            RecordingKind,
+            RecordingKind == MenuAuthoringItemKind.Anchor ? RecordingId : string.Empty,
+            RecordingKind == MenuAuthoringItemKind.Anchor ? RecordingLabel : GetTargetLabel(ExistingTargetId),
+            RecordingKind == MenuAuthoringItemKind.Transition ? SourceNodeId : null,
+            ExistingTargetId,
+            null,
+            null,
+            RecordReturnToVideo: RecordingKind == MenuAuthoringItemKind.Transition
+                                 && RecordReturnToVideo));
+    });
 
     private Task PrepareSourceAsync() =>
         RunBusyAsync(() => Controller.PrepareMenuRecordingSourceAsync(SourceNodeId));
