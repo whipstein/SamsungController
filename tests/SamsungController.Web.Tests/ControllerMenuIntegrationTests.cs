@@ -2876,11 +2876,13 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                         children:
                           - id: two-point-red
                             label: Red Gain
+                            controlType: action
                       - id: twenty-point
                         label: 20 Point
                         children:
                           - id: twenty-point-red
                             label: Red
+                            controlType: action
             anchors:
               - id: normal
                 label: Return to normal video
@@ -2918,6 +2920,9 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
 
             Assert.Equal(check.TargetNodeId, result.TargetNodeId);
             Assert.Contains("without returning to normal video", result.ActionDescription);
+            Assert.Contains(
+                "row highlighted; do not open or change it",
+                result.ActionDescription);
             Assert.Equal(
                 [
                     "KEY_RETURN",

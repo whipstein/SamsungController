@@ -55,6 +55,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private CancellationTokenSource? _macroSource;
     private CancellationTokenSource? _navigationSource;
     private MenuDefinition? _menuDefinition;
+    private MenuDefinition? _menuDefinitionVerificationPlanSource;
+    private MenuDefinitionVerificationPlan? _menuDefinitionVerificationPlan;
     private MenuStateTracker? _menuStateTracker;
     private MenuNavigator? _menuNavigator;
     private NavigationPlan? _navigationPlan;
@@ -163,7 +165,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 menuNavigator = new MenuNavigator(
                     menuDefinition,
                     menuStateTracker,
-                    new WebMenuCommandTarget(_client));
+                    new WebMenuCommandTarget(_client),
+                    _menuDelay);
                 menuStateTracker.Changed += HandleMenuStateChanged;
                 menuNavigator.ProgressChanged += HandleNavigationProgress;
             }
@@ -435,7 +438,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     []);
             }
 
-            var plan = MenuDefinitionVerificationPlanner.Create(definition);
+            var plan = GetMenuDefinitionVerificationPlan(definition);
             var controlVerification = GetMenuControlVerificationSnapshot();
             var records = (definition.Verification?.Checks ?? [])
                 .GroupBy(record => record.Id, StringComparer.OrdinalIgnoreCase)
@@ -493,6 +496,19 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
     }
 
+    private MenuDefinitionVerificationPlan GetMenuDefinitionVerificationPlan(
+        MenuDefinition definition)
+    {
+        if (!ReferenceEquals(_menuDefinitionVerificationPlanSource, definition)
+            || _menuDefinitionVerificationPlan is null)
+        {
+            _menuDefinitionVerificationPlan = MenuDefinitionVerificationPlanner.Create(definition);
+            _menuDefinitionVerificationPlanSource = definition;
+        }
+
+        return _menuDefinitionVerificationPlan;
+    }
+
     public async Task<MenuDefinitionVerificationSnapshot> ConfirmMenuDefinitionVerificationCheckAsync(
         string checkId,
         CancellationToken cancellationToken = default)
@@ -510,7 +526,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         {
             definition = _menuDefinition
                 ?? throw new InvalidOperationException("No menu definition is loaded.");
-            plan = MenuDefinitionVerificationPlanner.Create(definition);
+            plan = GetMenuDefinitionVerificationPlan(definition);
             check = plan.Checks.FirstOrDefault(item => item.Id.Equals(
                         checkId.Trim(),
                         StringComparison.OrdinalIgnoreCase))
@@ -552,7 +568,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         {
             definition = _menuDefinition
                 ?? throw new InvalidOperationException("No menu definition is loaded.");
-            plan = MenuDefinitionVerificationPlanner.Create(definition);
+            plan = GetMenuDefinitionVerificationPlan(definition);
             controlVerification = GetMenuControlVerificationSnapshot();
         }
 
@@ -634,7 +650,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         {
             definition = _menuDefinition
                 ?? throw new InvalidOperationException("No menu definition is loaded.");
-            check = MenuDefinitionVerificationPlanner.Create(definition).Checks
+            check = GetMenuDefinitionVerificationPlan(definition).Checks
                 .FirstOrDefault(item => item.Id.Equals(
                     checkId.Trim(),
                     StringComparison.OrdinalIgnoreCase))
@@ -763,7 +779,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             targetNodeId,
             definition.GetPath(targetNodeId),
             null,
-            $"Prepared {definition.GetPath(sourceNodeId)}, then used {calculatedPlan!.CommandCount} calculated command{(calculatedPlan.CommandCount == 1 ? string.Empty : "s")} to reach {definition.GetPath(targetNodeId)} without returning to normal video. Confirm the final highlight before counting the pass.",
+            $"Starting condition: {MenuDefinitionVerificationPlanner.DescribeVisualPosition(definition, sourceNodeId)} Used {calculatedPlan!.CommandCount} calculated command{(calculatedPlan.CommandCount == 1 ? string.Empty : "s")} without returning to normal video. Expected finish: {MenuDefinitionVerificationPlanner.DescribeVisualPosition(definition, targetNodeId)} Confirm that exact visual state before counting the pass.",
             []);
     }
 
@@ -8246,7 +8262,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
         var navigator = new MenuNavigator(
             definition,
             tracker,
-            new WebMenuCommandTarget(_client));
+            new WebMenuCommandTarget(_client),
+            _menuDelay);
         tracker.Changed += HandleMenuStateChanged;
         navigator.ProgressChanged += HandleNavigationProgress;
 

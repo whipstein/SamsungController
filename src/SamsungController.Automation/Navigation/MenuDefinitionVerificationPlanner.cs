@@ -287,7 +287,7 @@ public static class MenuDefinitionVerificationPlanner
             $"navigation:{configuration}:calculated-backtracking",
             MenuVerificationCheckKind.CalculatedNavigation,
             "Calculated cross-branch navigation",
-            $"Start at {definition.GetPath(representative.SourceNodeId)}, then verify the calculated route reaches {definition.GetPath(representative.TargetNodeId)} without returning to normal video.",
+            $"The test first prepares {DescribeVisualPosition(definition, representative.SourceNodeId)} It then navigates directly without returning to normal video. Expected finish: {DescribeVisualPosition(definition, representative.TargetNodeId)}",
             $"calculated-backtracking-v1|{representative.AnchorId}|{representative.SourceNodeId}|{representative.TargetNodeId}|{Operations(representative.Operations)}|{definition.Timing.DefaultDelayMilliseconds}|{definition.Timing.ScreenChangeDelayMilliseconds}|{definition.Timing.ReturnDelayMilliseconds}",
             representative.TargetNodeId,
             configurationId: representative.ConfigurationId,
@@ -332,16 +332,19 @@ public static class MenuDefinitionVerificationPlanner
             return null;
         }
 
-        var candidates = new List<CalculatedNavigationRepresentative>();
-        foreach (var source in routes)
+        foreach (var source in routes
+                     .OrderByDescending(route => definition.GetDepth(route.TargetNodeId))
+                     .ThenBy(route => route.TargetNodeId, StringComparer.OrdinalIgnoreCase))
         {
-            foreach (var target in routes.Where(target =>
-                         target.AnchorId.Equals(
-                             source.AnchorId,
-                             StringComparison.OrdinalIgnoreCase)
-                         && !target.TargetNodeId.Equals(
-                             source.TargetNodeId,
-                             StringComparison.OrdinalIgnoreCase)))
+            foreach (var target in routes
+                         .Where(target => target.AnchorId.Equals(
+                                 source.AnchorId,
+                                 StringComparison.OrdinalIgnoreCase)
+                             && !target.TargetNodeId.Equals(
+                                 source.TargetNodeId,
+                                 StringComparison.OrdinalIgnoreCase))
+                         .OrderByDescending(target => definition.GetDepth(target.TargetNodeId))
+                         .ThenBy(target => target.TargetNodeId, StringComparer.OrdinalIgnoreCase))
             {
                 var commonPressCount = 0;
                 while (commonPressCount < source.Operations.Count
@@ -372,21 +375,29 @@ public static class MenuDefinitionVerificationPlanner
                     continue;
                 }
 
-                candidates.Add(new CalculatedNavigationRepresentative(
+                return new CalculatedNavigationRepresentative(
                     source.AnchorId,
                     source.ConfigurationId,
                     source.TargetNodeId,
                     target.TargetNodeId,
-                    operations));
+                    operations);
             }
         }
 
-        return candidates
-            .OrderBy(candidate => candidate.Operations.Sum(operation => operation.Repeat))
-            .ThenByDescending(candidate => definition.GetDepth(candidate.SourceNodeId))
-            .ThenBy(candidate => candidate.SourceNodeId, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(candidate => candidate.TargetNodeId, StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault();
+        return null;
+    }
+
+    public static string DescribeVisualPosition(
+        MenuDefinition definition,
+        string nodeId)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        ArgumentException.ThrowIfNullOrWhiteSpace(nodeId);
+        var node = definition.GetRequiredNode(nodeId);
+        var path = definition.GetPath(node.Id);
+        return node.ControlType == MenuControlType.Submenu
+            ? $"the {path} submenu open, with its child list visible—not the {node.Label} row highlighted in its parent menu."
+            : $"the {path} row highlighted; do not open or change it.";
     }
 
     private static IReadOnlyList<MenuOperation> ExpandOperations(

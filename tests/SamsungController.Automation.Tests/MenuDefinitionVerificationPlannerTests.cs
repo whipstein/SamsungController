@@ -161,6 +161,26 @@ public sealed class MenuDefinitionVerificationPlannerTests
         Assert.NotEqual(check.SourceNodeId, check.TargetNodeId);
         Assert.Equal("normal", check.PreparationAnchorId);
         Assert.Contains("without returning to normal video", check.Description);
+        Assert.Contains("row highlighted; do not open or change it", check.Description);
+    }
+
+    [Fact]
+    public void VisualPositionDescriptionDistinguishesOpenSubmenuFromHighlightedRow()
+    {
+        var definition = CreateCrossBranchDefinition();
+
+        var submenu = MenuDefinitionVerificationPlanner.DescribeVisualPosition(
+            definition,
+            "white-balance");
+        var row = MenuDefinitionVerificationPlanner.DescribeVisualPosition(
+            definition,
+            "two-point-red");
+
+        Assert.Contains("submenu open", submenu);
+        Assert.Contains("child list visible", submenu);
+        Assert.Contains("not the White Balance row highlighted", submenu);
+        Assert.Contains("row highlighted", row);
+        Assert.Contains("do not open or change it", row);
     }
 
     [Fact]
@@ -262,9 +282,17 @@ public sealed class MenuDefinitionVerificationPlannerTests
             new MenuNode("normal-video", "Normal video"),
             new MenuNode("white-balance", "White Balance", "normal-video"),
             new MenuNode("two-point", "2 Point", "white-balance"),
-            new MenuNode("two-point-red", "Red Gain", "two-point"),
+            new MenuNode(
+                "two-point-red",
+                "Red Gain",
+                "two-point",
+                ControlType: MenuControlType.Action),
             new MenuNode("twenty-point", "20 Point", "white-balance"),
-            new MenuNode("twenty-point-red", "Red", "twenty-point")
+            new MenuNode(
+                "twenty-point-red",
+                "Red",
+                "twenty-point",
+                ControlType: MenuControlType.Action)
         ],
         [
             new MenuTransition(
