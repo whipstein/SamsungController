@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using SamsungController.Automation.Macros;
@@ -2895,23 +2896,50 @@ public sealed class SamsungControllerService : IAsyncDisposable
             cancellationToken);
     }
 
-    public async Task ApplyMenuSliderValuesAsync(
+    public Task ApplyMenuSliderValuesAsync(
         IReadOnlyList<MenuSliderValueUpdate> updates,
         bool returnToNormalVideo,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(updates);
+        var normalized = updates.Select(update => new MenuControlValueUpdate(
+                update.NodeId,
+                update.FromValue.ToString("G29", CultureInfo.InvariantCulture),
+                update.ToValue.ToString("G29", CultureInfo.InvariantCulture)))
+            .ToArray();
+        var knownValues = normalized.GroupBy(
+                update => update.NodeId,
+                StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.First().FromValue,
+                StringComparer.OrdinalIgnoreCase);
+        return ApplyMenuControlValuesAsync(
+            normalized,
+            knownValues,
+            returnToNormalVideo,
+            cancellationToken);
+    }
+
+    public async Task ApplyMenuControlValuesAsync(
+        IReadOnlyList<MenuControlValueUpdate> updates,
+        IReadOnlyDictionary<string, string> knownValues,
+        bool returnToNormalVideo,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(updates);
+        ArgumentNullException.ThrowIfNull(knownValues);
         if (updates.Count == 0)
         {
-            throw new InvalidOperationException("Choose at least one changed slider value to apply.");
+            throw new InvalidOperationException("Choose at least one changed picture control to apply.");
         }
 
         await InitializeAsync(cancellationToken).ConfigureAwait(false);
-        EnsureNoAutomationRunning("apply menu slider values");
-        EnsureNoMenuRecording("apply menu slider values");
+        EnsureNoAutomationRunning("apply picture control values");
+        EnsureNoMenuRecording("apply picture control values");
         if (_client.State != SamsungConnectionState.Connected)
         {
-            throw new InvalidOperationException("Connect to the TV before applying slider values.");
+            throw new InvalidOperationException("Connect to the TV before applying picture controls.");
         }
 
         MenuDefinition definition;
@@ -2928,11 +2956,27 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 : null;
         }
 
-        var normalized = updates.Select(update => ValidateSliderUpdate(definition, update)).ToArray();
+        var normalized = updates.Select(update => ValidatePictureControlUpdate(definition, update))
+            .ToArray();
         if (normalized.Select(update => update.NodeId).Distinct(StringComparer.OrdinalIgnoreCase).Count()
             != normalized.Length)
         {
-            throw new InvalidOperationException("Each slider can appear only once in an apply operation.");
+            throw new InvalidOperationException(
+                "Each picture control can appear only once in an apply operation.");
+        }
+
+        normalized = OrderPictureControlUpdates(definition, normalized);
+        var effectiveValues = CreateEffectivePictureControlValues(definition, knownValues);
+        foreach (var update in normalized)
+        {
+            if (effectiveValues.TryGetValue(update.NodeId, out var knownValue)
+                && !knownValue.Equals(update.FromValue, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"The predicted value for '{definition.GetPath(update.NodeId)}' changed from '{update.FromValue}' to '{knownValue}'. Refresh the picture controls before applying.");
+            }
+
+            effectiveValues[update.NodeId] = update.FromValue;
         }
 
         if (returnToNormalVideo && returnAnchor?.Verified != true)
@@ -2943,28 +2987,42 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
         var lastTargetNodeId = normalized[^1].NodeId;
         await RunNavigationAsync(
-                $"Apply {normalized.Length} picture slider{(normalized.Length == 1 ? string.Empty : "s")}",
+                $"Apply {normalized.Length} picture control{(normalized.Length == 1 ? string.Empty : "s")}",
                 async (navigator, token) =>
                 {
                     foreach (var update in normalized)
                     {
-                        var plan = navigator.Plan(update.NodeId, includeDraftTransitions: false);
-                        await navigator.ExecutePlanAsync(plan, token).ConfigureAwait(false);
+                        var node = definition.GetRequiredNode(update.NodeId);
+                        if (IsMenuNodeDisabled(definition, node, effectiveValues))
+                        {
+                            throw new InvalidOperationException(
+                                $"'{definition.GetPath(node.Id)}' is disabled by the current predicted picture settings.");
+                        }
+
+                        await PreparePictureControlAsync(
+                                navigator,
+                                definition,
+                                tracker,
+                                node,
+                                effectiveValues,
+                                token)
+                            .ConfigureAwait(false);
                         try
                         {
-                            await ExecuteSliderValueChangeAsync(
+                            await ExecutePictureControlValueChangeAsync(
                                     definition,
                                     update,
                                     token)
                                 .ConfigureAwait(false);
+                            effectiveValues[update.NodeId] = update.ToValue;
                             tracker.ConfirmNode(
                                 update.NodeId,
-                                $"Slider '{definition.GetPath(update.NodeId)}' was adjusted to the predicted value {update.ToValue:G29}.");
+                                $"Picture control '{definition.GetPath(update.NodeId)}' was adjusted to the predicted value '{update.ToValue}'.");
                         }
                         catch
                         {
                             tracker.MarkUnknown(
-                                $"Slider adjustment for '{definition.GetPath(update.NodeId)}' did not complete.");
+                                $"Picture control adjustment for '{definition.GetPath(update.NodeId)}' did not complete.");
                             throw;
                         }
                     }
@@ -2980,7 +3038,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         {
                             tracker.ConfirmNode(
                                 lastTargetNodeId,
-                                "Slider values were applied, but the requested return to normal video failed; the last adjusted slider remains the expected state.");
+                                "Picture control values were applied, but the requested return to normal video failed; the last adjusted control remains the expected state.");
                             throw;
                         }
                     }
@@ -5173,92 +5231,363 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private static int GetSetupCommandCount(ValidationSetup setup) =>
         setup.Anchor.Operations.Sum(operation => operation.Repeat) + setup.Plan.CommandCount;
 
-    private static MenuSliderValueUpdate ValidateSliderUpdate(
+    private static MenuControlValueUpdate ValidatePictureControlUpdate(
         MenuDefinition definition,
-        MenuSliderValueUpdate update)
+        MenuControlValueUpdate update)
     {
         ArgumentNullException.ThrowIfNull(update);
         ArgumentException.ThrowIfNullOrWhiteSpace(update.NodeId);
         var nodeId = update.NodeId.Trim();
         var node = definition.GetRequiredNode(nodeId);
-        if (node.ControlType != MenuControlType.Slider)
+        var fromValue = NormalizePictureControlValue(definition, node, update.FromValue);
+        var toValue = NormalizePictureControlValue(definition, node, update.ToValue);
+        if (node.ControlType == MenuControlType.Slider)
         {
-            throw new InvalidOperationException(
-                $"'{definition.GetPath(nodeId)}' is not defined as a slider.");
+            var fromNumber = decimal.Parse(fromValue, CultureInfo.InvariantCulture);
+            var toNumber = decimal.Parse(toValue, CultureInfo.InvariantCulture);
+            var commandCount = decimal.Abs(toNumber - fromNumber);
+            if (commandCount > MenuDefinitionValidator.MaximumRepeat)
+            {
+                throw new InvalidOperationException(
+                    $"Slider '{definition.GetPath(nodeId)}' requires {commandCount:G29} key presses; the maximum per update is {MenuDefinitionValidator.MaximumRepeat}.");
+            }
         }
 
-        if (node.MinimumValue is not { } minimum || node.MaximumValue is not { } maximum)
+        return update with
         {
-            throw new InvalidOperationException(
-                $"Slider '{definition.GetPath(nodeId)}' must define minimum and maximum values.");
-        }
-
-        if (update.FromValue < minimum || update.FromValue > maximum
-            || update.ToValue < minimum || update.ToValue > maximum)
-        {
-            throw new InvalidOperationException(
-                $"Slider '{definition.GetPath(nodeId)}' values must remain between {minimum:G29} and {maximum:G29}.");
-        }
-
-        if (decimal.Truncate(update.FromValue) != update.FromValue
-            || decimal.Truncate(update.ToValue) != update.ToValue)
-        {
-            throw new InvalidOperationException(
-                $"Slider '{definition.GetPath(nodeId)}' currently supports whole-number key steps only.");
-        }
-
-        var commandCount = decimal.Abs(update.ToValue - update.FromValue);
-        if (commandCount > MenuDefinitionValidator.MaximumRepeat)
-        {
-            throw new InvalidOperationException(
-                $"Slider '{definition.GetPath(nodeId)}' requires {commandCount:G29} key presses; the maximum per update is {MenuDefinitionValidator.MaximumRepeat}.");
-        }
-
-        if (!definition.ApplicableTransitions.Any(transition =>
-                transition.Verified
-                && transition.ToNodeId.Equals(nodeId, StringComparison.OrdinalIgnoreCase)))
-        {
-            throw new InvalidOperationException(
-                $"Slider '{definition.GetPath(nodeId)}' does not have a verified navigation route.");
-        }
-
-        return update with { NodeId = nodeId };
+            NodeId = nodeId,
+            FromValue = fromValue,
+            ToValue = toValue
+        };
     }
 
-    private async Task ExecuteSliderValueChangeAsync(
+    private static string NormalizePictureControlValue(
         MenuDefinition definition,
-        MenuSliderValueUpdate update,
+        MenuNode node,
+        string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        var normalized = value.Trim();
+        switch (node.ControlType)
+        {
+            case MenuControlType.Slider:
+                if (node.MinimumValue is not { } minimum || node.MaximumValue is not { } maximum)
+                {
+                    throw new InvalidOperationException(
+                        $"Slider '{definition.GetPath(node.Id)}' must define minimum and maximum values.");
+                }
+
+                if (!decimal.TryParse(
+                        normalized,
+                        NumberStyles.Number,
+                        CultureInfo.InvariantCulture,
+                        out var numericValue)
+                    || numericValue < minimum
+                    || numericValue > maximum)
+                {
+                    throw new InvalidOperationException(
+                        $"Slider '{definition.GetPath(node.Id)}' values must remain between {minimum:G29} and {maximum:G29}.");
+                }
+
+                if (decimal.Truncate(numericValue) != numericValue)
+                {
+                    throw new InvalidOperationException(
+                        $"Slider '{definition.GetPath(node.Id)}' currently supports whole-number key steps only.");
+                }
+
+                return numericValue.ToString("G29", CultureInfo.InvariantCulture);
+
+            case MenuControlType.Switch:
+                if (!normalized.Equals("on", StringComparison.OrdinalIgnoreCase)
+                    && !normalized.Equals("off", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        $"Switch '{definition.GetPath(node.Id)}' must be on or off.");
+                }
+
+                return normalized.ToLowerInvariant();
+
+            case MenuControlType.Selection:
+                var option = (node.SelectionOptions ?? []).FirstOrDefault(candidate =>
+                    candidate.Equals(normalized, StringComparison.OrdinalIgnoreCase));
+                return option ?? throw new InvalidOperationException(
+                    $"Selection '{definition.GetPath(node.Id)}' does not offer '{normalized}'.");
+
+            default:
+                throw new InvalidOperationException(
+                    $"'{definition.GetPath(node.Id)}' is not an adjustable slider, switch, or selection.");
+        }
+    }
+
+    private static Dictionary<string, string> CreateEffectivePictureControlValues(
+        MenuDefinition definition,
+        IReadOnlyDictionary<string, string> knownValues)
+    {
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var node in definition.Nodes.Values.Where(node =>
+                     node.ControlType is MenuControlType.Slider
+                         or MenuControlType.Switch
+                         or MenuControlType.Selection
+                     && !string.IsNullOrWhiteSpace(node.DefaultValue)))
+        {
+            values[node.Id] = NormalizePictureControlValue(
+                definition,
+                node,
+                node.DefaultValue!);
+        }
+
+        foreach (var (nodeId, value) in knownValues)
+        {
+            var node = definition.GetRequiredNode(nodeId);
+            values[node.Id] = NormalizePictureControlValue(definition, node, value);
+        }
+
+        return values;
+    }
+
+    private static MenuControlValueUpdate[] OrderPictureControlUpdates(
+        MenuDefinition definition,
+        IReadOnlyList<MenuControlValueUpdate> updates)
+    {
+        var byNodeId = updates.ToDictionary(
+            update => update.NodeId,
+            StringComparer.OrdinalIgnoreCase);
+        var result = new List<MenuControlValueUpdate>(updates.Count);
+        var visiting = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void Visit(MenuControlValueUpdate update)
+        {
+            if (visited.Contains(update.NodeId))
+            {
+                return;
+            }
+
+            if (!visiting.Add(update.NodeId))
+            {
+                throw new InvalidOperationException(
+                    "Picture-control enablement rules contain a dependency cycle.");
+            }
+
+            var node = definition.GetRequiredNode(update.NodeId);
+            foreach (var condition in node.DisabledWhen ?? [])
+            {
+                if (byNodeId.TryGetValue(condition.SettingNodeId, out var dependency))
+                {
+                    Visit(dependency);
+                }
+            }
+
+            visiting.Remove(update.NodeId);
+            visited.Add(update.NodeId);
+            result.Add(update);
+        }
+
+        foreach (var update in updates)
+        {
+            Visit(update);
+        }
+
+        return result.ToArray();
+    }
+
+    private static bool IsMenuNodeDisabled(
+        MenuDefinition definition,
+        MenuNode node,
+        IReadOnlyDictionary<string, string> effectiveValues) =>
+        (node.DisabledWhen ?? []).Any(condition =>
+        {
+            var value = effectiveValues.TryGetValue(condition.SettingNodeId, out var knownValue)
+                ? knownValue
+                : definition.GetRequiredNode(condition.SettingNodeId).DefaultValue;
+            return value?.Equals(condition.EqualsValue, StringComparison.OrdinalIgnoreCase) == true;
+        });
+
+    private static bool HasVerifiedPictureControlRoute(MenuDefinition definition, string nodeId) =>
+        definition.ApplicableTransitions.Any(transition =>
+            transition.Verified
+            && transition.ToNodeId.Equals(nodeId, StringComparison.OrdinalIgnoreCase))
+        || definition.ApplicableAnchors.Any(anchor =>
+            anchor.Verified
+            && anchor.TargetNodeId.Equals(nodeId, StringComparison.OrdinalIgnoreCase));
+
+    private async Task PreparePictureControlAsync(
+        MenuNavigator navigator,
+        MenuDefinition definition,
+        MenuStateTracker tracker,
+        MenuNode node,
+        IReadOnlyDictionary<string, string> effectiveValues,
         CancellationToken cancellationToken)
     {
-        var commandCount = decimal.ToInt32(decimal.Abs(update.ToValue - update.FromValue));
-        if (commandCount == 0)
+        if (HasVerifiedPictureControlRoute(definition, node.Id))
+        {
+            await navigator.PrepareStateAsync(node.Id, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (node.DisabledWhen is not { Count: > 0 }
+            || string.IsNullOrWhiteSpace(node.ParentId))
+        {
+            throw new InvalidOperationException(
+                $"Picture control '{definition.GetPath(node.Id)}' does not have a verified navigation route.");
+        }
+
+        var parent = definition.GetRequiredNode(node.ParentId);
+        if (parent.ControlType != MenuControlType.Submenu
+            || !HasVerifiedPictureControlRoute(definition, parent.Id))
+        {
+            throw new InvalidOperationException(
+                $"Picture control '{definition.GetPath(node.Id)}' needs a verified route to its containing section.");
+        }
+
+        var selectableChildren = definition.Nodes.Values.Where(candidate =>
+                candidate.ParentId?.Equals(parent.Id, StringComparison.OrdinalIgnoreCase) == true
+                && !IsMenuNodeDisabled(definition, candidate, effectiveValues))
+            .ToArray();
+        var childIndex = Array.FindIndex(selectableChildren, candidate =>
+            candidate.Id.Equals(node.Id, StringComparison.OrdinalIgnoreCase));
+        if (childIndex < 0)
+        {
+            throw new InvalidOperationException(
+                $"Picture control '{definition.GetPath(node.Id)}' is not selectable under the current predicted settings.");
+        }
+
+        var currentNodeId = tracker.Current.NodeId;
+        var currentChildIndex = string.IsNullOrWhiteSpace(currentNodeId)
+            ? -1
+            : Array.FindIndex(selectableChildren, candidate => candidate.Id.Equals(
+                currentNodeId,
+                StringComparison.OrdinalIgnoreCase));
+        var offset = childIndex;
+        if (currentChildIndex >= 0)
+        {
+            offset = childIndex - currentChildIndex;
+        }
+        else
+        {
+            await navigator.PrepareStateAsync(parent.Id, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (offset != 0)
+        {
+            await ExecutePictureControlOperationsAsync(
+                    $"Conditional route · {node.Label}",
+                    currentChildIndex >= 0
+                        ? definition.GetPath(currentNodeId!)
+                        : definition.GetPath(parent.Id),
+                    definition.GetPath(node.Id),
+                    [new MenuOperation(offset > 0 ? "KEY_DOWN" : "KEY_UP", Repeat: Math.Abs(offset))],
+                    definition.Timing,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        tracker.ConfirmNode(
+            node.Id,
+            $"Reached conditionally enabled control '{definition.GetPath(node.Id)}' from its verified containing section.");
+    }
+
+    private async Task ExecutePictureControlValueChangeAsync(
+        MenuDefinition definition,
+        MenuControlValueUpdate update,
+        CancellationToken cancellationToken)
+    {
+        if (update.FromValue.Equals(update.ToValue, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
-        var key = update.ToValue > update.FromValue ? "KEY_RIGHT" : "KEY_LEFT";
-        var path = definition.GetPath(update.NodeId);
-        for (var commandNumber = 1; commandNumber <= commandCount; commandNumber++)
+        var node = definition.GetRequiredNode(update.NodeId);
+        IReadOnlyList<MenuOperation> operations = node.ControlType switch
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            lock (_sync)
-            {
-                _navigationProgress = new NavigationProgress(
-                    DateTimeOffset.UtcNow,
-                    $"Adjust slider · {path}",
-                    path,
-                    path,
-                    commandNumber,
-                    commandCount,
-                    key,
-                    RemoteKeyAction.Click);
-            }
+            MenuControlType.Slider => CreateSliderValueOperations(update),
+            MenuControlType.Switch => [new MenuOperation("KEY_ENTER")],
+            MenuControlType.Selection => CreateSelectionValueOperations(node, update),
+            _ => throw new InvalidOperationException(
+                $"'{definition.GetPath(node.Id)}' is not an adjustable picture control.")
+        };
+        var path = definition.GetPath(node.Id);
+        await ExecutePictureControlOperationsAsync(
+                $"Adjust {node.ControlType.ToString().ToLowerInvariant()} · {path}",
+                path,
+                path,
+                operations,
+                definition.Timing,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
 
-            NotifyChanged();
-            await _client.SendKeyAsync(key, RemoteKeyAction.Click, cancellationToken)
-                .ConfigureAwait(false);
-            await _menuDelay.DelayAsync(definition.Timing.GetDelay(key), cancellationToken)
-                .ConfigureAwait(false);
+    private static IReadOnlyList<MenuOperation> CreateSliderValueOperations(
+        MenuControlValueUpdate update)
+    {
+        var fromValue = decimal.Parse(update.FromValue, CultureInfo.InvariantCulture);
+        var toValue = decimal.Parse(update.ToValue, CultureInfo.InvariantCulture);
+        var repeat = decimal.ToInt32(decimal.Abs(toValue - fromValue));
+        return repeat == 0
+            ? []
+            : [new MenuOperation(toValue > fromValue ? "KEY_RIGHT" : "KEY_LEFT", Repeat: repeat)];
+    }
+
+    private static IReadOnlyList<MenuOperation> CreateSelectionValueOperations(
+        MenuNode node,
+        MenuControlValueUpdate update)
+    {
+        var options = node.SelectionOptions ?? [];
+        var fromIndex = options.ToList().FindIndex(option =>
+            option.Equals(update.FromValue, StringComparison.OrdinalIgnoreCase));
+        var toIndex = options.ToList().FindIndex(option =>
+            option.Equals(update.ToValue, StringComparison.OrdinalIgnoreCase));
+        var difference = toIndex - fromIndex;
+        if (difference == 0)
+        {
+            return [];
+        }
+
+        return
+        [
+            new MenuOperation("KEY_ENTER"),
+            new MenuOperation(difference > 0 ? "KEY_DOWN" : "KEY_UP", Repeat: Math.Abs(difference)),
+            new MenuOperation("KEY_ENTER")
+        ];
+    }
+
+    private async Task ExecutePictureControlOperationsAsync(
+        string phase,
+        string sourcePath,
+        string targetPath,
+        IReadOnlyList<MenuOperation> operations,
+        MenuTimingProfile timing,
+        CancellationToken cancellationToken)
+    {
+        var commandCount = operations.Sum(operation => operation.Repeat);
+        var commandNumber = 0;
+        foreach (var operation in operations)
+        {
+            for (var repeat = 0; repeat < operation.Repeat; repeat++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                commandNumber++;
+                lock (_sync)
+                {
+                    _navigationProgress = new NavigationProgress(
+                        DateTimeOffset.UtcNow,
+                        phase,
+                        sourcePath,
+                        targetPath,
+                        commandNumber,
+                        commandCount,
+                        operation.Key,
+                        operation.Action);
+                }
+
+                NotifyChanged();
+                await _client.SendKeyAsync(operation.Key, operation.Action, cancellationToken)
+                    .ConfigureAwait(false);
+                await _menuDelay.DelayAsync(
+                        operation.DelayAfter ?? timing.GetDelay(operation.Key),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
     }
 

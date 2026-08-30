@@ -7,18 +7,19 @@
 <section class="page-heading compact-heading picture-controls-heading">
     <div>
         <span class="eyebrow">PICTURE CONTROLS</span>
-        <h1>Adjust verified picture sliders.</h1>
-        <p>Use the declared ranges to update the TV immediately or stage several changes and apply them together.</p>
+        <h1>Adjust verified picture settings.</h1>
+        <p>Compact controls are grouped like the TV menu, with conditional settings enabled by their switches and selections.</p>
     </div>
     <div class="page-heading-actions">
-        <HelpBubble Title="Picture slider behavior" ButtonText="Page help">
+        <HelpBubble Title="Picture control behavior" ButtonText="Page help">
             <ul>
-                <li>Only picture sliders with verified navigation routes appear here.</li>
-                <li>The displayed starting value comes from the YAML default. Samsung does not report the actual value, so visually confirm it on the TV.</li>
-                <li><strong>Immediate</strong> sends a change when a slider is released or a step button is pressed. <strong>Apply button</strong> stages changes.</li>
-                <li>Each update navigates to the slider, sends one Left/Right press per whole-number step, and either stays there or runs the verified return-to-video anchor.</li>
+                <li>Controls are grouped by their immediate Picture menu section.</li>
+                <li>Switches and selections use their YAML defaults and dynamically apply declared <code>disabledWhen</code> rules.</li>
+                <li>Turning on 20 Point enables its Interval and RGB controls. Choosing Custom Color Space enables its Color and RGB controls.</li>
+                <li><strong>Immediate</strong> sends one changed control at a time. <strong>Apply button</strong> can stage a controller and its newly enabled settings together.</li>
+                <li>Samsung does not report the displayed value, so confirm each result visually on the TV.</li>
             </ul>
-            <p class="help-callout">Route verification proves that the slider is reached. Value confirmation proves that the declared value and bounds agree with the TV display.</p>
+            <p class="help-callout">A conditionally enabled control uses its verified containing-section route and the declared menu order after its controller has changed.</p>
         </HelpBubble>
         <a class="secondary-action menu-authoring-link" href="menu">Verified menus <span>→</span></a>
     </div>
@@ -59,80 +60,139 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
             @(IsBusy ? "Applying…" : $"Apply {PendingCount} change{(PendingCount == 1 ? string.Empty : "s")}") <span>▶</span>
         </button>
     </div>
-    <p class="field-note">Values are predictions based on YAML defaults and changes sent by this page. If the TV was adjusted elsewhere, reload the page only after updating the YAML default or manually return the TV to the displayed starting value.</p>
+    <p class="field-note">Values are predictions based on YAML defaults and changes sent during this page session. Controls changed elsewhere can make those predictions inaccurate.</p>
 </section>
 
-@if (Sliders.Count == 0)
+@if (Controls.Count == 0)
 {
     <section class="panel panel-empty picture-controls-empty">
-        <strong>No verified picture sliders are available</strong>
-        <span>Define slider bounds in YAML and complete the generated route verification first.</span>
+        <strong>No verified picture controls are available</strong>
+        <span>Define values and bounds in YAML, then complete the generated route verification.</span>
         <a href="menu/build">Open Build &amp; Verify →</a>
     </section>
 }
 else
 {
-    <section class="picture-slider-grid" aria-label="Verified picture sliders">
-        @foreach (var slider in Sliders)
+    <div class="picture-control-sections">
+        @foreach (var section in GetSections())
         {
-            <article class="picture-slider-card @(slider.Pending ? "pending" : "") @(slider.AwaitingConfirmation ? "awaiting-confirmation" : slider.Confirmed ? "confirmed" : "")">
-                <header>
+            <section class="panel picture-control-section">
+                <header class="picture-section-heading">
                     <div>
-                        <span>@slider.SectionLabel</span>
-                        <strong>@slider.Node.Label</strong>
-                        <small>@slider.Node.Path</small>
+                        <span>PICTURE SECTION</span>
+                        <h2>@section.Label</h2>
                     </div>
-                    <b>@GetSliderStateLabel(slider)</b>
+                    <small>@section.Controls.Count control@(section.Controls.Count == 1 ? string.Empty : "s")</small>
                 </header>
-                <div class="picture-slider-value">
-                    <strong>@FormatValue(slider.DesiredValue)</strong>
-                    <span>@FormatValue(slider.Minimum) – @FormatValue(slider.Maximum)</span>
-                </div>
-                <div class="picture-slider-control">
-                    <button type="button" aria-label="Decrease @slider.Node.Label" @onclick="() => NudgeAsync(slider, -1)" disabled="@(IsBusy || slider.DesiredValue <= slider.Minimum)">−</button>
-                    <input type="range"
-                           min="@FormatValue(slider.Minimum)"
-                           max="@FormatValue(slider.Maximum)"
-                           step="1"
-                           value="@FormatValue(slider.DesiredValue)"
-                           aria-label="@slider.Node.Label"
-                           @onchange="args => ChangeSliderAsync(slider, args.Value?.ToString())"
-                           disabled="@IsBusy" />
-                    <button type="button" aria-label="Increase @slider.Node.Label" @onclick="() => NudgeAsync(slider, 1)" disabled="@(IsBusy || slider.DesiredValue >= slider.Maximum)">+</button>
-                </div>
-                <div class="picture-slider-footer">
-                    <label>
-                        <span>VALUE</span>
-                        <input type="number"
-                               min="@FormatValue(slider.Minimum)"
-                               max="@FormatValue(slider.Maximum)"
-                               step="1"
-                               value="@FormatValue(slider.DesiredValue)"
-                               @onchange="args => ChangeSliderAsync(slider, args.Value?.ToString())"
-                               disabled="@IsBusy" />
-                    </label>
-                    <span class="picture-slider-applied">Predicted TV value: <b>@FormatValue(slider.AppliedValue)</b></span>
-                    @if (slider.AwaitingConfirmation)
+                <div class="picture-control-grid">
+                    @foreach (var control in section.Controls)
                     {
-                        <button class="secondary-action" @onclick="() => ConfirmSlider(slider)" disabled="@IsBusy">TV shows @FormatValue(slider.AppliedValue) ✓</button>
+                        var disabled = IsControlDisabled(control);
+                        <article class="picture-control-card @GetControlCssClass(control, disabled)">
+                            <header>
+                                <div>
+                                    <strong>@control.Node.Label</strong>
+                                    <small>@GetControlTypeLabel(control.Node.ControlType)</small>
+                                </div>
+                                <b>@GetControlStateLabel(control, disabled)</b>
+                            </header>
+
+                            @if (control.Node.ControlType == MenuControlType.Slider)
+                            {
+                                <div class="picture-compact-value">
+                                    <strong>@control.DesiredValue</strong>
+                                    <span>@FormatValue(control.Minimum) – @FormatValue(control.Maximum)</span>
+                                </div>
+                                <div class="picture-compact-slider">
+                                    <button type="button"
+                                            aria-label="Decrease @control.Node.Label"
+                                            @onclick="() => NudgeAsync(control, -1)"
+                                            disabled="@(IsBusy || disabled || control.DesiredNumber <= control.Minimum)">−</button>
+                                    <input type="range"
+                                           min="@FormatValue(control.Minimum)"
+                                           max="@FormatValue(control.Maximum)"
+                                           step="1"
+                                           value="@control.DesiredValue"
+                                           aria-label="@control.Node.Label"
+                                           @onchange="args => ChangeControlAsync(control, args.Value?.ToString())"
+                                           disabled="@(IsBusy || disabled)" />
+                                    <button type="button"
+                                            aria-label="Increase @control.Node.Label"
+                                            @onclick="() => NudgeAsync(control, 1)"
+                                            disabled="@(IsBusy || disabled || control.DesiredNumber >= control.Maximum)">+</button>
+                                    <input class="picture-compact-number"
+                                           type="number"
+                                           min="@FormatValue(control.Minimum)"
+                                           max="@FormatValue(control.Maximum)"
+                                           step="1"
+                                           value="@control.DesiredValue"
+                                           aria-label="Numeric value for @control.Node.Label"
+                                           @onchange="args => ChangeControlAsync(control, args.Value?.ToString())"
+                                           disabled="@(IsBusy || disabled)" />
+                                </div>
+                            }
+                            else if (control.Node.ControlType == MenuControlType.Switch)
+                            {
+                                <label class="picture-switch-control">
+                                    <span class="picture-switch-copy">
+                                        <strong>@(IsOn(control.DesiredValue) ? "On" : "Off")</strong>
+                                        <small>@(disabled ? GetDisabledReason(control) : "Select to toggle")</small>
+                                    </span>
+                                    <input type="checkbox"
+                                           checked="@IsOn(control.DesiredValue)"
+                                           @onchange="args => ChangeSwitchAsync(control, args.Value is true)"
+                                           disabled="@(IsBusy || disabled)" />
+                                    <span class="picture-switch-track" aria-hidden="true"><i></i></span>
+                                </label>
+                            }
+                            else if (control.Node.ControlType == MenuControlType.Selection)
+                            {
+                                <label class="picture-selection-control">
+                                    <span>SELECTED VALUE</span>
+                                    <select value="@control.DesiredValue"
+                                            @onchange="args => ChangeControlAsync(control, args.Value?.ToString())"
+                                            disabled="@(IsBusy || disabled)">
+                                        @foreach (var option in control.Node.SelectionOptions)
+                                        {
+                                            <option value="@option">@option</option>
+                                        }
+                                    </select>
+                                </label>
+                            }
+
+                            <footer>
+                                @if (disabled)
+                                {
+                                    <span class="picture-disabled-reason">@GetDisabledReason(control)</span>
+                                }
+                                else
+                                {
+                                    <span>TV prediction: <b>@control.AppliedValue</b></span>
+                                }
+                                @if (control.AwaitingConfirmation && !disabled)
+                                {
+                                    <button class="secondary-action" @onclick="() => ConfirmControl(control)" disabled="@IsBusy">TV shows @control.AppliedValue ✓</button>
+                                }
+                            </footer>
+                        </article>
                     }
                 </div>
-            </article>
+            </section>
         }
-    </section>
+    </div>
 }
 
 @code {
     private ControllerSnapshot Snapshot { get; set; } = null!;
     private MenuNavigationSnapshot Navigation { get; set; } = null!;
-    private List<PictureSliderEdit> Sliders { get; } = [];
+    private List<PictureControlEdit> Controls { get; } = [];
     private PictureUpdateMode UpdateMode { get; set; } = PictureUpdateMode.Staged;
     private PictureExitBehavior ExitBehavior { get; set; } = PictureExitBehavior.Stay;
     private string? LocalError { get; set; }
     private string? LocalStatus { get; set; }
     private bool IsBusy { get; set; }
 
-    private int PendingCount => Sliders.Count(slider => slider.Pending);
+    private int PendingCount => Controls.Count(control => control.Pending && !IsControlDisabled(control));
     private bool CanApplyPending => PendingCount > 0
         && !IsBusy
         && Snapshot.ConnectionState == SamsungConnectionState.Connected
@@ -145,41 +205,48 @@ else
         Controller.Changed += HandleControllerChanged;
         await Controller.InitializeAsync();
         Refresh();
-        ReconcileSliders();
+        ReconcileControls();
     }
 
-    private async Task ChangeSliderAsync(PictureSliderEdit slider, string? rawValue)
+    private async Task ChangeControlAsync(PictureControlEdit control, string? rawValue)
     {
-        if (!decimal.TryParse(rawValue, NumberStyles.Number, CultureInfo.InvariantCulture, out var value))
+        var value = NormalizeControlValue(control, rawValue);
+        if (value is null)
         {
-            LocalError = $"Enter a whole-number value for {slider.Node.Label}.";
             return;
         }
 
-        value = Math.Clamp(decimal.Truncate(value), slider.Minimum, slider.Maximum);
-        slider.DesiredValue = value;
-        slider.Confirmed = false;
-        slider.AwaitingConfirmation = false;
+        control.DesiredValue = value;
+        control.Confirmed = false;
+        control.AwaitingConfirmation = false;
+        ClearPendingValuesThatBecameDisabled();
         LocalError = null;
         LocalStatus = UpdateMode == PictureUpdateMode.Staged
-            ? $"{slider.Node.Label} staged at {FormatValue(value)}."
+            ? $"{control.Node.Label} staged at {value}."
             : null;
-        if (UpdateMode == PictureUpdateMode.Immediate && slider.Pending)
+        if (UpdateMode == PictureUpdateMode.Immediate && control.Pending)
         {
-            await ApplyAsync([slider]);
+            await ApplyAsync([control]);
         }
     }
 
-    private Task NudgeAsync(PictureSliderEdit slider, int delta) =>
-        ChangeSliderAsync(
-            slider,
-            FormatValue(Math.Clamp(slider.DesiredValue + delta, slider.Minimum, slider.Maximum)));
+    private Task ChangeSwitchAsync(PictureControlEdit control, bool enabled) =>
+        ChangeControlAsync(control, enabled ? "on" : "off");
 
-    private Task ApplyPendingAsync() => ApplyAsync(Sliders.Where(slider => slider.Pending).ToArray());
+    private Task NudgeAsync(PictureControlEdit control, int delta) =>
+        ChangeControlAsync(
+            control,
+            FormatValue(Math.Clamp(
+                control.DesiredNumber + delta,
+                control.Minimum,
+                control.Maximum)));
 
-    private async Task ApplyAsync(IReadOnlyList<PictureSliderEdit> sliders)
+    private Task ApplyPendingAsync() => ApplyAsync(
+        Controls.Where(control => control.Pending && !IsControlDisabled(control)).ToArray());
+
+    private async Task ApplyAsync(IReadOnlyList<PictureControlEdit> controls)
     {
-        if (sliders.Count == 0)
+        if (controls.Count == 0)
         {
             return;
         }
@@ -189,25 +256,30 @@ else
         LocalStatus = null;
         try
         {
-            await Controller.ApplyMenuSliderValuesAsync(
-                sliders.Select(slider => new MenuSliderValueUpdate(
-                        slider.Node.Id,
-                        slider.AppliedValue,
-                        slider.DesiredValue))
+            var knownValues = Controls.ToDictionary(
+                control => control.Node.Id,
+                control => control.AppliedValue,
+                StringComparer.OrdinalIgnoreCase);
+            await Controller.ApplyMenuControlValuesAsync(
+                controls.Select(control => new MenuControlValueUpdate(
+                        control.Node.Id,
+                        control.AppliedValue,
+                        control.DesiredValue))
                     .ToArray(),
+                knownValues,
                 ExitBehavior == PictureExitBehavior.ReturnToVideo);
-            foreach (var slider in sliders)
+            foreach (var control in controls)
             {
-                slider.AppliedValue = slider.DesiredValue;
-                slider.AwaitingConfirmation = true;
-                slider.Confirmed = false;
+                control.AppliedValue = control.DesiredValue;
+                control.AwaitingConfirmation = true;
+                control.Confirmed = false;
             }
 
-            LocalStatus = $"Applied {sliders.Count} picture slider{(sliders.Count == 1 ? string.Empty : "s")}. Confirm the displayed values on the TV.";
+            LocalStatus = $"Applied {controls.Count} picture control{(controls.Count == 1 ? string.Empty : "s")}. Confirm the displayed values on the TV.";
         }
         catch (OperationCanceledException)
         {
-            LocalError = "Picture slider update was cancelled.";
+            LocalError = "Picture-control update was cancelled.";
         }
         catch (Exception exception)
         {
@@ -219,12 +291,116 @@ else
         }
     }
 
-    private void ConfirmSlider(PictureSliderEdit slider)
+    private void ConfirmControl(PictureControlEdit control)
     {
-        slider.AwaitingConfirmation = false;
-        slider.Confirmed = true;
+        control.AwaitingConfirmation = false;
+        control.Confirmed = true;
         LocalError = null;
-        LocalStatus = $"{slider.Node.Label} visually confirmed at {FormatValue(slider.AppliedValue)}.";
+        LocalStatus = $"{control.Node.Label} visually confirmed at {control.AppliedValue}.";
+    }
+
+    private string? NormalizeControlValue(PictureControlEdit control, string? rawValue)
+    {
+        if (string.IsNullOrWhiteSpace(rawValue))
+        {
+            LocalError = $"Choose a value for {control.Node.Label}.";
+            return null;
+        }
+
+        if (control.Node.ControlType == MenuControlType.Slider)
+        {
+            if (!decimal.TryParse(
+                    rawValue,
+                    NumberStyles.Number,
+                    CultureInfo.InvariantCulture,
+                    out var numericValue))
+            {
+                LocalError = $"Enter a whole-number value for {control.Node.Label}.";
+                return null;
+            }
+
+            return FormatValue(Math.Clamp(
+                decimal.Truncate(numericValue),
+                control.Minimum,
+                control.Maximum));
+        }
+
+        if (control.Node.ControlType == MenuControlType.Switch)
+        {
+            return rawValue.Equals("on", StringComparison.OrdinalIgnoreCase) ? "on" : "off";
+        }
+
+        var option = control.Node.SelectionOptions.FirstOrDefault(candidate =>
+            candidate.Equals(rawValue, StringComparison.OrdinalIgnoreCase));
+        if (option is null)
+        {
+            LocalError = $"{rawValue} is not available for {control.Node.Label}.";
+        }
+
+        return option;
+    }
+
+    private void ClearPendingValuesThatBecameDisabled()
+    {
+        foreach (var control in Controls.Where(IsControlDisabled))
+        {
+            control.DesiredValue = control.AppliedValue;
+            control.AwaitingConfirmation = false;
+            control.Confirmed = false;
+        }
+    }
+
+    private bool IsControlDisabled(PictureControlEdit control) =>
+        control.Node.DisabledWhen.Any(condition =>
+        {
+            var controller = Controls.FirstOrDefault(candidate => candidate.Node.Id.Equals(
+                condition.SettingNodeId,
+                StringComparison.OrdinalIgnoreCase));
+            var value = controller?.DesiredValue
+                ?? Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
+                    condition.SettingNodeId,
+                    StringComparison.OrdinalIgnoreCase))?.DefaultValue;
+            return value?.Equals(condition.EqualsValue, StringComparison.OrdinalIgnoreCase) == true;
+        });
+
+    private string GetDisabledReason(PictureControlEdit control)
+    {
+        var matches = control.Node.DisabledWhen.Where(condition =>
+        {
+            var controller = Controls.FirstOrDefault(candidate => candidate.Node.Id.Equals(
+                condition.SettingNodeId,
+                StringComparison.OrdinalIgnoreCase));
+            return controller?.DesiredValue.Equals(
+                condition.EqualsValue,
+                StringComparison.OrdinalIgnoreCase) == true;
+        }).Select(condition =>
+        {
+            var controller = Controls.First(candidate => candidate.Node.Id.Equals(
+                condition.SettingNodeId,
+                StringComparison.OrdinalIgnoreCase));
+            return $"{controller.Node.Label} = {controller.DesiredValue}";
+        }).ToArray();
+        return matches.Length == 0 ? "Unavailable in the predicted state" : $"Disabled while {string.Join(" or ", matches)}";
+    }
+
+    private IReadOnlyList<PictureControlSection> GetSections()
+    {
+        var nodeOrder = Navigation.Nodes.Select((node, index) => (node.Id, index))
+            .ToDictionary(item => item.Id, item => item.index, StringComparer.OrdinalIgnoreCase);
+        return Controls.GroupBy(control => control.Node.ParentId ?? "picture", StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var sectionNode = Navigation.Nodes.FirstOrDefault(node => node.Id.Equals(
+                    group.Key,
+                    StringComparison.OrdinalIgnoreCase));
+                return new PictureControlSection(
+                    group.Key,
+                    sectionNode?.Label ?? "Picture",
+                    group.OrderBy(control => nodeOrder.GetValueOrDefault(control.Node.Id, int.MaxValue)).ToArray(),
+                    nodeOrder.GetValueOrDefault(group.Key, int.MaxValue));
+            })
+            .OrderBy(section => section.Order)
+            .ToArray();
     }
 
     private void HandleControllerChanged()
@@ -232,7 +408,7 @@ else
         _ = InvokeAsync(() =>
         {
             Refresh();
-            ReconcileSliders();
+            ReconcileControls();
             StateHasChanged();
         });
     }
@@ -243,49 +419,94 @@ else
         Navigation = Controller.GetMenuNavigationSnapshot();
     }
 
-    private void ReconcileSliders()
+    private void ReconcileControls()
     {
         var pictureRoot = Navigation.Nodes.FirstOrDefault(node =>
             node.Id.Equals("picture", StringComparison.OrdinalIgnoreCase))
             ?? Navigation.Nodes.FirstOrDefault(node =>
                 node.Label.Equals("Picture", StringComparison.OrdinalIgnoreCase)
                 && node.ControlType == MenuControlType.Submenu);
-        var existing = Sliders.ToDictionary(slider => slider.Node.Id, StringComparer.OrdinalIgnoreCase);
+        var existing = Controls.ToDictionary(control => control.Node.Id, StringComparer.OrdinalIgnoreCase);
         var eligible = pictureRoot is null
             ? []
-            : Navigation.Nodes
-                .Where(node => node.ControlType == MenuControlType.Slider
-                    && node.HasVerifiedRoute
-                    && !node.IsDisabledByDefault
-                    && node.MinimumValue is not null
-                    && node.MaximumValue is not null
-                    && IsDescendantOf(node, pictureRoot.Id))
-                .OrderBy(node => node.Path, StringComparer.OrdinalIgnoreCase)
+            : Navigation.Nodes.Where(node =>
+                    IsSupportedControl(node)
+                    && IsDescendantOf(node, pictureRoot.Id)
+                    && HasUsableRoute(node))
                 .ToArray();
-        Sliders.Clear();
+        Controls.Clear();
         foreach (var node in eligible)
         {
             if (existing.TryGetValue(node.Id, out var edit))
             {
                 edit.Node = node;
-                Sliders.Add(edit);
+                Controls.Add(edit);
                 continue;
             }
 
+            var defaultValue = NormalizeDefaultValue(node);
+            if (defaultValue is not null)
+            {
+                Controls.Add(new PictureControlEdit(node, defaultValue));
+            }
+        }
+    }
+
+    private bool HasUsableRoute(MenuNodeSummary node)
+    {
+        if (node.HasVerifiedRoute)
+        {
+            return true;
+        }
+
+        if (node.DisabledWhen.Count == 0 || string.IsNullOrWhiteSpace(node.ParentId))
+        {
+            return false;
+        }
+
+        return Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
+            node.ParentId,
+            StringComparison.OrdinalIgnoreCase))?.HasVerifiedRoute == true;
+    }
+
+    private static bool IsSupportedControl(MenuNodeSummary node) => node.ControlType switch
+    {
+        MenuControlType.Slider => node.MinimumValue is not null
+            && node.MaximumValue is not null
+            && !string.IsNullOrWhiteSpace(node.DefaultValue),
+        MenuControlType.Switch => !string.IsNullOrWhiteSpace(node.DefaultValue),
+        MenuControlType.Selection => !string.IsNullOrWhiteSpace(node.DefaultValue)
+            && node.SelectionOptions.Count > 0,
+        _ => false
+    };
+
+    private static string? NormalizeDefaultValue(MenuNodeSummary node)
+    {
+        if (node.ControlType == MenuControlType.Slider)
+        {
             if (!decimal.TryParse(
                     node.DefaultValue,
                     NumberStyles.Number,
                     CultureInfo.InvariantCulture,
                     out var defaultValue))
             {
-                continue;
+                return null;
             }
 
-            var minimum = node.MinimumValue!.Value;
-            var maximum = node.MaximumValue!.Value;
-            defaultValue = Math.Clamp(decimal.Truncate(defaultValue), minimum, maximum);
-            Sliders.Add(new PictureSliderEdit(node, minimum, maximum, defaultValue));
+            return FormatValue(Math.Clamp(
+                decimal.Truncate(defaultValue),
+                node.MinimumValue!.Value,
+                node.MaximumValue!.Value));
         }
+
+        if (node.ControlType == MenuControlType.Switch)
+        {
+            return node.DefaultValue!.Equals("on", StringComparison.OrdinalIgnoreCase) ? "on" : "off";
+        }
+
+        return node.SelectionOptions.FirstOrDefault(option => option.Equals(
+            node.DefaultValue,
+            StringComparison.OrdinalIgnoreCase));
     }
 
     private bool IsDescendantOf(MenuNodeSummary node, string ancestorId)
@@ -306,13 +527,30 @@ else
         return false;
     }
 
-    private string GetSliderStateLabel(PictureSliderEdit slider) => slider.Pending
-        ? "PENDING"
-        : slider.AwaitingConfirmation
-            ? "VERIFY ON TV"
-            : slider.Confirmed
-                ? "CONFIRMED"
-                : "ROUTE VERIFIED";
+    private static string GetControlTypeLabel(MenuControlType type) => type switch
+    {
+        MenuControlType.Slider => "SLIDER",
+        MenuControlType.Switch => "SWITCH",
+        MenuControlType.Selection => "SELECTION",
+        _ => type.ToString().ToUpperInvariant()
+    };
+
+    private static string GetControlStateLabel(PictureControlEdit control, bool disabled) => disabled
+        ? "DISABLED"
+        : control.Pending
+            ? "PENDING"
+            : control.AwaitingConfirmation
+                ? "VERIFY"
+                : control.Confirmed
+                    ? "CONFIRMED"
+                    : control.Node.HasVerifiedRoute
+                        ? "VERIFIED"
+                        : "CONDITIONAL";
+
+    private static string GetControlCssClass(PictureControlEdit control, bool disabled) =>
+        $"{(disabled ? "disabled" : string.Empty)} {(control.Pending ? "pending" : string.Empty)} {(control.AwaitingConfirmation ? "awaiting-confirmation" : control.Confirmed ? "confirmed" : string.Empty)}";
+
+    private static bool IsOn(string value) => value.Equals("on", StringComparison.OrdinalIgnoreCase);
 
     private static string FormatValue(decimal value) =>
         value.ToString("G29", CultureInfo.InvariantCulture);
@@ -331,22 +569,26 @@ else
         ReturnToVideo
     }
 
-    private sealed class PictureSliderEdit(
-        MenuNodeSummary node,
-        decimal minimum,
-        decimal maximum,
-        decimal defaultValue)
+    private sealed class PictureControlEdit(MenuNodeSummary node, string defaultValue)
     {
         public MenuNodeSummary Node { get; set; } = node;
-        public decimal Minimum { get; } = minimum;
-        public decimal Maximum { get; } = maximum;
-        public decimal AppliedValue { get; set; } = defaultValue;
-        public decimal DesiredValue { get; set; } = defaultValue;
+        public string AppliedValue { get; set; } = defaultValue;
+        public string DesiredValue { get; set; } = defaultValue;
         public bool AwaitingConfirmation { get; set; }
         public bool Confirmed { get; set; }
-        public bool Pending => DesiredValue != AppliedValue;
-        public string SectionLabel => Node.Path.Contains(" / Expert Settings / ", StringComparison.OrdinalIgnoreCase)
-            ? "EXPERT SETTINGS"
-            : "PICTURE";
+        public bool Pending => !DesiredValue.Equals(AppliedValue, StringComparison.OrdinalIgnoreCase);
+        public decimal Minimum => Node.MinimumValue ?? 0;
+        public decimal Maximum => Node.MaximumValue ?? 0;
+        public decimal DesiredNumber => decimal.TryParse(
+            DesiredValue,
+            NumberStyles.Number,
+            CultureInfo.InvariantCulture,
+            out var value) ? value : 0;
     }
+
+    private sealed record PictureControlSection(
+        string Id,
+        string Label,
+        IReadOnlyList<PictureControlEdit> Controls,
+        int Order);
 }

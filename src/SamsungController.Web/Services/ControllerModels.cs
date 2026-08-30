@@ -122,6 +122,11 @@ public sealed record MenuSliderValueUpdate(
     decimal FromValue,
     decimal ToValue);
 
+public sealed record MenuControlValueUpdate(
+    string NodeId,
+    string FromValue,
+    string ToValue);
+
 public sealed record MenuAnchorSummary(
     string Id,
     string Label,

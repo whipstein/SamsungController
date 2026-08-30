@@ -200,11 +200,11 @@ Menu definitions are model-, firmware-, input-, signal-, and picture-mode-sensit
 
 ### Picture Controls
 
-The **Picture Controls** page collects every bounded slider beneath the verified Picture menu. A slider appears only after its navigation route has been verified. That route verification proves SamsungController can reach and highlight the row; it does not prove the displayed numeric value because the Samsung remote channel does not report setting values.
+The **Picture Controls** page collects adjustable sliders, switches, and selections beneath Picture and groups the compact cards by their immediate TV-menu section. A normal control appears after its route has been verified. A conditionally disabled control can also appear when its containing section has a verified route; once enabled, SamsungController derives its position from the declared sibling order.
 
-Each card starts from its declared YAML default and tracks the Left/Right changes sent during the current page session. Choose **Update TV immediately** to send a change when the slider is released or a step button is selected, or choose **Wait for Apply** to stage several values and send them together. The staged operation uses verified state-aware routes between sliders.
+Each card starts from its declared YAML default and tracks changes sent during the current page session. Sliders send Left/Right steps, switches send Select, and selections open the choice list, move from the predicted current option, and select the new option. Choose **Update TV immediately** to send one change at a time, or choose **Wait for Apply** to stage several values. Staged dependencies are sent first: for example, 20 Point is enabled before its Interval/RGB controls, and Custom Color Space is selected before its Color/RGB controls. The page reevaluates every `disabledWhen` rule as its controlling value changes.
 
-Choose **Stay on last adjusted item** to leave the final slider visible for inspection, or **Exit to normal video** to run the verified return anchor afterward. After a successful send, compare the predicted value with the TV and select **TV shows …** to record the visual confirmation in the page. If the TV was adjusted outside SamsungController, first restore the declared defaults or update the definition before relying on relative numeric changes.
+Choose **Stay on last adjusted item** to leave the final control visible for inspection, or **Exit to normal video** to run the verified return anchor afterward. After a successful send, compare the predicted value with the TV and select **TV shows …** to record the visual confirmation in the page. Route verification proves that a row can be reached; it does not prove the displayed setting value because the Samsung remote channel does not report values. If the TV was adjusted outside SamsungController, first restore the declared defaults or update the definition before relying on relative changes.
 
 ### Build & Verify
 

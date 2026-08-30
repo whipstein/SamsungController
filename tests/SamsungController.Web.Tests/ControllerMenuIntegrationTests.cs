@@ -1488,6 +1488,183 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task PictureControlsApplyEnablingSwitchBeforeConditionalSlider()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: conditional-picture-switch
+            name: Conditional Picture Switch
+            model: Test TV
+            timing:
+              defaultDelay: 50ms
+              screenChangeDelay: 50ms
+              returnDelay: 50ms
+            nodes:
+              - id: normal-video
+                label: Normal video
+              - id: picture
+                label: Picture
+                parent: normal-video
+              - id: twenty-point
+                label: 20 Point
+                parent: picture
+              - id: twenty-point-enabled
+                label: 20 Point
+                parent: twenty-point
+                controlType: switch
+                defaultValue: off
+              - id: red
+                label: Red
+                parent: twenty-point
+                controlType: slider
+                defaultValue: 0
+                minimumValue: -50
+                maximumValue: 50
+                disabledWhen:
+                  - setting: twenty-point-enabled
+                    equals: off
+            anchors:
+              - id: normal
+                label: Return to normal video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            transitions:
+              - id: open-twenty-point
+                from: normal-video
+                to: twenty-point
+                verified: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_ENTER
+              - id: open-twenty-point-toggle
+                from: normal-video
+                to: twenty-point-enabled
+                verified: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_ENTER
+            """;
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            await controller.ApplyMenuControlValuesAsync(
+                [
+                    new MenuControlValueUpdate("red", "0", "2"),
+                    new MenuControlValueUpdate("twenty-point-enabled", "off", "on")
+                ],
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["twenty-point-enabled"] = "off",
+                    ["red"] = "0"
+                },
+                returnToNormalVideo: false);
+
+            Assert.Equal(
+                ["KEY_MENU", "KEY_ENTER", "KEY_ENTER", "KEY_DOWN", "KEY_RIGHT", "KEY_RIGHT"],
+                GetSentKeys(transport));
+            var result = controller.GetSnapshot();
+            Assert.Equal("Red", result.MenuLabel);
+            Assert.Equal(MenuStateConfidence.Synchronized, result.MenuConfidence);
+        }
+    }
+
+    [Fact]
+    public async Task PictureControlsApplyEnablingSelectionBeforeConditionalSlider()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: conditional-picture-selection
+            name: Conditional Picture Selection
+            model: Test TV
+            timing:
+              defaultDelay: 50ms
+              screenChangeDelay: 50ms
+              returnDelay: 50ms
+            nodes:
+              - id: normal-video
+                label: Normal video
+              - id: picture
+                label: Picture
+                parent: normal-video
+              - id: color-space-settings
+                label: Color Space Settings
+                parent: picture
+              - id: color-space
+                label: Color Space
+                parent: color-space-settings
+                controlType: selection
+                defaultValue: Auto
+                options: [Auto, Normal, Native, Custom]
+              - id: red
+                label: Red
+                parent: color-space-settings
+                controlType: slider
+                defaultValue: 50
+                minimumValue: 0
+                maximumValue: 100
+                disabledWhen:
+                  - setting: color-space
+                    equals: Auto
+                  - setting: color-space
+                    equals: Normal
+                  - setting: color-space
+                    equals: Native
+            anchors:
+              - id: normal
+                label: Return to normal video
+                target: normal-video
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            transitions:
+              - id: open-color-space-settings
+                from: normal-video
+                to: color-space-settings
+                verified: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_ENTER
+              - id: open-color-space
+                from: normal-video
+                to: color-space
+                verified: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_ENTER
+            """;
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            await controller.ApplyMenuControlValuesAsync(
+                [
+                    new MenuControlValueUpdate("red", "50", "52"),
+                    new MenuControlValueUpdate("color-space", "Auto", "Custom")
+                ],
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["color-space"] = "Auto",
+                    ["red"] = "50"
+                },
+                returnToNormalVideo: false);
+
+            Assert.Equal(
+                [
+                    "KEY_MENU", "KEY_ENTER",
+                    "KEY_ENTER", "KEY_DOWN", "KEY_DOWN", "KEY_DOWN", "KEY_ENTER",
+                    "KEY_DOWN", "KEY_RIGHT", "KEY_RIGHT"
+                ],
+                GetSentKeys(transport));
+            var result = controller.GetSnapshot();
+            Assert.Equal("Red", result.MenuLabel);
+            Assert.Equal(MenuStateConfidence.Synchronized, result.MenuConfidence);
+        }
+    }
+
+    [Fact]
     public async Task NavigateBetweenVerifiedDestinationsUsesCalculatedRelativeRoute()
     {
         var allVerifiedYaml = ExplicitValidationMenuYaml.Replace(

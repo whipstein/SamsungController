@@ -339,12 +339,22 @@ For a slider, topology verification ends with the slider row highlighted. Do not
 press Left or Right during that route test: the coverage result verifies only
 that the generated route reaches the correct control. After the route is
 verified, use **Picture Controls** to exercise the value behavior. That page
-uses the declared minimum, maximum, and default, sends one Left or Right key per
-whole-number step, and asks for visual confirmation of the predicted number.
-The value confirmation is deliberately separate from the three-pass route count
-because the TV does not return its numeric setting value. Changes made with a
-physical remote or another application can invalidate the page's predicted
-starting value.
+groups sliders, switches, and selections by their immediate menu parent. It
+sends one Left or Right key per whole-number slider step, Select for a switch,
+and Select plus ordered Up/Down movement for a selection. It then asks for
+visual confirmation of the predicted value. The value confirmation is
+deliberately separate from the three-pass route count because the TV does not
+return its setting value. Changes made with a physical remote or another
+application can invalidate the page's predicted starting value.
+
+Picture Controls evaluates `disabledWhen` against the values predicted on that
+page. A staged update orders controlling settings before their dependents. A
+conditional child that is disabled under the YAML defaults does not need to be
+added to the default-state coverage checklist: after its controller enables it,
+the page reaches the verified containing submenu and derives the child's Up/Down
+offset from the enabled sibling order. This is intended for rows such as 20 Point
+RGB controls and Custom Color Space controls that remain in the topology but
+cannot be selected in the default state.
 
 After initial verification, editing the outline or fine-adjustment tree runs the
 same generator again. A group whose generated key sequences and membership are
