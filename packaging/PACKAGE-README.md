@@ -2,6 +2,11 @@
 
 This is a self-contained SamsungController release. It includes the application and its .NET runtime; a repository clone, .NET SDK, and separate installer are not required.
 
+If this is your first time using SamsungController, start with the
+[complete beginner guide](docs/getting-started.md). It continues from download
+and first launch through pairing, menu setup, display verification, entering
+current values, safely applying changes, macros, upgrades, and troubleshooting.
+
 ## Start the web interface
 
 Keep the complete extracted folder together. The launcher starts the local server, waits for it to become ready, and opens `http://127.0.0.1:5050` in the default browser.

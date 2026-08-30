@@ -29,6 +29,8 @@ Both installation methods require:
 
 The downloadable release is recommended for most users. It is self-contained and does not require Git, a repository clone, the .NET SDK, or a separate .NET runtime. Building from source remains available for contributors and users who want to modify the code.
 
+**New to SamsungController?** Follow the [complete beginner guide](docs/getting-started.md). It walks through choosing a download, launching the app, pairing, menu setup and verification, recording current values, updating TV settings, macros, upgrades, and troubleshooting in one continuous tutorial.
+
 ## Install a downloadable release
 
 1. Open the [latest SamsungController release](https://github.com/whipstein/SamsungController/releases/latest).
@@ -491,6 +493,7 @@ Keep the web server on loopback, keep pairing tokens and logs private, and prefe
 
 ## Additional documentation
 
+- [Complete beginner installation and usage guide](docs/getting-started.md)
 - [Macro format and safety](docs/macros.md)
 - [Menu definition file format tutorial](docs/menu-definition-file-format.md)
 - [Menu definitions and predicted navigation](docs/menu-model.md)
