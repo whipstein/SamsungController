@@ -88,6 +88,7 @@ timing:
   defaultDelay: 150ms
   screenChangeDelay: 800ms
   returnDelay: 300ms
+  adjustmentDelay: 75ms
   verified: true
 
 nodes:
@@ -212,6 +213,7 @@ allowed.
     "defaultDelay": "150ms",
     "screenChangeDelay": "800ms",
     "returnDelay": "300ms",
+    "adjustmentDelay": "75ms",
     "verified": true
   },
   "nodes": [
@@ -432,14 +434,15 @@ represented by one modeled value.
 
 ## Timing and key steps
 
-`timing` has four fields:
+`timing` has four waits plus its verification state:
 
 | Field | Built-in default | Used after |
 | --- | ---: | --- |
-| `defaultDelay` | `150ms` | D-pad and other ordinary/custom keys. |
+| `defaultDelay` | `150ms` | Up/Down navigation and other ordinary/custom keys. |
 | `screenChangeDelay` | `800ms` | Menu, Enter/OK, Home, Exit, and Source. |
 | `returnDelay` | `300ms` | Return. |
-| `verified` | `true` for a new profile | Whether the three global values passed their dedicated visual test. |
+| `adjustmentDelay` | `75ms` | Left/Right value changes for sliders, switches, and selections. |
+| `verified` | `true` for a new profile | Whether the four global waits passed their dedicated visual test. |
 
 System waits must be 50–30000 ms. Duration values must include `ms` or `s`, such
 as `250ms` or `1.5s`.

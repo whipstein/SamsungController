@@ -115,6 +115,7 @@ public sealed class MenuDefinitionJsonSerializer
             ["defaultDelay"] = $"{definition.Timing.DefaultDelayMilliseconds}ms",
             ["screenChangeDelay"] = $"{definition.Timing.ScreenChangeDelayMilliseconds}ms",
             ["returnDelay"] = $"{definition.Timing.ReturnDelayMilliseconds}ms",
+            ["adjustmentDelay"] = $"{definition.Timing.AdjustmentDelayMilliseconds}ms",
             ["verified"] = definition.Timing.Verified
         };
         root["nodes"] = CreateNodes(definition);

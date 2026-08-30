@@ -12,7 +12,7 @@ public sealed class MenuDefinitionParser
     private static readonly HashSet<string> ContextFields =
         new(["firmware", "signal", "pictureMode", "input"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> TimingFields =
-        new(["defaultDelay", "screenChangeDelay", "returnDelay", "verified"], StringComparer.OrdinalIgnoreCase);
+        new(["defaultDelay", "screenChangeDelay", "returnDelay", "adjustmentDelay", "verified"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> VerificationFields =
         new(["display", "checks"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> VerificationDisplayFields =
@@ -113,7 +113,8 @@ public sealed class MenuDefinitionParser
             ParseTimingMilliseconds(fields, "defaultDelay", defaults.DefaultDelayMilliseconds),
             ParseTimingMilliseconds(fields, "screenChangeDelay", defaults.ScreenChangeDelayMilliseconds),
             ParseTimingMilliseconds(fields, "returnDelay", defaults.ReturnDelayMilliseconds),
-            OptionalBoolean(fields, "verified", "timing", defaults.Verified));
+            OptionalBoolean(fields, "verified", "timing", defaults.Verified),
+            ParseTimingMilliseconds(fields, "adjustmentDelay", defaults.AdjustmentDelayMilliseconds));
     }
 
     private static MenuVerificationManifest? ParseVerification(YamlNode? node)

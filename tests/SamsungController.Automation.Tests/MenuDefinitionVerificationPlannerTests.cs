@@ -184,6 +184,33 @@ public sealed class MenuDefinitionVerificationPlannerTests
     }
 
     [Fact]
+    public void AdjustmentTimingChangeReopensTimingWithoutReopeningUnrelatedCrossBranchRoute()
+    {
+        var original = CreateCrossBranchDefinition();
+        var edited = new MenuDefinition(
+            original.Id,
+            original.Name,
+            original.Model,
+            original.Context,
+            original.Nodes.Values,
+            original.Transitions.Values,
+            original.Anchors.Values,
+            original.Timing with { AdjustmentDelayMilliseconds = 60 });
+
+        var originalChecks = MenuDefinitionVerificationPlanner.Create(original).Checks;
+        var editedChecks = MenuDefinitionVerificationPlanner.Create(edited).Checks;
+
+        Assert.NotEqual(
+            originalChecks.Single(check => check.Id == "timing").Fingerprint,
+            editedChecks.Single(check => check.Id == "timing").Fingerprint);
+        Assert.Equal(
+            originalChecks.Single(check =>
+                check.Kind == MenuVerificationCheckKind.CalculatedNavigation).Fingerprint,
+            editedChecks.Single(check =>
+                check.Kind == MenuVerificationCheckKind.CalculatedNavigation).Fingerprint);
+    }
+
+    [Fact]
     public void PermanentlyDisabledBranchUsesOneBehaviorCheckAndNoControlChecks()
     {
         var definition = new MenuDefinition(

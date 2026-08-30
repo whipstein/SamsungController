@@ -97,7 +97,7 @@ Status was reconciled with the repository on 2026-08-30. A checked box means the
 - [x] Record forward traversal and target-specific return-to-video keys as one integrated command.
 - [x] Configure default menu-root, deeper-menu, and exact-state return scripts.
 - [x] Use a recorded return sequence while preparing the source during verification.
-- [x] Configure system-wide default, screen-change, and return delays.
+- [x] Configure separate system-wide Up/Down, Left/Right adjustment, screen-change, and Return delays.
 - [x] Test the system-wide timing profile against a selected traversal.
 - [x] Override the post-button wait for individual recorded steps.
 - [x] Require three user-confirmed visual passes before exposing a command as verified.

@@ -488,6 +488,7 @@ public sealed class MenuDefinitionValidator
         ValidateTimingValue("defaultDelay", timing.DefaultDelayMilliseconds, errors);
         ValidateTimingValue("screenChangeDelay", timing.ScreenChangeDelayMilliseconds, errors);
         ValidateTimingValue("returnDelay", timing.ReturnDelayMilliseconds, errors);
+        ValidateTimingValue("adjustmentDelay", timing.AdjustmentDelayMilliseconds, errors);
     }
 
     private static void ValidateTimingValue(

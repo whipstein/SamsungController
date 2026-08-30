@@ -121,7 +121,12 @@ public sealed class MenuDefinitionWriterTests : IDisposable
                     ValidationSourceNodeId: "settings",
                     ConfigurationId: "standard")
             ],
-            new MenuTimingProfile(175, 650, 325, true),
+            new MenuTimingProfile(
+                175,
+                650,
+                325,
+                true,
+                AdjustmentDelayMilliseconds: 60),
             [new MenuConfiguration("standard", "Standard", "Game Mode = Off")]);
         var path = Path.Combine(_directory, "menu.yaml");
 
@@ -137,6 +142,7 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Assert.Equal("standard", configuration.Id);
         Assert.Equal("Game Mode = Off", configuration.Conditions);
         Assert.Contains("  verified: true", writtenYaml, StringComparison.Ordinal);
+        Assert.Contains("  adjustmentDelay: 60ms", writtenYaml, StringComparison.Ordinal);
         Assert.Contains("    children:", writtenYaml, StringComparison.Ordinal);
         Assert.Contains("        children:", writtenYaml, StringComparison.Ordinal);
         Assert.DoesNotContain("parent:", writtenYaml, StringComparison.Ordinal);
@@ -386,7 +392,12 @@ public sealed class MenuDefinitionWriterTests : IDisposable
                     ValidationSourceNodeId: "settings",
                     ConfigurationId: "default")
             ],
-            new MenuTimingProfile(150, 800, 300, true),
+            new MenuTimingProfile(
+                150,
+                800,
+                300,
+                true,
+                AdjustmentDelayMilliseconds: 65),
             [new MenuConfiguration("default", "Default", "Game Mode = Off")],
             verification: new MenuVerificationManifest(
                 new MenuVerificationDisplay(
@@ -407,6 +418,7 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Assert.StartsWith("{", firstContent.TrimStart(), StringComparison.Ordinal);
         Assert.StartsWith("{", secondContent.TrimStart(), StringComparison.Ordinal);
         Assert.Contains("\"children\"", firstContent, StringComparison.Ordinal);
+        Assert.Contains("\"adjustmentDelay\": \"65ms\"", firstContent, StringComparison.Ordinal);
         Assert.DoesNotContain("\"parent\"", firstContent, StringComparison.Ordinal);
         Assert.Equal(definition.Id, reparsed.Id);
         Assert.Equal(definition.Context, reparsed.Context);

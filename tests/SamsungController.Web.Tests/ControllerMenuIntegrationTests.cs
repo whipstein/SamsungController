@@ -233,6 +233,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         Assert.Equal(150, timing.DefaultDelayMilliseconds);
         Assert.Equal(800, timing.ScreenChangeDelayMilliseconds);
         Assert.Equal(300, timing.ReturnDelayMilliseconds);
+        Assert.Equal(75, timing.AdjustmentDelayMilliseconds);
         Assert.True(timing.Verified);
         Assert.Equal(3, controller.GetMenuAuthoringSnapshot().TimingValidationPasses);
     }
@@ -1102,10 +1103,23 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         await using var controller = CreateController();
         await controller.InitializeAsync();
 
-        await controller.UpdateMenuTimingProfileAsync(new MenuTimingProfile(225, 750, 400));
+        await controller.UpdateMenuTimingProfileAsync(new MenuTimingProfile(
+            225,
+            750,
+            400,
+            AdjustmentDelayMilliseconds: 65));
 
         var reparsed = await new MenuDefinitionParser().ParseFileAsync(definitionPath);
-        Assert.Equal(new MenuTimingProfile(225, 750, 400, false), reparsed.Timing);
+        Assert.Equal(
+            new MenuTimingProfile(
+                225,
+                750,
+                400,
+                false,
+                AdjustmentDelayMilliseconds: 65),
+            reparsed.Timing);
+        Assert.Equal(TimeSpan.FromMilliseconds(65), reparsed.Timing.GetDelay("KEY_LEFT"));
+        Assert.Equal(TimeSpan.FromMilliseconds(65), reparsed.Timing.GetDelay("KEY_RIGHT"));
         Assert.Equal(TimeSpan.FromMilliseconds(700), reparsed.Transitions["open-settings"].Operations[1].DelayAfter);
     }
 
@@ -1127,9 +1141,14 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         var unchanged = await new MenuDefinitionParser().ParseFileAsync(definitionPath);
         Assert.True(unchanged.Timing.Verified);
 
-        await controller.UpdateMenuTimingProfileAsync(new MenuTimingProfile(225, 750, 400));
+        await controller.UpdateMenuTimingProfileAsync(new MenuTimingProfile(
+            125,
+            600,
+            300,
+            AdjustmentDelayMilliseconds: 60));
         var changed = await new MenuDefinitionParser().ParseFileAsync(definitionPath);
         Assert.False(changed.Timing.Verified);
+        Assert.Equal(60, changed.Timing.AdjustmentDelayMilliseconds);
         Assert.Equal(0, controller.GetMenuAuthoringSnapshot().TimingValidationPasses);
     }
 

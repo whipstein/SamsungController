@@ -22,6 +22,7 @@ timing:
   defaultDelay: 300ms
   screenChangeDelay: 800ms
   returnDelay: 300ms
+  adjustmentDelay: 75ms
   verified: true
 
 # Nest every menu's on-screen rows under children in their TV display order.

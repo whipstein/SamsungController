@@ -803,7 +803,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .timing-profile-layout { display: grid; grid-template-columns: minmax(190px, .8fr) minmax(360px, 1.4fr) auto; gap: 18px; align-items: end; }
 .timing-profile-layout > div > strong { display: block; font-size: 12px; }
 .timing-profile-layout > div > p { margin: 6px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
-.timing-profile-fields { display: grid; grid-template-columns: repeat(3, minmax(105px, 1fr)); gap: 9px; }
+.timing-profile-fields { display: grid; grid-template-columns: repeat(4, minmax(95px, 1fr)); gap: 9px; }
 .timing-profile-fields label > span { font-size: 8px; }
 .timing-profile-fields input { padding: 10px 35px 10px 10px; font-size: 10px; }
 .authoring-section-toggle .timing-profile-state { margin-left: auto; padding: 4px 7px; border: 1px solid; border-radius: 999px; font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; white-space: nowrap; }

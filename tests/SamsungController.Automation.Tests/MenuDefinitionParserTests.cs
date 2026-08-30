@@ -143,6 +143,7 @@ public sealed class MenuDefinitionParserTests
               defaultDelay: 175ms
               screenChangeDelay: 650ms
               returnDelay: 325ms
+              adjustmentDelay: 60ms
               verified: true
             nodes:
               - id: normal-video
@@ -151,7 +152,14 @@ public sealed class MenuDefinitionParserTests
 
         var definition = new MenuDefinitionParser().Parse(yaml);
 
-        Assert.Equal(new MenuTimingProfile(175, 650, 325, true), definition.Timing);
+        Assert.Equal(
+            new MenuTimingProfile(
+                175,
+                650,
+                325,
+                true,
+                AdjustmentDelayMilliseconds: 60),
+            definition.Timing);
     }
 
     [Fact]
@@ -171,6 +179,8 @@ public sealed class MenuDefinitionParserTests
         var definition = new MenuDefinitionParser().Parse(yaml);
 
         Assert.Equal(new MenuTimingProfile(150, 800, 300, true), definition.Timing);
+        Assert.Equal(75, definition.Timing.GetDelay("KEY_LEFT").TotalMilliseconds);
+        Assert.Equal(75, definition.Timing.GetDelay("KEY_RIGHT").TotalMilliseconds);
     }
 
     [Fact]
@@ -191,6 +201,7 @@ public sealed class MenuDefinitionParserTests
         Assert.Equal(300, definition.Timing.DefaultDelayMilliseconds);
         Assert.Equal(800, definition.Timing.ScreenChangeDelayMilliseconds);
         Assert.Equal(300, definition.Timing.ReturnDelayMilliseconds);
+        Assert.Equal(75, definition.Timing.AdjustmentDelayMilliseconds);
         Assert.True(definition.Timing.Verified);
 
         var normalVideo = definition.GetRequiredAnchor("normal-video");

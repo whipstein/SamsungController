@@ -65,8 +65,8 @@ public static class MenuDefinitionVerificationPlanner
             "timing",
             MenuVerificationCheckKind.Timing,
             "System-wide command timing",
-            "Verify the default, screen-change, and return waits against the display.",
-            $"{definition.Timing.DefaultDelayMilliseconds}|{definition.Timing.ScreenChangeDelayMilliseconds}|{definition.Timing.ReturnDelayMilliseconds}",
+            "Verify the Up/Down, Left/Right adjustment, screen-change, and Return waits against the display.",
+            $"{definition.Timing.DefaultDelayMilliseconds}|{definition.Timing.ScreenChangeDelayMilliseconds}|{definition.Timing.ReturnDelayMilliseconds}|{definition.Timing.AdjustmentDelayMilliseconds}",
             existingEvidenceReady: definition.Timing.Verified);
 
         foreach (var anchor in definition.Anchors.Values
@@ -288,7 +288,7 @@ public static class MenuDefinitionVerificationPlanner
             MenuVerificationCheckKind.CalculatedNavigation,
             "Calculated cross-branch navigation",
             $"The test first prepares {DescribeVisualPosition(definition, representative.SourceNodeId)} It then navigates directly without returning to normal video. Expected finish: {DescribeVisualPosition(definition, representative.TargetNodeId)}",
-            $"calculated-backtracking-v1|{representative.AnchorId}|{representative.SourceNodeId}|{representative.TargetNodeId}|{Operations(representative.Operations)}|{definition.Timing.DefaultDelayMilliseconds}|{definition.Timing.ScreenChangeDelayMilliseconds}|{definition.Timing.ReturnDelayMilliseconds}",
+            $"calculated-backtracking-v1|{representative.AnchorId}|{representative.SourceNodeId}|{representative.TargetNodeId}|{Operations(representative.Operations)}|{definition.Timing.DefaultDelayMilliseconds}|{definition.Timing.ScreenChangeDelayMilliseconds}|{definition.Timing.ReturnDelayMilliseconds}{AdjustmentTimingShape(representative.Operations, definition.Timing)}",
             representative.TargetNodeId,
             configurationId: representative.ConfigurationId,
             sourceNodeId: representative.SourceNodeId,
@@ -678,6 +678,14 @@ public static class MenuDefinitionVerificationPlanner
             operation.Action,
             operation.Repeat.ToString(CultureInfo.InvariantCulture),
             operation.DelayAfter?.TotalMilliseconds.ToString("0.###", CultureInfo.InvariantCulture) ?? "system")));
+
+    private static string AdjustmentTimingShape(
+        IEnumerable<MenuOperation> operations,
+        MenuTimingProfile timing) => operations.Any(operation =>
+            operation.Key.Equals("KEY_LEFT", StringComparison.OrdinalIgnoreCase)
+            || operation.Key.Equals("KEY_RIGHT", StringComparison.OrdinalIgnoreCase))
+        ? $"|adjustment:{timing.AdjustmentDelayMilliseconds}"
+        : string.Empty;
 
     private static string Fingerprint(string content) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content))).ToLowerInvariant();

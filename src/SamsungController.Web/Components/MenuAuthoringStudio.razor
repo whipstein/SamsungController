@@ -880,7 +880,7 @@
                 </div>
                 <div class="timing-profile-fields">
                     <label>
-                        <span>Default / D-pad</span>
+                        <span>Navigation / other (Up / Down)</span>
                         <div class="number-with-unit"><input type="number" min="50" max="30000" step="50" @bind="DefaultDelayMilliseconds" @bind:after="MarkTimingProfileDirty" disabled="@(Authoring.IsRecording || Navigation.IsRunning)" /><b>ms</b></div>
                     </label>
                     <label>
@@ -890,6 +890,10 @@
                     <label>
                         <span>Return</span>
                         <div class="number-with-unit"><input type="number" min="50" max="30000" step="50" @bind="ReturnDelayMilliseconds" @bind:after="MarkTimingProfileDirty" disabled="@(Authoring.IsRecording || Navigation.IsRunning)" /><b>ms</b></div>
+                    </label>
+                    <label>
+                        <span>Value adjustment (Left / Right)</span>
+                        <div class="number-with-unit"><input type="number" min="50" max="30000" step="25" @bind="AdjustmentDelayMilliseconds" @bind:after="MarkTimingProfileDirty" disabled="@(Authoring.IsRecording || Navigation.IsRunning)" /><b>ms</b></div>
                     </label>
                 </div>
                 <div class="timing-profile-actions">
@@ -921,7 +925,7 @@
             }
             else
             {
-                <p class="field-note">Place the TV at the selected traversal's source first. The test saves these values and sends only that traversal, using system waits and no setup commands. Screen change covers Menu, OK, Home, Exit, and Source.</p>
+                <p class="field-note">Place the TV at the selected traversal's source first. The test saves these values and sends only that traversal, using system waits and no setup commands. Screen change covers Menu, OK, Home, Exit, and Source; value adjustment covers Left and Right.</p>
             }
 
             @if (Authoring.AwaitingTimingValidationConfirmation)
@@ -1194,6 +1198,7 @@
     private int DefaultDelayMilliseconds { get; set; } = 150;
     private int ScreenChangeDelayMilliseconds { get; set; } = 500;
     private int ReturnDelayMilliseconds { get; set; } = 300;
+    private int AdjustmentDelayMilliseconds { get; set; } = 75;
     private string SelectedTimingTestRouteId { get; set; } = string.Empty;
     private string AtMenuRootScript { get; set; } = "KEY_RETURN";
     private string BelowMenuRootScript { get; set; } = "KEY_MENU, KEY_RETURN";
@@ -1604,7 +1609,8 @@
     private bool CanRunCoverageValidation => CanRunValidation && AnchorReturnBehaviorVerified;
     private bool TimingProfileValid => IsValidWait(DefaultDelayMilliseconds)
         && IsValidWait(ScreenChangeDelayMilliseconds)
-        && IsValidWait(ReturnDelayMilliseconds);
+        && IsValidWait(ReturnDelayMilliseconds)
+        && IsValidWait(AdjustmentDelayMilliseconds);
     private bool TimingOverridesValid => TimingSteps.All(step =>
         !step.UseCustomDelay || IsValidWait(step.DelayAfterMilliseconds));
     private bool CanSaveSystemTiming => TimingProfileValid && !IsBusy && !Authoring.IsRecording
@@ -3072,6 +3078,7 @@
             DefaultDelayMilliseconds = authoring.Timing.DefaultDelayMilliseconds;
             ScreenChangeDelayMilliseconds = authoring.Timing.ScreenChangeDelayMilliseconds;
             ReturnDelayMilliseconds = authoring.Timing.ReturnDelayMilliseconds;
+            AdjustmentDelayMilliseconds = authoring.Timing.AdjustmentDelayMilliseconds;
             TimingProfileInitialized = true;
         }
 
@@ -3207,7 +3214,8 @@
     private MenuTimingProfile CreateTimingProfile() => new(
         DefaultDelayMilliseconds,
         ScreenChangeDelayMilliseconds,
-        ReturnDelayMilliseconds);
+        ReturnDelayMilliseconds,
+        AdjustmentDelayMilliseconds: AdjustmentDelayMilliseconds);
 
     private int GetSystemDelayMilliseconds(string key) => checked((int)
         CreateTimingProfile().GetDelay(key).TotalMilliseconds);

@@ -34,14 +34,16 @@ public sealed record MenuTimingProfile(
     int DefaultDelayMilliseconds = 150,
     int ScreenChangeDelayMilliseconds = 800,
     int ReturnDelayMilliseconds = 300,
-    bool Verified = true)
+    bool Verified = true,
+    int AdjustmentDelayMilliseconds = 75)
 {
     public bool HasSameDelays(MenuTimingProfile other)
     {
         ArgumentNullException.ThrowIfNull(other);
         return DefaultDelayMilliseconds == other.DefaultDelayMilliseconds
                && ScreenChangeDelayMilliseconds == other.ScreenChangeDelayMilliseconds
-               && ReturnDelayMilliseconds == other.ReturnDelayMilliseconds;
+               && ReturnDelayMilliseconds == other.ReturnDelayMilliseconds
+               && AdjustmentDelayMilliseconds == other.AdjustmentDelayMilliseconds;
     }
 
     public TimeSpan GetDelay(string key)
@@ -52,6 +54,7 @@ public sealed record MenuTimingProfile(
             "KEY_MENU" or "KEY_ENTER" or "KEY_HOME" or "KEY_EXIT" or "KEY_SOURCE" =>
                 ScreenChangeDelayMilliseconds,
             "KEY_RETURN" => ReturnDelayMilliseconds,
+            "KEY_LEFT" or "KEY_RIGHT" => AdjustmentDelayMilliseconds,
             _ => DefaultDelayMilliseconds
         };
         return TimeSpan.FromMilliseconds(milliseconds);

@@ -85,6 +85,7 @@ timing:
   defaultDelay: 300ms
   screenChangeDelay: 800ms
   returnDelay: 300ms
+  adjustmentDelay: 75ms
   verified: true
 
 nodes:
@@ -290,8 +291,9 @@ Supported key-step fields are:
 ```
 
 The `timing` profile is system-wide for the menu definition. `defaultDelay`
-applies to D-pad and custom keys, `screenChangeDelay` applies to Menu, OK,
-Home, Exit, and Source, and `returnDelay` applies to Return. A step-level
+applies to Up/Down and custom keys, `adjustmentDelay` applies to Left/Right
+value changes, `screenChangeDelay` applies to Menu, OK, Home, Exit, and Source,
+and `returnDelay` applies to Return. A step-level
 `delay` is an explicit per-button override. `verified` records whether the
 current three global values passed the system profile's independent three-run
 visual test. Changing any global value clears it.

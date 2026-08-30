@@ -98,7 +98,16 @@ public sealed class MenuNavigatorTests
             "TV",
             new MenuDefinitionContext(),
             [new MenuNode("normal", "Normal"), new MenuNode("settings", "Settings")],
-            [new MenuTransition("open", "normal", "settings", [new MenuOperation("KEY_MENU")], true)],
+            [new MenuTransition(
+                "open",
+                "normal",
+                "settings",
+                [
+                    new MenuOperation("KEY_MENU"),
+                    new MenuOperation("KEY_RIGHT"),
+                    new MenuOperation("KEY_DOWN")
+                ],
+                true)],
             [new MenuAnchor("normal", "Normal", "normal", [new MenuOperation("KEY_RETURN", Repeat: 2)], true)],
             new MenuTimingProfile(125, 650, 325));
         var tracker = new MenuStateTracker(definition);
@@ -109,7 +118,13 @@ public sealed class MenuNavigatorTests
         await navigator.ExecutePlanAsync(navigator.Plan("settings"));
 
         Assert.Equal(
-            [TimeSpan.FromMilliseconds(325), TimeSpan.FromMilliseconds(325), TimeSpan.FromMilliseconds(650)],
+            [
+                TimeSpan.FromMilliseconds(325),
+                TimeSpan.FromMilliseconds(325),
+                TimeSpan.FromMilliseconds(650),
+                TimeSpan.FromMilliseconds(75),
+                TimeSpan.FromMilliseconds(125)
+            ],
             delay.Delays);
     }
 

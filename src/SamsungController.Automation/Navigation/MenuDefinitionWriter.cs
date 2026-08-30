@@ -39,6 +39,7 @@ public sealed class MenuDefinitionWriter
         AppendDuration(yaml, 2, "defaultDelay", definition.Timing.DefaultDelayMilliseconds);
         AppendDuration(yaml, 2, "screenChangeDelay", definition.Timing.ScreenChangeDelayMilliseconds);
         AppendDuration(yaml, 2, "returnDelay", definition.Timing.ReturnDelayMilliseconds);
+        AppendDuration(yaml, 2, "adjustmentDelay", definition.Timing.AdjustmentDelayMilliseconds);
         AppendBoolean(yaml, 2, "verified", definition.Timing.Verified);
         yaml.AppendLine();
         yaml.AppendLine("nodes:");
@@ -98,11 +99,11 @@ public sealed class MenuDefinitionWriter
     public string Serialize(
         MenuDefinition definition,
         MenuDefinitionFileFormat format) => format switch
-    {
-        MenuDefinitionFileFormat.Yaml => Serialize(definition),
-        MenuDefinitionFileFormat.Json => new MenuDefinitionJsonSerializer().Serialize(definition),
-        _ => throw new ArgumentOutOfRangeException(nameof(format), format, null)
-    };
+        {
+            MenuDefinitionFileFormat.Yaml => Serialize(definition),
+            MenuDefinitionFileFormat.Json => new MenuDefinitionJsonSerializer().Serialize(definition),
+            _ => throw new ArgumentOutOfRangeException(nameof(format), format, null)
+        };
 
     private static string FormatControlType(MenuControlType controlType) => controlType switch
     {
