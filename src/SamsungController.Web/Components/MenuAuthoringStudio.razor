@@ -557,7 +557,7 @@
 
     @if (Navigation.DefinitionName is not null)
     {
-        <div class="menu-anchor-definition setup-step-anchor" @ref="RecordingStepElement">
+        <div class="menu-anchor-definition setup-step-anchor" @ref="AnchorDefinitionStepElement">
             <div class="authoring-section-title"><span>02</span><strong>Define the menu anchor</strong></div>
             <p class="field-note">The anchor joins three facts into one definition: the base menu, how it opens from normal video, and how root versus deeper positions return to normal video.</p>
             @if (AnchorRootCandidates.Count == 0)
@@ -603,7 +603,7 @@
             }
         </div>
 
-        <div class="authoring-workflow-grid">
+        <div class="authoring-workflow-grid setup-step-anchor" @ref="RecordingStepElement">
             <div class="authoring-config">
                 <div class="authoring-section-title"><span>02A</span><strong>Record the anchor entry</strong></div>
                 <div class="recording-configuration-badge">
@@ -1140,6 +1140,7 @@
     private ElementReference TopologyOutlineElement { get; set; }
     private ElementReference TopologyLineNumbersElement { get; set; }
     private ElementReference TopologyIndentGuidesElement { get; set; }
+    private ElementReference AnchorDefinitionStepElement { get; set; }
     private ElementReference RecordingStepElement { get; set; }
     private ElementReference ValidationStepElement { get; set; }
     private MenuSetupStep? PendingSetupScroll { get; set; }
@@ -1663,7 +1664,9 @@
         MenuSetupStep.Profile => DefinitionSetupElement,
         MenuSetupStep.Configuration => ConfigurationStepElement,
         MenuSetupStep.Outline => TopologyStepElement,
-        MenuSetupStep.Record => RecordingStepElement,
+        MenuSetupStep.Record => Authoring.ReturnStrategy is null
+            ? AnchorDefinitionStepElement
+            : RecordingStepElement,
         MenuSetupStep.Verify => ValidationStepElement,
         _ => RecordingStepElement
     };
@@ -2695,6 +2698,16 @@
         Refresh();
         SourceNodeId = "normal-video";
         ExistingTargetId = AnchorMenuRootNodeId;
+        MenuTreeExpanded = false;
+        if (AnchorEntryRecorded)
+        {
+            DraftValidationExpanded = true;
+            PendingSetupScroll = MenuSetupStep.Verify;
+        }
+        else
+        {
+            PendingSetupScroll = MenuSetupStep.Record;
+        }
     });
 
     private Task SaveReturnScriptsAsync() => RunBusyAsync(async () =>
