@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "id": "example-samsung-display",
+  "name": "Example Samsung Display",
+  "connection": {
+    "host": null,
+    "secure": true,
+    "port": null,
+    "allowUntrustedCertificate": true
+  },
+  "defaultMenu": "s95f-sdr",
+  "menus": [
+    {
+      "id": "s95f-sdr",
+      "definitionId": "s95f-1296-sdr",
+      "source": "installation",
+      "path": null,
+      "configurationId": "default"
+    }
+  ]
+}

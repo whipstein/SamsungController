@@ -159,7 +159,8 @@ current page without sending anything to the TV.
 
 1. Fully power on the TV and leave it on normal video.
 2. Open **Connection**.
-3. Enter a friendly display name and the TV's IPv4 address.
+3. Select a saved **Display definition**, or choose **Manual / not linked** and
+   enter a friendly display name and the TV's IPv4 address.
 4. Choose a **Menu structure** matching the TV model and firmware if one is
    available. The final label shows whether each copy comes from **User data**,
    the source **Repository**, or the application **Installation**; the selected
@@ -171,10 +172,13 @@ current page without sending anything to the TV.
 5. Choose the **Menu configuration** that matches the rows currently visible on
    the TV. A configuration may represent a particular input, signal type,
    picture mode, or option-dependent layout.
-6. Leave **Secure WebSocket** and **Accept TV certificate** enabled. Leave the
+6. For a manual display, select **Save display** to retain its connection,
+   selected menu, and menu configuration. Updating that display after choosing
+   another menu adds a linked context; it does not reset Display Verification.
+7. Leave **Secure WebSocket** and **Accept TV certificate** enabled. Leave the
    port blank to use the normal secure port, 8002.
-7. Select **Connect to display**.
-8. Watch the TV and select **Allow** when its device-connection dialog appears.
+8. Select **Connect to display**.
+9. Watch the TV and select **Allow** when its device-connection dialog appears.
 
 The authorization dialog can take several seconds. SamsungController stores a
 host-specific token after approval, so normal reconnects do not ask again.

@@ -147,7 +147,7 @@ Status was reconciled with the repository on 2026-08-30. A checked box means the
 - [ ] Discover compatible Samsung TVs automatically on the local network while preserving manual IP entry.
 - [ ] Evaluate reliable, read-only ways to identify the active application, input/source, picture mode, and power state.
 - [ ] Feed trustworthy device state into navigation context without presenting inference as TV-reported fact.
-- [ ] Support multiple saved TV profiles without conflating their tokens, menu definitions, or timing profiles.
+- [x] Support multiple saved display definitions with host-keyed tokens and references to independent user/repository/installation menu and timing profiles, without changing display-verification identity.
 
 ### Macro management
 

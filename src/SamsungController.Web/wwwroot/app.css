@@ -159,6 +159,22 @@ label > span { display: block; color: var(--muted); font-size: 12px; margin-bott
 input, select, textarea { width: 100%; border: 1px solid var(--line-strong); border-radius: 6px; color: var(--ink); background: #08131b; padding: 12px 13px; outline: none; }
 input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65); box-shadow: 0 0 0 3px rgba(124,231,220,.07); }
 .connection-options { margin: 24px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.display-definition-picker { display: grid; gap: 10px; margin: -8px 0 18px; padding: 13px; border: 1px solid rgba(145,178,255,.25); border-radius: 7px; background: rgba(145,178,255,.04); }
+.display-definition-controls { display: grid; grid-template-columns: 1fr; align-items: end; gap: 9px; }
+.display-definition-controls label > span { display: block; margin-bottom: 5px; color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.display-definition-controls select, .display-definition-controls input { min-width: 0; padding: 9px 10px; }
+.display-definition-controls .secondary-action { min-height: 35px; padding: 8px 10px; white-space: nowrap; }
+.display-menu-reference-selector { display: block; padding-top: 2px; }
+.display-menu-reference-selector > span { margin-bottom: 5px; color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.display-menu-reference-selector select { padding: 9px 10px; }
+.display-definition-picker > p { margin: 0; color: var(--muted); font-size: 8px; line-height: 1.45; }
+.display-definition-replacement { margin-top: 2px; }
+.display-definition-save { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 9px; margin: -10px 0 24px; padding: 13px; border: 1px solid rgba(145,178,255,.25); border-radius: 7px; background: rgba(145,178,255,.04); }
+.display-definition-save label > span { display: block; margin-bottom: 5px; color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.display-definition-save input { min-width: 0; padding: 9px 10px; }
+.display-definition-save > .secondary-action { min-height: 35px; padding: 8px 10px; white-space: nowrap; }
+.display-definition-save > p, .display-definition-save > .definition-replacement-confirmation { grid-column: 1 / -1; }
+.display-definition-save > p { margin: 0; color: var(--muted); font-size: 8px; line-height: 1.45; }
 .connection-menu-profile { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(150px, .6fr); gap: 11px; margin: -8px 0 24px; padding: 13px; border: 1px solid rgba(124,231,220,.22); border-radius: 7px; background: rgba(124,231,220,.035); }
 .connection-menu-profile-heading { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .connection-menu-profile-heading span { color: var(--cyan); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .1em; }
@@ -1238,6 +1254,11 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .state-orb { margin-top: 28px; width: 105px; height: 105px; }
     .page-heading-actions .state-orb { margin-top: 0; }
     .dashboard-grid, .field-grid { grid-template-columns: 1fr; }
+    .display-definition-controls { grid-template-columns: 1fr; }
+    .display-definition-controls .secondary-action { width: 100%; }
+    .display-definition-save { grid-template-columns: 1fr; }
+    .display-definition-save > .secondary-action { width: 100%; }
+    .display-definition-save > p, .display-definition-save > .definition-replacement-confirmation { grid-column: auto; }
     .connection-menu-profile { grid-template-columns: 1fr; }
     .connection-menu-profile-heading, .connection-menu-profile > p { grid-column: auto; }
     .connection-menu-profile-heading { align-items: flex-start; flex-direction: column; }

@@ -10,6 +10,7 @@ The web interface is the recommended way to use the application. A command-line 
 - First-use TV authorization with host-specific token storage
 - Remote keys using `Click`, `Press`, and `Release` actions
 - Browser-edited YAML macros with variables, nested calls, explicit waits, progress, and three-pass visual verification
+- Saved display definitions that bind connection settings to one or more reusable menu definitions without changing verification
 - Distributable YAML/JSON menu structures with local display-verification sidecars and a guided menu-map builder
 - Compact menu-wide controls, fixed 20 Point/Custom Color grids, named current-TV states, portable target-calibration files, and cancellable batch updates
 - Persistent quick-access buttons and an expected-current-menu indicator
@@ -136,11 +137,12 @@ The server listens only on the local computer by default. That is intentional: t
 ### Connect for the first time
 
 1. Open **Connection**.
-2. Enter a display name and the TV's IP address.
+2. Select a saved **Display definition**, or leave **Manual / not linked** selected and enter a display name and the TV's IP address.
 3. Choose a detected **Menu structure**, then choose the **Menu configuration** matching the rows currently visible on the TV. The dropdown scans user data, the repository catalog, and the installation catalog for valid YAML and JSON structures. Copies with the same definition ID remain separately selectable and are labeled **User data**, **Repository**, or **Installation**; the selected copy is also labeled **Active**.
-4. Leave **Secure WebSocket** enabled, **Accept TV certificate** enabled, and the port empty for the normal secure port 8002.
-5. Select **Connect to display**.
-6. Watch the TV and choose **Allow** when its authorization prompt appears.
+4. For a manual display, select **Save display** to bind the connection and selected menu/configuration for later one-step selection. Updating the same display with another menu adds another linked context without changing validation.
+5. Leave **Secure WebSocket** enabled, **Accept TV certificate** enabled, and the port empty for the normal secure port 8002.
+6. Select **Connect to display**.
+7. Watch the TV and choose **Allow** when its authorization prompt appears.
 
 The TV may take several seconds to show the prompt. When pairing succeeds, SamsungController stores the token for that TV address and reuses it on later connections. The saved address also enables the persistent **Connect**/**Disconnect** button at the top of every page.
 
@@ -430,6 +432,7 @@ Important contents include:
 | `settings.json` | Remembered host, connection options, macro/menu paths, quick access, named current-TV states, and UI preferences. |
 | `tokens.json` | Host-specific Samsung authorization tokens. Keep private. |
 | `macros.yaml` | Default user macro catalog, if you create it. |
+| `display-definitions/` | Saved display/connection profiles and their menu-definition references. |
 | `menu-definitions/` | Active and draft YAML or JSON menu definitions created by the UI. |
 | `menu-verifications/` | Local display-bound verification sidecars keyed by menu-structure ID. |
 | `sessions/*.ndjson` | Complete timestamped protocol messages for connected sessions. Keep private. |
@@ -441,6 +444,12 @@ directory. Select an **Installation** structure before deleting a duplicate
 **User data** override. If an installed structure is later edited in Build &
 Verify, SamsungController preserves the installed base and creates an override
 in user data using the same YAML or JSON format.
+
+Display definitions are separate from menu structures. They may reference
+user-data, repository, installation, or custom menu definitions and can group
+multiple SDR/HDR/input/layout contexts for one physical display. Selecting a
+display restores its default menu; the linked-menu selector switches among its
+other saved contexts. See [Display definitions](docs/display-definitions.md).
 
 Every YAML or JSON file found in those catalogs appears on Connection. A file
 that cannot be parsed or validated is disabled in the selector, labeled

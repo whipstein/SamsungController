@@ -47,6 +47,13 @@ SamsungController.Web
   actions. Razor components call that service and contain no Samsung protocol
   construction logic.
 
+Display definitions are web/application profiles above the navigation model.
+They contain connection defaults and source-aware references to one or more
+menu-definition IDs/configurations. Selecting one resolves the existing menu
+file and then uses the normal menu loader. It does not copy verification data or
+change the verification key, which remains menu-definition ID plus model,
+firmware, signal, picture mode, and input/source.
+
 The macro automation, web interface, and data-driven menu-navigation layer are
 model-independent. Real-TV verification data remains local unless it is
 deliberately sanitized and published as a separate compatibility profile.

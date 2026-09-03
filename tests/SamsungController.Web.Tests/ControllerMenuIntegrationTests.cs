@@ -120,6 +120,208 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task DisplayDefinitionResolvesUserMenuAndPreservesVerificationIdentity()
+    {
+        Directory.CreateDirectory(_directory);
+        var menuDirectory = Path.Combine(_directory, "menu-definitions");
+        Directory.CreateDirectory(menuDirectory);
+        var menuPath = Path.Combine(menuDirectory, "test.yaml");
+        await File.WriteAllTextAsync(menuPath, ValidMenuYaml);
+        await WriteSettingsAsync(menuPath);
+        var displayDirectory = Path.Combine(_directory, "display-definitions");
+        Directory.CreateDirectory(displayDirectory);
+        var displayPath = Path.Combine(displayDirectory, "living-room.display.json");
+        await File.WriteAllTextAsync(
+            displayPath,
+            """
+            {
+              "version": 1,
+              "id": "living-room",
+              "name": "Living Room TV",
+              "connection": {
+                "host": "192.0.2.25",
+                "secure": true,
+                "port": null,
+                "allowUntrustedCertificate": true
+              },
+              "defaultMenu": "default",
+              "menus": [
+                {
+                  "id": "default",
+                  "definitionId": "test",
+                  "source": "userData",
+                  "path": null,
+                  "configurationId": null
+                }
+              ]
+            }
+            """);
+        await using var controller = CreateController();
+
+        await controller.InitializeAsync();
+        var verificationBefore = controller.GetMenuDefinitionVerificationSnapshot();
+        var definitions = await controller.DiscoverDisplayDefinitionsAsync();
+        var discovered = Assert.Single(definitions, item => item.Path == displayPath);
+
+        Assert.True(discovered.IsValid);
+        Assert.Equal(menuPath, discovered.ResolvedMenuDefinitionPath);
+        await controller.SetDisplayDefinitionAsync(displayPath);
+
+        var snapshot = controller.GetSnapshot();
+        var verificationAfter = controller.GetMenuDefinitionVerificationSnapshot();
+        Assert.Equal("Living Room TV", snapshot.DisplayName);
+        Assert.Equal("192.0.2.25", snapshot.Host);
+        Assert.Equal(displayPath, snapshot.DisplayDefinitionPath);
+        Assert.Equal("Test Menu", controller.GetMenuNavigationSnapshot().DefinitionName);
+        Assert.Equal(verificationBefore.CurrentDisplay, verificationAfter.CurrentDisplay);
+        Assert.Equal(verificationBefore.RequiredCount, verificationAfter.RequiredCount);
+        Assert.Equal(verificationBefore.VerifiedCount, verificationAfter.VerifiedCount);
+        Assert.True(Assert.Single(
+            await controller.DiscoverDisplayDefinitionsAsync(),
+            item => item.Path == displayPath).IsActive);
+    }
+
+    [Fact]
+    public async Task SavesCurrentDisplayAsUserDefinitionReferencingUserMenu()
+    {
+        Directory.CreateDirectory(_directory);
+        var menuDirectory = Path.Combine(_directory, "menu-definitions");
+        Directory.CreateDirectory(menuDirectory);
+        var menuPath = Path.Combine(menuDirectory, "test.yaml");
+        await File.WriteAllTextAsync(menuPath, ValidMenuYaml);
+        await WriteSettingsAsync(menuPath);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+        var request = new DisplayDefinitionEditRequest(
+            "office-tv",
+            "Office TV",
+            "192.0.2.30",
+            true,
+            null,
+            true,
+            menuPath,
+            "test",
+            null);
+
+        var path = await controller.SaveDisplayDefinitionAsync(request);
+
+        var saved = await new DisplayDefinitionStore().LoadAsync(path);
+        Assert.Equal("office-tv", saved.Id);
+        var menu = Assert.Single(saved.Menus);
+        Assert.Equal("test", menu.DefinitionId);
+        Assert.Equal(DisplayMenuDefinitionSource.UserData, menu.Source);
+        Assert.False(Path.IsPathRooted(menu.Path));
+        var snapshot = controller.GetSnapshot();
+        Assert.Equal(path, snapshot.DisplayDefinitionPath);
+        Assert.Equal("Office TV", snapshot.DisplayName);
+        Assert.Equal("192.0.2.30", snapshot.Host);
+    }
+
+    [Fact]
+    public async Task UpdatingDisplayDefinitionAddsCurrentMenuWithoutRemovingExistingLinks()
+    {
+        Directory.CreateDirectory(_directory);
+        var menuDirectory = Path.Combine(_directory, "menu-definitions");
+        Directory.CreateDirectory(menuDirectory);
+        var defaultMenuPath = Path.Combine(menuDirectory, "test.yaml");
+        var alternateMenuPath = Path.Combine(menuDirectory, "alternate.yaml");
+        await File.WriteAllTextAsync(defaultMenuPath, ValidMenuYaml);
+        await File.WriteAllTextAsync(
+            alternateMenuPath,
+            ValidMenuYaml
+                .Replace("id: test", "id: alternate", StringComparison.Ordinal)
+                .Replace("name: Test Menu", "name: Alternate Menu", StringComparison.Ordinal));
+        await WriteSettingsAsync(defaultMenuPath);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+
+        var firstRequest = new DisplayDefinitionEditRequest(
+            "living-room",
+            "Living Room",
+            "192.0.2.31",
+            true,
+            null,
+            true,
+            defaultMenuPath,
+            "test",
+            null);
+        var path = await controller.SaveDisplayDefinitionAsync(firstRequest);
+        await controller.SetMenuDefinitionAsync(alternateMenuPath);
+        var secondRequest = firstRequest with
+        {
+            MenuDefinitionPath = alternateMenuPath,
+            MenuDefinitionId = "alternate"
+        };
+
+        await controller.SaveDisplayDefinitionAsync(secondRequest);
+
+        var saved = await new DisplayDefinitionStore().LoadAsync(path);
+        Assert.Equal(2, saved.Menus.Count);
+        Assert.Contains(saved.Menus, menu => menu.DefinitionId == "test");
+        var alternate = Assert.Single(
+            saved.Menus,
+            menu => menu.DefinitionId == "alternate");
+        Assert.Equal(alternate.Id, saved.DefaultMenu);
+    }
+
+    [Fact]
+    public async Task DisplayDefinitionSwitchesBetweenMultipleLinkedMenus()
+    {
+        Directory.CreateDirectory(_directory);
+        var menuDirectory = Path.Combine(_directory, "menu-definitions");
+        Directory.CreateDirectory(menuDirectory);
+        var defaultMenuPath = Path.Combine(menuDirectory, "test.yaml");
+        var alternateMenuPath = Path.Combine(menuDirectory, "alternate.yaml");
+        await File.WriteAllTextAsync(defaultMenuPath, ValidMenuYaml);
+        await File.WriteAllTextAsync(
+            alternateMenuPath,
+            ValidMenuYaml
+                .Replace("id: test", "id: alternate", StringComparison.Ordinal)
+                .Replace("name: Test Menu", "name: Alternate Menu", StringComparison.Ordinal));
+        await WriteSettingsAsync(defaultMenuPath);
+        var displayDirectory = Path.Combine(_directory, "display-definitions");
+        Directory.CreateDirectory(displayDirectory);
+        var displayPath = Path.Combine(displayDirectory, "multi-menu.display.json");
+        await File.WriteAllTextAsync(
+            displayPath,
+            """
+            {
+              "version": 1,
+              "id": "multi-menu",
+              "name": "Multi-menu TV",
+              "connection": { "host": "192.0.2.40" },
+              "defaultMenu": "normal",
+              "menus": [
+                {
+                  "id": "normal",
+                  "definitionId": "test",
+                  "source": "userData"
+                },
+                {
+                  "id": "alternate",
+                  "definitionId": "alternate",
+                  "source": "userData"
+                }
+              ]
+            }
+            """);
+        await using var controller = CreateController();
+
+        await controller.InitializeAsync();
+        await controller.SetDisplayDefinitionAsync(displayPath);
+        var discovered = Assert.Single(
+            await controller.DiscoverDisplayDefinitionsAsync(),
+            item => item.Path == displayPath);
+        Assert.Equal(2, discovered.Menus.Count);
+        Assert.Equal("Test Menu", controller.GetMenuNavigationSnapshot().DefinitionName);
+
+        await controller.SetDisplayMenuReferenceAsync(displayPath, "alternate");
+
+        Assert.Equal("Alternate Menu", controller.GetMenuNavigationSnapshot().DefinitionName);
+        Assert.Equal(displayPath, controller.GetSnapshot().DisplayDefinitionPath);
+    }
+
+    [Fact]
     public async Task EditingInstalledMenuCreatesAUserDataOverride()
     {
         Directory.CreateDirectory(_directory);

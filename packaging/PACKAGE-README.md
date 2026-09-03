@@ -41,9 +41,10 @@ Choose `linux-x64` for most Intel/AMD PCs or `linux-arm64` for an Arm64/aarch64 
 ## First connection
 
 1. Make sure the computer and Samsung TV are on the same trusted local network.
-2. Enter the TV's IPv4 address on the Connection page.
-3. Keep Secure WebSocket and Accept TV certificate enabled under normal conditions.
-4. Select Connect and choose Allow on the TV when prompted.
+2. Select a saved display definition, or enter the TV's IPv4 address manually on the Connection page.
+3. Choose the matching menu definition/configuration and select Save display if you want to restore this combination with one selection later.
+4. Keep Secure WebSocket and Accept TV certificate enabled under normal conditions.
+5. Select Connect and choose Allow on the TV when prompted.
 
 The launcher and server bind only to this computer. Closing the launcher window or pressing Ctrl+C stops the server. TV settings, tokens, macros, menu definitions, and logs remain in the normal per-user configuration directory when the package is replaced with a newer version.
 

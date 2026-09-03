@@ -46,6 +46,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private readonly List<MacroExecutionProgress> _macroProgress = [];
     private readonly List<DeviceInfoObservation> _deviceInfoObservations = [];
     private readonly MenuTraversalRecorder _menuRecorder = new();
+    private readonly DisplayDefinitionStore _displayDefinitionStore = new();
     private readonly Dictionary<string, int> _menuValidationPasses = new(
         StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _menuControlValues = new(
@@ -230,7 +231,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 Volatile.Read(ref _navigationRunning) == 1,
                 menuState?.Path,
                 menuLabel,
-                menuState?.Confidence ?? MenuStateConfidence.Unknown);
+                menuState?.Confidence ?? MenuStateConfidence.Unknown,
+                _settings.DisplayDefinitionPath);
         }
     }
 
@@ -1620,6 +1622,342 @@ public sealed class SamsungControllerService : IAsyncDisposable
             string path,
             CancellationToken cancellationToken = default) =>
         new MenuDefinitionSchemaInspector().InspectPathAsync(path, cancellationToken);
+
+    public async Task<IReadOnlyList<DisplayDefinitionCatalogEntry>>
+        DiscoverDisplayDefinitionsAsync(
+            CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        var settings = GetSettings();
+        var activePath = settings.DisplayDefinitionPath;
+        var candidates = new Dictionary<string, DisplayDefinitionCandidate>(
+            StringComparer.OrdinalIgnoreCase);
+        var userDirectory = Path.Combine(_configurationDirectory, "display-definitions");
+        var repositoryDirectory = Path.Combine(
+            Directory.GetCurrentDirectory(),
+            "display-definitions");
+        var installedDirectory = Path.Combine(
+            AppContext.BaseDirectory,
+            "display-definitions");
+        AddDisplayDefinitionDirectory(candidates, userDirectory, "User data", 1);
+        if (!PathsEqual(repositoryDirectory, installedDirectory))
+        {
+            AddDisplayDefinitionDirectory(candidates, repositoryDirectory, "Repository", 2);
+        }
+
+        AddDisplayDefinitionDirectory(candidates, installedDirectory, "Installation", 3);
+        AddDisplayDefinitionCandidate(candidates, activePath, "Custom file", 0);
+
+        var menuDefinitions = await DiscoverMenuDefinitionsAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var discovered = new List<(DisplayDefinitionCatalogEntry Entry, int Priority)>();
+        foreach (var candidate in candidates.Values)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var definition = await _displayDefinitionStore
+                    .LoadAsync(candidate.Path, cancellationToken)
+                    .ConfigureAwait(false);
+                var resolved = await ResolveDisplayDefinitionAsync(
+                        candidate.Path,
+                        definition,
+                        menuDefinitions,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                var activeMenu = resolved.ActiveMenu;
+                discovered.Add((
+                    new DisplayDefinitionCatalogEntry(
+                        candidate.Path,
+                        definition.Id,
+                        definition.Name,
+                        definition.Connection.Host,
+                        activeMenu.Reference.DefinitionId,
+                        activeMenu.CatalogEntry.Name,
+                        activeMenu.CatalogEntry.Path,
+                        activeMenu.ConfigurationId,
+                        activeMenu.Reference.Id,
+                        resolved.Menus.Select(menu => new DisplayMenuReferenceSummary(
+                                menu.Reference.Id,
+                                menu.Reference.DefinitionId,
+                                menu.CatalogEntry.Name,
+                                menu.CatalogEntry.Path,
+                                menu.ConfigurationId,
+                                menu.Reference.Id.Equals(
+                                    activeMenu.Reference.Id,
+                                    StringComparison.OrdinalIgnoreCase)))
+                            .ToArray(),
+                        candidate.Location,
+                        activePath is not null && PathsEqual(candidate.Path, activePath)),
+                    candidate.Priority));
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                discovered.Add((
+                    new DisplayDefinitionCatalogEntry(
+                        candidate.Path,
+                        Path.GetFileNameWithoutExtension(
+                            Path.GetFileNameWithoutExtension(candidate.Path)),
+                        Path.GetFileName(candidate.Path),
+                        null,
+                        "Unavailable",
+                        null,
+                        null,
+                        null,
+                        null,
+                        [],
+                        candidate.Location,
+                        activePath is not null && PathsEqual(candidate.Path, activePath),
+                        IsValid: false,
+                        Error: exception.Message),
+                    candidate.Priority));
+            }
+        }
+
+        return discovered
+            .OrderByDescending(entry => entry.Entry.IsActive)
+            .ThenBy(entry => entry.Entry.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(entry => entry.Priority)
+            .ThenBy(entry => entry.Entry.Path, StringComparer.OrdinalIgnoreCase)
+            .Select(entry => entry.Entry)
+            .ToArray();
+    }
+
+    public DisplayDefinitionSavePreview PreviewDisplayDefinitionSave(
+        DisplayDefinitionEditRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var id = DisplayDefinitionStore.CreateIdentifier(
+            string.IsNullOrWhiteSpace(request.Id) ? request.Name : request.Id);
+        var path = Path.Combine(
+            _configurationDirectory,
+            "display-definitions",
+            $"{id}.display.json");
+        var activePath = GetSettings().DisplayDefinitionPath;
+        return new DisplayDefinitionSavePreview(
+            id,
+            path,
+            File.Exists(path),
+            activePath is not null && PathsEqual(path, activePath));
+    }
+
+    public async Task<string> SaveDisplayDefinitionAsync(
+        DisplayDefinitionEditRequest request,
+        bool replaceExisting = false,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("save a display definition");
+        EnsureNoMenuRecording("save a display definition");
+        var preview = PreviewDisplayDefinitionSave(request);
+        if (preview.FileExists && !preview.IsActiveUserDefinition && !replaceExisting)
+        {
+            throw new IOException(
+                $"A user display definition already exists at '{preview.Path}'. Confirm replacement or choose a different display ID.");
+        }
+
+        var menuPath = Path.GetFullPath(request.MenuDefinitionPath);
+        var menuInspection = await new MenuDefinitionSchemaInspector()
+            .InspectFileAsync(menuPath, cancellationToken)
+            .ConfigureAwait(false);
+        if (!menuInspection.IsValid)
+        {
+            throw new InvalidOperationException(
+                "The selected menu definition is invalid:" + Environment.NewLine
+                + string.Join(Environment.NewLine, menuInspection.Diagnostics));
+        }
+
+        if (!menuInspection.Id!.Equals(
+                request.MenuDefinitionId,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"The selected menu file contains definition ID '{menuInspection.Id}', not '{request.MenuDefinitionId}'.");
+        }
+
+        var menuTopology = await LoadMenuTopologyForDisplayReferenceAsync(
+                menuPath,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(request.MenuConfigurationId)
+            && !menuTopology.Configurations.ContainsKey(request.MenuConfigurationId))
+        {
+            throw new InvalidOperationException(
+                $"Menu configuration '{request.MenuConfigurationId}' does not exist in '{menuTopology.Name}'.");
+        }
+
+        var source = ClassifyMenuDefinitionSource(menuPath);
+        var referencePath = source switch
+        {
+            DisplayMenuDefinitionSource.UserData => Path.GetRelativePath(
+                Path.GetDirectoryName(preview.Path)!,
+                menuPath),
+            DisplayMenuDefinitionSource.CustomFile => menuPath,
+            _ => null
+        };
+        DisplayDefinitionDocument? existingDefinition = null;
+        var selectedDisplayPath = GetSettings().DisplayDefinitionPath;
+        if (!string.IsNullOrWhiteSpace(selectedDisplayPath)
+            && File.Exists(selectedDisplayPath))
+        {
+            var selectedDefinition = await _displayDefinitionStore
+                .LoadAsync(selectedDisplayPath, cancellationToken)
+                .ConfigureAwait(false);
+            if (selectedDefinition.Id.Equals(preview.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                existingDefinition = selectedDefinition;
+            }
+        }
+
+        if (existingDefinition is null && File.Exists(preview.Path))
+        {
+            existingDefinition = await _displayDefinitionStore
+                .LoadAsync(preview.Path, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        var menus = CreateUpdatedDisplayMenuReferences(
+            existingDefinition?.Menus ?? [],
+            menuInspection.Id,
+            source,
+            referencePath,
+            request.MenuConfigurationId,
+            out var activeMenuReferenceId);
+        var document = new DisplayDefinitionDocument
+        {
+            Id = preview.Id,
+            Name = string.IsNullOrWhiteSpace(request.Name)
+                ? preview.Id
+                : request.Name.Trim(),
+            Connection = new DisplayConnectionDefinition
+            {
+                Host = string.IsNullOrWhiteSpace(request.Host) ? null : request.Host.Trim(),
+                Secure = request.Secure,
+                Port = request.Port,
+                AllowUntrustedCertificate = request.AllowUntrustedCertificate
+            },
+            Menus = menus,
+            DefaultMenu = activeMenuReferenceId
+        };
+        await _displayDefinitionStore.SaveAsync(
+                preview.Path,
+                document,
+                cancellationToken)
+            .ConfigureAwait(false);
+        await UpdateSettingsAsync(
+                current => current with
+                {
+                    DisplayDefinitionPath = preview.Path,
+                    Name = document.Name,
+                    Host = document.Connection.Host ?? current.Host,
+                    Secure = document.Connection.Secure,
+                    Port = document.Connection.Port,
+                    AllowUntrustedCertificate = document.Connection.AllowUntrustedCertificate
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+        var settings = GetSettings();
+        var hasToken = settings.Host is not null
+                       && await _tokenStore.LoadAsync(settings.Host, cancellationToken)
+                           .ConfigureAwait(false) is not null;
+        lock (_sync)
+        {
+            _hasToken = hasToken;
+        }
+
+        NotifyChanged();
+        return preview.Path;
+    }
+
+    public async Task SetDisplayDefinitionAsync(
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("change the display definition");
+        EnsureNoMenuRecording("change the display definition");
+        if (ConnectionStatePresentation.CanDisconnect(_client.State))
+        {
+            throw new InvalidOperationException(
+                "Disconnect from the current TV before changing display definitions.");
+        }
+
+        var fullPath = Path.GetFullPath(path.Trim());
+        var definition = await _displayDefinitionStore
+            .LoadAsync(fullPath, cancellationToken)
+            .ConfigureAwait(false);
+        var menuDefinitions = await DiscoverMenuDefinitionsAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var resolved = await ResolveDisplayDefinitionAsync(
+                fullPath,
+                definition,
+                menuDefinitions,
+                cancellationToken)
+            .ConfigureAwait(false);
+        await ApplyResolvedDisplayDefinitionAsync(
+                fullPath,
+                definition,
+                resolved.ActiveMenu,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task SetDisplayMenuReferenceAsync(
+        string displayDefinitionPath,
+        string menuReferenceId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayDefinitionPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(menuReferenceId);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("change the display's menu reference");
+        EnsureNoMenuRecording("change the display's menu reference");
+        var fullPath = Path.GetFullPath(displayDefinitionPath.Trim());
+        var activeDisplayPath = GetSettings().DisplayDefinitionPath;
+        if (ConnectionStatePresentation.CanDisconnect(_client.State)
+            && (string.IsNullOrWhiteSpace(activeDisplayPath)
+                || !PathsEqual(activeDisplayPath, fullPath)))
+        {
+            throw new InvalidOperationException(
+                "Disconnect from the current TV before selecting a menu belonging to another display definition.");
+        }
+
+        var definition = await _displayDefinitionStore
+            .LoadAsync(fullPath, cancellationToken)
+            .ConfigureAwait(false);
+        var menuDefinitions = await DiscoverMenuDefinitionsAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var resolved = await ResolveDisplayDefinitionAsync(
+                fullPath,
+                definition,
+                menuDefinitions,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var menu = resolved.Menus.FirstOrDefault(item => item.Reference.Id.Equals(
+                       menuReferenceId.Trim(),
+                       StringComparison.OrdinalIgnoreCase))
+                   ?? throw new InvalidOperationException(
+                       $"Display menu reference '{menuReferenceId.Trim()}' does not exist.");
+        await ApplyResolvedDisplayDefinitionAsync(
+                fullPath,
+                definition,
+                menu,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task ClearDisplayDefinitionSelectionAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        await UpdateSettingsAsync(
+                current => current with { DisplayDefinitionPath = null },
+                cancellationToken)
+            .ConfigureAwait(false);
+        NotifyChanged();
+    }
 
     public async Task<string> ExportMenuStructureAsync(
         string path,
@@ -8414,6 +8752,267 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private string GetMenuDefinitionPath(SamsungWebSettings settings) =>
         Path.GetFullPath(settings.MenuDefinitionPath ?? _defaultMenuDefinitionPath);
 
+    private async Task<ResolvedDisplayDefinition> ResolveDisplayDefinitionAsync(
+        string displayDefinitionPath,
+        DisplayDefinitionDocument definition,
+        IReadOnlyList<MenuDefinitionCatalogEntry> menuDefinitions,
+        CancellationToken cancellationToken)
+    {
+        var resolvedMenus = new List<ResolvedDisplayMenuReference>(definition.Menus.Count);
+        foreach (var reference in definition.Menus)
+        {
+            resolvedMenus.Add(await ResolveDisplayMenuReferenceAsync(
+                    displayDefinitionPath,
+                    reference,
+                    menuDefinitions,
+                    cancellationToken)
+                .ConfigureAwait(false));
+        }
+
+        var defaultMenuId = string.IsNullOrWhiteSpace(definition.DefaultMenu)
+            ? definition.Menus[0].Id
+            : definition.DefaultMenu;
+        var activeMenu = resolvedMenus.First(menu => menu.Reference.Id.Equals(
+            defaultMenuId,
+            StringComparison.OrdinalIgnoreCase));
+        return new ResolvedDisplayDefinition(resolvedMenus, activeMenu);
+    }
+
+    private async Task ApplyResolvedDisplayDefinitionAsync(
+        string displayDefinitionPath,
+        DisplayDefinitionDocument definition,
+        ResolvedDisplayMenuReference menu,
+        CancellationToken cancellationToken)
+    {
+        await SetMenuDefinitionAsync(menu.CatalogEntry.Path, cancellationToken)
+            .ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(menu.ConfigurationId))
+        {
+            await SetMenuConfigurationAsync(menu.ConfigurationId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        await UpdateSettingsAsync(
+                current => current with
+                {
+                    DisplayDefinitionPath = displayDefinitionPath,
+                    Name = definition.Name,
+                    Host = definition.Connection.Host ?? current.Host,
+                    Secure = definition.Connection.Secure,
+                    Port = definition.Connection.Port,
+                    AllowUntrustedCertificate = definition.Connection.AllowUntrustedCertificate
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+        var settings = GetSettings();
+        var hasToken = settings.Host is not null
+                       && await _tokenStore.LoadAsync(settings.Host, cancellationToken)
+                           .ConfigureAwait(false) is not null;
+        lock (_sync)
+        {
+            _hasToken = hasToken;
+        }
+
+        NotifyChanged();
+    }
+
+    private async Task<ResolvedDisplayMenuReference> ResolveDisplayMenuReferenceAsync(
+        string displayDefinitionPath,
+        DisplayMenuDefinitionReference reference,
+        IReadOnlyList<MenuDefinitionCatalogEntry> menuDefinitions,
+        CancellationToken cancellationToken)
+    {
+        MenuDefinitionCatalogEntry? catalogEntry;
+        if (!string.IsNullOrWhiteSpace(reference.Path))
+        {
+            var referencedPath = Path.IsPathRooted(reference.Path)
+                ? Path.GetFullPath(reference.Path)
+                : Path.GetFullPath(
+                    Path.Combine(
+                        Path.GetDirectoryName(displayDefinitionPath)!,
+                        reference.Path));
+            var inspection = await new MenuDefinitionSchemaInspector()
+                .InspectFileAsync(referencedPath, cancellationToken)
+                .ConfigureAwait(false);
+            if (!inspection.IsValid)
+            {
+                throw new InvalidOperationException(
+                    $"Referenced menu file '{referencedPath}' is invalid:" + Environment.NewLine
+                    + string.Join(Environment.NewLine, inspection.Diagnostics));
+            }
+
+            if (!inspection.Id!.Equals(
+                    reference.DefinitionId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"Referenced menu file '{referencedPath}' contains definition ID '{inspection.Id}', not '{reference.DefinitionId}'.");
+            }
+
+            catalogEntry = menuDefinitions.FirstOrDefault(item => PathsEqual(
+                item.Path,
+                referencedPath));
+            catalogEntry ??= new MenuDefinitionCatalogEntry(
+                referencedPath,
+                inspection.Id,
+                inspection.Name!,
+                inspection.Model!,
+                inspection.Context!,
+                "Custom file",
+                false);
+        }
+        else
+        {
+            var matches = menuDefinitions
+                .Where(item => item.IsValid
+                               && item.Id.Equals(
+                                   reference.DefinitionId,
+                                   StringComparison.OrdinalIgnoreCase))
+                .Where(item => reference.Source == DisplayMenuDefinitionSource.Any
+                               || ClassifyMenuDefinitionSource(item.Path) == reference.Source)
+                .OrderBy(item => GetDisplayMenuSourcePriority(
+                    ClassifyMenuDefinitionSource(item.Path)))
+                .ThenByDescending(item => item.IsActive)
+                .ThenBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            catalogEntry = matches.FirstOrDefault();
+            if (catalogEntry is null)
+            {
+                var source = reference.Source == DisplayMenuDefinitionSource.Any
+                    ? "any menu-definition catalog"
+                    : FormatDisplayMenuSource(reference.Source);
+                throw new InvalidOperationException(
+                    $"Menu definition '{reference.DefinitionId}' was not found in {source}. Add it to menu-definitions or correct the display reference.");
+            }
+        }
+
+        var topology = await LoadMenuTopologyForDisplayReferenceAsync(
+                catalogEntry.Path,
+                cancellationToken)
+            .ConfigureAwait(false);
+        string? configurationId = null;
+        if (!string.IsNullOrWhiteSpace(reference.ConfigurationId))
+        {
+            configurationId = topology.Configurations.TryGetValue(
+                reference.ConfigurationId,
+                out var configuration)
+                ? configuration.Id
+                : throw new InvalidOperationException(
+                    $"Menu configuration '{reference.ConfigurationId}' does not exist in referenced menu definition '{topology.Id}'.");
+        }
+        else
+        {
+            configurationId = topology.Configurations.Values.FirstOrDefault()?.Id;
+        }
+
+        return new ResolvedDisplayMenuReference(reference, catalogEntry, configurationId);
+    }
+
+    private static IReadOnlyList<DisplayMenuDefinitionReference>
+        CreateUpdatedDisplayMenuReferences(
+            IReadOnlyList<DisplayMenuDefinitionReference> existing,
+            string definitionId,
+            DisplayMenuDefinitionSource source,
+            string? path,
+            string? configurationId,
+            out string activeReferenceId)
+    {
+        var normalizedConfigurationId = string.IsNullOrWhiteSpace(configurationId)
+            ? null
+            : configurationId.Trim();
+        var matching = existing.FirstOrDefault(item =>
+            item.DefinitionId.Equals(definitionId, StringComparison.OrdinalIgnoreCase)
+            && item.Source == source
+            && string.Equals(item.Path, path, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(
+                item.ConfigurationId,
+                normalizedConfigurationId,
+                StringComparison.OrdinalIgnoreCase));
+        if (matching is not null)
+        {
+            activeReferenceId = matching.Id;
+            return existing.ToArray();
+        }
+
+        var baseId = DisplayDefinitionStore.CreateIdentifier(
+            $"{definitionId}-{normalizedConfigurationId ?? "default"}");
+        var usedIds = existing
+            .Select(item => item.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        activeReferenceId = baseId;
+        for (var suffix = 2; usedIds.Contains(activeReferenceId); suffix++)
+        {
+            activeReferenceId = $"{baseId}-{suffix}";
+        }
+
+        return existing.Append(new DisplayMenuDefinitionReference
+        {
+            Id = activeReferenceId,
+            DefinitionId = definitionId,
+            Source = source,
+            Path = path,
+            ConfigurationId = normalizedConfigurationId
+        }).ToArray();
+    }
+
+    private static async Task<MenuDefinition> LoadMenuTopologyForDisplayReferenceAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        var parsed = await new MenuDefinitionParser()
+            .ParseFileAsync(path, cancellationToken)
+            .ConfigureAwait(false);
+        var topology = TopologyRouteGenerator.Regenerate(parsed);
+        new MenuDefinitionValidator().ValidateAndThrow(topology);
+        return topology;
+    }
+
+    private DisplayMenuDefinitionSource ClassifyMenuDefinitionSource(string path)
+    {
+        if (IsPathInsideDirectory(
+                path,
+                Path.Combine(_configurationDirectory, "menu-definitions")))
+        {
+            return DisplayMenuDefinitionSource.UserData;
+        }
+
+        var repositoryDirectory = Path.Combine(
+            Directory.GetCurrentDirectory(),
+            "menu-definitions");
+        var installedDirectory = Path.Combine(
+            AppContext.BaseDirectory,
+            "menu-definitions");
+        if (!PathsEqual(repositoryDirectory, installedDirectory)
+            && IsPathInsideDirectory(path, repositoryDirectory))
+        {
+            return DisplayMenuDefinitionSource.Repository;
+        }
+
+        return IsPathInsideDirectory(path, installedDirectory)
+            ? DisplayMenuDefinitionSource.Installation
+            : DisplayMenuDefinitionSource.CustomFile;
+    }
+
+    private static int GetDisplayMenuSourcePriority(
+        DisplayMenuDefinitionSource source) => source switch
+        {
+            DisplayMenuDefinitionSource.UserData => 0,
+            DisplayMenuDefinitionSource.Repository => 1,
+            DisplayMenuDefinitionSource.Installation => 2,
+            DisplayMenuDefinitionSource.CustomFile => 3,
+            _ => 4
+        };
+
+    private static string FormatDisplayMenuSource(
+        DisplayMenuDefinitionSource source) => source switch
+        {
+            DisplayMenuDefinitionSource.UserData => "the user-data menu catalog",
+            DisplayMenuDefinitionSource.Repository => "the repository menu catalog",
+            DisplayMenuDefinitionSource.Installation => "the installation menu catalog",
+            DisplayMenuDefinitionSource.CustomFile => "a custom menu file",
+            _ => "any menu-definition catalog"
+        };
+
     private static void AddMenuDefinitionDirectory(
         IDictionary<string, MenuDefinitionCandidate> candidates,
         string directory,
@@ -8462,6 +9061,53 @@ public sealed class SamsungControllerService : IAsyncDisposable
         if (priority < existing.Priority)
         {
             candidates[fullPath] = existing with { Priority = priority };
+        }
+    }
+
+    private static void AddDisplayDefinitionDirectory(
+        IDictionary<string, DisplayDefinitionCandidate> candidates,
+        string directory,
+        string location,
+        int priority)
+    {
+        if (!Directory.Exists(directory))
+        {
+            return;
+        }
+
+        foreach (var path in Directory.EnumerateFiles(
+                     directory,
+                     "*.display.json",
+                     SearchOption.AllDirectories))
+        {
+            AddDisplayDefinitionCandidate(candidates, path, location, priority);
+        }
+    }
+
+    private static void AddDisplayDefinitionCandidate(
+        IDictionary<string, DisplayDefinitionCandidate> candidates,
+        string? path,
+        string location,
+        int priority)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        var fullPath = Path.GetFullPath(path);
+        if (!File.Exists(fullPath)
+            || !fullPath.EndsWith(".display.json", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (!candidates.ContainsKey(fullPath))
+        {
+            candidates[fullPath] = new DisplayDefinitionCandidate(
+                fullPath,
+                location,
+                priority);
         }
     }
 
@@ -9193,6 +9839,20 @@ public sealed class SamsungControllerService : IAsyncDisposable
         string Path,
         string Location,
         int Priority);
+
+    private sealed record DisplayDefinitionCandidate(
+        string Path,
+        string Location,
+        int Priority);
+
+    private sealed record ResolvedDisplayMenuReference(
+        DisplayMenuDefinitionReference Reference,
+        MenuDefinitionCatalogEntry CatalogEntry,
+        string? ConfigurationId);
+
+    private sealed record ResolvedDisplayDefinition(
+        IReadOnlyList<ResolvedDisplayMenuReference> Menus,
+        ResolvedDisplayMenuReference ActiveMenu);
 
     private sealed record MenuValidationSession(
         MenuAuthoringItemKind Kind,

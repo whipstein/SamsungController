@@ -37,6 +37,8 @@ internal sealed record SamsungWebSettings
 
     public string? MenuConfigurationId { get; init; }
 
+    public string? DisplayDefinitionPath { get; init; }
+
     public string? SliderVerificationHost { get; init; }
 
     public IReadOnlyList<string>? VerifiedSliderNodeIds { get; init; }

@@ -39,7 +39,49 @@ public sealed record ControllerSnapshot(
     bool NavigationRunning,
     string? MenuPath,
     string? MenuLabel,
-    MenuStateConfidence MenuConfidence);
+    MenuStateConfidence MenuConfidence,
+    string? DisplayDefinitionPath = null);
+
+public sealed record DisplayDefinitionCatalogEntry(
+    string Path,
+    string Id,
+    string Name,
+    string? Host,
+    string MenuDefinitionId,
+    string? MenuDefinitionName,
+    string? ResolvedMenuDefinitionPath,
+    string? MenuConfigurationId,
+    string? DefaultMenuReferenceId,
+    IReadOnlyList<DisplayMenuReferenceSummary> Menus,
+    string Location,
+    bool IsActive,
+    bool IsValid = true,
+    string? Error = null);
+
+public sealed record DisplayMenuReferenceSummary(
+    string Id,
+    string MenuDefinitionId,
+    string MenuDefinitionName,
+    string ResolvedMenuDefinitionPath,
+    string? MenuConfigurationId,
+    bool IsDefault);
+
+public sealed record DisplayDefinitionEditRequest(
+    string Id,
+    string Name,
+    string? Host,
+    bool Secure,
+    int? Port,
+    bool AllowUntrustedCertificate,
+    string MenuDefinitionPath,
+    string MenuDefinitionId,
+    string? MenuConfigurationId);
+
+public sealed record DisplayDefinitionSavePreview(
+    string Id,
+    string Path,
+    bool FileExists,
+    bool IsActiveUserDefinition);
 
 public enum QuickAccessActionKind
 {

@@ -13,7 +13,7 @@
     <div class="page-heading-actions">
         <HelpBubble Title="Connect SamsungController to your TV" ButtonText="Page help">
             <ol>
-                <li>Enter a friendly display name and the TV's current IPv4 address.</li>
+                <li>Select a saved display definition, or enter a friendly display name and the TV's current IPv4 address.</li>
                 <li>Keep <strong>Secure WebSocket</strong> and <strong>Accept TV certificate</strong> enabled for the usual port 8002 connection.</li>
                 <li>Select <strong>Connect to display</strong>, then choose <strong>Allow</strong> on the TV when prompted.</li>
                 <li>After the first approval, the saved host and token are reused by the web UI and CLI.</li>
@@ -45,12 +45,65 @@ else if (Snapshot.ConnectionState == SamsungConnectionState.Warming)
 }
 else if (!string.IsNullOrWhiteSpace(LocalStatus))
 {
-    <div class="notice" role="status"><strong>Menu profile</strong><span>@LocalStatus</span></div>
+    <div class="notice" role="status"><strong>Display / menu profile</strong><span>@LocalStatus</span></div>
 }
 
 <section class="dashboard-grid">
     <div class="panel connection-panel">
         <div class="panel-label"><span>TV PROFILE</span><span>01</span></div>
+        <div class="display-definition-picker">
+            <div class="connection-menu-profile-heading">
+                <span>DISPLAY DEFINITION</span>
+                <small>Select once to restore the display, connection, menu, and layout together</small>
+            </div>
+            <div class="display-definition-controls">
+                <label>
+                    <span>Saved display</span>
+                    <select value="@Snapshot.DisplayDefinitionPath"
+                            @onchange="ChangeDisplayDefinitionAsync"
+                            disabled="@DisplayDefinitionSelectionDisabled"
+                            aria-label="Display definition">
+                        <option value="">Manual / not linked</option>
+                        @foreach (var definition in DisplayDefinitions)
+                        {
+                            <option value="@definition.Path" disabled="@(!definition.IsValid)">@FormatDisplayDefinition(definition)</option>
+                        }
+                    </select>
+                </label>
+            </div>
+            @if (ActiveDisplayDefinition is { } activeDisplay)
+            {
+                <label class="display-menu-reference-selector">
+                    <span>Menu linked to this display</span>
+                    <select value="@SelectedDisplayMenuReferenceId"
+                            @onchange="ChangeDisplayMenuReferenceAsync"
+                            disabled="@MenuProfileControlDisabled">
+                        @if (string.IsNullOrWhiteSpace(SelectedDisplayMenuReferenceId))
+                        {
+                            <option value="">Current menu is not linked yet — save the display to add it</option>
+                        }
+                        @foreach (var menu in activeDisplay.Menus)
+                        {
+                            <option value="@menu.Id">@FormatDisplayMenuReference(menu)</option>
+                        }
+                    </select>
+                </label>
+            }
+            <p>Selecting a display restores its connection and default menu context. You can still choose or add another linked menu below.</p>
+            @if (InvalidDisplayDefinitions.Count > 0)
+            {
+                <div class="menu-definition-file-errors" role="alert">
+                    <strong>Display definitions needing attention</strong>
+                    @foreach (var definition in InvalidDisplayDefinitions)
+                    {
+                        <div>
+                            <code>@Path.GetFileName(definition.Path) · @definition.Location</code>
+                            <span>@definition.Error</span>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
         <div class="field-grid">
             <label>
                 <span>Display name</span>
@@ -68,7 +121,7 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
         </div>
         <div class="connection-menu-profile">
             <div class="connection-menu-profile-heading">
-                <span>MENU / DISPLAY PROFILE</span>
+                <span>MENU DEFINITION</span>
                 <small>Detected from user data, the repository, and the installation</small>
             </div>
             <label>
@@ -120,6 +173,30 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
                         </div>
                     }
                     <a href="menu/build">Open Build &amp; Verify →</a>
+                </div>
+            }
+        </div>
+        <div class="display-definition-save">
+            <label>
+                <span>Display ID</span>
+                <input @bind="DisplayDefinitionId" placeholder="Generated from display name" disabled="@MenuProfileControlDisabled" />
+            </label>
+            <button class="secondary-action" type="button" @onclick="SaveDisplayDefinitionAsync" disabled="@(MenuProfileControlDisabled || Navigation.DefinitionName is null)">
+                @(DisplayDefinitionBusy ? "Saving…" : Snapshot.DisplayDefinitionPath is null ? "Save display" : "Update display")
+            </button>
+            <p>Save the connection and selected menu/configuration together. Existing menu links are retained, and Display Verification is never copied, reset, or altered.</p>
+            @if (PendingDisplayDefinitionReplacement is not null)
+            {
+                <div class="definition-replacement-confirmation display-definition-replacement">
+                    <div>
+                        <span>DISPLAY ID ALREADY EXISTS</span>
+                        <strong>Replace @Path.GetFileName(PendingDisplayDefinitionReplacement.Path)?</strong>
+                        <p>This replaces only the user display definition. It does not modify the referenced menu or any validation records.</p>
+                    </div>
+                    <div>
+                        <button class="secondary-action" type="button" @onclick="CancelDisplayDefinitionReplacement">Cancel</button>
+                        <button class="secondary-action danger-action" type="button" @onclick="ReplaceDisplayDefinitionAsync">Replace display</button>
+                    </div>
                 </div>
             }
         </div>
@@ -192,6 +269,10 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
     private ControllerSnapshot Snapshot { get; set; } = null!;
     private MenuNavigationSnapshot Navigation { get; set; } = null!;
     private IReadOnlyList<MenuDefinitionCatalogEntry> MenuDefinitions { get; set; } = [];
+    private IReadOnlyList<DisplayDefinitionCatalogEntry> DisplayDefinitions { get; set; } = [];
+    private string DisplayDefinitionId { get; set; } = string.Empty;
+    private bool DisplayDefinitionBusy { get; set; }
+    private DisplayDefinitionSavePreview? PendingDisplayDefinitionReplacement { get; set; }
     private string DisplayName { get; set; } = "Samsung TV";
     private string Host { get; set; } = string.Empty;
     private bool Secure { get; set; } = true;
@@ -207,6 +288,18 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
     private string? LocalStatus { get; set; }
     private IReadOnlyList<MenuDefinitionCatalogEntry> InvalidMenuDefinitions =>
         MenuDefinitions.Where(definition => !definition.IsValid).ToArray();
+    private IReadOnlyList<DisplayDefinitionCatalogEntry> InvalidDisplayDefinitions =>
+        DisplayDefinitions.Where(definition => !definition.IsValid).ToArray();
+    private DisplayDefinitionCatalogEntry? ActiveDisplayDefinition =>
+        DisplayDefinitions.FirstOrDefault(definition => definition.IsActive && definition.IsValid);
+    private string? SelectedDisplayMenuReferenceId => ActiveDisplayDefinition?.Menus
+        .FirstOrDefault(menu => menu.ResolvedMenuDefinitionPath.Equals(
+                                   Navigation.DefinitionPath,
+                                   StringComparison.OrdinalIgnoreCase)
+                               && string.Equals(
+                                   menu.MenuConfigurationId,
+                                   Navigation.ActiveConfigurationId,
+                                   StringComparison.OrdinalIgnoreCase))?.Id;
 
     private string? ErrorMessage => LocalError ?? Snapshot.LastError;
     private bool ReadinessSettingsValid => KeepAliveIntervalSeconds is >= 5 and <= 120
@@ -219,8 +312,11 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
         Snapshot.ConnectionState);
     private bool MenuProfileControlDisabled => IsBusy
         || MenuProfileBusy
+        || DisplayDefinitionBusy
         || Snapshot.MacroRunning
         || Snapshot.NavigationRunning;
+    private bool DisplayDefinitionSelectionDisabled => MenuProfileControlDisabled
+        || CanDisconnect;
     private string ActiveMenuContext => Navigation.Context is null
         ? "No menu/display context loaded."
         : $"{Navigation.Model} · firmware {Navigation.Context.Firmware} · {Navigation.Context.Signal} · {Navigation.Context.PictureMode} · {Navigation.Context.Input}";
@@ -265,6 +361,9 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
         ApplySnapshotToForm(Controller.GetSnapshot());
         Navigation = Controller.GetMenuNavigationSnapshot();
         MenuDefinitions = await Controller.DiscoverMenuDefinitionsAsync();
+        DisplayDefinitions = await Controller.DiscoverDisplayDefinitionsAsync();
+        DisplayDefinitionId = DisplayDefinitions.FirstOrDefault(item => item.IsActive)?.Id
+            ?? string.Empty;
     }
 
     private async Task ConnectAsync()
@@ -328,6 +427,8 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
             await Controller.SetMenuDefinitionAsync(path);
             Navigation = Controller.GetMenuNavigationSnapshot();
             MenuDefinitions = await Controller.DiscoverMenuDefinitionsAsync();
+            DisplayDefinitions = await Controller.DiscoverDisplayDefinitionsAsync();
+            Snapshot = Controller.GetSnapshot();
             LocalStatus = $"Selected {Navigation.DefinitionName}. Choose the configuration matching the TV's visible menu layout.";
         }
         catch (Exception exception)
@@ -355,6 +456,8 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
         {
             await Controller.SetMenuConfigurationAsync(configurationId);
             Navigation = Controller.GetMenuNavigationSnapshot();
+            DisplayDefinitions = await Controller.DiscoverDisplayDefinitionsAsync();
+            Snapshot = Controller.GetSnapshot();
             var selected = Navigation.Configurations.First(configuration => configuration.IsActive);
             LocalStatus = $"Selected menu configuration: {selected.Name}.";
         }
@@ -367,6 +470,166 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
             MenuProfileBusy = false;
         }
     }
+
+    private async Task ChangeDisplayDefinitionAsync(ChangeEventArgs args)
+    {
+        DisplayDefinitionBusy = true;
+        LocalError = null;
+        LocalStatus = null;
+        PendingDisplayDefinitionReplacement = null;
+        try
+        {
+            var path = args.Value?.ToString();
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                await Controller.ClearDisplayDefinitionSelectionAsync();
+                Snapshot = Controller.GetSnapshot();
+                DisplayDefinitions = await Controller.DiscoverDisplayDefinitionsAsync();
+                DisplayDefinitionId = string.Empty;
+                LocalStatus = "Using manual connection and menu selections.";
+                return;
+            }
+
+            await Controller.SetDisplayDefinitionAsync(path);
+            Snapshot = Controller.GetSnapshot();
+            Navigation = Controller.GetMenuNavigationSnapshot();
+            ApplySnapshotToForm(Snapshot);
+            MenuDefinitions = await Controller.DiscoverMenuDefinitionsAsync();
+            DisplayDefinitions = await Controller.DiscoverDisplayDefinitionsAsync();
+            DisplayDefinitionId = DisplayDefinitions.First(item => item.IsActive).Id;
+            LocalStatus = $"Loaded display definition {DisplayName} with {Navigation.DefinitionName}. Existing display verification was preserved.";
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            DisplayDefinitionBusy = false;
+        }
+    }
+
+    private async Task SaveDisplayDefinitionAsync()
+    {
+        LocalError = null;
+        try
+        {
+            var request = CreateDisplayDefinitionEditRequest();
+            var preview = Controller.PreviewDisplayDefinitionSave(request);
+            if (preview.FileExists && !preview.IsActiveUserDefinition)
+            {
+                PendingDisplayDefinitionReplacement = preview;
+                return;
+            }
+
+            await PersistDisplayDefinitionAsync(request, replaceExisting: false);
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+    }
+
+    private async Task ChangeDisplayMenuReferenceAsync(ChangeEventArgs args)
+    {
+        var referenceId = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(referenceId)
+            || ActiveDisplayDefinition is not { } activeDisplay)
+        {
+            return;
+        }
+
+        MenuProfileBusy = true;
+        LocalError = null;
+        LocalStatus = null;
+        try
+        {
+            await Controller.SetDisplayMenuReferenceAsync(
+                activeDisplay.Path,
+                referenceId);
+            Snapshot = Controller.GetSnapshot();
+            Navigation = Controller.GetMenuNavigationSnapshot();
+            MenuDefinitions = await Controller.DiscoverMenuDefinitionsAsync();
+            DisplayDefinitions = await Controller.DiscoverDisplayDefinitionsAsync();
+            LocalStatus = $"Selected {Navigation.DefinitionName} for {DisplayName}. Existing display verification was preserved.";
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            MenuProfileBusy = false;
+        }
+    }
+
+    private async Task ReplaceDisplayDefinitionAsync()
+    {
+        try
+        {
+            await PersistDisplayDefinitionAsync(
+                CreateDisplayDefinitionEditRequest(),
+                replaceExisting: true);
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+    }
+
+    private async Task PersistDisplayDefinitionAsync(
+        DisplayDefinitionEditRequest request,
+        bool replaceExisting)
+    {
+        DisplayDefinitionBusy = true;
+        LocalError = null;
+        LocalStatus = null;
+        try
+        {
+            var path = await Controller.SaveDisplayDefinitionAsync(
+                request,
+                replaceExisting);
+            Snapshot = Controller.GetSnapshot();
+            DisplayDefinitions = await Controller.DiscoverDisplayDefinitionsAsync();
+            DisplayDefinitionId = DisplayDefinitions.First(item => item.Path.Equals(
+                path,
+                StringComparison.OrdinalIgnoreCase)).Id;
+            PendingDisplayDefinitionReplacement = null;
+            LocalStatus = $"Saved display definition {DisplayDefinitionId}. Menu and display validation records were not changed.";
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            DisplayDefinitionBusy = false;
+        }
+    }
+
+    private DisplayDefinitionEditRequest CreateDisplayDefinitionEditRequest()
+    {
+        var selectedMenu = MenuDefinitions.FirstOrDefault(definition =>
+            definition.IsValid
+            && definition.Path.Equals(
+                Navigation.DefinitionPath,
+                StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException(
+                "Load a valid menu definition before saving the display definition.");
+        return new DisplayDefinitionEditRequest(
+            DisplayDefinitionId,
+            DisplayName,
+            Host,
+            Secure,
+            Port,
+            AllowUntrustedCertificate,
+            selectedMenu.Path,
+            selectedMenu.Id,
+            Navigation.ActiveConfigurationId);
+    }
+
+    private void CancelDisplayDefinitionReplacement() =>
+        PendingDisplayDefinitionReplacement = null;
 
     private void HandleControllerChanged()
     {
@@ -386,6 +649,33 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
         }
 
         return $"{definition.Name} · {definition.Model} · firmware {definition.Context.Firmware} · {definition.Context.Signal} · {definition.Context.PictureMode} · {definition.Context.Input} · {location}";
+    }
+
+    private static string FormatDisplayDefinition(DisplayDefinitionCatalogEntry definition)
+    {
+        var location = definition.IsActive
+            ? $"Active / {definition.Location}"
+            : definition.Location;
+        if (!definition.IsValid)
+        {
+            return $"{Path.GetFileName(definition.Path)} · INVALID · {location}";
+        }
+
+        var host = string.IsNullOrWhiteSpace(definition.Host)
+            ? "IP entered separately"
+            : definition.Host;
+        var menuCount = definition.Menus.Count == 1
+            ? definition.MenuDefinitionName
+            : $"{definition.Menus.Count} linked menus";
+        return $"{definition.Name} · {host} · {menuCount} · {location}";
+    }
+
+    private static string FormatDisplayMenuReference(DisplayMenuReferenceSummary menu)
+    {
+        var configuration = string.IsNullOrWhiteSpace(menu.MenuConfigurationId)
+            ? "default layout"
+            : menu.MenuConfigurationId;
+        return $"{menu.MenuDefinitionName} · {configuration}{(menu.IsDefault ? " · default" : string.Empty)}";
     }
 
     private void ApplySnapshotToForm(ControllerSnapshot snapshot)
