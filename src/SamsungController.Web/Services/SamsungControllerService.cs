@@ -595,14 +595,14 @@ public sealed class SamsungControllerService : IAsyncDisposable
         return GetMenuDefinitionVerificationSnapshot();
     }
 
-    public async Task<MenuDefinitionVerificationSnapshot> ReopenMenuDefinitionVerificationCheckAsync(
+    public async Task<MenuDefinitionVerificationSnapshot> RemoveMenuDefinitionVerificationCheckAsync(
         string checkId,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(checkId);
         await InitializeAsync(cancellationToken).ConfigureAwait(false);
-        EnsureNoAutomationRunning("reopen menu-definition verification");
-        EnsureNoMenuRecording("reopen menu-definition verification");
+        EnsureNoAutomationRunning("remove menu-definition verification");
+        EnsureNoMenuRecording("remove menu-definition verification");
         MenuDefinition definition;
         lock (_sync)
         {

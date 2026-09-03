@@ -19,6 +19,7 @@
                 <li>Carry forward routes and controls already verified elsewhere in the app.</li>
                 <li>Use <strong>Run guided test</strong> for each remaining representative behavior. The app opens the right menu and makes a safe, visible adjustment for you.</li>
                 <li>Count or fail the result on that same line. Use the remote only if the TV needs a manual correction.</li>
+                <li>If a result was accepted accidentally, select <strong>Remove validation</strong> on that completed line. Only that local display result is removed.</li>
             </ol>
             <p class="help-callout safe">Equivalent controls and conditional effects are covered by representative behavior classes. Each class is fingerprinted in a local display-verification sidecar, so YAML and JSON structure files remain portable. A relevant structure edit reopens only the affected class.</p>
         </HelpBubble>
@@ -141,7 +142,10 @@
                                     }
                                     @if (!check.AwaitingValidationConfirmation && check.Verified)
                                     {
-                                        <button class="quiet-action" @onclick="() => ReopenAsync(check)" disabled="@IsBusy">Reopen</button>
+                                        <button class="quiet-action danger-action"
+                                                title="Remove this saved result from the local display-verification record"
+                                                @onclick="() => RemoveValidationAsync(check)"
+                                                disabled="@IsBusy">Remove validation</button>
                                     }
                                     else if (!check.AwaitingValidationConfirmation && (check.ExistingEvidenceReady || check.Kind == MenuVerificationCheckKind.Display) && CanConfirm(check))
                                     {
@@ -232,11 +236,11 @@
             : $"Verification recorded for {check.Label}.";
     });
 
-    private async Task ReopenAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
+    private async Task RemoveValidationAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
     {
         PendingVisualTest = null;
-        VerificationState = await Controller.ReopenMenuDefinitionVerificationCheckAsync(check.Id);
-        StatusMessage = $"{check.Label} reopened for another visual check.";
+        VerificationState = await Controller.RemoveMenuDefinitionVerificationCheckAsync(check.Id);
+        StatusMessage = $"Removed the saved display validation for {check.Label}. Other validation results were not changed.";
     });
 
     private async Task OpenOnTvAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>

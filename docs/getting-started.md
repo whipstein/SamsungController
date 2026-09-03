@@ -323,7 +323,9 @@ specific display combination shown at the top.
    exact control. SamsungController makes a small visible change.
 6. Approve only the expected result. The test restores that control and any
    temporary prerequisite values before it exits.
-7. Never validate a reset or destructive confirmation merely to satisfy
+7. If a result was counted accidentally, select **Remove validation** on its
+   completed line. Only that check is removed from the local display record.
+8. Never validate a reset or destructive confirmation merely to satisfy
    coverage; they are excluded from required tests.
 
 Equivalent controls share representative behavior checks. You should not need

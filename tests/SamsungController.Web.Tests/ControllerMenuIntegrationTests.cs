@@ -3498,6 +3498,31 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task RemovingDisplayVerificationClearsOnlyTheSelectedCheck()
+    {
+        var (controller, _) = await CreateConnectedControllerAsync();
+        await using (controller)
+        {
+            var recorded = await controller.ConfirmMenuDefinitionVerificationCheckAsync(
+                "display");
+            Assert.True(recorded.Checks.Single(check => check.Id == "display").Verified);
+            var otherChecksBefore = recorded.Checks
+                .Where(check => check.Id != "display")
+                .ToDictionary(check => check.Id, check => check.Verified);
+
+            var updated = await controller.RemoveMenuDefinitionVerificationCheckAsync(
+                "display");
+
+            Assert.False(updated.Checks.Single(check => check.Id == "display").Verified);
+            Assert.Equal(
+                otherChecksBefore,
+                updated.Checks
+                    .Where(check => check.Id != "display")
+                    .ToDictionary(check => check.Id, check => check.Verified));
+        }
+    }
+
+    [Fact]
     public async Task NavigateBetweenVerifiedDestinationsUsesCalculatedRelativeRoute()
     {
         var allVerifiedYaml = ExplicitValidationMenuYaml.Replace(
