@@ -24,6 +24,30 @@ When a JSON file fails to load, syntax, schema, and validation errors include
 one-based source line and column numbers. Multiple validation problems remain
 on separate lines in the Build & Verify error panel.
 
+## Inspect and debug files
+
+**Build & Verify > Schema inspector** evaluates one file or recursively scans a
+directory without sending any commands to the TV. The report distinguishes
+blocking errors from warnings and shows the parsed identity, model/firmware,
+node count, anchors, explicit seed traversals, topology-generated routes,
+configurations, and file-contained verification evidence. Local verification
+sidecars are not included. Use **Inspect active file** or **Inspect repository
+catalog** as shortcuts; a valid result can be loaded directly from the report.
+
+The packaged and source CLI exposes the same evaluator:
+
+```text
+samsungctl menu validate menu-definitions
+samsungctl menu validate menu-definitions/my-tv.json
+```
+
+The first command checks every YAML/JSON file below the directory. Exit code 0
+means all files are valid; exit code 2 means at least one file is invalid or no
+definition was found. The inspector regenerates topology routes before
+validation, matching the effective menu the application will navigate. A stale
+generated-route warning means the file is still usable and that the stored
+derived routes will be refreshed on load.
+
 ## Start safely
 
 The guided UI is the recommended editor. It preserves generated route metadata,

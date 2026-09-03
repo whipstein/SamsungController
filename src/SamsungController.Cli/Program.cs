@@ -45,6 +45,13 @@ internal static class Program
             return 0;
         }
 
+        if (arguments.Command.Equals("menu", StringComparison.OrdinalIgnoreCase))
+        {
+            return await new MenuSchemaCommandService(Console.WriteLine)
+                .ExecuteAsync(arguments.Positionals, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         var configurationDirectory = Path.GetFullPath(
             arguments.GetOption("--config-dir")
             ?? ApplicationPaths.GetDefaultConfigurationDirectory());
@@ -380,6 +387,7 @@ internal static class Program
               samsungctl key <KEY_NAME> [--action Click|Press|Release] [options]
               samsungctl macro <NAME> [options]
               samsungctl macro list|validate [options]
+              samsungctl menu validate [file-or-directory]
               samsungctl console [--allow-raw] [--no-history] [options]
               samsungctl listen [options]
               samsungctl status [options]
@@ -409,6 +417,8 @@ internal static class Program
               samsungctl key KEY_RIGHT --action Release
               samsungctl macro list
               samsungctl macro TestNavigation
+              samsungctl menu validate menu-definitions
+              samsungctl menu validate menu-definitions/my-tv.json
               samsungctl console
               samsungctl listen
             """);

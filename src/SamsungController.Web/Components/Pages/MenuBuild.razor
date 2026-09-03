@@ -67,6 +67,110 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
     </div>
 </section>
 
+<section class="panel schema-inspector-panel">
+    <div class="panel-label"><span>SCHEMA INSPECTOR</span><span>NO TV COMMANDS ARE SENT</span></div>
+    <div class="schema-inspector-heading">
+        <div>
+            <h2>Evaluate menu files</h2>
+            <p>Check one YAML/JSON file or every definition in a folder using the same parser, route generator, and validator as menu discovery.</p>
+        </div>
+        <HelpBubble Title="Schema inspector" ButtonText="How it works">
+            <p>Select a file to diagnose one definition, or a directory to scan every <code>.yaml</code>, <code>.yml</code>, and <code>.json</code> file below it.</p>
+            <p><strong>Errors</strong> prevent a file from appearing as a usable menu. JSON diagnostics include source line and column when a location can be identified.</p>
+            <p><strong>Warnings</strong> do not prevent loading. They call out generated routes that will be rebuilt and missing anchors or seed traversals.</p>
+            <p><strong>File evidence</strong> counts only verification evidence inside this file. Local display-verification sidecars are intentionally outside the distributable schema and are not included.</p>
+        </HelpBubble>
+    </div>
+    <div class="definition-editor schema-inspector-editor">
+        <label>
+            <span>Menu file or directory</span>
+            <input @bind="SchemaInspectionPath" disabled="@IsInspecting" />
+        </label>
+        <button class="primary-action" @onclick="InspectSchemasAsync" disabled="@(IsInspecting || string.IsNullOrWhiteSpace(SchemaInspectionPath))">@(IsInspecting ? "Inspecting…" : "Inspect")</button>
+    </div>
+    <div class="schema-inspector-shortcuts">
+        <button class="secondary-action" @onclick="InspectActiveSchemaAsync" disabled="@(IsInspecting || string.IsNullOrWhiteSpace(Navigation.DefinitionPath))">Inspect active file</button>
+        <button class="secondary-action" @onclick="InspectRepositoryCatalogAsync" disabled="@IsInspecting">Inspect repository catalog</button>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(SchemaInspectionError))
+    {
+        <div class="notice danger schema-inspector-notice" role="alert"><strong>Inspector could not run</strong><span>@SchemaInspectionError</span></div>
+    }
+    else if (SchemaInspections is not null)
+    {
+        <div class="schema-inspector-summary" role="status">
+            <strong>@SchemaInspections.Count(item => item.IsValid) valid</strong>
+            <span>@SchemaInspections.Count(item => !item.IsValid) invalid · @SchemaInspections.Count total</span>
+        </div>
+        @if (SchemaInspections.Count == 0)
+        {
+            <div class="panel-empty compact-empty">
+                <strong>No menu definitions found</strong>
+                <span>The selected directory contains no YAML or JSON files.</span>
+            </div>
+        }
+        else
+        {
+            <div class="schema-inspection-list">
+                @foreach (var inspection in SchemaInspections)
+                {
+                    <article class="schema-inspection-card @(inspection.IsValid ? inspection.Warnings.Count > 0 ? "warning" : "valid" : "invalid")">
+                        <header>
+                            <div>
+                                <span>@(inspection.IsValid ? "VALID SCHEMA" : "INVALID SCHEMA") · @MenuDefinitionFileFormats.Label(inspection.Format)</span>
+                                <strong>@(inspection.Name ?? Path.GetFileName(inspection.Path))</strong>
+                                <small>@inspection.Path</small>
+                            </div>
+                            @if (inspection.IsValid)
+                            {
+                                <button class="secondary-action" @onclick="() => ActivateInspectedDefinitionAsync(inspection.Path)" disabled="@(Navigation.IsRunning || IsLoading)">Load this definition</button>
+                            }
+                        </header>
+                        @if (inspection.IsValid)
+                        {
+                            <div class="schema-inspection-facts">
+                                <div><span>ID</span><strong>@inspection.Id</strong></div>
+                                <div><span>Model / firmware</span><strong>@inspection.Model · @inspection.Context?.Firmware</strong></div>
+                                <div><span>Nodes</span><strong>@inspection.NodeCount</strong></div>
+                                <div><span>Anchors</span><strong>@inspection.AnchorCount</strong></div>
+                                <div><span>Seed routes</span><strong>@inspection.ExplicitTransitionCount</strong></div>
+                                <div><span>Calculated routes</span><strong>@inspection.GeneratedTransitionCount</strong></div>
+                                <div><span>Configurations</span><strong>@inspection.ConfigurationCount</strong></div>
+                                <div title="Local display-verification sidecars are not included."><span>File evidence</span><strong>@inspection.CurrentVerificationCheckCount / @inspection.VerificationCheckCount</strong></div>
+                            </div>
+                        }
+                        @if (inspection.Diagnostics.Count > 0)
+                        {
+                            <div class="schema-diagnostic-block errors">
+                                <strong>Errors</strong>
+                                <ol>
+                                    @foreach (var diagnostic in inspection.Diagnostics)
+                                    {
+                                        <li>@diagnostic</li>
+                                    }
+                                </ol>
+                            </div>
+                        }
+                        @if (inspection.Warnings.Count > 0)
+                        {
+                            <div class="schema-diagnostic-block warnings">
+                                <strong>Warnings</strong>
+                                <ul>
+                                    @foreach (var warning in inspection.Warnings)
+                                    {
+                                        <li>@warning</li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                    </article>
+                }
+            </div>
+        }
+    }
+</section>
+
 <MenuAuthoringStudio />
 
 @code {
@@ -78,6 +182,10 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
     private bool IsLoading { get; set; }
     private bool IsExporting { get; set; }
     private string StructureExportPath { get; set; } = string.Empty;
+    private string SchemaInspectionPath { get; set; } = string.Empty;
+    private bool IsInspecting { get; set; }
+    private string? SchemaInspectionError { get; set; }
+    private IReadOnlyList<MenuDefinitionSchemaInspection>? SchemaInspections { get; set; }
 
     private string? ErrorMessage => LocalError ?? Navigation.Error;
     private string ContextLabel => Navigation.Context is null
@@ -146,6 +254,46 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
         }
     }
 
+    private async Task InspectSchemasAsync()
+    {
+        IsInspecting = true;
+        SchemaInspectionError = null;
+        try
+        {
+            SchemaInspections = await Controller.InspectMenuDefinitionSchemasAsync(
+                SchemaInspectionPath);
+        }
+        catch (Exception exception)
+        {
+            SchemaInspections = null;
+            SchemaInspectionError = exception.Message;
+        }
+        finally
+        {
+            IsInspecting = false;
+        }
+    }
+
+    private async Task InspectActiveSchemaAsync()
+    {
+        SchemaInspectionPath = Navigation.DefinitionPath;
+        await InspectSchemasAsync();
+    }
+
+    private async Task InspectRepositoryCatalogAsync()
+    {
+        SchemaInspectionPath = Path.Combine(
+            Directory.GetCurrentDirectory(),
+            "menu-definitions");
+        await InspectSchemasAsync();
+    }
+
+    private async Task ActivateInspectedDefinitionAsync(string path)
+    {
+        DefinitionPath = path;
+        await LoadDefinitionAsync();
+    }
+
     private void HandleControllerChanged()
     {
         Refresh();
@@ -170,6 +318,13 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
                 Directory.GetCurrentDirectory(),
                 "menu-definitions",
                 Path.GetFileName(navigation.DefinitionPath));
+        }
+
+        if (string.IsNullOrWhiteSpace(SchemaInspectionPath))
+        {
+            SchemaInspectionPath = Path.Combine(
+                Directory.GetCurrentDirectory(),
+                "menu-definitions");
         }
     }
 

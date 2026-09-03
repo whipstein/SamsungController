@@ -229,6 +229,8 @@ Adding, removing, reordering, or redefining menu items later regenerates the rou
 
 The authoring source is a reusable menu structure. Use **Export & use structure** to write a clean YAML or JSON copy into the repository's tracked `menu-definitions/` catalog and make that copy the active authoring source. Exported files contain topology, controls, conditions, routes, and timing, but no display-verification records or saved TV values. Files placed in that catalog are included in packaged releases.
 
+Use the **Schema inspector** at the top of Build & Verify to troubleshoot a file before loading it. It accepts either one file or a directory, never sends TV commands, and reports each file's validity, format, identity, topology counts, calculated-route count, file-contained verification evidence, warnings, and exact errors. Local verification sidecars are deliberately excluded. The active-file and repository-catalog shortcuts cover the two common checks. A valid result can be loaded directly. JSON errors include line and column where available.
+
 New TV profiles start with an assumed-valid 800 ms screen-change wait and a faster 75 ms Left/Right value-adjustment wait, so you can record the first traversal immediately and apply larger slider changes efficiently. If playback needs adjustment, tune **System-wide timing** for Up/Down navigation, Left/Right adjustment, screen-change, and Return waits, then select a known traversal to test the profile. A draft's **Timing lab** can override the wait after an individual button.
 
 Red menu items have no route in the active configuration; yellow items are covered by a recorded or topology-generated draft; normal-color items are verified. Open **Fine adjustments for individual menu items** for a small rename, insertion, deletion, parent change, TV-order correction, slider-bound change, or to edit ordered selection/submenu-selection/confirmation choices. A choice control's default is selected from its list. Arrow keys navigate this optional editor; the on-row buttons change custom order.
@@ -325,6 +327,17 @@ dotnet run --project src/SamsungController.Cli -- macro ExampleSequence --macro-
 ```
 
 The successfully used absolute macro path is remembered. Before a path has been selected, the default is `macros.yaml` in the per-user configuration directory. Ctrl+C cancels execution.
+
+### Diagnose menu-definition schemas
+
+Schema inspection does not connect to or control the TV. Pass one YAML/JSON file, or a directory to scan every supported file recursively:
+
+```bash
+dotnet run --project src/SamsungController.Cli -- menu validate menu-definitions
+dotnet run --project src/SamsungController.Cli -- menu validate menu-definitions/odyssey-g9.json
+```
+
+With no path, `menu validate` checks `menu-definitions` under the current directory. Each result includes errors, non-blocking warnings, topology and route counts, and file-contained verification evidence; local verification sidecars are not included. The command returns exit code `0` when every file is valid and `2` if a definition is invalid or the directory contains no menu files, so it can also be used in scripts.
 
 ### Interactive console
 

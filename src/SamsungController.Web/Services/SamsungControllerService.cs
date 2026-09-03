@@ -1549,27 +1549,44 @@ public sealed class SamsungControllerService : IAsyncDisposable
         AddMenuDefinitionCandidate(candidates, activePath, "Custom file", 0);
 
         var discovered = new List<(MenuDefinitionCatalogEntry Entry, int Priority)>();
+        var inspector = new MenuDefinitionSchemaInspector();
         foreach (var candidate in candidates.Values)
         {
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                var parsed = await new MenuDefinitionParser()
-                    .ParseFileAsync(candidate.Path, cancellationToken)
+                var inspection = await inspector
+                    .InspectFileAsync(candidate.Path, cancellationToken)
                     .ConfigureAwait(false);
-                var definition = TopologyRouteGenerator.Regenerate(
-                    MigrateLegacyReturnReplacement(NormalizeInitialMenuTiming(parsed)));
-                new MenuDefinitionValidator().ValidateAndThrow(definition);
-                discovered.Add((
-                    new MenuDefinitionCatalogEntry(
-                        candidate.Path,
-                        definition.Id,
-                        definition.Name,
-                        definition.Model,
-                        definition.Context,
-                        candidate.Location,
-                        PathsEqual(candidate.Path, activePath)),
-                    candidate.Priority));
+                if (inspection.IsValid)
+                {
+                    discovered.Add((
+                        new MenuDefinitionCatalogEntry(
+                            candidate.Path,
+                            inspection.Id!,
+                            inspection.Name!,
+                            inspection.Model!,
+                            inspection.Context!,
+                            candidate.Location,
+                            PathsEqual(candidate.Path, activePath)),
+                        candidate.Priority));
+                }
+                else
+                {
+                    var fileName = Path.GetFileName(candidate.Path);
+                    discovered.Add((
+                        new MenuDefinitionCatalogEntry(
+                            candidate.Path,
+                            Path.GetFileNameWithoutExtension(candidate.Path),
+                            fileName,
+                            "Invalid menu definition",
+                            new MenuDefinitionContext(),
+                            candidate.Location,
+                            PathsEqual(candidate.Path, activePath),
+                            IsValid: false,
+                            Error: string.Join(Environment.NewLine, inspection.Diagnostics)),
+                        candidate.Priority));
+                }
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -1597,6 +1614,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
             .Select(entry => entry.Entry)
             .ToArray();
     }
+
+    public Task<IReadOnlyList<MenuDefinitionSchemaInspection>>
+        InspectMenuDefinitionSchemasAsync(
+            string path,
+            CancellationToken cancellationToken = default) =>
+        new MenuDefinitionSchemaInspector().InspectPathAsync(path, cancellationToken);
 
     public async Task<string> ExportMenuStructureAsync(
         string path,

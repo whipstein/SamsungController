@@ -85,6 +85,7 @@ Status was reconciled with the repository on 2026-08-30. A checked box means the
 
 - [x] Create new TV menu profiles entirely from the web UI.
 - [x] Read and write menu definitions as YAML or JSON through one validated schema, default new profiles to YAML, and preserve the selected format on later saves.
+- [x] Inspect one menu file or whole catalogs from the web UI and CLI with shared parsing, calculated-route regeneration, actionable source diagnostics, warnings, counts, and scriptable exit codes.
 - [x] Define, edit, delete, sort, and custom-order the overall menu tree before recording routes.
 - [x] Bulk-create or synchronize a full menu branch from an indented outline with stable-ID reuse and a safe change preview.
 - [x] Describe rows as sub-menus, bounded sliders, selections, submenu selections, indexed selection grids, switches, confirmation dialogs, or non-activated TV functions with the appropriate defaults, ordered choices, and permanent or conditional disabled/gray rules.
