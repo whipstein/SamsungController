@@ -317,8 +317,9 @@ specific display combination shown at the top.
 2. Select **Carry forward existing verified work**. Unchanged, matching evidence
    is reused.
 3. Work through the remaining groups in order.
-4. For a route, use **Prepare start**, **Run test**, then **Count pass** or
-   **Failed** on that same line.
+4. For timing, anchor, return-script, and route checks, use **Prepare start**,
+   **Run test**, then **Count pass** or **Failed** on that same line. If a check
+   belongs to another menu configuration, activate it from that line first.
 5. For a slider, switch, or selection, select **Run guided test** and watch the
    exact control. SamsungController makes a small visible change.
 6. Approve only the expected result. The test restores that control and any

@@ -17,7 +17,8 @@
             <ol>
                 <li>Confirm the physical display and viewing combination shown below.</li>
                 <li>Carry forward routes and controls already verified elsewhere in the app.</li>
-                <li>Use <strong>Run guided test</strong> for each remaining representative behavior. The app opens the right menu and makes a safe, visible adjustment for you.</li>
+                <li>For timing, anchor, return-script, and route checks, use <strong>Prepare start</strong> and <strong>Run test</strong> directly on the listed line.</li>
+                <li>Use <strong>Run guided test</strong> for each remaining representative control behavior. The app opens the right menu and makes a safe, visible adjustment for you.</li>
                 <li>Count or fail the result on that same line. Use the remote only if the TV needs a manual correction.</li>
                 <li>If a result was accepted accidentally, select <strong>Remove validation</strong> on that completed line. Only that local display result is removed.</li>
             </ol>
@@ -83,13 +84,25 @@
                                     <span>@FormatKind(check.Kind)@FormatConfiguration(check)</span>
                                     <strong>@check.Label</strong>
                                     <p>@check.Description</p>
-                                    @if (!check.Verified && check.Kind == MenuVerificationCheckKind.Route)
+                                    @if (!check.Verified && !check.ExistingEvidenceReady && RequiresEvidenceTest(check))
                                     {
-                                        <small class="verification-route-progress">Route validation · @check.ValidationPasses/@check.RequiredValidationPasses passes</small>
+                                        <small class="verification-route-progress">Visual validation · @check.ValidationPasses/@check.RequiredValidationPasses passes</small>
                                     }
-                                    @if (!check.Verified && RequiresBuildVerification(check) && !check.ExistingEvidenceReady)
+                                    @if (!check.Verified && !check.ExistingEvidenceReady && check.Kind == MenuVerificationCheckKind.Timing && Authoring.TimingTestRoutes.Count > 0)
                                     {
-                                        <small class="verification-prerequisite">Needs its 3× visual pass in Build &amp; Verify.</small>
+                                        <label class="verification-inline-route">
+                                            <span>TEST USING</span>
+                                            <select @bind="SelectedTimingTestRouteId" disabled="@IsBusy">
+                                                @foreach (var route in Authoring.TimingTestRoutes)
+                                                {
+                                                    <option value="@route.Id">@route.SourcePath → @route.TargetPath · @route.CommandCount commands</option>
+                                                }
+                                            </select>
+                                        </label>
+                                    }
+                                    @if (!check.Verified && RequiresEvidenceTest(check) && !check.ExistingEvidenceReady)
+                                    {
+                                        <small class="verification-prerequisite">@EvidenceInstruction(check)</small>
                                     }
                                     else if (!check.Verified && check.ExistingEvidenceReady)
                                     {
@@ -116,17 +129,17 @@
                                     }
                                     else if (check.AwaitingValidationConfirmation)
                                     {
-                                        <button class="primary-action" @onclick="() => ConfirmRouteAsync(check, true)" disabled="@IsBusy">Count pass</button>
-                                        <button class="quiet-action" @onclick="() => ConfirmRouteAsync(check, false)" disabled="@IsBusy">Failed</button>
+                                        <button class="primary-action" @onclick="() => ConfirmEvidenceTestAsync(check, true)" disabled="@IsBusy">Count pass</button>
+                                        <button class="quiet-action" @onclick="() => ConfirmEvidenceTestAsync(check, false)" disabled="@IsBusy">Failed</button>
                                     }
-                                    else if (!check.Verified && !check.ExistingEvidenceReady && check.AuthoringItemId is not null && check.IsForActiveConfiguration)
+                                    else if (!check.Verified && !check.ExistingEvidenceReady && CanRunEvidenceTest(check) && check.IsForActiveConfiguration)
                                     {
-                                        <button class="secondary-action" @onclick="() => PrepareRouteAsync(check)" disabled="@TvActionsDisabled">Prepare start</button>
-                                        <button class="primary-action" @onclick="() => RunRouteAsync(check)" disabled="@TvActionsDisabled">Run test</button>
+                                        <button class="secondary-action" @onclick="() => PrepareEvidenceTestAsync(check)" disabled="@TvActionsDisabled">Prepare start</button>
+                                        <button class="primary-action" @onclick="() => RunEvidenceTestAsync(check)" disabled="@TvActionsDisabled">Run test</button>
                                     }
-                                    else if (!check.Verified && !check.ExistingEvidenceReady && check.AuthoringItemId is not null)
+                                    else if (!check.Verified && !check.ExistingEvidenceReady && RequiresEvidenceTest(check) && !check.IsForActiveConfiguration)
                                     {
-                                        <button class="secondary-action" disabled>Select @check.ConfigurationId layout above</button>
+                                        <button class="secondary-action" @onclick="() => ActivateConfigurationAsync(check)" disabled="@IsBusy">Use @check.ConfigurationId layout</button>
                                     }
                                     else if (!check.Verified && !check.ExistingEvidenceReady && CanRunGuidedTest(check))
                                     {
@@ -134,7 +147,7 @@
                                     }
                                     else if (!check.Verified && !check.IsForActiveConfiguration && IsGuidedVisualCheck(check))
                                     {
-                                        <button class="secondary-action" disabled>Select @check.ConfigurationId layout above</button>
+                                        <button class="secondary-action" @onclick="() => ActivateConfigurationAsync(check)" disabled="@IsBusy">Use @check.ConfigurationId layout</button>
                                     }
                                     else if (check.Verified && CanOpenOnTv(check))
                                     {
@@ -151,9 +164,13 @@
                                     {
                                         <button class="primary-action" @onclick="() => ConfirmAsync(check)" disabled="@IsBusy">@ConfirmationLabel(check)</button>
                                     }
-                                    else if (!check.AwaitingValidationConfirmation && check.AuthoringItemId is null && RequiresBuildVerification(check))
+                                    else if (!check.AwaitingValidationConfirmation && !check.Verified && !check.ExistingEvidenceReady && check.IsForActiveConfiguration && NeedsRelatedReturnCheck(check))
                                     {
-                                        <a class="secondary-action" href="menu/build">Go to Build &amp; Verify</a>
+                                        <button class="secondary-action" disabled>Complete its return check below</button>
+                                    }
+                                    else if (!check.AwaitingValidationConfirmation && !check.Verified && !check.ExistingEvidenceReady && check.IsForActiveConfiguration && RequiresEvidenceTest(check) && !CanRunEvidenceTest(check))
+                                    {
+                                        <a class="secondary-action" href="menu/build#draft-validation">Add missing definition</a>
                                     }
                                 </div>
                             </article>
@@ -192,6 +209,7 @@
     private string? ActiveGuidedCheckId { get; set; }
     private string? GuidedTestErrorCheckId { get; set; }
     private string? GuidedTestErrorMessage { get; set; }
+    private string SelectedTimingTestRouteId { get; set; } = string.Empty;
     private bool IsBusy { get; set; }
     private string? StatusMessage { get; set; }
     private string? ErrorMessage { get; set; }
@@ -247,6 +265,18 @@
     {
         await Controller.NavigateToMenuNodeAsync(check.TargetNodeId!);
         StatusMessage = $"Opened {check.Label} without changing its recorded verification result.";
+    });
+
+    private async Task ActivateConfigurationAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
+    {
+        if (string.IsNullOrWhiteSpace(check.ConfigurationId))
+        {
+            throw new InvalidOperationException(
+                $"{check.Label} does not declare a menu configuration.");
+        }
+
+        await Controller.SetMenuConfigurationAsync(check.ConfigurationId);
+        StatusMessage = $"Selected {check.ConfigurationId} for {check.Label}. Its verification controls are now ready on this line.";
     });
 
     private async Task RunGuidedTestAsync(MenuDefinitionVerificationCheckSummary check)
@@ -320,27 +350,92 @@
             : $"{check.Label} passed and was recorded. Restored {restoredValues} temporary value{(restoredValues == 1 ? string.Empty : "s")} before returning the TV to {knownState}.";
     });
 
-    private async Task PrepareRouteAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
+    private async Task PrepareEvidenceTestAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
     {
-        await Controller.PrepareMenuAuthoringValidationSourceAsync(
-            MenuAuthoringItemKind.Transition,
-            check.AuthoringItemId!);
+        switch (check.Kind)
+        {
+            case MenuVerificationCheckKind.Timing:
+                await Controller.PrepareMenuTimingProfileTestSourceAsync(
+                    GetSelectedTimingTestRouteId());
+                break;
+            case MenuVerificationCheckKind.ReturnScript
+                when check.ReturnScriptKind == MenuReturnScriptKind.NodeOverride:
+                await Controller.PrepareMenuRecordingSourceAsync(check.TargetNodeId!);
+                break;
+            case MenuVerificationCheckKind.ReturnScript
+                when check.ReturnScriptKind is { } returnKind:
+                await Controller.PrepareMenuReturnStrategyTestSourceAsync(
+                    returnKind,
+                    returnKind == MenuReturnScriptKind.BelowMenuRoot
+                        ? check.TargetNodeId
+                        : null);
+                break;
+            case MenuVerificationCheckKind.Anchor or MenuVerificationCheckKind.Route
+                when check.AuthoringItemKind is { } itemKind:
+                await Controller.PrepareMenuAuthoringValidationSourceAsync(
+                    itemKind,
+                    check.AuthoringItemId!);
+                break;
+            default:
+                throw new InvalidOperationException(
+                    $"{check.Label} does not have a test start that can be prepared yet.");
+        }
+
         StatusMessage = $"Prepared the displayed start for {check.Label}. Manually correct the TV if needed, then run the test.";
     });
 
-    private async Task RunRouteAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
+    private async Task RunEvidenceTestAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
     {
-        await Controller.RunMenuAuthoringValidationAsync(
-            MenuAuthoringItemKind.Transition,
-            check.AuthoringItemId!);
+        switch (check.Kind)
+        {
+            case MenuVerificationCheckKind.Timing:
+                await Controller.RunMenuTimingProfileTestAsync(
+                    GetSelectedTimingTestRouteId(),
+                    Authoring.Timing);
+                break;
+            case MenuVerificationCheckKind.ReturnScript
+                when check.ReturnScriptKind is { } returnKind:
+                await Controller.RunMenuReturnStrategyTestAsync(
+                    returnKind,
+                    returnKind is MenuReturnScriptKind.BelowMenuRoot
+                        or MenuReturnScriptKind.NodeOverride
+                        ? check.TargetNodeId
+                        : null);
+                break;
+            case MenuVerificationCheckKind.Anchor or MenuVerificationCheckKind.Route
+                when check.AuthoringItemKind is { } itemKind:
+                await Controller.RunMenuAuthoringValidationAsync(
+                    itemKind,
+                    check.AuthoringItemId!);
+                break;
+            default:
+                throw new InvalidOperationException(
+                    $"{check.Label} does not have an inline verification test yet.");
+        }
+
         StatusMessage = $"Inspect the TV, then count or fail {check.Label} on this line.";
     });
 
-    private async Task ConfirmRouteAsync(
+    private async Task ConfirmEvidenceTestAsync(
         MenuDefinitionVerificationCheckSummary check,
         bool passed) => await RunAsync(async () =>
     {
-        await Controller.ConfirmMenuAuthoringValidationAsync(passed);
+        switch (check.Kind)
+        {
+            case MenuVerificationCheckKind.Timing:
+                await Controller.ConfirmMenuTimingProfileTestAsync(passed);
+                break;
+            case MenuVerificationCheckKind.ReturnScript:
+                await Controller.ConfirmMenuReturnStrategyTestAsync(passed);
+                break;
+            case MenuVerificationCheckKind.Anchor or MenuVerificationCheckKind.Route:
+                await Controller.ConfirmMenuAuthoringValidationAsync(passed);
+                break;
+            default:
+                throw new InvalidOperationException(
+                    $"{check.Label} does not have an active evidence test.");
+        }
+
         var refreshed = Controller.GetMenuDefinitionVerificationSnapshot();
         var current = refreshed.Checks.FirstOrDefault(item => item.Id.Equals(
             check.Id,
@@ -352,7 +447,7 @@
 
         VerificationState = refreshed;
         StatusMessage = !passed
-            ? $"{check.Label} failed. Its route pass count returned to zero."
+            ? $"{check.Label} failed. Its pass count returned to zero."
             : current?.ExistingEvidenceReady == true
                 ? $"{check.Label} completed 3/3 and was recorded for this display and menu structure."
                 : $"Pass counted for {check.Label}. Prepare its displayed start for the next run.";
@@ -394,6 +489,15 @@
         Authoring = Controller.GetMenuAuthoringSnapshot();
         VerificationState = Controller.GetMenuDefinitionVerificationSnapshot();
         ControlVerification = Controller.GetMenuControlVerificationSnapshot();
+        if (string.IsNullOrWhiteSpace(SelectedTimingTestRouteId)
+            || Authoring.TimingTestRoutes.All(route => !route.Id.Equals(
+                SelectedTimingTestRouteId,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            SelectedTimingTestRouteId = Authoring.ActiveTimingTestRouteId
+                ?? Authoring.TimingTestRoutes.FirstOrDefault()?.Id
+                ?? string.Empty;
+        }
     }
 
     private void HandleControllerChanged()
@@ -402,14 +506,73 @@
         _ = InvokeAsync(StateHasChanged);
     }
 
-    private static bool RequiresBuildVerification(MenuDefinitionVerificationCheckSummary check) =>
+    private static bool RequiresEvidenceTest(MenuDefinitionVerificationCheckSummary check) =>
         check.Kind is MenuVerificationCheckKind.Timing
             or MenuVerificationCheckKind.Anchor
             or MenuVerificationCheckKind.ReturnScript
             or MenuVerificationCheckKind.Route;
 
     private static bool CanConfirm(MenuDefinitionVerificationCheckSummary check) =>
-        !RequiresBuildVerification(check) || check.ExistingEvidenceReady;
+        !RequiresEvidenceTest(check) || check.ExistingEvidenceReady;
+
+    private bool CanRunEvidenceTest(MenuDefinitionVerificationCheckSummary check) =>
+        check.Kind switch
+        {
+            MenuVerificationCheckKind.Timing =>
+                Authoring.TimingTestRoutes.Count > 0
+                && !string.IsNullOrWhiteSpace(SelectedTimingTestRouteId),
+            MenuVerificationCheckKind.ReturnScript =>
+                Authoring.ReturnStrategy is not null
+                && check.ReturnScriptKind is not null
+                && check.TargetNodeId is not null,
+            MenuVerificationCheckKind.Anchor or MenuVerificationCheckKind.Route =>
+                check.AuthoringItemKind is not null
+                && check.AuthoringItemId is not null
+                && Authoring.DraftCandidates.Any(candidate =>
+                    candidate.Kind == check.AuthoringItemKind
+                    && candidate.Id.Equals(
+                        check.AuthoringItemId,
+                        StringComparison.OrdinalIgnoreCase)),
+            _ => false
+        };
+
+    private bool NeedsRelatedReturnCheck(MenuDefinitionVerificationCheckSummary check) =>
+        check.Kind == MenuVerificationCheckKind.Anchor
+        && check.AuthoringItemId is null
+        && Authoring.ReturnStrategy is not null;
+
+    private string EvidenceInstruction(MenuDefinitionVerificationCheckSummary check)
+    {
+        if (!check.IsForActiveConfiguration)
+        {
+            return $"Activate the {check.ConfigurationId} menu layout from this line before running its test.";
+        }
+
+        if (CanRunEvidenceTest(check))
+        {
+            return "Prepare the displayed starting point, run the test, and count three visual passes here.";
+        }
+
+        if (check.Kind == MenuVerificationCheckKind.Timing)
+        {
+            return "Record at least one traversal before testing system timing.";
+        }
+
+        if (NeedsRelatedReturnCheck(check))
+        {
+            return "Complete the related return-to-video check on this page; it supplies this anchor evidence.";
+        }
+
+        return "The menu definition is missing the recorded route needed for this test.";
+    }
+
+    private string GetSelectedTimingTestRouteId() =>
+        Authoring.TimingTestRoutes.Any(route => route.Id.Equals(
+            SelectedTimingTestRouteId,
+            StringComparison.OrdinalIgnoreCase))
+            ? SelectedTimingTestRouteId
+            : throw new InvalidOperationException(
+                "Choose a timing test traversal before preparing or running this check.");
 
     private static bool CanOpenOnTv(MenuDefinitionVerificationCheckSummary check) =>
         check.TargetNodeId is not null
@@ -447,7 +610,7 @@
     private static string ConfirmationLabel(MenuDefinitionVerificationCheckSummary check) => check.Kind switch
     {
         MenuVerificationCheckKind.Display => "Confirm this display",
-        MenuVerificationCheckKind.Timing or MenuVerificationCheckKind.Anchor or MenuVerificationCheckKind.ReturnScript or MenuVerificationCheckKind.Route => "Record verified result",
+        MenuVerificationCheckKind.Timing or MenuVerificationCheckKind.Anchor or MenuVerificationCheckKind.ReturnScript or MenuVerificationCheckKind.Route => "Record existing result",
         _ => "Count visual pass"
     };
 

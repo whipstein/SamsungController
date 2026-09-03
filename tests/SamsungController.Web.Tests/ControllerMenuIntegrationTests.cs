@@ -1740,11 +1740,20 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         var (controller, transport) = await CreateConnectedControllerAsync();
         await using (controller)
         {
+            await controller.PrepareMenuTimingProfileTestSourceAsync("open-settings");
+            Assert.Equal(["KEY_EXIT", "KEY_EXIT"], GetSentKeys(transport));
+
+            transport.SentMessages.Clear();
             await controller.RunMenuTimingProfileTestAsync(
                 "open-settings",
                 new MenuTimingProfile(50, 50, 50));
 
             Assert.Equal(["KEY_MENU"], GetSentKeys(transport));
+            var timingCheck = Assert.Single(
+                controller.GetMenuDefinitionVerificationSnapshot().Checks,
+                check => check.Kind == MenuVerificationCheckKind.Timing);
+            Assert.True(timingCheck.AwaitingValidationConfirmation);
+            Assert.Equal(0, timingCheck.ValidationPasses);
         }
     }
 
@@ -1791,6 +1800,12 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 "picture");
 
             Assert.Equal(["KEY_MENU", "KEY_RETURN"], GetSentKeys(transport));
+            var returnCheck = Assert.Single(
+                controller.GetMenuDefinitionVerificationSnapshot().Checks,
+                check => check.Kind == MenuVerificationCheckKind.ReturnScript
+                         && check.ReturnScriptKind == MenuReturnScriptKind.BelowMenuRoot);
+            Assert.True(returnCheck.AwaitingValidationConfirmation);
+            Assert.Equal("picture", returnCheck.TargetNodeId);
         }
     }
 
@@ -3441,6 +3456,9 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 initial.Checks,
                 check => check.Kind == MenuVerificationCheckKind.Route);
             Assert.Equal("open-picture-mode", routeCheck.AuthoringItemId);
+            Assert.Equal(
+                MenuAuthoringItemKind.Transition,
+                routeCheck.AuthoringItemKind);
             Assert.Equal(0, routeCheck.ValidationPasses);
             Assert.Equal(3, routeCheck.RequiredValidationPasses);
 

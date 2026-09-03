@@ -449,6 +449,50 @@ public sealed class SamsungControllerService : IAsyncDisposable
             {
                 var verified = records.TryGetValue(check.Id, out var record)
                     && record.Fingerprint.Equals(check.Fingerprint, StringComparison.OrdinalIgnoreCase);
+                var authoringItemKind = check.Kind switch
+                {
+                    MenuVerificationCheckKind.Anchor when check.SourceItemId is not null =>
+                        MenuAuthoringItemKind.Anchor,
+                    MenuVerificationCheckKind.Route when check.SourceItemId is not null =>
+                        MenuAuthoringItemKind.Transition,
+                    _ => (MenuAuthoringItemKind?)null
+                };
+                var returnScriptKind = GetVerificationReturnScriptKind(check);
+                var returnValidationMatches = returnScriptKind is not null
+                    && _menuReturnValidation is { } returnValidation
+                    && returnValidation.Kind == returnScriptKind
+                    && (returnScriptKind != MenuReturnScriptKind.NodeOverride
+                        || check.TargetNodeId?.Equals(
+                            returnValidation.StartNodeId,
+                            StringComparison.OrdinalIgnoreCase) == true);
+                var validationPasses = check.Kind switch
+                {
+                    MenuVerificationCheckKind.Timing => _menuTimingValidation?.Passes ?? 0,
+                    MenuVerificationCheckKind.ReturnScript => returnValidationMatches
+                        ? _menuReturnValidation!.Passes
+                        : 0,
+                    MenuVerificationCheckKind.Anchor or MenuVerificationCheckKind.Route
+                        when authoringItemKind is { } itemKind
+                             && check.SourceItemId is { } itemId =>
+                        GetMenuValidationPasses(itemKind, itemId),
+                    _ => 0
+                };
+                var awaitingValidationConfirmation = check.Kind switch
+                {
+                    MenuVerificationCheckKind.Timing =>
+                        _menuTimingValidation?.AwaitingConfirmation == true,
+                    MenuVerificationCheckKind.ReturnScript => returnValidationMatches
+                        && _menuReturnValidation!.AwaitingConfirmation,
+                    MenuVerificationCheckKind.Anchor or MenuVerificationCheckKind.Route
+                        when authoringItemKind is { } itemKind
+                             && check.SourceItemId is { } itemId =>
+                        _menuValidation is { AwaitingConfirmation: true } activeValidation
+                        && activeValidation.Kind == itemKind
+                        && activeValidation.ItemId.Equals(
+                            itemId,
+                            StringComparison.OrdinalIgnoreCase),
+                    _ => false
+                };
                 return new MenuDefinitionVerificationCheckSummary(
                     check.Id,
                     check.Kind,
@@ -462,16 +506,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         StringComparison.OrdinalIgnoreCase),
                     check.TargetNodeId,
                     check.ConfigurationId,
-                    check.Kind == MenuVerificationCheckKind.Route ? check.SourceItemId : null,
-                    check.Kind == MenuVerificationCheckKind.Route && check.SourceItemId is { } itemId
-                        ? GetMenuValidationPasses(MenuAuthoringItemKind.Transition, itemId)
-                        : 0,
+                    authoringItemKind,
+                    authoringItemKind is not null ? check.SourceItemId : null,
+                    returnScriptKind,
+                    validationPasses,
                     MenuValidationSession.RequiredPasses,
-                    check.Kind == MenuVerificationCheckKind.Route
-                    && check.SourceItemId is { } activeItemId
-                    && _menuValidation is { AwaitingConfirmation: true } activeValidation
-                    && activeValidation.Kind == MenuAuthoringItemKind.Transition
-                    && activeValidation.ItemId.Equals(activeItemId, StringComparison.OrdinalIgnoreCase),
+                    awaitingValidationConfirmation,
                     verified ? record!.VerifiedAtUtc : null);
             }).ToArray();
             var currentRecordKeys = plan.Checks
@@ -2895,6 +2935,31 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
         NotifyChanged();
         await ExecuteMenuTimingProfileTestAsync(definition, session, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task PrepareMenuTimingProfileTestSourceAsync(
+        string transitionId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(transitionId);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        MenuDefinition definition;
+        lock (_sync)
+        {
+            definition = _menuDefinition
+                ?? throw new InvalidOperationException("No menu definition is loaded.");
+        }
+
+        var transition = definition.Transitions.TryGetValue(
+            transitionId.Trim(),
+            out var candidate)
+            ? candidate
+            : throw new KeyNotFoundException(
+                $"Menu transition '{transitionId.Trim()}' was not found.");
+        await PrepareMenuRecordingSourceAsync(
+                transition.FromNodeId,
+                cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -6376,6 +6441,29 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         definition.GetRequiredNode(nodeId))),
             _ => check.ExistingEvidenceReady
         };
+
+    private static MenuReturnScriptKind? GetVerificationReturnScriptKind(
+        MenuDefinitionVerificationCheck check)
+    {
+        if (check.Kind != MenuVerificationCheckKind.ReturnScript)
+        {
+            return null;
+        }
+
+        if (check.Id.EndsWith(":menu-root", StringComparison.OrdinalIgnoreCase))
+        {
+            return MenuReturnScriptKind.AtMenuRoot;
+        }
+
+        if (check.Id.EndsWith(":below-root", StringComparison.OrdinalIgnoreCase))
+        {
+            return MenuReturnScriptKind.BelowMenuRoot;
+        }
+
+        return check.Id.Contains(":override:", StringComparison.OrdinalIgnoreCase)
+            ? MenuReturnScriptKind.NodeOverride
+            : null;
+    }
 
     private static MenuDefinition AddVerificationRecords(
         MenuDefinition definition,

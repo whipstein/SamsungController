@@ -1156,6 +1156,9 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .verification-check-copy > strong { display: block; margin-top: 3px; font-size: 11px; }
 .verification-check-copy p { margin: 4px 0 0; color: var(--muted); font-size: 8px; line-height: 1.45; }
 .verification-check-copy small { display: block; margin-top: 5px; font-size: 7px; }
+.verification-inline-route { display: grid; grid-template-columns: auto minmax(190px, 1fr); align-items: center; gap: 8px; margin-top: 8px; }
+.verification-inline-route > span { margin: 0; color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; }
+.verification-inline-route select { min-width: 0; padding: 7px 8px; font-size: 8px; }
 .verification-prerequisite { color: var(--amber); }
 .verification-evidence { color: var(--cyan); }
 .verification-test-result { padding: 6px 8px; border-left: 2px solid var(--cyan); background: var(--cyan-soft); color: var(--ink); line-height: 1.5; }
@@ -1313,6 +1316,9 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .device-observation-card header { grid-template-columns: 1fr auto; }
     .device-observation-card header small { grid-column: 1 / -1; }
     .notice { grid-template-columns: 1fr; }
+    .verification-check { grid-template-columns: 28px minmax(0, 1fr); align-items: start; }
+    .verification-check-actions { grid-column: 2; flex-wrap: wrap; justify-content: start; }
+    .verification-inline-route { grid-template-columns: 1fr; }
     .macro-confirm-actions { grid-template-columns: 1fr; }
     .menu-workspace-tabs { grid-template-columns: 1fr; }
     .menu-workspace-tabs button { align-items: flex-start; flex-direction: column; gap: 4px; }
