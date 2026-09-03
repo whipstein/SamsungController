@@ -17,7 +17,7 @@ The web interface is the recommended way to use the application. A command-line 
 - Interactive terminal console with persistent command history
 - Self-contained macOS, Windows, and Linux downloads for x64 and Arm64 computers
 
-Pairing and basic remote keys may work with many recent Samsung/Tizen TVs, but menu layouts, key behavior, available queries, and authorization details vary by model and firmware. No bundled menu route is presented as verified for a real TV.
+Pairing and basic remote keys may work with many recent Samsung/Tizen TVs, but menu layouts, key behavior, available queries, and authorization details vary by model and firmware. Bundled model-specific menu structures are reference starting points; SamsungController still requires local display verification for the selected model, firmware, signal, picture mode, and input before the Menu controls unlock.
 
 ## Before you install
 

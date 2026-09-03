@@ -221,6 +221,29 @@ public sealed class MenuDefinitionParserTests
                 "expert-settings"));
     }
 
+    [Fact]
+    public async Task BundledS95fDefinitionIsAValidDistributableStructure()
+    {
+        var path = Path.Combine(
+            AppContext.BaseDirectory,
+            "menu-definitions",
+            "s95f-1296-sdr.json");
+
+        var definition = await new MenuDefinitionParser().ParseFileAsync(path);
+
+        Assert.Equal("s95f-1296-sdr", definition.Id);
+        Assert.Equal("S95F", definition.Model);
+        Assert.Equal("1296", definition.Context.Firmware);
+        Assert.Equal("SDR", definition.Context.Signal);
+        Assert.Null(definition.Verification);
+        Assert.Contains("normal-video", definition.Nodes.Keys);
+        Assert.Contains("settings", definition.Nodes.Keys);
+        Assert.Contains("expert-settings", definition.Nodes.Keys);
+        Assert.NotEmpty(definition.Anchors);
+        Assert.NotEmpty(definition.Transitions);
+        Assert.Empty(new MenuDefinitionValidator().Validate(definition));
+    }
+
     private const string ValidYaml =
         """
         version: 1

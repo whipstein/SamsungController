@@ -24,3 +24,13 @@ descriptive filename such as `s95f-1296.yaml`; add signal, picture mode, or inpu
 only when those conditions genuinely require a different topology.
 
 The generic authoring tutorial remains in `samples/menus/menu.example.yaml`.
+
+## Included structures
+
+| File | Display context | Notes |
+| --- | --- | --- |
+| `s95f-1296-sdr.json` | Samsung S95F, firmware 1296, SDR | Complete nested base topology and generated routes. Picture mode and input remain `any`; select and complete local Display Verification before using Menu controls. |
+
+The S95F file is the distributable structure only. Its display-verification
+sidecar, pairing token, protocol logs, macros, and saved current/target values
+remain outside the repository.

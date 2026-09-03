@@ -19,5 +19,8 @@
     <Content Include="../../samples/menus/menu.example.yaml"
              Link="menu-definitions/menu.example.yaml"
              CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../menu-definitions/**/*.json"
+             Link="menu-definitions/%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
