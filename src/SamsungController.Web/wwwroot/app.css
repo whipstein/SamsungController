@@ -166,6 +166,12 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .connection-menu-profile label > span { display: block; margin-bottom: 5px; color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
 .connection-menu-profile select { width: 100%; min-width: 0; padding: 9px 10px; }
 .connection-menu-profile > p { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 8px; line-height: 1.45; }
+.menu-definition-file-errors { grid-column: 1 / -1; display: grid; gap: 8px; padding: 10px 11px; border: 1px solid rgba(255,119,119,.3); border-radius: 6px; background: rgba(255,119,119,.06); }
+.menu-definition-file-errors > strong { color: var(--danger); font-size: 10px; }
+.menu-definition-file-errors > div { display: grid; gap: 3px; }
+.menu-definition-file-errors code { color: var(--ink); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; overflow-wrap: anywhere; }
+.menu-definition-file-errors span { color: var(--muted); font-size: 8px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.menu-definition-file-errors a { width: fit-content; color: var(--cyan); font-size: 8px; text-decoration: none; }
 .toggle-row { display: flex; align-items: center; gap: 10px; min-height: 48px; color: var(--ink); font-size: 13px; }
 .toggle-row + .toggle-row { border-top: 1px solid var(--line); }
 .toggle-row input { width: 15px; accent-color: var(--cyan); }

@@ -87,7 +87,7 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
                     }
                     @foreach (var definition in MenuDefinitions)
                     {
-                        <option value="@definition.Path">@FormatMenuDefinition(definition)</option>
+                        <option value="@definition.Path" disabled="@(!definition.IsValid)">@FormatMenuDefinition(definition)</option>
                     }
                 </select>
             </label>
@@ -108,6 +108,20 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
                 </select>
             </label>
             <p>@ActiveMenuContext</p>
+            @if (InvalidMenuDefinitions.Count > 0)
+            {
+                <div class="menu-definition-file-errors" role="alert">
+                    <strong>Menu files needing attention</strong>
+                    @foreach (var definition in InvalidMenuDefinitions)
+                    {
+                        <div>
+                            <code>@Path.GetFileName(definition.Path) · @definition.Location</code>
+                            <span>@definition.Error</span>
+                        </div>
+                    }
+                    <a href="menu/build">Open Build &amp; Verify →</a>
+                </div>
+            }
         </div>
         <details class="connection-readiness-settings">
             <summary><span>Channel readiness</span><small>Recommended defaults</small></summary>
@@ -191,6 +205,8 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
     private bool MenuProfileBusy { get; set; }
     private string? LocalError { get; set; }
     private string? LocalStatus { get; set; }
+    private IReadOnlyList<MenuDefinitionCatalogEntry> InvalidMenuDefinitions =>
+        MenuDefinitions.Where(definition => !definition.IsValid).ToArray();
 
     private string? ErrorMessage => LocalError ?? Snapshot.LastError;
     private bool ReadinessSettingsValid => KeepAliveIntervalSeconds is >= 5 and <= 120
@@ -364,6 +380,11 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
         var location = definition.IsActive
             ? $"Active / {definition.Location}"
             : definition.Location;
+        if (!definition.IsValid)
+        {
+            return $"{Path.GetFileName(definition.Path)} · INVALID · {location}";
+        }
+
         return $"{definition.Name} · {definition.Model} · firmware {definition.Context.Firmware} · {definition.Context.Signal} · {definition.Context.PictureMode} · {definition.Context.Input} · {location}";
     }
 

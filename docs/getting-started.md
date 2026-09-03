@@ -165,7 +165,9 @@ current page without sending anything to the TV.
    the source **Repository**, or the application **Installation**; the selected
    copy also says **Active**. Copies with the same definition ID are listed
    separately so you can deliberately choose the installed base or a personal
-   override.
+   override. An invalid YAML or JSON file remains visible as **INVALID**, with
+   its exact parser or schema error below the selector; correct it and refresh
+   the page rather than assuming the directory was skipped.
 5. Choose the **Menu configuration** that matches the rows currently visible on
    the TV. A configuration may represent a particular input, signal type,
    picture mode, or option-dependent layout.

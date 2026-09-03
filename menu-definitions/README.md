@@ -29,6 +29,7 @@ The generic authoring tutorial remains in `samples/menus/menu.example.yaml`.
 
 | File | Display context | Notes |
 | --- | --- | --- |
+| `odyssey_g9_oled-game.json` | Samsung Odyssey G9 OLED, firmware 2231, Game signal | Nested game-mode topology. Picture mode and input remain `any`; complete local Display Verification before using Menu controls. |
 | `s95f-1296-sdr.json` | Samsung S95F, firmware 1296, SDR | Complete nested base topology and generated routes. Picture mode and input remain `any`; select and complete local Display Verification before using Menu controls. |
 
 The S95F file is the distributable structure only. Its display-verification

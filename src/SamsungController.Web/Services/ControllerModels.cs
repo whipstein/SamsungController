@@ -243,7 +243,9 @@ public sealed record MenuDefinitionCatalogEntry(
     string Model,
     MenuDefinitionContext Context,
     string Location,
-    bool IsActive);
+    bool IsActive,
+    bool IsValid = true,
+    string? Error = null);
 
 public sealed record MenuNavigationSnapshot(
     string DefinitionPath,

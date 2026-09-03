@@ -1554,9 +1554,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                var definition = await new MenuDefinitionParser()
+                var parsed = await new MenuDefinitionParser()
                     .ParseFileAsync(candidate.Path, cancellationToken)
                     .ConfigureAwait(false);
+                var definition = TopologyRouteGenerator.Regenerate(
+                    MigrateLegacyReturnReplacement(NormalizeInitialMenuTiming(parsed)));
                 new MenuDefinitionValidator().ValidateAndThrow(definition);
                 discovered.Add((
                     new MenuDefinitionCatalogEntry(
@@ -1566,15 +1568,24 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         definition.Model,
                         definition.Context,
                         candidate.Location,
-                        candidate.Path.Equals(
-                            activePath,
-                            StringComparison.OrdinalIgnoreCase)),
+                        PathsEqual(candidate.Path, activePath)),
                     candidate.Priority));
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                // Build & Verify reports diagnostics for explicitly loaded files.
-                // The Connection page only offers definitions that parsed cleanly.
+                var fileName = Path.GetFileName(candidate.Path);
+                discovered.Add((
+                    new MenuDefinitionCatalogEntry(
+                        candidate.Path,
+                        Path.GetFileNameWithoutExtension(candidate.Path),
+                        fileName,
+                        "Invalid menu definition",
+                        new MenuDefinitionContext(),
+                        candidate.Location,
+                        PathsEqual(candidate.Path, activePath),
+                        IsValid: false,
+                        Error: exception.Message),
+                    candidate.Priority));
             }
         }
 

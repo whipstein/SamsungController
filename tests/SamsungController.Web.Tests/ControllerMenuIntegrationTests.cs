@@ -95,7 +95,11 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         var alternate = Assert.Single(discovered, item => item.Id == "alternate");
         Assert.False(alternate.IsActive);
         Assert.Equal("User data", alternate.Location);
-        Assert.DoesNotContain(discovered, item => item.Id == "invalid");
+        var invalid = Assert.Single(discovered, item => item.Path.EndsWith(
+            "invalid.yaml",
+            StringComparison.Ordinal));
+        Assert.False(invalid.IsValid);
+        Assert.Contains("nodes", invalid.Error, StringComparison.Ordinal);
         var genericCopies = discovered
             .Where(item => item.Id == "generic-picture-menu")
             .ToArray();
@@ -144,6 +148,28 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         Assert.Equal(overridePath, controller.GetMenuNavigationSnapshot().DefinitionPath);
         var overridden = await new MenuDefinitionParser().ParseFileAsync(overridePath);
         Assert.Equal("Normal video reference", overridden.Nodes["normal-video"].Label);
+    }
+
+    [Fact]
+    public async Task DiscoveryShowsInvalidMenuFileWithActionableDiagnostic()
+    {
+        Directory.CreateDirectory(_directory);
+        var catalogDirectory = Path.Combine(_directory, "menu-definitions");
+        Directory.CreateDirectory(catalogDirectory);
+        var invalidPath = Path.Combine(catalogDirectory, "broken.json");
+        await File.WriteAllTextAsync(
+            invalidPath,
+            "{ \"version\": 1, \"id\": \"broken\", \"nodes\": [] }");
+        await using var controller = CreateController();
+
+        var discovered = await controller.DiscoverMenuDefinitionsAsync();
+
+        var invalid = Assert.Single(discovered, item => item.Path == invalidPath);
+        Assert.Equal("broken.json", invalid.Name);
+        Assert.Equal("User data", invalid.Location);
+        Assert.False(invalid.IsValid);
+        Assert.False(invalid.IsActive);
+        Assert.Contains("line 1", invalid.Error, StringComparison.Ordinal);
     }
 
     [Fact]

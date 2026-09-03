@@ -429,6 +429,11 @@ directory. Select an **Installation** structure before deleting a duplicate
 Verify, SamsungController preserves the installed base and creates an override
 in user data using the same YAML or JSON format.
 
+Every YAML or JSON file found in those catalogs appears on Connection. A file
+that cannot be parsed or validated is disabled in the selector, labeled
+**INVALID**, and listed immediately below it with the exact diagnostic—normally
+including a JSON line and column. Correct the file and refresh the page.
+
 Repository ignore rules cover the normal secret and session filenames, but they cannot protect copies or exports saved elsewhere. Keep TV-specific macros, saved states, sidecars, notes, and protocol exports under local application data or the ignored `user-data/` directory. Reviewed structure-only files belong in the tracked repository `menu-definitions/` catalog; they are included in releases for easy distribution. The files under `samples/` remain deliberately generic authoring tutorials.
 
 ## Troubleshooting

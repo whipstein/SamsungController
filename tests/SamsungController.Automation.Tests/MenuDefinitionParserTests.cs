@@ -6,6 +6,24 @@ namespace SamsungController.Automation.Tests;
 public sealed class MenuDefinitionParserTests
 {
     [Fact]
+    public async Task BundledOdysseyDefinitionIsValidAfterTopologyRegeneration()
+    {
+        var path = Path.Combine(
+            AppContext.BaseDirectory,
+            "menu-definitions",
+            "odyssey_g9_oled-game.json");
+        var definition = TopologyRouteGenerator.Regenerate(
+            await new MenuDefinitionParser().ParseFileAsync(path));
+
+        Assert.Equal("odyssey_g9_oled-2231-game", definition.Id);
+        Assert.Equal("Odyssey G9 OLED", definition.Model);
+        Assert.Equal("2231", definition.Context.Firmware);
+        Assert.Equal("Game", definition.Context.Signal);
+        Assert.Null(definition.Verification);
+        new MenuDefinitionValidator().ValidateAndThrow(definition);
+    }
+
+    [Fact]
     public void ParsesContextTreeAnchorsAndTransitions()
     {
         var definition = new MenuDefinitionParser().Parse(ValidYaml);
