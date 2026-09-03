@@ -1519,22 +1519,34 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
         var candidates = new Dictionary<string, MenuDefinitionCandidate>(
             StringComparer.OrdinalIgnoreCase);
-        AddMenuDefinitionCandidate(candidates, activePath, "Active", 0);
+        var userDirectory = Path.Combine(_configurationDirectory, "menu-definitions");
+        var repositoryDirectory = Path.Combine(
+            Directory.GetCurrentDirectory(),
+            "menu-definitions");
+        var installedDirectory = Path.Combine(
+            AppContext.BaseDirectory,
+            "menu-definitions");
+
         AddMenuDefinitionDirectory(
             candidates,
-            Path.Combine(_configurationDirectory, "menu-definitions"),
-            "Local",
+            userDirectory,
+            "User data",
             1);
+        if (!PathsEqual(repositoryDirectory, installedDirectory))
+        {
+            AddMenuDefinitionDirectory(
+                candidates,
+                repositoryDirectory,
+                "Repository",
+                2);
+        }
+
         AddMenuDefinitionDirectory(
             candidates,
-            Path.Combine(Directory.GetCurrentDirectory(), "menu-definitions"),
-            "Repository",
-            2);
-        AddMenuDefinitionDirectory(
-            candidates,
-            Path.Combine(AppContext.BaseDirectory, "menu-definitions"),
-            "Installed",
+            installedDirectory,
+            "Installation",
             3);
+        AddMenuDefinitionCandidate(candidates, activePath, "Custom file", 0);
 
         var discovered = new List<(MenuDefinitionCatalogEntry Entry, int Priority)>();
         foreach (var candidate in candidates.Values)
@@ -1567,15 +1579,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
 
         return discovered
-            .GroupBy(item => item.Entry.Id, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group
-                .OrderByDescending(item => item.Entry.IsActive)
-                .ThenBy(item => item.Priority)
-                .First()
-                .Entry)
-            .OrderByDescending(entry => entry.IsActive)
-            .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(entry => entry.Model, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(entry => entry.Entry.IsActive)
+            .ThenBy(entry => entry.Entry.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(entry => entry.Priority)
+            .ThenBy(entry => entry.Entry.Path, StringComparer.OrdinalIgnoreCase)
+            .Select(entry => entry.Entry)
             .ToArray();
     }
 
@@ -6334,10 +6342,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 currentPath = GetMenuDefinitionPath(_settings);
             }
 
-            var path = currentPath.Equals(
-                Path.GetFullPath(_defaultMenuDefinitionPath),
-                StringComparison.Ordinal)
-                ? GetAvailableUserDefinitionPath(definition.Id)
+            var path = IsInstalledMenuDefinitionPath(currentPath)
+                ? GetAvailableUserDefinitionPath(
+                    definition.Id,
+                    Path.GetExtension(currentPath))
                 : currentPath;
             var distributableTopology = CopyMenuDefinition(
                 definition,
@@ -6398,16 +6406,46 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
     }
 
-    private string GetAvailableUserDefinitionPath(string definitionId)
+    private string GetAvailableUserDefinitionPath(
+        string definitionId,
+        string? preferredExtension = null)
     {
         var directory = Path.Combine(_configurationDirectory, "menu-definitions");
-        var preferred = Path.Combine(directory, $"{definitionId}.yaml");
+        var extension = preferredExtension?.ToLowerInvariant() switch
+        {
+            ".json" => ".json",
+            ".yml" => ".yml",
+            _ => ".yaml"
+        };
+        var preferred = Path.Combine(directory, $"{definitionId}{extension}");
         return !File.Exists(preferred)
             ? preferred
             : Path.Combine(
                 directory,
-                $"{definitionId}-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.yaml");
+                $"{definitionId}-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}{extension}");
     }
+
+    private static bool PathsEqual(string first, string second) =>
+        StringComparer.OrdinalIgnoreCase.Equals(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(first)),
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(second)));
+
+    private static bool IsPathInsideDirectory(string path, string directory)
+    {
+        var relativePath = Path.GetRelativePath(
+            Path.GetFullPath(directory),
+            Path.GetFullPath(path));
+        return !Path.IsPathRooted(relativePath)
+               && !relativePath.Equals("..", StringComparison.Ordinal)
+               && !relativePath.StartsWith(
+                   $"..{Path.DirectorySeparatorChar}",
+                   StringComparison.Ordinal);
+    }
+
+    private static bool IsInstalledMenuDefinitionPath(string path) =>
+        IsPathInsideDirectory(
+            path,
+            Path.Combine(AppContext.BaseDirectory, "menu-definitions"));
 
     private static string GetAuthoringTargetPath(
         MenuDefinition definition,
@@ -8378,13 +8416,18 @@ public sealed class SamsungControllerService : IAsyncDisposable
             return;
         }
 
-        if (!candidates.TryGetValue(fullPath, out var existing)
-            || priority < existing.Priority)
+        if (!candidates.TryGetValue(fullPath, out var existing))
         {
             candidates[fullPath] = new MenuDefinitionCandidate(
                 fullPath,
                 location,
                 priority);
+            return;
+        }
+
+        if (priority < existing.Priority)
+        {
+            candidates[fullPath] = existing with { Priority = priority };
         }
     }
 

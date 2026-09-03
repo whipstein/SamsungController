@@ -78,6 +78,12 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         await File.WriteAllTextAsync(
             Path.Combine(catalogDirectory, "invalid.yaml"),
             "version: 1\nid: invalid");
+        var installedGenericPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "menu-definitions",
+            "menu.example.yaml");
+        var userGenericPath = Path.Combine(catalogDirectory, "menu.example.yaml");
+        File.Copy(installedGenericPath, userGenericPath);
         await using var controller = CreateController();
 
         await controller.InitializeAsync();
@@ -85,11 +91,19 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
 
         var active = Assert.Single(discovered, item => item.Id == "test");
         Assert.True(active.IsActive);
-        Assert.Equal("Active", active.Location);
+        Assert.Equal("Custom file", active.Location);
         var alternate = Assert.Single(discovered, item => item.Id == "alternate");
         Assert.False(alternate.IsActive);
-        Assert.Equal("Local", alternate.Location);
+        Assert.Equal("User data", alternate.Location);
         Assert.DoesNotContain(discovered, item => item.Id == "invalid");
+        var genericCopies = discovered
+            .Where(item => item.Id == "generic-picture-menu")
+            .ToArray();
+        Assert.Equal(2, genericCopies.Length);
+        Assert.Contains(genericCopies, item =>
+            item.Location == "User data" && item.Path == userGenericPath);
+        Assert.Contains(genericCopies, item =>
+            item.Location == "Installation" && item.Path == installedGenericPath);
 
         await controller.SetMenuDefinitionAsync(alternate.Path);
         var navigation = controller.GetMenuNavigationSnapshot();
@@ -99,6 +113,37 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         Assert.Equal(
             "game",
             controller.GetMenuNavigationSnapshot().ActiveConfigurationId);
+    }
+
+    [Fact]
+    public async Task EditingInstalledMenuCreatesAUserDataOverride()
+    {
+        Directory.CreateDirectory(_directory);
+        var installedPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "menu-definitions",
+            "menu.example.yaml");
+        var installedContent = await File.ReadAllTextAsync(installedPath);
+        await using var controller = CreateController();
+
+        await controller.InitializeAsync();
+        await controller.UpdateMenuNodeAsync(
+            "normal-video",
+            new MenuNodeEditRequest(
+                "normal-video",
+                "Normal video reference",
+                null,
+                "No TV menu is expected to be visible."));
+
+        var overridePath = Path.Combine(
+            _directory,
+            "menu-definitions",
+            "generic-picture-menu.yaml");
+        Assert.True(File.Exists(overridePath));
+        Assert.Equal(installedContent, await File.ReadAllTextAsync(installedPath));
+        Assert.Equal(overridePath, controller.GetMenuNavigationSnapshot().DefinitionPath);
+        var overridden = await new MenuDefinitionParser().ParseFileAsync(overridePath);
+        Assert.Equal("Normal video reference", overridden.Nodes["normal-video"].Label);
     }
 
     [Fact]

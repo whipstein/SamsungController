@@ -137,7 +137,7 @@ The server listens only on the local computer by default. That is intentional: t
 
 1. Open **Connection**.
 2. Enter a display name and the TV's IP address.
-3. Choose a detected **Menu structure**, then choose the **Menu configuration** matching the rows currently visible on the TV. The dropdown scans the active file, local definitions, repository catalog, and installed catalog for valid YAML and JSON structures.
+3. Choose a detected **Menu structure**, then choose the **Menu configuration** matching the rows currently visible on the TV. The dropdown scans user data, the repository catalog, and the installation catalog for valid YAML and JSON structures. Copies with the same definition ID remain separately selectable and are labeled **User data**, **Repository**, or **Installation**; the selected copy is also labeled **Active**.
 4. Leave **Secure WebSocket** enabled, **Accept TV certificate** enabled, and the port empty for the normal secure port 8002.
 5. Select **Connect to display**.
 6. Watch the TV and choose **Allow** when its authorization prompt appears.
@@ -421,6 +421,13 @@ Important contents include:
 | `menu-verifications/` | Local display-bound verification sidecars keyed by menu-structure ID. |
 | `sessions/*.ndjson` | Complete timestamped protocol messages for connected sessions. Keep private. |
 | `console-history.txt` | Up to 200 retained non-raw console commands. |
+
+The Connection page lists both the read-only base structures shipped in the
+installation and editable overrides under `menu-definitions/` in this user-data
+directory. Select an **Installation** structure before deleting a duplicate
+**User data** override. If an installed structure is later edited in Build &
+Verify, SamsungController preserves the installed base and creates an override
+in user data using the same YAML or JSON format.
 
 Repository ignore rules cover the normal secret and session filenames, but they cannot protect copies or exports saved elsewhere. Keep TV-specific macros, saved states, sidecars, notes, and protocol exports under local application data or the ignored `user-data/` directory. Reviewed structure-only files belong in the tracked repository `menu-definitions/` catalog; they are included in releases for easy distribution. The files under `samples/` remain deliberately generic authoring tutorials.
 

@@ -161,7 +161,11 @@ current page without sending anything to the TV.
 2. Open **Connection**.
 3. Enter a friendly display name and the TV's IPv4 address.
 4. Choose a **Menu structure** matching the TV model and firmware if one is
-   available.
+   available. The final label shows whether each copy comes from **User data**,
+   the source **Repository**, or the application **Installation**; the selected
+   copy also says **Active**. Copies with the same definition ID are listed
+   separately so you can deliberately choose the installed base or a personal
+   override.
 5. Choose the **Menu configuration** that matches the rows currently visible on
    the TV. A configuration may represent a particular input, signal type,
    picture mode, or option-dependent layout.
@@ -434,6 +438,12 @@ not normally remove it:
 
 Back up this directory before moving to another computer or making extensive
 manual edits. `tokens.json` and complete session logs are private.
+
+The app also scans the extracted application's `menu-definitions` directory.
+You may delete a duplicate from the user-data `menu-definitions` directory after
+selecting the **Installation** copy on Connection. Refresh the Connection page
+after changing files outside the app. Editing an installed base through Build &
+Verify creates a new user-data override instead of modifying the installation.
 
 ## 13. Troubleshooting checklist
 

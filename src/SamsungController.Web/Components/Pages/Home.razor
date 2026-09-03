@@ -18,7 +18,7 @@
                 <li>Select <strong>Connect to display</strong>, then choose <strong>Allow</strong> on the TV when prompted.</li>
                 <li>After the first approval, the saved host and token are reused by the web UI and CLI.</li>
                 <li>Channel-readiness defaults verify the WebSocket and briefly warm the TV before its first command.</li>
-                <li>Choose an automatically discovered menu structure and the configuration matching the rows currently visible on the TV.</li>
+                <li>Choose an automatically discovered menu structure and the configuration matching the rows currently visible on the TV. The list identifies active, user-data, repository, and installation copies separately.</li>
             </ol>
             <p class="help-callout safe">A successful connection may run the preferred verified anchor to establish a known menu position. This can send visible menu keys immediately after pairing.</p>
             <p>If no approval prompt appears, check the TV's Device Connect Manager and remove any denied or stale SamsungController entry before trying again.</p>
@@ -69,7 +69,7 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
         <div class="connection-menu-profile">
             <div class="connection-menu-profile-heading">
                 <span>MENU / DISPLAY PROFILE</span>
-                <small>Detected automatically from local and distributed menu catalogs</small>
+                <small>Detected from user data, the repository, and the installation</small>
             </div>
             <label>
                 <span>Menu structure</span>
@@ -80,6 +80,10 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
                     @if (MenuDefinitions.Count == 0)
                     {
                         <option value="">No valid menu structures found</option>
+                    }
+                    else if (!MenuDefinitions.Any(definition => definition.IsActive))
+                    {
+                        <option value="@Navigation.DefinitionPath" disabled>Configured menu file unavailable — choose another structure</option>
                     }
                     @foreach (var definition in MenuDefinitions)
                     {
@@ -355,8 +359,13 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
         _ = InvokeAsync(StateHasChanged);
     }
 
-    private static string FormatMenuDefinition(MenuDefinitionCatalogEntry definition) =>
-        $"{definition.Name} · {definition.Model} · firmware {definition.Context.Firmware} · {definition.Context.Signal} · {definition.Context.PictureMode} · {definition.Context.Input} · {definition.Location}";
+    private static string FormatMenuDefinition(MenuDefinitionCatalogEntry definition)
+    {
+        var location = definition.IsActive
+            ? $"Active / {definition.Location}"
+            : definition.Location;
+        return $"{definition.Name} · {definition.Model} · firmware {definition.Context.Firmware} · {definition.Context.Signal} · {definition.Context.PictureMode} · {definition.Context.Input} · {location}";
+    }
 
     private void ApplySnapshotToForm(ControllerSnapshot snapshot)
     {
