@@ -1548,6 +1548,19 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
     }
 
+    public async Task ReloadMenuDefinitionAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        string path;
+        lock (_sync)
+        {
+            path = GetMenuDefinitionPath(_settings);
+        }
+
+        await SetMenuDefinitionAsync(path, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<IReadOnlyList<MenuDefinitionCatalogEntry>>
         DiscoverMenuDefinitionsAsync(
             CancellationToken cancellationToken = default)
@@ -6802,11 +6815,13 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 currentPath = GetMenuDefinitionPath(_settings);
             }
 
-            var path = IsInstalledMenuDefinitionPath(currentPath)
-                ? GetAvailableUserDefinitionPath(
-                    definition.Id,
-                    Path.GetExtension(currentPath))
-                : currentPath;
+            if (IsInstalledMenuDefinitionPath(currentPath))
+            {
+                throw new InvalidOperationException(
+                    "The active installation menu is read-only. Use 'Export & use structure' in Build & Verify to explicitly create an editable copy, then repeat the change.");
+            }
+
+            var path = currentPath;
             var distributableTopology = CopyMenuDefinition(
                 definition,
                 verification: null,
@@ -6814,14 +6829,6 @@ public sealed class SamsungControllerService : IAsyncDisposable
             await new MenuDefinitionWriter()
                 .WriteFileAsync(path, distributableTopology, cancellationToken)
                 .ConfigureAwait(false);
-            if (!path.Equals(currentPath, StringComparison.Ordinal))
-            {
-                await UpdateSettingsAsync(
-                        current => current with { MenuDefinitionPath = path },
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
             if (definition.Verification is not null)
             {
                 await _menuVerificationStore.SaveAsync(
@@ -6864,25 +6871,6 @@ public sealed class SamsungControllerService : IAsyncDisposable
         {
             _menuDefinitionGate.Release();
         }
-    }
-
-    private string GetAvailableUserDefinitionPath(
-        string definitionId,
-        string? preferredExtension = null)
-    {
-        var directory = Path.Combine(_configurationDirectory, "menu-definitions");
-        var extension = preferredExtension?.ToLowerInvariant() switch
-        {
-            ".json" => ".json",
-            ".yml" => ".yml",
-            _ => ".yaml"
-        };
-        var preferred = Path.Combine(directory, $"{definitionId}{extension}");
-        return !File.Exists(preferred)
-            ? preferred
-            : Path.Combine(
-                directory,
-                $"{definitionId}-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}{extension}");
     }
 
     private static bool PathsEqual(string first, string second) =>

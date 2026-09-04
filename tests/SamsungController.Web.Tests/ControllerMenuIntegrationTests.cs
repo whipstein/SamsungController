@@ -218,6 +218,37 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task SavingDisplayWithInstalledMenuStoresReferenceWithoutCopyingMenu()
+    {
+        Directory.CreateDirectory(_directory);
+        var installedPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "menu-definitions",
+            "menu.example.yaml");
+        var installed = await new MenuDefinitionParser().ParseFileAsync(installedPath);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+        var request = new DisplayDefinitionEditRequest(
+            "reference-only-tv",
+            "Reference-only TV",
+            "192.0.2.32",
+            true,
+            null,
+            true,
+            installedPath,
+            installed.Id,
+            installed.ActiveConfigurationId);
+
+        var displayPath = await controller.SaveDisplayDefinitionAsync(request);
+
+        var saved = await new DisplayDefinitionStore().LoadAsync(displayPath);
+        var reference = Assert.Single(saved.Menus);
+        Assert.Equal(DisplayMenuDefinitionSource.Installation, reference.Source);
+        Assert.Null(reference.Path);
+        Assert.False(Directory.Exists(Path.Combine(_directory, "menu-definitions")));
+    }
+
+    [Fact]
     public async Task UpdatingDisplayDefinitionAddsCurrentMenuWithoutRemovingExistingLinks()
     {
         Directory.CreateDirectory(_directory);
@@ -322,7 +353,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task EditingInstalledMenuCreatesAUserDataOverride()
+    public async Task EditingInstalledMenuRequiresAnExplicitCopy()
     {
         Directory.CreateDirectory(_directory);
         var installedPath = Path.Combine(
@@ -333,23 +364,43 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         await using var controller = CreateController();
 
         await controller.InitializeAsync();
-        await controller.UpdateMenuNodeAsync(
-            "normal-video",
-            new MenuNodeEditRequest(
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            controller.UpdateMenuNodeAsync(
                 "normal-video",
-                "Normal video reference",
-                null,
-                "No TV menu is expected to be visible."));
+                new MenuNodeEditRequest(
+                    "normal-video",
+                    "Normal video reference",
+                    null,
+                    "No TV menu is expected to be visible.")));
 
         var overridePath = Path.Combine(
             _directory,
             "menu-definitions",
             "generic-picture-menu.yaml");
-        Assert.True(File.Exists(overridePath));
+        Assert.Contains("explicitly create an editable copy", exception.Message);
+        Assert.False(File.Exists(overridePath));
         Assert.Equal(installedContent, await File.ReadAllTextAsync(installedPath));
-        Assert.Equal(overridePath, controller.GetMenuNavigationSnapshot().DefinitionPath);
-        var overridden = await new MenuDefinitionParser().ParseFileAsync(overridePath);
-        Assert.Equal("Normal video reference", overridden.Nodes["normal-video"].Label);
+        Assert.Equal(installedPath, controller.GetMenuNavigationSnapshot().DefinitionPath);
+    }
+
+    [Fact]
+    public async Task ReloadMenuDefinitionReadsExternalChangesFromTheActiveFile()
+    {
+        Directory.CreateDirectory(_directory);
+        var definitionPath = Path.Combine(_directory, "menu.yaml");
+        await File.WriteAllTextAsync(definitionPath, ValidMenuYaml);
+        await WriteSettingsAsync(definitionPath);
+        await using var controller = CreateController();
+        await controller.InitializeAsync();
+        await File.WriteAllTextAsync(
+            definitionPath,
+            ValidMenuYaml.Replace("name: Test Menu", "name: Corrected Test Menu", StringComparison.Ordinal));
+
+        await controller.ReloadMenuDefinitionAsync();
+
+        var navigation = controller.GetMenuNavigationSnapshot();
+        Assert.Equal("Corrected Test Menu", navigation.DefinitionName);
+        Assert.Contains("reloaded", navigation.Status, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

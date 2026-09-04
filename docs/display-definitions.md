@@ -14,7 +14,9 @@ once:
 - the menu configuration used for that definition.
 
 It does not copy menu topology, timing, calibration values, pairing tokens, or
-verification evidence. Display Verification continues to use the menu
+verification evidence. Use **Reload menu file** on Connection after editing the
+referenced file outside the app; this reparses the same file rather than making
+a copy. Display Verification continues to use the menu
 definition ID plus model, firmware, signal, picture mode, and input/source.
 Creating, editing, or selecting a display definition does not change those
 fingerprints or their `menu-verifications` sidecar.

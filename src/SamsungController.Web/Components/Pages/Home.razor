@@ -123,6 +123,11 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
             <div class="connection-menu-profile-heading">
                 <span>MENU DEFINITION</span>
                 <small>Detected from user data, the repository, and the installation</small>
+                <button class="secondary-action menu-file-reload" type="button"
+                        @onclick="ReloadMenuDefinitionAsync"
+                        disabled="@(MenuProfileControlDisabled || string.IsNullOrWhiteSpace(Navigation.DefinitionPath))">
+                    @(MenuFileReloading ? "Reloading…" : "Reload menu file")
+                </button>
             </div>
             <label>
                 <span>Menu structure</span>
@@ -284,6 +289,7 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
     private int ReconnectAfterIdleSeconds { get; set; } = 300;
     private bool IsBusy { get; set; }
     private bool MenuProfileBusy { get; set; }
+    private bool MenuFileReloading { get; set; }
     private string? LocalError { get; set; }
     private string? LocalStatus { get; set; }
     private IReadOnlyList<MenuDefinitionCatalogEntry> InvalidMenuDefinitions =>
@@ -437,6 +443,35 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
         }
         finally
         {
+            MenuProfileBusy = false;
+        }
+    }
+
+    private async Task ReloadMenuDefinitionAsync()
+    {
+        MenuProfileBusy = true;
+        MenuFileReloading = true;
+        LocalError = null;
+        LocalStatus = null;
+        try
+        {
+            await Controller.ReloadMenuDefinitionAsync();
+            Navigation = Controller.GetMenuNavigationSnapshot();
+            MenuDefinitions = await Controller.DiscoverMenuDefinitionsAsync();
+            DisplayDefinitions = await Controller.DiscoverDisplayDefinitionsAsync();
+            Snapshot = Controller.GetSnapshot();
+            LocalStatus = $"Reloaded {Path.GetFileName(Navigation.DefinitionPath)} from disk. Generated routes and required verification checks are up to date.";
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+            Navigation = Controller.GetMenuNavigationSnapshot();
+            MenuDefinitions = await Controller.DiscoverMenuDefinitionsAsync();
+            DisplayDefinitions = await Controller.DiscoverDisplayDefinitionsAsync();
+        }
+        finally
+        {
+            MenuFileReloading = false;
             MenuProfileBusy = false;
         }
     }

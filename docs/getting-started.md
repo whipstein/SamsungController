@@ -449,10 +449,10 @@ Back up this directory before moving to another computer or making extensive
 manual edits. `tokens.json` and complete session logs are private.
 
 The app also scans the extracted application's `menu-definitions` directory.
-You may delete a duplicate from the user-data `menu-definitions` directory after
-selecting the **Installation** copy on Connection. Refresh the Connection page
-after changing files outside the app. Editing an installed base through Build &
-Verify creates a new user-data override instead of modifying the installation.
+Linking a menu to a display stores a reference and does not create another menu
+file. Select **Reload menu file** on Connection after changing the selected file
+outside the app. An installation copy is read-only; use **Export & use
+structure** in Build & Verify when you explicitly want an editable copy.
 
 ## 13. Troubleshooting checklist
 

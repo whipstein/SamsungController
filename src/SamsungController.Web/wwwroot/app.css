@@ -179,6 +179,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .connection-menu-profile-heading { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .connection-menu-profile-heading span { color: var(--cyan); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .1em; }
 .connection-menu-profile-heading small { color: var(--faint); font-size: 8px; }
+.connection-menu-profile-heading .menu-file-reload { margin-left: auto; padding: 7px 9px; white-space: nowrap; font-size: 8px; }
 .connection-menu-profile label > span { display: block; margin-bottom: 5px; color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
 .connection-menu-profile select { width: 100%; min-width: 0; padding: 9px 10px; }
 .connection-menu-profile > p { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 8px; line-height: 1.45; }
@@ -1265,6 +1266,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .connection-menu-profile { grid-template-columns: 1fr; }
     .connection-menu-profile-heading, .connection-menu-profile > p { grid-column: auto; }
     .connection-menu-profile-heading { align-items: flex-start; flex-direction: column; }
+    .connection-menu-profile-heading .menu-file-reload { width: 100%; margin-left: 0; }
     .readiness-field-grid { grid-template-columns: 1fr; }
     .connection-panel { grid-row: auto; }
     .remote-layout, .macro-layout { display: block; }

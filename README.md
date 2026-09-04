@@ -439,11 +439,12 @@ Important contents include:
 | `console-history.txt` | Up to 200 retained non-raw console commands. |
 
 The Connection page lists both the read-only base structures shipped in the
-installation and editable overrides under `menu-definitions/` in this user-data
-directory. Select an **Installation** structure before deleting a duplicate
-**User data** override. If an installed structure is later edited in Build &
-Verify, SamsungController preserves the installed base and creates an override
-in user data using the same YAML or JSON format.
+installation and editable files under `menu-definitions/` in this user-data
+directory. Linking a structure to a display writes only a reference into the
+small display definition; it never copies the menu file. Use **Reload menu
+file** after correcting the selected YAML or JSON outside the app. To edit an
+installed structure, first use **Export & use structure** in Build & Verify to
+explicitly create and activate an editable copy.
 
 Display definitions are separate from menu structures. They may reference
 user-data, repository, installation, or custom menu definitions and can group
@@ -454,7 +455,8 @@ other saved contexts. See [Display definitions](docs/display-definitions.md).
 Every YAML or JSON file found in those catalogs appears on Connection. A file
 that cannot be parsed or validated is disabled in the selector, labeled
 **INVALID**, and listed immediately below it with the exact diagnostic—normally
-including a JSON line and column. Correct the file and refresh the page.
+including a JSON line and column. Correct the file and select **Reload menu
+file**; the app reparses it and regenerates its routes and verification checks.
 
 Repository ignore rules cover the normal secret and session filenames, but they cannot protect copies or exports saved elsewhere. Keep TV-specific macros, saved states, sidecars, notes, and protocol exports under local application data or the ignored `user-data/` directory. Reviewed structure-only files belong in the tracked repository `menu-definitions/` catalog; they are included in releases for easy distribution. The files under `samples/` remain deliberately generic authoring tutorials.
 
