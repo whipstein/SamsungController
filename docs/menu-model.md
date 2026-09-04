@@ -13,11 +13,12 @@ A menu definition contains three separate concepts:
 - **Anchors** perform a deterministic sequence intended to re-establish a known
   node from an uncertain state.
 
-Every transition and anchor is either `verified: true` or draft. Draft routes
-exist only in **Build & Verify**, where they can be replayed for visual testing;
-the everyday **Menu** page displays and plans verified items only. Mark an item
-verified only after recording the exact TV context and repeatable observed
-result in [research-notes.md](research-notes.md).
+Menu files contain topology only; they never contain verification status. The
+personal `menu-verifications/<menu-id>.verification.json` sidecar records which
+timing, anchor, transition, return-script, and representative-control
+fingerprints passed for a display combination. SamsungController overlays that
+evidence in memory. Routes without matching personal evidence exist only in
+**Build & Verify**; the everyday **Menu** page plans with verified routes only.
 
 ## Confidence
 
@@ -86,7 +87,6 @@ timing:
   screenChangeDelay: 800ms
   returnDelay: 300ms
   adjustmentDelay: 75ms
-  verified: true
 
 nodes:
   - id: normal-video
@@ -170,15 +170,12 @@ anchors:
     label: Return to normal video
     target: normal-video
     configuration: standard
-    verified: false
     returnStrategy:
       menuRoot: settings
       atMenuRoot:
-        verified: false
         steps:
           - key: KEY_RETURN
       belowMenuRoot:
-        verified: false
         steps:
           - key: KEY_RETURN
     steps:
@@ -189,12 +186,12 @@ transitions:
     from: normal-video
     to: settings
     configuration: standard
-    verified: false
     steps:
       - key: KEY_MENU
 ```
 
-The distributable structure never needs a `verification` mapping. Display
+The distributable structure never accepts or needs a `verification` mapping or
+per-route `verified` fields. Display
 Verification derives the required checks from the current structure and stores
 results in a local sidecar only after visual confirmation. Each fingerprint includes the
 declared display context plus the relevant route, timing, control options,
@@ -399,13 +396,13 @@ can be planned or sent.
 8. Edit the **System-wide timing** profile, select a traversal, and
    place the TV at that traversal's source before choosing **Test system
    profile**. The test sends only the displayed traversal and ignores its
-   per-button overrides. Confirm three successful visual runs to persist
-   `timing.verified: true`.
+   per-button overrides. Confirm three successful visual runs to persist the
+   timing fingerprint in the personal verification sidecar.
 9. **Verify coverage** is the complete automatically calculated checklist. It
    first displays unverified base-menu and deeper-menu return rules. Place the TV
    on normal video and choose the line item's explicit **Prepare start** action,
    or place it at the stated start manually, then run the return rule three
-   times. Any unverified state-specific return exception appears as another
+   times. Any state-specific return exception without matching personal evidence appears as another
    calculated line item. Preparation sends only the displayed route. The checklist
    then lists one representative traversal for each affected top-level branch.
 10. Open a topology-coverage card's **Timing lab**, enable custom waits only for exceptional

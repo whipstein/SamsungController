@@ -98,11 +98,6 @@ public sealed class MenuDefinitionJsonSerializer
                 ["input"] = definition.Context.Input
             }
         };
-        if (definition.Verification is { } verification)
-        {
-            root["verification"] = CreateVerification(verification);
-        }
-
         if (definition.Configurations.Count > 0)
         {
             root["configurations"] = new JsonArray(definition.Configurations.Values
@@ -115,8 +110,7 @@ public sealed class MenuDefinitionJsonSerializer
             ["defaultDelay"] = $"{definition.Timing.DefaultDelayMilliseconds}ms",
             ["screenChangeDelay"] = $"{definition.Timing.ScreenChangeDelayMilliseconds}ms",
             ["returnDelay"] = $"{definition.Timing.ReturnDelayMilliseconds}ms",
-            ["adjustmentDelay"] = $"{definition.Timing.AdjustmentDelayMilliseconds}ms",
-            ["verified"] = definition.Timing.Verified
+            ["adjustmentDelay"] = $"{definition.Timing.AdjustmentDelayMilliseconds}ms"
         };
         root["nodes"] = CreateNodes(definition);
         root["anchors"] = new JsonArray(definition.Anchors.Values
@@ -127,27 +121,6 @@ public sealed class MenuDefinitionJsonSerializer
             .ToArray<JsonNode?>());
         return root;
     }
-
-    private static JsonObject CreateVerification(MenuVerificationManifest verification) => new()
-    {
-        ["display"] = new JsonObject
-        {
-            ["model"] = verification.Display.Model,
-            ["firmware"] = verification.Display.Firmware,
-            ["signal"] = verification.Display.Signal,
-            ["pictureMode"] = verification.Display.PictureMode,
-            ["input"] = verification.Display.Input
-        },
-        ["checks"] = new JsonArray(verification.Checks
-            .OrderBy(check => check.Id, StringComparer.OrdinalIgnoreCase)
-            .Select(check => (JsonNode?)new JsonObject
-            {
-                ["id"] = check.Id,
-                ["fingerprint"] = check.Fingerprint,
-                ["verifiedAt"] = check.VerifiedAtUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)
-            })
-            .ToArray())
-    };
 
     private static JsonObject CreateConfiguration(MenuConfiguration configuration)
     {
@@ -235,8 +208,7 @@ public sealed class MenuDefinitionJsonSerializer
         {
             ["id"] = anchor.Id,
             ["label"] = anchor.Label,
-            ["target"] = anchor.TargetNodeId,
-            ["verified"] = anchor.Verified
+            ["target"] = anchor.TargetNodeId
         };
         AddOptional(result, "configuration", anchor.ConfigurationId);
         AddOptional(result, "description", anchor.Description);
@@ -263,7 +235,6 @@ public sealed class MenuDefinitionJsonSerializer
                 .Select(item => (JsonNode?)new JsonObject
                 {
                     ["node"] = item.NodeId,
-                    ["verified"] = item.Script.Verified,
                     ["steps"] = CreateOperations(item.Script.Operations)
                 })
                 .ToArray());
@@ -273,7 +244,6 @@ public sealed class MenuDefinitionJsonSerializer
 
     private static JsonObject CreateReturnScript(MenuReturnScript script) => new()
     {
-        ["verified"] = script.Verified,
         ["steps"] = CreateOperations(script.Operations)
     };
 
@@ -283,8 +253,7 @@ public sealed class MenuDefinitionJsonSerializer
         {
             ["id"] = transition.Id,
             ["from"] = transition.FromNodeId,
-            ["to"] = transition.ToNodeId,
-            ["verified"] = transition.Verified
+            ["to"] = transition.ToNodeId
         };
         AddOptional(result, "configuration", transition.ConfigurationId);
         AddOptional(result, "description", transition.Description);

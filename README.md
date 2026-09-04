@@ -231,7 +231,7 @@ Adding, removing, reordering, or redefining menu items later regenerates the rou
 
 The authoring source is a reusable menu structure. Use **Export & use structure** to write a clean YAML or JSON copy into the repository's tracked `menu-definitions/` catalog and make that copy the active authoring source. Exported files contain topology, controls, conditions, routes, and timing, but no display-verification records or saved TV values. Files placed in that catalog are included in packaged releases.
 
-Use the **Schema inspector** at the top of Build & Verify to troubleshoot a file before loading it. It accepts either one file or a directory, never sends TV commands, and reports each file's validity, format, identity, topology counts, calculated-route count, file-contained verification evidence, warnings, and exact errors. Local verification sidecars are deliberately excluded. The active-file and repository-catalog shortcuts cover the two common checks. A valid result can be loaded directly. JSON errors include line and column where available.
+Use the **Schema inspector** at the top of Build & Verify to troubleshoot a file before loading it. It accepts either one file or a directory, never sends TV commands, and reports each file's validity, format, identity, topology counts, calculated-route count, warnings, and exact errors. Personal verification sidecars are deliberately excluded. The active-file and repository-catalog shortcuts cover the two common checks. A valid result can be loaded directly. JSON errors include line and column where available.
 
 New TV profiles start with an assumed-valid 800 ms screen-change wait and a faster 75 ms Left/Right value-adjustment wait, so you can record the first traversal immediately and apply larger slider changes efficiently. If playback needs adjustment, tune **System-wide timing** for Up/Down navigation, Left/Right adjustment, screen-change, and Return waits, then select a known traversal to test the profile. A draft's **Timing lab** can override the wait after an individual button.
 
@@ -251,7 +251,7 @@ For a visual control check, select **Run guided test**. The app chooses an acces
 
 Ordinary selections, submenu selections, indexed selections, switches, and confirmations each produce at most one shared behavior check. Conditional rows are represented by disabled, hidden, and combined behavior classes rather than one test per controller or row. Unverified timing, anchor, return-script, and menu-route lines all provide **Prepare start**, **Run test**, and their own **Count pass**/**Failed** confirmation in place; the third accepted pass promotes and fingerprints the result automatically. The page can also activate a check's required menu configuration without leaving the checklist. **Build & Verify** is linked only when the structure is missing recording data that must be authored first. Selecting **Remove validation** on a completed line removes only that check from the local display record; it does not alter the menu structure or other results.
 
-Verification is saved in a local `menu-verifications/*.verification.json` sidecar, never in the distributable menu structure. A sidecar can retain independent profiles for multiple display combinations. Each line has an ISO-8601 confirmation time and a SHA-256 fingerprint that includes the display combination and complete behavior group. Editing a dropdown's options therefore reopens its shared interaction-type check; changing one conditional rule reopens the corresponding conditional-behavior class; changing one route reopens that route; changing timing reopens timing. Unchanged results remain valid, and the persistent header turns green only when every current representative check matches.
+Verification is saved in an independent personal-data `menu-verifications/<menu-id>.verification.json` sidecar, never beside or inside the distributable menu structure. The referenced YAML/JSON remains byte-for-byte untouched when tests are run, passed, failed, or removed. A sidecar can retain independent profiles for multiple display combinations. Each line has an ISO-8601 confirmation time and a SHA-256 fingerprint that includes the display combination and complete behavior group. Editing a dropdown's options therefore reopens its shared interaction-type check; changing one conditional rule reopens the corresponding conditional-behavior class; changing one route reopens that route; changing timing reopens timing. Unchanged results remain valid, and the persistent header turns green only when every current representative check matches.
 
 ### Protocol
 
@@ -339,7 +339,7 @@ dotnet run --project src/SamsungController.Cli -- menu validate menu-definitions
 dotnet run --project src/SamsungController.Cli -- menu validate menu-definitions/odyssey-g9.json
 ```
 
-With no path, `menu validate` checks `menu-definitions` under the current directory. Each result includes errors, non-blocking warnings, topology and route counts, and file-contained verification evidence; local verification sidecars are not included. The command returns exit code `0` when every file is valid and `2` if a definition is invalid or the directory contains no menu files, so it can also be used in scripts.
+With no path, `menu validate` checks `menu-definitions` under the current directory. Each result includes errors, non-blocking warnings, topology and route counts; personal verification sidecars are not included. The command returns exit code `0` when every file is valid and `2` if a definition is invalid or the directory contains no menu files, so it can also be used in scripts.
 
 ### Interactive console
 
@@ -434,7 +434,7 @@ Important contents include:
 | `macros.yaml` | Default user macro catalog, if you create it. |
 | `display-definitions/` | Saved display/connection profiles and their menu-definition references. |
 | `menu-definitions/` | Active and draft YAML or JSON menu definitions created by the UI. |
-| `menu-verifications/` | Local display-bound verification sidecars keyed by menu-structure ID. |
+| `menu-verifications/` | Independent personal display-verification sidecars keyed by menu-structure ID; no menu topology is stored here. |
 | `sessions/*.ndjson` | Complete timestamped protocol messages for connected sessions. Keep private. |
 | `console-history.txt` | Up to 200 retained non-raw console commands. |
 

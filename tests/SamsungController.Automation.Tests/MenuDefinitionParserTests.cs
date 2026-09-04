@@ -8,10 +8,15 @@ public sealed class MenuDefinitionParserTests
     [Fact]
     public async Task BundledOdysseyDefinitionIsValidAfterTopologyRegeneration()
     {
-        var path = Path.Combine(
+        var definitionDirectory = Path.Combine(
             AppContext.BaseDirectory,
-            "menu-definitions",
-            "odyssey_g9_oled-game.json");
+            "menu-definitions");
+        var renamedPath = Path.Combine(
+            definitionDirectory,
+            "odyssey_g9_oled-2231-game.json");
+        var path = File.Exists(renamedPath)
+            ? renamedPath
+            : Path.Combine(definitionDirectory, "odyssey_g9_oled-game.json");
         var definition = TopologyRouteGenerator.Regenerate(
             await new MenuDefinitionParser().ParseFileAsync(path));
 
@@ -220,7 +225,7 @@ public sealed class MenuDefinitionParserTests
         Assert.Equal(800, definition.Timing.ScreenChangeDelayMilliseconds);
         Assert.Equal(300, definition.Timing.ReturnDelayMilliseconds);
         Assert.Equal(75, definition.Timing.AdjustmentDelayMilliseconds);
-        Assert.True(definition.Timing.Verified);
+        Assert.False(definition.Timing.Verified);
 
         var normalVideo = definition.GetRequiredAnchor("normal-video");
         Assert.False(normalVideo.Verified);

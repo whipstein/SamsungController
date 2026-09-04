@@ -308,6 +308,11 @@ Select **Export & use structure** after the topology is clean. Exported YAML or
 JSON contains no pairing token, saved TV values, protocol logs, or
 display-specific verification. Those stay in local application data.
 
+The selected YAML/JSON is always topology-only. Verification creates or updates
+an independent `<menu-id>.verification.json` file under the personal
+`menu-verifications/` directory; passing, failing, or removing a check never
+changes or duplicates the referenced menu file.
+
 ## 8. Verify the structure on this display
 
 Open **Display Verification**. This binds reusable structure behavior to the

@@ -23,7 +23,6 @@ timing:
   screenChangeDelay: 800ms
   returnDelay: 300ms
   adjustmentDelay: 75ms
-  verified: true
 
 # Nest every menu's on-screen rows under children in their TV display order.
 nodes:
@@ -62,16 +61,13 @@ anchors:
     label: Return to normal video
     target: normal-video
     configuration: standard
-    verified: false
     description: Example only. Record and verify the correct return sequence for your TV.
     returnStrategy:
       menuRoot: settings
       atMenuRoot:
-        verified: false
         steps:
           - key: KEY_RETURN
       belowMenuRoot:
-        verified: false
         steps:
           - key: KEY_RETURN
     steps:
@@ -82,7 +78,6 @@ transitions:
     from: normal-video
     to: settings
     configuration: standard
-    verified: false
     description: Example only. Record this transition from the browser UI.
     steps:
       - key: KEY_MENU
@@ -91,7 +86,6 @@ transitions:
     from: settings
     to: picture
     configuration: standard
-    verified: false
     description: Example only. Replace with the observed route on your TV.
     steps:
       - key: KEY_DOWN
@@ -101,7 +95,6 @@ transitions:
     from: picture
     to: expert-settings
     configuration: standard
-    verified: false
     description: Example only. Replace with the observed route on your TV.
     steps:
       - key: KEY_DOWN

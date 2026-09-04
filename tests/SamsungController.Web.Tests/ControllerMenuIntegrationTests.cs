@@ -530,7 +530,9 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         var reparsed = await new MenuDefinitionParser().ParseFileAsync(snapshot.DefinitionPath);
         Assert.Equal("new-tv", reparsed.Id);
         Assert.Equal(800, reparsed.Timing.ScreenChangeDelayMilliseconds);
-        Assert.True(reparsed.Timing.Verified);
+        Assert.False(reparsed.Timing.Verified);
+        Assert.True(controller.GetMenuAuthoringSnapshot().Timing.Verified);
+        Assert.True(File.Exists(new MenuVerificationStore(_directory).GetPath("new-tv")));
         var defaultConfiguration = Assert.Single(reparsed.Configurations.Values);
         Assert.Equal("default", defaultConfiguration.Id);
         Assert.Equal("Default menu layout.", defaultConfiguration.Conditions);
@@ -608,7 +610,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
 
             var persisted = await new MenuDefinitionParser().ParseFileAsync(
                 controller.GetMenuNavigationSnapshot().DefinitionPath);
-            Assert.True(persisted.Timing.Verified);
+            Assert.False(persisted.Timing.Verified);
             Assert.Equal(800, persisted.Timing.ScreenChangeDelayMilliseconds);
         }
     }
@@ -704,13 +706,16 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 !transition.GeneratedFromTopology
                 && transition.FromNodeId == "normal-video"
                 && transition.ToNodeId == "settings");
-            Assert.True(seed.Verified);
+            Assert.False(seed.Verified);
             var verifiedGroupId = persisted.Transitions[pictureCoverage.Id].ValidationGroupId;
             Assert.All(
                 persisted.Transitions.Values.Where(transition =>
                     transition.ValidationGroupId == verifiedGroupId),
-                transition => Assert.True(transition.Verified));
-            Assert.True(persisted.Transitions.Values.Count(transition => transition.Verified) >= 5);
+                transition => Assert.False(transition.Verified));
+            var verification = controller.GetMenuDefinitionVerificationSnapshot();
+            Assert.True(verification.Checks.Single(check =>
+                check.Kind == MenuVerificationCheckKind.Route
+                && check.AuthoringItemId == pictureCoverage.Id).Verified);
         }
     }
 
@@ -843,9 +848,13 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             var persisted = await new MenuDefinitionParser().ParseFileAsync(
                 controller.GetMenuNavigationSnapshot().DefinitionPath);
             var anchor = Assert.Single(persisted.Anchors.Values);
-            Assert.True(anchor.Verified);
-            Assert.True(anchor.ReturnStrategy!.AtMenuRoot.Verified);
-            Assert.True(anchor.ReturnStrategy.BelowMenuRoot.Verified);
+            Assert.False(anchor.Verified);
+            Assert.False(anchor.ReturnStrategy!.AtMenuRoot.Verified);
+            Assert.False(anchor.ReturnStrategy.BelowMenuRoot.Verified);
+            var effective = Assert.IsType<MenuReturnStrategySummary>(
+                controller.GetMenuAuthoringSnapshot().ReturnStrategy);
+            Assert.True(effective.AtMenuRoot.Verified);
+            Assert.True(effective.BelowMenuRoot.Verified);
         }
     }
 
@@ -1463,7 +1472,8 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
 
         await controller.UpdateMenuTimingProfileAsync(new MenuTimingProfile(125, 600, 300));
         var unchanged = await new MenuDefinitionParser().ParseFileAsync(definitionPath);
-        Assert.True(unchanged.Timing.Verified);
+        Assert.False(unchanged.Timing.Verified);
+        Assert.True(controller.GetMenuAuthoringSnapshot().Timing.Verified);
 
         await controller.UpdateMenuTimingProfileAsync(new MenuTimingProfile(
             125,
@@ -1502,8 +1512,9 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         var persisted = Assert.IsType<MenuReturnStrategy>(
             reparsed.Anchors["normal"].ReturnStrategy);
         Assert.Equal("settings", persisted.MenuRootNodeId);
-        Assert.True(persisted.AtMenuRoot.Verified);
+        Assert.False(persisted.AtMenuRoot.Verified);
         Assert.False(persisted.BelowMenuRoot.Verified);
+        Assert.True(controller.GetMenuAuthoringSnapshot().ReturnStrategy!.AtMenuRoot.Verified);
         Assert.Equal(
             ["KEY_MENU", "KEY_RETURN"],
             persisted.BelowMenuRoot.Operations.Select(operation => operation.Key));
@@ -1686,6 +1697,8 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
 
             var beforeValidation = await new MenuDefinitionParser().ParseFileAsync(
                 controller.GetMenuNavigationSnapshot().DefinitionPath);
+            var topologyBeforeValidation = await File.ReadAllTextAsync(
+                controller.GetMenuNavigationSnapshot().DefinitionPath);
             Assert.Equal(2, Assert.Single(beforeValidation.Anchors["normal"].Operations).Repeat);
             Assert.Equal(
                 "KEY_HOME",
@@ -1736,11 +1749,17 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
 
             var verified = await new MenuDefinitionParser().ParseFileAsync(
                 controller.GetMenuNavigationSnapshot().DefinitionPath);
+            Assert.Equal(
+                topologyBeforeValidation,
+                await File.ReadAllTextAsync(
+                    controller.GetMenuNavigationSnapshot().DefinitionPath));
             var transition = verified.Transitions["open-picture-draft"];
-            Assert.True(transition.Verified);
+            Assert.False(transition.Verified);
             Assert.Equal(
                 "KEY_HOME",
                 Assert.Single(transition.ReturnToVideoOperations!).Key);
+            Assert.True(controller.GetMenuDefinitionVerificationSnapshot().Checks.Single(check =>
+                check.AuthoringItemId == "open-picture-draft").Verified);
 
             controller.CreateNavigationPlan("picture");
             await controller.ExecuteNavigationPlanAsync();
@@ -1823,7 +1842,6 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 await controller.RunMenuTimingProfileTestAsync(
                     "open-settings",
                     new MenuTimingProfile(50, 50, 50));
-                Assert.Equal(MenuStateConfidence.Unknown, controller.GetSnapshot().MenuConfidence);
 
                 await controller.ConfirmMenuTimingProfileTestAsync(passed: true);
 
@@ -1888,8 +1906,11 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             Assert.True(verified.Verified);
             var definition = await new MenuDefinitionParser().ParseFileAsync(
                 controller.GetMenuNavigationSnapshot().DefinitionPath);
-            Assert.True(Assert.Single(
+            Assert.False(Assert.Single(
                 definition.Anchors["normal"].ReturnStrategy!.NodeOverrides!).Script.Verified);
+            Assert.True(controller.GetMenuDefinitionVerificationSnapshot().Checks.Single(check =>
+                check.ReturnScriptKind == MenuReturnScriptKind.NodeOverride
+                && check.TargetNodeId == "picture").Verified);
         }
     }
 
@@ -3063,6 +3084,8 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         var (controller, transport) = await CreateConnectedControllerAsync(yaml);
         await using (controller)
         {
+            var menuPath = controller.GetMenuNavigationSnapshot().DefinitionPath;
+            var topologyBeforeVerification = await File.ReadAllTextAsync(menuPath);
             var testedNodeIds = new List<string>();
             for (var index = 0; index < 3; index++)
             {
@@ -3083,6 +3106,13 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             Assert.Equal(3, testedNodeIds.Distinct(StringComparer.OrdinalIgnoreCase).Count());
             Assert.True(controller.GetMenuControlVerificationSnapshot().SlidersVerified);
             Assert.Equal(3, GetSentKeys(transport).Count(key => key == "KEY_RIGHT"));
+            var completed = await controller.ConfirmMenuDefinitionVerificationCheckAsync(
+                "control:slider-behavior");
+            Assert.True(completed.Checks.Single(check =>
+                check.Id == "control:slider-behavior").Verified);
+            Assert.Equal(
+                topologyBeforeVerification,
+                await File.ReadAllTextAsync(menuPath));
 
             var knownState = await controller.ReturnMenuDefinitionVerificationToKnownStateAsync();
 
@@ -3500,9 +3530,16 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         var (controller, _) = await CreateConnectedControllerAsync(yaml);
         await using (controller)
         {
+            var sourcePath = controller.GetMenuNavigationSnapshot().DefinitionPath;
+            Assert.Equal(yaml, await File.ReadAllTextAsync(sourcePath));
             var initial = controller.GetMenuDefinitionVerificationSnapshot();
             Assert.False(initial.FullyVerified);
-            Assert.All(initial.Checks, check => Assert.False(check.Verified));
+            Assert.True(initial.Checks.Single(check => check.Kind == MenuVerificationCheckKind.Timing).Verified);
+            Assert.True(initial.Checks.Single(check => check.Kind == MenuVerificationCheckKind.Anchor).Verified);
+            Assert.True(initial.Checks.Single(check => check.Kind == MenuVerificationCheckKind.Route).Verified);
+            Assert.False(initial.Checks.Single(check => check.Kind == MenuVerificationCheckKind.Display).Verified);
+            Assert.False(initial.Checks.Single(check =>
+                check.Kind == MenuVerificationCheckKind.Selection).Verified);
             var routeCheck = Assert.Single(
                 initial.Checks,
                 check => check.Kind == MenuVerificationCheckKind.Route);
@@ -3513,13 +3550,13 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             Assert.Equal(0, routeCheck.ValidationPasses);
             Assert.Equal(3, routeCheck.RequiredValidationPasses);
 
-            await controller.CarryForwardExistingMenuVerificationAsync();
             await controller.ConfirmMenuDefinitionVerificationCheckAsync("display");
             var complete = await controller.ConfirmMenuDefinitionVerificationCheckAsync(
                 "control:selection-behavior");
 
             Assert.True(complete.FullyVerified);
             Assert.Equal(complete.RequiredCount, complete.VerifiedCount);
+            Assert.Equal(yaml, await File.ReadAllTextAsync(sourcePath));
 
             var exportPath = Path.Combine(
                 _directory,

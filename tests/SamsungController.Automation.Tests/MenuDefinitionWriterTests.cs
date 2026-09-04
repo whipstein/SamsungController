@@ -137,11 +137,12 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Assert.Equal(definition.Id, reparsed.Id);
         Assert.Equal(definition.Name, reparsed.Name);
         Assert.Equal(definition.Context, reparsed.Context);
-        Assert.Equal(definition.Timing, reparsed.Timing);
+        Assert.Equal(definition.Timing with { Verified = false }, reparsed.Timing);
         var configuration = Assert.Single(reparsed.Configurations.Values);
         Assert.Equal("standard", configuration.Id);
         Assert.Equal("Game Mode = Off", configuration.Conditions);
-        Assert.Contains("  verified: true", writtenYaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("verified:", writtenYaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("verification:", writtenYaml, StringComparison.Ordinal);
         Assert.Contains("  adjustmentDelay: 60ms", writtenYaml, StringComparison.Ordinal);
         Assert.Contains("    children:", writtenYaml, StringComparison.Ordinal);
         Assert.Contains("        children:", writtenYaml, StringComparison.Ordinal);
@@ -178,13 +179,13 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Assert.Null(reparsed.Nodes["smart-calibration"].DefaultValue);
         Assert.True(reparsed.Nodes["unavailable-feature"].Disabled);
         Assert.Contains("disabled: true", writtenYaml, StringComparison.Ordinal);
-        Assert.True(reparsed.Anchors["normal"].Verified);
+        Assert.False(reparsed.Anchors["normal"].Verified);
         Assert.Equal("standard", reparsed.Anchors["normal"].ConfigurationId);
         Assert.Equal("settings", reparsed.Anchors["normal"].ValidationSourceNodeId);
         var returnStrategy = Assert.IsType<MenuReturnStrategy>(
             reparsed.Anchors["normal"].ReturnStrategy);
         Assert.Equal("settings", returnStrategy.MenuRootNodeId);
-        Assert.True(returnStrategy.AtMenuRoot.Verified);
+        Assert.False(returnStrategy.AtMenuRoot.Verified);
         Assert.Equal("KEY_RETURN", Assert.Single(returnStrategy.AtMenuRoot.Operations).Key);
         Assert.False(returnStrategy.BelowMenuRoot.Verified);
         Assert.Equal(
@@ -192,7 +193,7 @@ public sealed class MenuDefinitionWriterTests : IDisposable
             returnStrategy.BelowMenuRoot.Operations.Select(operation => operation.Key));
         var nodeOverride = Assert.Single(returnStrategy.NodeOverrides!);
         Assert.Equal("settings", nodeOverride.NodeId);
-        Assert.True(nodeOverride.Script.Verified);
+        Assert.False(nodeOverride.Script.Verified);
         Assert.Equal("KEY_EXIT", Assert.Single(nodeOverride.Script.Operations).Key);
         var transition = reparsed.Transitions["open-settings"];
         Assert.Equal("standard", transition.ConfigurationId);
@@ -295,7 +296,7 @@ public sealed class MenuDefinitionWriterTests : IDisposable
     }
 
     [Fact]
-    public void VerificationManifestRoundTripsWithDisplayFingerprintAndTimestamp()
+    public void VerificationManifestIsNeverWrittenIntoMenuTopology()
     {
         var display = new MenuVerificationDisplay(
             "S95F",
@@ -319,13 +320,9 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         var yaml = new MenuDefinitionWriter().Serialize(definition);
         var reparsed = new MenuDefinitionParser().Parse(yaml);
 
-        Assert.Equal(display, reparsed.Verification!.Display);
-        var check = Assert.Single(reparsed.Verification.Checks);
-        Assert.Equal("display", check.Id);
-        Assert.Equal(new string('a', 64), check.Fingerprint);
-        Assert.Equal(verifiedAt, check.VerifiedAtUtc);
-        Assert.Contains("verification:", yaml, StringComparison.Ordinal);
-        Assert.Contains("verifiedAt:", yaml, StringComparison.Ordinal);
+        Assert.Null(reparsed.Verification);
+        Assert.DoesNotContain("verification:", yaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("verifiedAt:", yaml, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -422,7 +419,7 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Assert.DoesNotContain("\"parent\"", firstContent, StringComparison.Ordinal);
         Assert.Equal(definition.Id, reparsed.Id);
         Assert.Equal(definition.Context, reparsed.Context);
-        Assert.Equal(definition.Timing, reparsed.Timing);
+        Assert.Equal(definition.Timing with { Verified = false }, reparsed.Timing);
         Assert.Equal(MenuControlType.Slider, reparsed.Nodes["brightness"].ControlType);
         Assert.Equal(100m, reparsed.Nodes["brightness"].MaximumValue);
         Assert.Equal(["Standard", "Filmmaker Mode"], reparsed.Nodes["picture-mode"].SelectionOptions);
@@ -430,7 +427,9 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Assert.True(reparsed.Nodes["unavailable-feature"].Disabled);
         Assert.Contains("\"disabled\": true", firstContent, StringComparison.Ordinal);
         Assert.Equal("KEY_MENU", Assert.Single(reparsed.Transitions.Values).Operations[0].Key);
-        Assert.Equal(verifiedAt, Assert.Single(reparsed.Verification!.Checks).VerifiedAtUtc);
+        Assert.Null(reparsed.Verification);
+        Assert.DoesNotContain("\"verification\"", firstContent, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"verified\"", firstContent, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -29,7 +29,7 @@ SamsungController.Web
   messages, state, retry/reconnect behavior, and message publication.
 - `SamsungController.Automation` owns macro models, YAML parsing, validation,
   atomic YAML serialization, behavioral verification metadata, plan expansion,
-  cancellation, and progress events, plus menu-definition
+  cancellation, and progress events. For menus it owns definition
   parsing, graph planning, predicted state, confidence, anchors, and navigation
   execution. It targets plain `net10.0` and reaches the TV only through narrow
   command-target interfaces.
@@ -50,13 +50,18 @@ SamsungController.Web
 Display definitions are web/application profiles above the navigation model.
 They contain connection defaults and source-aware references to one or more
 menu-definition IDs/configurations. Selecting one resolves the existing menu
-file and then uses the normal menu loader. It does not copy verification data or
-change the verification key, which remains menu-definition ID plus model,
+file and then uses the normal menu loader. It does not copy the menu or
+verification data. The verification key remains menu-definition ID plus model,
 firmware, signal, picture mode, and input/source.
 
 The macro automation, web interface, and data-driven menu-navigation layer are
-model-independent. Real-TV verification data remains local unless it is
-deliberately sanitized and published as a separate compatibility profile.
+model-independent. Menu topology and real-TV verification have a strict storage
+boundary: reusable YAML/JSON definitions contain no verification fields, while
+display evidence exists only in the user's `menu-verifications/` directory.
+Loading a definition creates a clean topology, applies matching sidecar
+fingerprints to an in-memory runtime copy, then reconciles generated routes.
+Counting or removing a pass writes only the sidecar and never rewrites the
+referenced menu file.
 
 ## Predicted menu navigation
 

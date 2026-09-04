@@ -21,7 +21,6 @@ public sealed class MenuDefinitionWriter
         AppendScalar(yaml, 2, "signal", definition.Context.Signal);
         AppendScalar(yaml, 2, "pictureMode", definition.Context.PictureMode);
         AppendScalar(yaml, 2, "input", definition.Context.Input);
-        AppendVerification(yaml, definition.Verification);
         if (definition.Configurations.Count > 0)
         {
             yaml.AppendLine();
@@ -40,7 +39,6 @@ public sealed class MenuDefinitionWriter
         AppendDuration(yaml, 2, "screenChangeDelay", definition.Timing.ScreenChangeDelayMilliseconds);
         AppendDuration(yaml, 2, "returnDelay", definition.Timing.ReturnDelayMilliseconds);
         AppendDuration(yaml, 2, "adjustmentDelay", definition.Timing.AdjustmentDelayMilliseconds);
-        AppendBoolean(yaml, 2, "verified", definition.Timing.Verified);
         yaml.AppendLine();
         yaml.AppendLine("nodes:");
         var orderedNodes = definition.Nodes.Values.ToArray();
@@ -61,7 +59,6 @@ public sealed class MenuDefinitionWriter
             AppendScalar(yaml, 4, "label", anchor.Label);
             AppendScalar(yaml, 4, "target", anchor.TargetNodeId);
             AppendOptionalScalar(yaml, 4, "configuration", anchor.ConfigurationId);
-            AppendBoolean(yaml, 4, "verified", anchor.Verified);
             AppendOptionalScalar(yaml, 4, "description", anchor.Description);
             AppendOptionalScalar(yaml, 4, "validationSource", anchor.ValidationSourceNodeId);
             AppendReturnStrategy(yaml, anchor.ReturnStrategy);
@@ -76,7 +73,6 @@ public sealed class MenuDefinitionWriter
             AppendScalar(yaml, 4, "from", transition.FromNodeId);
             AppendScalar(yaml, 4, "to", transition.ToNodeId);
             AppendOptionalScalar(yaml, 4, "configuration", transition.ConfigurationId);
-            AppendBoolean(yaml, 4, "verified", transition.Verified);
             AppendOptionalScalar(yaml, 4, "description", transition.Description);
             if (transition.GeneratedFromTopology)
             {
@@ -175,36 +171,6 @@ public sealed class MenuDefinitionWriter
         }
     }
 
-    private static void AppendVerification(
-        StringBuilder yaml,
-        MenuVerificationManifest? verification)
-    {
-        if (verification is null)
-        {
-            return;
-        }
-
-        yaml.AppendLine();
-        yaml.AppendLine("verification:");
-        yaml.AppendLine("  display:");
-        AppendScalar(yaml, 4, "model", verification.Display.Model);
-        AppendScalar(yaml, 4, "firmware", verification.Display.Firmware);
-        AppendScalar(yaml, 4, "signal", verification.Display.Signal);
-        AppendScalar(yaml, 4, "pictureMode", verification.Display.PictureMode);
-        AppendScalar(yaml, 4, "input", verification.Display.Input);
-        yaml.AppendLine(verification.Checks.Count == 0 ? "  checks: []" : "  checks:");
-        foreach (var check in verification.Checks.OrderBy(item => item.Id, StringComparer.OrdinalIgnoreCase))
-        {
-            AppendListScalar(yaml, 4, "id", check.Id);
-            AppendScalar(yaml, 6, "fingerprint", check.Fingerprint);
-            AppendScalar(
-                yaml,
-                6,
-                "verifiedAt",
-                check.VerifiedAtUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
-        }
-    }
-
     private static void AppendOptionalDecimal(
         StringBuilder yaml,
         int indentation,
@@ -298,7 +264,6 @@ public sealed class MenuDefinitionWriter
             foreach (var item in strategy.NodeOverrides)
             {
                 AppendListScalar(yaml, 8, "node", item.NodeId);
-                AppendBoolean(yaml, 10, "verified", item.Script.Verified);
                 AppendOperations(yaml, item.Script.Operations, 10);
             }
         }
@@ -311,7 +276,6 @@ public sealed class MenuDefinitionWriter
         MenuReturnScript script)
     {
         yaml.Append(' ', indentation).Append(name).AppendLine(":");
-        AppendBoolean(yaml, indentation + 2, "verified", script.Verified);
         AppendOperations(yaml, script.Operations, indentation + 2);
     }
 

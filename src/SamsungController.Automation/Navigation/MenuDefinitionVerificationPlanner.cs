@@ -302,12 +302,10 @@ public static class MenuDefinitionVerificationPlanner
             definition.Timing.ReturnDelayMilliseconds,
             definition.Timing.ScreenChangeDelayMilliseconds));
         var routes = definition.ApplicableAnchors
-            .Where(anchor => anchor.Verified)
             .OrderBy(anchor => anchor.Operations.Sum(operation => operation.Repeat))
             .ThenBy(anchor => anchor.Id, StringComparer.OrdinalIgnoreCase)
             .SelectMany(anchor => definition.ApplicableTransitions
-                .Where(transition => transition.Verified
-                    && transition.FromNodeId.Equals(
+                .Where(transition => transition.FromNodeId.Equals(
                         anchor.TargetNodeId,
                         StringComparison.OrdinalIgnoreCase)
                     && IsSafeCalculatedNavigationTarget(

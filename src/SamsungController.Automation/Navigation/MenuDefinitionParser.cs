@@ -113,7 +113,7 @@ public sealed class MenuDefinitionParser
             ParseTimingMilliseconds(fields, "defaultDelay", defaults.DefaultDelayMilliseconds),
             ParseTimingMilliseconds(fields, "screenChangeDelay", defaults.ScreenChangeDelayMilliseconds),
             ParseTimingMilliseconds(fields, "returnDelay", defaults.ReturnDelayMilliseconds),
-            OptionalBoolean(fields, "verified", "timing", defaults.Verified),
+            OptionalBoolean(fields, "verified", "timing", defaultValue: false),
             ParseTimingMilliseconds(fields, "adjustmentDelay", defaults.AdjustmentDelayMilliseconds));
     }
 

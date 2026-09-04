@@ -8,8 +8,9 @@ generates or validates the topology.
 - Use `.yaml` or `.yml` for YAML.
 - Use `.json` for JSON.
 - **Build & Verify > Create TV profile** creates YAML unless JSON is selected.
-- Loading, editing, recording, and verifying an existing profile keep that
-  file's format. Saving a JSON profile does not turn it into YAML.
+- Loading, editing, and recording an existing profile keep that file's format.
+  Saving a JSON profile does not turn it into YAML. Verification never saves to
+  the menu file.
 - For a path without a recognized extension, SamsungController detects a JSON
   object by its leading `{`; otherwise it treats the file as YAML. A new file
   without a recognized extension defaults to YAML.
@@ -29,9 +30,8 @@ on separate lines in the Build & Verify error panel.
 **Build & Verify > Schema inspector** evaluates one file or recursively scans a
 directory without sending any commands to the TV. The report distinguishes
 blocking errors from warnings and shows the parsed identity, model/firmware,
-node count, anchors, explicit seed traversals, topology-generated routes,
-configurations, and file-contained verification evidence. Local verification
-sidecars are not included. Use **Inspect active file** or **Inspect repository
+node count, anchors, explicit seed traversals, topology-generated routes, and
+configurations. Personal verification sidecars are not included. Use **Inspect active file** or **Inspect repository
 catalog** as shortcuts; a valid result can be loaded directly from the report.
 
 The packaged and source CLI exposes the same evaluator:
@@ -67,6 +67,12 @@ file. The application stores evidence in local `menu-verifications/` sidecars
 and saved values in local application settings. **Export & use structure** always
 produces a portable file without either kind of local state and makes the copy
 the active authoring source.
+
+This is a strict storage boundary: a menu file is reusable topology, while a
+`<menu-id>.verification.json` sidecar is personal evidence for one or more
+display combinations. Running or approving a verification check does not edit,
+copy, or relocate the referenced YAML/JSON menu file. SamsungController applies
+matching sidecar fingerprints only to its in-memory navigation model.
 
 ## The topology in one picture
 
@@ -113,7 +119,6 @@ timing:
   screenChangeDelay: 800ms
   returnDelay: 300ms
   adjustmentDelay: 75ms
-  verified: true
 
 nodes:
   - id: tv-interface
@@ -170,22 +175,18 @@ anchors:
     label: Return to normal video
     target: normal-video
     configuration: default
-    verified: true
     validationSource: settings
     returnStrategy:
       menuRoot: settings
       atMenuRoot:
-        verified: true
         steps:
           - key: KEY_RETURN
       belowMenuRoot:
-        verified: true
         steps:
           - key: KEY_MENU
           - key: KEY_RETURN
       overrides:
         - node: reset-picture
-          verified: false
           steps:
             - key: KEY_RETURN
             - key: KEY_MENU
@@ -198,15 +199,14 @@ transitions:
     from: normal-video
     to: settings
     configuration: default
-    verified: true
     description: Open Settings from normal video
     steps:
       - key: KEY_MENU
         delay: 1s
 ```
 
-`verification` is intentionally omitted from the hand-authored example. The
-app adds it after visual checks.
+Verification fields are intentionally absent. The app never adds them to a menu
+definition; visual checks are written only to the personal sidecar.
 
 ## Equivalent JSON example
 
@@ -237,8 +237,7 @@ allowed.
     "defaultDelay": "150ms",
     "screenChangeDelay": "800ms",
     "returnDelay": "300ms",
-    "adjustmentDelay": "75ms",
-    "verified": true
+    "adjustmentDelay": "75ms"
   },
   "nodes": [
     {
@@ -294,16 +293,13 @@ allowed.
       "label": "Return to normal video",
       "target": "normal-video",
       "configuration": "default",
-      "verified": true,
       "validationSource": "settings",
       "returnStrategy": {
         "menuRoot": "settings",
         "atMenuRoot": {
-          "verified": true,
           "steps": [{ "key": "KEY_RETURN" }]
         },
         "belowMenuRoot": {
-          "verified": true,
           "steps": [{ "key": "KEY_MENU" }, { "key": "KEY_RETURN" }]
         }
       },
@@ -316,7 +312,6 @@ allowed.
       "from": "normal-video",
       "to": "settings",
       "configuration": "default",
-      "verified": true,
       "steps": [{ "key": "KEY_MENU", "delay": "1s" }]
     }
   ]
