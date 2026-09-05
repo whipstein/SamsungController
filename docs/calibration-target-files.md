@@ -67,7 +67,7 @@ and column.
 
 ## Safe application
 
-Large Apply and reset/apply operations show a red sticky progress strip. Select
+Large Apply, reset-to-defaults, and reset/apply operations show a red sticky progress strip. Select
 **Cancel active update** as soon as the visible TV state differs from the phase
 shown. Cancellation prevents the next key after an already in-flight send or
 wait, and deliberately sends no automatic cleanup commands. Inspect the TV and

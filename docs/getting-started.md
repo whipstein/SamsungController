@@ -392,9 +392,10 @@ apply them. Under **Enter current settings**, load the same file as current to
 fill the command-free draft when the TV already matches those values.
 
 Because Samsung does not report slider values, relative changes are trustworthy
-only when the loaded current-TV state matches the display. **Reset & apply all**
-is available as an explicitly confirmed workflow, but it is destructive and
-should be used only when you intentionally want the declared defaults first.
+only when the loaded current-TV state matches the display. **Reset to defaults**
+executes the selected verified reset and replaces the current prediction and
+saved targets with declared defaults. **Reset & apply all** resets first and
+then restores the saved calibration. Both require explicit confirmation.
 
 ## 11. Create and verify a macro
 

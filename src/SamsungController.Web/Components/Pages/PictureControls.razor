@@ -23,7 +23,7 @@
                 <li><strong>Immediate</strong> sends one changed control at a time. <strong>Apply button</strong> can stage a controller and its newly enabled settings together.</li>
                 <li><strong>Cancel active update</strong> stops a large Apply or reset/apply batch before the next key. It never sends cleanup keys after cancellation.</li>
                 <li>A calibration JSON file can be loaded in either workspace. <strong>Adjust TV</strong> stages its values as targets; <strong>Enter current settings</strong> imports them into the command-free current-state draft.</li>
-                <li><strong>Save profile</strong> stores desired values locally. <strong>Reset &amp; apply all</strong> runs a verified reset confirmation, restores known defaults, and reapplies that profile.</li>
+                <li><strong>Reset to defaults</strong> runs the verified reset and makes the declared defaults both the current baseline and saved targets. <strong>Reset &amp; apply all</strong> instead reapplies the saved calibration after the reset.</li>
                 <li>Use <strong>Enter current settings</strong> to record values already visible on the TV and later load them as the prediction baseline. Saving or loading a state sends no remote commands.</li>
                 <li>This page unlocks only after Display Verification is complete for the selected menu structure, TV, signal, picture mode, input, and configurations.</li>
                 <li>Once unlocked, shared slider, switch, selection, submenu-selection, and indexed-selection behaviors are already trusted and do not request redundant confirmation.</li>
@@ -211,7 +211,8 @@ else
                             }
                         </select>
                     </label>
-                    <button class="secondary-action danger-action" @onclick="BeginFactoryReset" disabled="@(!CanBeginFactoryReset)">Reset &amp; apply all</button>
+                    <button class="secondary-action danger-action" @onclick="() => BeginFactoryReset(FactoryResetAction.ResetToDefaults)" disabled="@(!CanBeginFactoryReset)">Reset to defaults</button>
+                    <button class="secondary-action danger-action" @onclick="() => BeginFactoryReset(FactoryResetAction.ResetAndApply)" disabled="@(!CanBeginFactoryReset)">Reset &amp; apply all</button>
                 }
                 <button class="secondary-action" @onclick="SaveControlProfileAsync" disabled="@(!CanSaveControlProfile)">Save profile</button>
                 <button class="primary-action picture-apply-action" @onclick="ApplyPendingAsync" disabled="@(!CanApplyPending)">
@@ -242,11 +243,20 @@ else
             {
                 <div class="factory-reset-confirmation" role="alert">
                     <div>
-                        <strong>Reset picture settings to factory defaults?</strong>
-                        <span>SamsungController will execute <b>@SelectedFactoryResetNode?.Path</b>, choose <b>@SelectedFactoryResetChoice</b>, return to normal video, and then apply every staged value from known menu-definition defaults. This changes all settings covered by that TV reset.</span>
+                        <strong>@(PendingFactoryResetAction == FactoryResetAction.ResetToDefaults ? "Reset settings and keep the factory defaults?" : "Reset settings and reapply the saved calibration?")</strong>
+                        @if (PendingFactoryResetAction == FactoryResetAction.ResetToDefaults)
+                        {
+                            <span>SamsungController will execute <b>@SelectedFactoryResetNode?.Path</b>, choose <b>@SelectedFactoryResetChoice</b>, and return to normal video. The declared menu defaults will replace both the current-value baseline and saved targets. No calibration values will be reapplied.</span>
+                        }
+                        else
+                        {
+                            <span>SamsungController will execute <b>@SelectedFactoryResetNode?.Path</b>, choose <b>@SelectedFactoryResetChoice</b>, return to normal video, and then apply every staged value from known menu-definition defaults. This changes all settings covered by that TV reset.</span>
+                        }
                     </div>
                     <button class="secondary-action" @onclick="CancelFactoryReset" disabled="@IsBusy">Cancel</button>
-                    <button class="primary-action danger-action" @onclick="ResetAndApplyAllAsync" disabled="@IsBusy">Yes — reset and apply all</button>
+                    <button class="primary-action danger-action" @onclick="ExecuteConfirmedFactoryResetAsync" disabled="@IsBusy">
+                        @(PendingFactoryResetAction == FactoryResetAction.ResetToDefaults ? "Yes — reset to defaults" : "Yes — reset and apply all")
+                    </button>
                 </div>
             }
         </div>
@@ -558,6 +568,7 @@ else
     private string? LocalStatus { get; set; }
     private bool IsBusy { get; set; }
     private bool ConfirmFactoryReset { get; set; }
+    private FactoryResetAction PendingFactoryResetAction { get; set; } = FactoryResetAction.ResetAndApply;
     private string SelectedFactoryResetNodeId { get; set; } = string.Empty;
     private string SelectedFactoryResetChoice { get; set; } = string.Empty;
     private string SavedStateName { get; set; } = "Current TV state";
@@ -881,8 +892,9 @@ else
         source.Dispose();
     }
 
-    private void BeginFactoryReset()
+    private void BeginFactoryReset(FactoryResetAction action)
     {
+        PendingFactoryResetAction = action;
         ConfirmFactoryReset = true;
         LocalError = null;
         LocalStatus = null;
@@ -902,6 +914,53 @@ else
             ?? node?.SelectionOptions.FirstOrDefault()
             ?? string.Empty;
         ConfirmFactoryReset = false;
+    }
+
+    private Task ExecuteConfirmedFactoryResetAsync() =>
+        PendingFactoryResetAction == FactoryResetAction.ResetToDefaults
+            ? ResetToDefaultsAsync()
+            : ResetAndApplyAllAsync();
+
+    private async Task ResetToDefaultsAsync()
+    {
+        var resetNode = SelectedFactoryResetNode;
+        if (resetNode is null || string.IsNullOrWhiteSpace(SelectedFactoryResetChoice))
+        {
+            LocalError = "Choose a verified factory-reset confirmation route.";
+            return;
+        }
+
+        IsBusy = true;
+        var updateSource = BeginActiveUpdate("Factory reset to declared defaults");
+        ConfirmFactoryReset = false;
+        LocalError = null;
+        LocalStatus = null;
+        try
+        {
+            await Controller.ResetMenuControlsToFactoryDefaultsAsync(
+                resetNode.Id,
+                SelectedFactoryResetChoice,
+                updateSource.Token);
+            ResetAppliedValuesToDeclaredDefaults();
+            ResetDesiredValuesToDeclaredDefaults();
+            ResetCurrentStateDraft();
+            await Controller.SaveMenuControlProfileAsync(CreateControlProfileValues());
+            Profile = Controller.GetMenuControlProfileSnapshot();
+            LocalStatus = "Factory reset completed. Current values and saved targets now match the declared menu defaults; no calibration values were reapplied.";
+        }
+        catch (OperationCanceledException) when (updateSource.IsCancellationRequested)
+        {
+            LocalError = "Factory reset stopped. No cleanup keys were added after cancellation. The reset may have completed, so inspect the TV and record its current settings before continuing.";
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            EndActiveUpdate(updateSource);
+            IsBusy = false;
+        }
     }
 
     private async Task ResetAndApplyAllAsync()
@@ -1416,6 +1475,30 @@ else
                 if (defaultValue is not null)
                 {
                     cell.AppliedValue = defaultValue;
+                }
+            }
+        }
+    }
+
+    private void ResetDesiredValuesToDeclaredDefaults()
+    {
+        foreach (var control in Controls)
+        {
+            var defaultValue = NormalizeDefaultValue(control.Node);
+            if (defaultValue is not null)
+            {
+                control.DesiredValue = defaultValue;
+            }
+        }
+
+        foreach (var group in IndexedGroups)
+        {
+            foreach (var cell in group.Rows.SelectMany(row => row.Cells))
+            {
+                var defaultValue = NormalizeDefaultValue(cell.Slider);
+                if (defaultValue is not null)
+                {
+                    cell.DesiredValue = defaultValue;
                 }
             }
         }
@@ -2422,6 +2505,12 @@ else
     {
         AdjustTv,
         CurrentState
+    }
+
+    private enum FactoryResetAction
+    {
+        ResetToDefaults,
+        ResetAndApply
     }
 
     private enum ExpertSettingsKind
