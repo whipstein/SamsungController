@@ -114,7 +114,7 @@ Status was reconciled with the repository on 2026-08-30. A checked box means the
 - [x] Support submenu selections that choose from an ordered value list and return to the containing menu afterward.
 - [x] Present 20 Point percentages and Custom Color choices as fixed multi-slider grids.
 - [x] Persist a local desired-value profile and reapply it after an explicitly confirmed verified factory-reset command.
-- [x] Import/export portable target-calibration values separately from the current-TV baseline, and make long Apply/reset batches cancellable at the remote-key boundary.
+- [x] Import/export portable calibration values as either staged targets or a command-free current-TV draft, and make long Apply/reset batches cancellable at the remote-key boundary.
 - [x] Derive a compact verification checklist using topology branches, shared control behaviors, and representative disabled/hidden behavior classes instead of per-control line items.
 - [x] Bind verification evidence to the exact display/context combination with per-check fingerprints and reopen only checks affected by a later definition edit.
 - [x] Provide one Display Verification workspace and an always-visible app status that clearly distinguish fully verified from verification-required profiles.

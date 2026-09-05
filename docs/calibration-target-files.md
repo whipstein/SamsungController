@@ -1,19 +1,22 @@
 # Calibration target files
 
-SamsungController uses `.samsung-calibration.json` files for portable desired
-menu values. A target file is not a menu definition and is not a snapshot of
-what the TV currently contains:
+SamsungController uses `.samsung-calibration.json` files for portable menu
+values. A calibration file is not a menu definition. The values can be used in
+either of two explicitly selected roles:
 
 - the shared YAML or JSON menu definition describes where controls exist and
   how to reach them;
 - a current-TV state is the baseline SamsungController should use for relative
   moves;
-- a calibration target file describes the values you want to reach.
+- under **Adjust TV**, the file describes the values you want to reach;
+- under **Enter current settings**, the file describes values you assert are
+  already present on the TV.
 
-Loading a target file validates and stages its values. It does not send a TV
-command and does not replace the current-TV baseline. Select **Apply** only
-after loading or entering a baseline that matches the display, or use the
-explicitly confirmed reset/apply workflow to start from declared defaults.
+Both loading paths validate the file and send no TV command. **Adjust TV**
+stages the values without replacing the current-TV baseline. **Enter current
+settings** fills its command-free draft; review it and select **Save entered
+values** before it becomes the prediction baseline. Only use that second path
+when the display already matches the file.
 
 ## Format
 
@@ -55,10 +58,12 @@ inside their declared boundaries, and duplicate ordinary or indexed keys are
 rejected.
 
 The Menu page exports every desired value currently shown. A hand-authored file
-may contain only selected values; loading it merges those targets with the
-other desired values already in the page, then saves the resulting local target
-profile. Files are limited to 2 MB and 5,000 values. Invalid JSON errors include
-a one-based line and column.
+may contain only selected values. Loading it under Adjust TV merges those values
+with the other desired values and saves the resulting local target profile.
+Loading it under Enter current settings merges those values into the current
+draft, leaving unspecified controls at their existing baseline. Files are
+limited to 2 MB and 5,000 values. Invalid JSON errors include a one-based line
+and column.
 
 ## Safe application
 

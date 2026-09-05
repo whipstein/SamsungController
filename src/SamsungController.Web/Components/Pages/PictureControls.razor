@@ -22,7 +22,7 @@
                 <li><strong>Adjust TV</strong> sends or stages commands. <strong>Enter current settings</strong> uses an independent local draft and never sends commands to the TV.</li>
                 <li><strong>Immediate</strong> sends one changed control at a time. <strong>Apply button</strong> can stage a controller and its newly enabled settings together.</li>
                 <li><strong>Cancel active update</strong> stops a large Apply or reset/apply batch before the next key. It never sends cleanup keys after cancellation.</li>
-                <li>A target-calibration JSON file contains desired values. Loading one stages and saves those targets without changing the current-TV baseline or sending commands.</li>
+                <li>A calibration JSON file can be loaded in either workspace. <strong>Adjust TV</strong> stages its values as targets; <strong>Enter current settings</strong> imports them into the command-free current-state draft.</li>
                 <li><strong>Save profile</strong> stores desired values locally. <strong>Reset &amp; apply all</strong> runs a verified reset confirmation, restores known defaults, and reapplies that profile.</li>
                 <li>Use <strong>Enter current settings</strong> to record values already visible on the TV and later load them as the prediction baseline. Saving or loading a state sends no remote commands.</li>
                 <li>This page unlocks only after Display Verification is complete for the selected menu structure, TV, signal, picture mode, input, and configurations.</li>
@@ -132,13 +132,27 @@ else
             <button class="quiet-action" @onclick="ResetCurrentStateDraft" disabled="@(IsBusy || !CurrentStateDraftChanged)">Discard draft</button>
             <button class="quiet-action danger-action" @onclick="DeleteCurrentTvStateAsync" disabled="@(!CanUseSavedTvState)">Delete saved state</button>
         </div>
+        <div class="current-state-file-import">
+            <div>
+                <span>PORTABLE CALIBRATION FILE</span>
+                <strong>Load values as the TV's current settings.</strong>
+                <small>The file fills the command-free draft below. Review the values, then choose Save entered values to make them the prediction baseline.</small>
+            </div>
+            <label class="target-calibration-file @(IsBusy ? "disabled" : string.Empty)">
+                <span>LOAD CALIBRATION JSON AS CURRENT</span>
+                <InputFile @key="TargetFileInputKey"
+                           OnChange="LoadCalibrationAsCurrentAsync"
+                           accept=".json,application/json"
+                           disabled="@IsBusy" />
+            </label>
+        </div>
     </section>
 }
 else
 {
     <section class="panel target-calibration-panel">
         <div class="target-calibration-copy">
-            <span>PORTABLE TARGET CALIBRATION</span>
+            <span>PORTABLE CALIBRATION FILE · APPLY</span>
             <strong>Load desired values separately from the TV's current baseline.</strong>
             <small>Loading stages values and saves the local target profile; it sends no TV commands. Before Apply, load a matching current-TV state or use the verified reset/apply workflow—relative Samsung controls cannot recover from an incorrect starting value.</small>
         </div>
@@ -152,7 +166,7 @@ else
             Download targets
         </button>
         <label class="target-calibration-file @(IsBusy ? "disabled" : string.Empty)">
-            <span>LOAD TARGET JSON</span>
+            <span>LOAD CALIBRATION JSON TO APPLY</span>
             <InputFile @key="TargetFileInputKey"
                        OnChange="LoadTargetCalibrationAsync"
                        accept=".json,application/json"
@@ -1015,74 +1029,9 @@ else
         LocalStatus = null;
         try
         {
-            const long maximumFileSize = 2 * 1024 * 1024;
-            if (args.File.Size > maximumFileSize)
-            {
-                throw new InvalidOperationException(
-                    "A target-calibration file cannot exceed 2 MB.");
-            }
-
-            await using var stream = args.File.OpenReadStream(maximumFileSize);
-            using var reader = new StreamReader(stream);
-            var json = await reader.ReadToEndAsync();
-            var document = MenuControlTargetProfileSerializer.Deserialize(json);
-            if (string.IsNullOrWhiteSpace(Profile.DefinitionId)
-                || !document.DefinitionId.Equals(
-                    Profile.DefinitionId,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException(
-                    $"Target '{document.Name}' belongs to menu definition '{document.DefinitionId}', but the active definition is '{Profile.DefinitionId ?? "none"}'. Load the matching menu structure first.");
-            }
-
-            var normalizedValues = Controller.ValidateMenuControlProfileValues(document.Values);
-            var controlAssignments = new List<(PictureControlEdit Control, string Value)>();
-            var indexedAssignments = new List<(IndexedCellEdit Cell, string Value)>();
-            var unavailable = new List<string>();
-            foreach (var value in normalizedValues)
-            {
-                if (string.IsNullOrWhiteSpace(value.SelectorNodeId))
-                {
-                    var control = Controls.FirstOrDefault(candidate =>
-                        !IsIndexedControl(candidate.Node.Id)
-                        && candidate.Node.Id.Equals(value.NodeId, StringComparison.OrdinalIgnoreCase));
-                    if (control is null)
-                    {
-                        unavailable.Add(value.NodeId);
-                    }
-                    else
-                    {
-                        controlAssignments.Add((control, value.Value));
-                    }
-
-                    continue;
-                }
-
-                var group = IndexedGroups.FirstOrDefault(candidate => candidate.Selector.Id.Equals(
-                    value.SelectorNodeId,
-                    StringComparison.OrdinalIgnoreCase));
-                var row = group?.Rows.FirstOrDefault(candidate => candidate.SelectorValue.Equals(
-                    value.SelectorValue,
-                    StringComparison.OrdinalIgnoreCase));
-                var cell = row?.Cells.FirstOrDefault(candidate => candidate.Slider.Id.Equals(
-                    value.NodeId,
-                    StringComparison.OrdinalIgnoreCase));
-                if (cell is null)
-                {
-                    unavailable.Add(
-                        $"{value.SelectorNodeId}/{value.SelectorValue}/{value.NodeId}");
-                }
-                else
-                {
-                    indexedAssignments.Add((cell, value.Value));
-                }
-            }
-
-            if (unavailable.Count > 0)
-            {
-                throw new InvalidOperationException(
-                    $"The active verified Menu page cannot stage {unavailable.Count} target value{(unavailable.Count == 1 ? string.Empty : "s")}: {string.Join(", ", unavailable.Take(5))}{(unavailable.Count > 5 ? ", …" : string.Empty)}.");
-            }
+            var (document, normalizedValues) = await ReadCalibrationFileAsync(args);
+            var (controlAssignments, indexedAssignments) = ResolveCalibrationAssignments(
+                normalizedValues);
 
             foreach (var assignment in controlAssignments)
             {
@@ -1110,6 +1059,128 @@ else
             TargetFileInputKey++;
             IsBusy = false;
         }
+    }
+
+    private async Task LoadCalibrationAsCurrentAsync(InputFileChangeEventArgs args)
+    {
+        IsBusy = true;
+        LocalError = null;
+        LocalStatus = null;
+        try
+        {
+            var (document, normalizedValues) = await ReadCalibrationFileAsync(args);
+            var (controlAssignments, indexedAssignments) = ResolveCalibrationAssignments(
+                normalizedValues);
+            foreach (var assignment in controlAssignments)
+            {
+                CurrentStateDraft[ControlDraftKey(assignment.Control.Node.Id)] = assignment.Value;
+            }
+
+            foreach (var assignment in indexedAssignments)
+            {
+                CurrentStateDraft[IndexedDraftKey(assignment.Group, assignment.Cell)] = assignment.Value;
+            }
+
+            SavedStateName = document.Name;
+            EnsureSelectedMenuArea();
+            LocalStatus = $"Loaded {normalizedValues.Count} value{(normalizedValues.Count == 1 ? string.Empty : "s")} from '{document.Name}' into the current-settings draft. No TV commands were sent. Review the values, then choose Save entered values.";
+        }
+        catch (Exception exception)
+        {
+            LocalError = exception.Message;
+        }
+        finally
+        {
+            TargetFileInputKey++;
+            IsBusy = false;
+        }
+    }
+
+    private async Task<(
+        MenuControlTargetProfile Document,
+        IReadOnlyList<MenuControlProfileValue> Values)> ReadCalibrationFileAsync(
+        InputFileChangeEventArgs args)
+    {
+        const long maximumFileSize = 2 * 1024 * 1024;
+        if (args.File.Size > maximumFileSize)
+        {
+            throw new InvalidOperationException(
+                "A calibration file cannot exceed 2 MB.");
+        }
+
+        await using var stream = args.File.OpenReadStream(maximumFileSize);
+        using var reader = new StreamReader(stream);
+        var json = await reader.ReadToEndAsync();
+        var document = MenuControlTargetProfileSerializer.Deserialize(json);
+        if (string.IsNullOrWhiteSpace(Profile.DefinitionId)
+            || !document.DefinitionId.Equals(
+                Profile.DefinitionId,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Calibration '{document.Name}' belongs to menu definition '{document.DefinitionId}', but the active definition is '{Profile.DefinitionId ?? "none"}'. Load the matching menu structure first.");
+        }
+
+        return (document, Controller.ValidateMenuControlProfileValues(document.Values));
+    }
+
+    private (
+        IReadOnlyList<(PictureControlEdit Control, string Value)> Controls,
+        IReadOnlyList<(IndexedControlGroupEdit Group, IndexedCellEdit Cell, string Value)> Indexed)
+        ResolveCalibrationAssignments(IReadOnlyList<MenuControlProfileValue> values)
+    {
+        var controlAssignments = new List<(PictureControlEdit Control, string Value)>();
+        var indexedAssignments = new List<(
+            IndexedControlGroupEdit Group,
+            IndexedCellEdit Cell,
+            string Value)>();
+        var unavailable = new List<string>();
+        foreach (var value in values)
+        {
+            if (string.IsNullOrWhiteSpace(value.SelectorNodeId))
+            {
+                var control = Controls.FirstOrDefault(candidate =>
+                    !IsIndexedControl(candidate.Node.Id)
+                    && candidate.Node.Id.Equals(value.NodeId, StringComparison.OrdinalIgnoreCase));
+                if (control is null)
+                {
+                    unavailable.Add(value.NodeId);
+                }
+                else
+                {
+                    controlAssignments.Add((control, value.Value));
+                }
+
+                continue;
+            }
+
+            var group = IndexedGroups.FirstOrDefault(candidate => candidate.Selector.Id.Equals(
+                value.SelectorNodeId,
+                StringComparison.OrdinalIgnoreCase));
+            var row = group?.Rows.FirstOrDefault(candidate => candidate.SelectorValue.Equals(
+                value.SelectorValue,
+                StringComparison.OrdinalIgnoreCase));
+            var cell = row?.Cells.FirstOrDefault(candidate => candidate.Slider.Id.Equals(
+                value.NodeId,
+                StringComparison.OrdinalIgnoreCase));
+            if (group is null || cell is null)
+            {
+                unavailable.Add(
+                    $"{value.SelectorNodeId}/{value.SelectorValue}/{value.NodeId}");
+            }
+            else
+            {
+                indexedAssignments.Add((group, cell, value.Value));
+            }
+        }
+
+        if (unavailable.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"The active verified Menu page cannot load {unavailable.Count} calibration value{(unavailable.Count == 1 ? string.Empty : "s")}: {string.Join(", ", unavailable.Take(5))}{(unavailable.Count > 5 ? ", …" : string.Empty)}.");
+        }
+
+        return (controlAssignments, indexedAssignments);
     }
 
     private static string CreateTargetFileStem(string name)

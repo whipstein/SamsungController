@@ -997,6 +997,11 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
 .saved-tv-state-manager > div > small { margin-top: 4px; color: var(--muted); font-size: 7px; line-height: 1.45; }
 .saved-tv-state-manager input, .saved-tv-state-manager select { width: 100%; }
 .saved-tv-state-manager button { white-space: nowrap; }
+.current-state-file-import { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(260px, .7fr); gap: 18px; align-items: end; margin-top: 13px; padding-top: 12px; border-top: 1px solid rgba(115,215,157,.18); }
+.current-state-file-import > div > span, .current-state-file-import > div > strong, .current-state-file-import > div > small { display: block; }
+.current-state-file-import > div > span { color: #88e3aa; font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .1em; }
+.current-state-file-import > div > strong { margin-top: 4px; font-size: 10px; }
+.current-state-file-import > div > small { max-width: 720px; margin-top: 4px; color: var(--muted); font-size: 7px; line-height: 1.45; }
 .current-state-entry-card { border-color: rgba(115,215,157,.26); background: rgba(115,215,157,.025); }
 .current-state-entry-card.pending { border-color: rgba(242,181,107,.48); }
 .factory-reset-confirmation { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; margin-top: 13px; padding: 12px; border: 1px solid rgba(255,107,107,.35); border-radius: 7px; background: rgba(255,107,107,.045); }
@@ -1327,6 +1332,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(124,231,220,.65);
     .active-tv-update { top: 76px; align-items: flex-start; flex-direction: column; }
     .cancel-active-update { width: 100%; }
     .target-calibration-panel { grid-template-columns: 1fr; }
+    .current-state-file-import { grid-template-columns: 1fr; }
     .compact-update-panel > summary { grid-template-columns: minmax(0, 1fr) auto; }
     .compact-update-panel > summary small { grid-column: 1 / -1; grid-row: 2; }
     .pending-target-explanation { grid-template-columns: 1fr; }

@@ -349,8 +349,9 @@ of changes.
 
 1. Open **Menu**.
 2. Select **Enter current settings**. Do not use **Adjust TV** for this step.
-3. Read each relevant value from the TV and enter it in the app. This workspace
-   sends no TV commands.
+3. Read each relevant value from the TV and enter it in the app. If the TV
+   already matches a calibration JSON file, use **Load calibration JSON as
+   current** to fill the same draft. This workspace sends no TV commands.
 4. Enter a clear state name such as `Filmmaker SDR before calibration`.
 5. Select **Save entered values**.
 
@@ -383,11 +384,12 @@ dedicated calibration tabs near the top. The 20-point enable switch lives in
 the 20-point tab, and Color Space lives in the Color tab. Percentage and color
 rows expose synchronized slider, minus/plus, and raw-number controls.
 
-### Apply a known-good target file
+### Use a known-good calibration file
 
-Use **Portable target calibration** to load a `.samsung-calibration.json` file.
-Loading validates and stages desired values but sends nothing. It is separate
-from the current-TV baseline. Review the differences, then apply them.
+Under **Adjust TV**, load a `.samsung-calibration.json` file to validate and
+stage desired values without sending commands. Review the differences, then
+apply them. Under **Enter current settings**, load the same file as current to
+fill the command-free draft when the TV already matches those values.
 
 Because Samsung does not report slider values, relative changes are trustworthy
 only when the loaded current-TV state matches the display. **Reset & apply all**
