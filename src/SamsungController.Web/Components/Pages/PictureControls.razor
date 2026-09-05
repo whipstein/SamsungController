@@ -18,6 +18,7 @@
                 <li>Switches, selections, and submenu selections use predicted values and dynamically apply declared <code>disabledWhen</code> and <code>hiddenWhen</code> rules.</li>
                 <li>Turning on 20 Point enables its Interval and RGB controls. Choosing Custom Color Space enables its Color and RGB controls.</li>
                 <li>The 2pt tab separates RGB gains and offsets into two columns. The 20pt tab pins its enable switch first, and the Color tab places Color Space first.</li>
+                <li>Calibration controls contain only settings from the top-level Picture menu. Expert Settings under Sound or another area remain in that area's tab below.</li>
                 <li>Every 20pt percentage and Custom Color choice groups three full RGB sliders with minus/plus buttons and a raw number input, so all values can be staged together without manually changing the selector.</li>
                 <li><strong>Adjust TV</strong> sends or stages commands. <strong>Enter current settings</strong> uses an independent local draft and never sends commands to the TV.</li>
                 <li><strong>Immediate</strong> sends one changed control at a time. <strong>Apply button</strong> can stage a controller and its newly enabled settings together.</li>
@@ -215,9 +216,12 @@ else
                     <button class="secondary-action danger-action" @onclick="() => BeginFactoryReset(FactoryResetAction.ResetAndApply)" disabled="@(!CanBeginFactoryReset)">Reset &amp; apply all</button>
                 }
                 <button class="secondary-action" @onclick="SaveControlProfileAsync" disabled="@(!CanSaveControlProfile)">Save profile</button>
-                <button class="primary-action picture-apply-action" @onclick="ApplyPendingAsync" disabled="@(!CanApplyPending)">
-                    @(IsBusy ? "Applying…" : $"Apply {PendingCount} change{(PendingCount == 1 ? string.Empty : "s")}") <span>▶</span>
-                </button>
+                @if (!HasExpertControls)
+                {
+                    <button class="primary-action picture-apply-action" @onclick="ApplyPendingAsync" disabled="@(!CanApplyPending)">
+                        @(IsBusy ? "Applying…" : $"Apply {PendingCount} change{(PendingCount == 1 ? string.Empty : "s")}") ▶
+                    </button>
+                }
             </div>
             @if (PendingCount > 0)
             {
@@ -272,7 +276,17 @@ else
                 <h2>Calibration controls</h2>
                 <p>Keep the most-used white-balance and custom-color controls close at hand.</p>
             </div>
-            <small>@(WorkspaceMode == MenuWorkspaceMode.CurrentState ? "ENTER VALUES ONLY" : "VERIFIED TV CONTROLS")</small>
+            <div class="expert-settings-heading-actions">
+                <small>@(WorkspaceMode == MenuWorkspaceMode.CurrentState ? "ENTER VALUES ONLY" : "VERIFIED PICTURE CONTROLS")</small>
+                @if (WorkspaceMode == MenuWorkspaceMode.AdjustTv)
+                {
+                    <button class="primary-action picture-apply-action"
+                            @onclick="ApplyPendingAsync"
+                            disabled="@(!CanApplyPending)">
+                        @(IsBusy ? "Applying…" : $"Apply {PendingCount} change{(PendingCount == 1 ? string.Empty : "s")}") ▶
+                    </button>
+                }
+            </div>
         </header>
         <nav class="expert-settings-tabs" aria-label="Expert settings groups" role="tablist">
             @foreach (var tab in ExpertTabs)
@@ -1770,6 +1784,11 @@ else
 
     private ExpertSettingsKind? ClassifyExpertControl(MenuNodeSummary node)
     {
+        if (!IsInPictureMenuArea(node))
+        {
+            return null;
+        }
+
         var identity = $"{node.Id} {node.Label} {node.Path}";
         if (node.ControlType == MenuControlType.Selection
             && (node.Id.Equals("color-space", StringComparison.OrdinalIgnoreCase)
@@ -1819,6 +1838,13 @@ else
         }
 
         return null;
+    }
+
+    private bool IsInPictureMenuArea(MenuNodeSummary node)
+    {
+        var area = ResolveMenuArea(node);
+        return area.Id.Equals("picture", StringComparison.OrdinalIgnoreCase)
+            || area.Label.Equals("Picture", StringComparison.OrdinalIgnoreCase);
     }
 
     private string GetControlDisplayValue(PictureControlEdit control) =>
