@@ -159,9 +159,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         GetMenuDefinitionPath(settings),
                         cancellationToken)
                     .ConfigureAwait(false);
-                menuDefinition = ActivateMenuConfiguration(
-                    menuDefinition,
-                    settings.MenuConfigurationId);
+                menuDefinition = MenuDefinitionVerificationReconciler.Reconcile(
+                    ActivateMenuConfiguration(
+                        menuDefinition,
+                        settings.MenuConfigurationId));
                 menuStateTracker = new MenuStateTracker(menuDefinition);
                 menuNavigator = new MenuNavigator(
                     menuDefinition,
@@ -1521,8 +1522,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     },
                     cancellationToken)
                 .ConfigureAwait(false);
+            var activeDefinition = MenuDefinitionVerificationReconciler.Reconcile(
+                definition.WithActiveConfiguration(configurationId));
             InstallMenuDefinition(
-                definition.WithActiveConfiguration(configurationId),
+                activeDefinition,
                 preserveMenuState: preserveMenuState);
             lock (_sync)
             {
@@ -9661,7 +9664,6 @@ public sealed class SamsungControllerService : IAsyncDisposable
         var definition = MenuDefinitionVerificationOverlay.Apply(
             topology,
             migratedVerification);
-        definition = MenuDefinitionVerificationReconciler.Reconcile(definition);
 
         try
         {

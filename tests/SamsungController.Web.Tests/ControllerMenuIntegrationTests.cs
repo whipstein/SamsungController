@@ -3330,6 +3330,84 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task CalculatedNavigationVerificationSurvivesReconnectAfterConfigurationActivation()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: configured-calculated-navigation
+            name: Configured Calculated Navigation
+            model: Test TV
+            configurations:
+              - id: default
+                name: Default
+            nodes:
+              - id: normal-video
+                label: Normal video
+                children:
+                  - id: white-balance
+                    label: White Balance
+                    children:
+                      - id: two-point
+                        label: 2 Point
+                        children:
+                          - id: two-point-red
+                            label: Red Gain
+                            controlType: action
+                      - id: twenty-point
+                        label: 20 Point
+                        children:
+                          - id: twenty-point-red
+                            label: Red
+                            controlType: action
+            anchors:
+              - id: normal
+                label: Return to normal video
+                target: normal-video
+                configuration: default
+                verified: true
+                steps:
+                  - key: KEY_RETURN
+            transitions:
+              - id: to-two-point-red
+                from: normal-video
+                to: two-point-red
+                configuration: default
+                verified: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_ENTER
+                    repeat: 2
+              - id: to-twenty-point-red
+                from: normal-video
+                to: twenty-point-red
+                configuration: default
+                verified: true
+                steps:
+                  - key: KEY_MENU
+                  - key: KEY_ENTER
+                  - key: KEY_DOWN
+                  - key: KEY_ENTER
+            """;
+        var (controller, _) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            var check = Assert.Single(
+                controller.GetMenuDefinitionVerificationSnapshot().Checks,
+                candidate => candidate.Kind == MenuVerificationCheckKind.CalculatedNavigation);
+            var confirmed = await controller.ConfirmMenuDefinitionVerificationCheckAsync(check.Id);
+            Assert.True(confirmed.Checks.Single(candidate => candidate.Id == check.Id).Verified);
+        }
+
+        await using var reloaded = CreateController();
+        await reloaded.InitializeAsync();
+        var restored = Assert.Single(
+            reloaded.GetMenuDefinitionVerificationSnapshot().Checks,
+            candidate => candidate.Kind == MenuVerificationCheckKind.CalculatedNavigation);
+        Assert.True(restored.Verified);
+    }
+
+    [Fact]
     public async Task FileVerificationGuidedSelectionEnablesConditionalPrerequisites()
     {
         const string yaml =
