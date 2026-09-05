@@ -53,6 +53,10 @@ internal sealed record SamsungWebSettings
 
     public IReadOnlyList<SavedMenuControlState>? SavedMenuControlStates { get; init; }
 
+    public bool MenuControlApplyImmediately { get; init; }
+
+    public bool MenuControlReturnToNormalVideo { get; init; }
+
     public IReadOnlyList<QuickAccessAction>? QuickAccess { get; init; }
 
     public static async Task<SamsungWebSettings> LoadAsync(

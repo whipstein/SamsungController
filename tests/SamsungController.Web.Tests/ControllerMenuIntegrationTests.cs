@@ -3938,6 +3938,33 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task MenuControlBehaviorPreferencesPersistAcrossControllerInstances()
+    {
+        Directory.CreateDirectory(_directory);
+        await using (var controller = CreateController())
+        {
+            await controller.InitializeAsync();
+            Assert.Equal(
+                new MenuControlBehaviorPreferences(false, false),
+                controller.GetMenuControlBehaviorPreferences());
+
+            await controller.SaveMenuControlBehaviorPreferencesAsync(
+                applyImmediately: true,
+                returnToNormalVideo: true);
+
+            Assert.Equal(
+                new MenuControlBehaviorPreferences(true, true),
+                controller.GetMenuControlBehaviorPreferences());
+        }
+
+        await using var reloaded = CreateController();
+        await reloaded.InitializeAsync();
+        Assert.Equal(
+            new MenuControlBehaviorPreferences(true, true),
+            reloaded.GetMenuControlBehaviorPreferences());
+    }
+
+    [Fact]
     public async Task RemovingDefaultQuickAccessActionPersistsAnEmptyList()
     {
         Directory.CreateDirectory(_directory);

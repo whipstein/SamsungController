@@ -97,6 +97,10 @@ public sealed record QuickAccessAction(
     string Target,
     RemoteKeyAction Action = RemoteKeyAction.Click);
 
+public sealed record MenuControlBehaviorPreferences(
+    bool ApplyImmediately,
+    bool ReturnToNormalVideo);
+
 public sealed record DeviceInfoObservation(
     DateTimeOffset Timestamp,
     string Label,

@@ -184,14 +184,14 @@ else
             <div class="picture-control-options">
                 <label>
                     <span>WHEN VALUES CHANGE</span>
-                    <select @bind="UpdateMode" disabled="@IsBusy">
+                    <select @bind="UpdateMode" @bind:after="SaveUpdateBehaviorAsync" disabled="@IsBusy">
                         <option value="@PictureUpdateMode.Immediate">Update TV immediately</option>
                         <option value="@PictureUpdateMode.Staged">Wait for Apply</option>
                     </select>
                 </label>
                 <label>
                     <span>AFTER UPDATE</span>
-                    <select @bind="ExitBehavior" disabled="@IsBusy">
+                    <select @bind="ExitBehavior" @bind:after="SaveUpdateBehaviorAsync" disabled="@IsBusy">
                         <option value="@PictureExitBehavior.Stay">Stay on last adjusted item</option>
                         <option value="@PictureExitBehavior.ReturnToVideo">Exit to normal video</option>
                     </select>
@@ -710,6 +710,24 @@ else
         if (UpdateMode == PictureUpdateMode.Immediate && control.Pending)
         {
             await ApplyAsync([control]);
+        }
+    }
+
+    private async Task SaveUpdateBehaviorAsync()
+    {
+        LocalError = null;
+        try
+        {
+            await Controller.SaveMenuControlBehaviorPreferencesAsync(
+                UpdateMode == PictureUpdateMode.Immediate,
+                ExitBehavior == PictureExitBehavior.ReturnToVideo);
+            LocalStatus = $"Update behavior saved: {UpdateBehaviorSummary}.";
+        }
+        catch (Exception exception)
+        {
+            var preferences = Controller.GetMenuControlBehaviorPreferences();
+            ApplyUpdateBehaviorPreferences(preferences);
+            LocalError = $"Could not save update behavior: {exception.Message}";
         }
     }
 
@@ -2145,6 +2163,7 @@ else
         Navigation = Controller.GetMenuNavigationSnapshot();
         DisplayVerification = Controller.GetMenuDefinitionVerificationSnapshot();
         Profile = Controller.GetMenuControlProfileSnapshot();
+        ApplyUpdateBehaviorPreferences(Controller.GetMenuControlBehaviorPreferences());
         SavedTvStates = Controller.GetSavedMenuControlStates();
         if (!SavedTvStates.Any(state => state.Id.Equals(
                 SelectedSavedStateId,
@@ -2152,6 +2171,16 @@ else
         {
             SelectedSavedStateId = SavedTvStates.FirstOrDefault()?.Id ?? string.Empty;
         }
+    }
+
+    private void ApplyUpdateBehaviorPreferences(MenuControlBehaviorPreferences preferences)
+    {
+        UpdateMode = preferences.ApplyImmediately
+            ? PictureUpdateMode.Immediate
+            : PictureUpdateMode.Staged;
+        ExitBehavior = preferences.ReturnToNormalVideo
+            ? PictureExitBehavior.ReturnToVideo
+            : PictureExitBehavior.Stay;
     }
 
     private void ReconcileControls()

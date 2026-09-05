@@ -247,6 +247,33 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
     }
 
+    public MenuControlBehaviorPreferences GetMenuControlBehaviorPreferences()
+    {
+        lock (_sync)
+        {
+            return new MenuControlBehaviorPreferences(
+                _settings.MenuControlApplyImmediately,
+                _settings.MenuControlReturnToNormalVideo);
+        }
+    }
+
+    public async Task SaveMenuControlBehaviorPreferencesAsync(
+        bool applyImmediately,
+        bool returnToNormalVideo,
+        CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        await UpdateSettingsAsync(
+                current => current with
+                {
+                    MenuControlApplyImmediately = applyImmediately,
+                    MenuControlReturnToNormalVideo = returnToNormalVideo
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+        NotifyChanged();
+    }
+
     public IReadOnlyList<QuickAccessAction> GetQuickAccessActions()
     {
         lock (_sync)
