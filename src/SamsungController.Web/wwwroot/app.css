@@ -100,6 +100,11 @@ button, input, select, textarea { font: inherit; }
 button:disabled, input:disabled, select:disabled, textarea:disabled { cursor: not-allowed; opacity: .48; }
 a { color: inherit; }
 
+.condition-profile-summary { padding: 16px 20px; margin-bottom: 16px; }
+.condition-profile-summary strong { font-size: 17px; overflow-wrap: anywhere; }
+.condition-profile-summary p { margin: 8px 0; color: var(--muted); line-height: 1.5; }
+.condition-profile-summary small { display: block; color: var(--amber); font-size: 13px; line-height: 1.5; }
+
 .app-shell { min-height: 100vh; display: grid; grid-template-columns: 250px minmax(0, 1fr); }
 .sidebar { position: sticky; top: 0; height: 100vh; padding: 28px 22px; border-right: 1px solid var(--line); background: var(--surface-inset); display: flex; flex-direction: column; }
 .brand-lockup { display: flex; gap: 12px; align-items: center; padding: 0 8px 28px; border-bottom: 1px solid var(--line); }

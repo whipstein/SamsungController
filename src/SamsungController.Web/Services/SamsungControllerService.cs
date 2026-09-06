@@ -10,7 +10,7 @@ using SamsungController.Core.Protocol;
 
 namespace SamsungController.Web.Services;
 
-public sealed class SamsungControllerService : IAsyncDisposable
+public sealed partial class SamsungControllerService : IAsyncDisposable
 {
     public const string ReturnToVideoReplacementAnchorId = "return-to-video-replacement";
 
@@ -189,6 +189,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 _menuNavigator = menuNavigator;
                 ResetMenuExternalStateValues(menuDefinition, settings);
                 ResetMenuControlValues(menuDefinition);
+                RestoreActiveConditionValues();
                 _navigationError = navigationError;
                 _initialized = true;
             }
@@ -437,6 +438,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     StringComparison.OrdinalIgnoreCase))
                 ?? throw new InvalidOperationException(
                     $"'{value.Trim()}' is not available for {state.Label}.");
+            if (normalizedValue.Equals(_menuExternalStateValues.GetValueOrDefault(state.Id, state.DefaultValue), StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
             values = definition.ExternalStates.Values.Select(item =>
                 new MenuExternalStateValue(
                     item.Id,
@@ -448,7 +453,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
 
         await UpdateSettingsAsync(
-                current => current with
+                current => StoreActiveCondition(current) with
                 {
                     MenuExternalStateDefinitionId = definition.Id,
                     MenuExternalStateValues = values
@@ -462,7 +467,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 _menuExternalStateValues[item.Id] = item.Value;
             }
 
-            RefreshMenuDefaultControlValues(definition);
+            ResetMenuControlValues(definition);
+            RestoreActiveConditionValues();
+            _conditionProfileRevision++;
             _navigationPlan = null;
             _navigationStatus = $"External state selected · {state.Label}: {_menuExternalStateValues[state.Id]}";
             if (_menuStateTracker?.Current.NodeId is { } nodeId
@@ -1046,6 +1053,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             restoredCount++;
         }
 
+        await PersistActiveConditionAsync(cancellationToken).ConfigureAwait(false);
         return restoredCount;
     }
 
@@ -1053,17 +1061,13 @@ public sealed class SamsungControllerService : IAsyncDisposable
     {
         lock (_sync)
         {
-            if (_menuDefinition is null
-                || !_menuDefinition.Id.Equals(
-                    _settings.MenuControlProfileDefinitionId,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                return new MenuControlProfileSnapshot(_menuDefinition?.Id, []);
-            }
-
             return new MenuControlProfileSnapshot(
-                _menuDefinition.Id,
-                (_settings.MenuControlProfileValues ?? []).ToArray());
+                _menuDefinition?.Id,
+                ActiveConditionBank()?.TargetValues ?? LegacyTargetValues(),
+                CaptureCurrentConditionValues(),
+                ActiveConditionKey(),
+                _conditionProfileRevision,
+                DisplayConditionBanks().Count(bank => bank.CurrentValues.Count > 0 || bank.TargetValues.Count > 0));
         }
     }
 
@@ -1083,11 +1087,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         var normalized = NormalizeMenuControlProfileValues(definition, values);
 
         await UpdateSettingsAsync(
-                current => current with
-                {
-                    MenuControlProfileDefinitionId = definition.Id,
-                    MenuControlProfileValues = normalized
-                },
+                current => StoreActiveCondition(current, targets: normalized),
                 cancellationToken)
             .ConfigureAwait(false);
         NotifyChanged();
@@ -1117,7 +1117,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             return (_settings.SavedMenuControlStates ?? [])
                 .Where(state => state.DefinitionId.Equals(
                     _menuDefinition.Id,
-                    StringComparison.OrdinalIgnoreCase))
+                    StringComparison.OrdinalIgnoreCase)
+                    && SavedStateMatchesActiveConditions(state))
                 .OrderByDescending(state => state.SavedAtUtc)
                 .Select(state => new SavedMenuControlStateSummary(
                     state.Id,
@@ -1151,6 +1152,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 ?? throw new InvalidOperationException("No menu definition is loaded.");
             existing = (_settings.SavedMenuControlStates ?? []).FirstOrDefault(state =>
                 state.DefinitionId.Equals(definition.Id, StringComparison.OrdinalIgnoreCase)
+                && SavedStateMatchesActiveConditions(state)
                 && state.Name.Equals(normalizedName, StringComparison.OrdinalIgnoreCase));
         }
 
@@ -1160,7 +1162,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
             normalizedName,
             definition.Id,
             DateTimeOffset.UtcNow,
-            normalized);
+            normalized,
+            ActiveConditions(),
+            ConditionDisplayKey);
         await UpdateSettingsAsync(
                 current =>
                 {
@@ -1171,10 +1175,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         .ToList();
                     if (states.Count(state => state.DefinitionId.Equals(
                             definition.Id,
-                            StringComparison.OrdinalIgnoreCase)) >= 25)
+                            StringComparison.OrdinalIgnoreCase)
+                            && SavedStateMatchesActiveConditions(state)) >= 25)
                     {
                         throw new InvalidOperationException(
-                            "A menu definition can store at most 25 named TV states. Delete an older state first.");
+                            "Each display/menu and input combination can store at most 25 named TV states. Delete an older state first.");
                     }
 
                     states.Add(saved);
@@ -1185,7 +1190,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
         lock (_sync)
         {
             SeedMenuControlValuesFromState(definition, saved);
+            _conditionProfileRevision++;
         }
+
+        await PersistActiveConditionAsync(cancellationToken).ConfigureAwait(false);
 
         NotifyChanged();
         return saved;
@@ -1207,7 +1215,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     candidate.Id.Equals(stateId.Trim(), StringComparison.OrdinalIgnoreCase)
                     && candidate.DefinitionId.Equals(
                         definition.Id,
-                        StringComparison.OrdinalIgnoreCase))
+                        StringComparison.OrdinalIgnoreCase)
+                    && SavedStateMatchesActiveConditions(candidate))
                 ?? throw new KeyNotFoundException(
                     $"Saved TV state '{stateId.Trim()}' was not found for this menu definition.");
         }
@@ -1219,7 +1228,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
         lock (_sync)
         {
             SeedMenuControlValuesFromState(definition, normalized);
+            _conditionProfileRevision++;
         }
+
+        await PersistActiveConditionAsync(cancellationToken).ConfigureAwait(false);
 
         NotifyChanged();
         return normalized;
@@ -4632,7 +4644,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     lock (_sync)
                     {
                         ResetMenuControlValues(definition);
+                        _conditionProfileRevision++;
                     }
+                    await PersistActiveConditionAsync(CancellationToken.None).ConfigureAwait(false);
                 },
                 clearPlanOnSuccess: true,
                 cancellationToken)
@@ -4772,6 +4786,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                                 _menuControlValues[update.NodeId] = update.ToValue;
                                 _explicitMenuControlValues.Add(update.NodeId);
                             }
+                            await PersistActiveConditionAsync(CancellationToken.None).ConfigureAwait(false);
                             tracker.ConfirmNode(
                                 update.NodeId,
                                 $"Menu control '{definition.GetPath(update.NodeId)}' was adjusted to the predicted value '{update.ToValue}'.");
@@ -4962,7 +4977,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
                                 {
                                     _menuControlValues[node.Id] = update.ToValue;
                                     _explicitMenuControlValues.Add(node.Id);
+                                    var stored = new MenuControlProfileValue(node.Id, update.ToValue, selector.Id, row.Key);
+                                    _indexedConditionValues[ConditionValueKey(stored)] = stored;
                                 }
+                                await PersistActiveConditionAsync(CancellationToken.None).ConfigureAwait(false);
 
                                 tracker.ConfirmNode(
                                     node.Id,
@@ -8330,6 +8348,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 value.Value);
             _explicitMenuControlValues.Add(node.Id);
         }
+        foreach (var value in state.Values.Where(value => !string.IsNullOrWhiteSpace(value.SelectorNodeId)))
+        {
+            _indexedConditionValues[ConditionValueKey(value)] = value;
+        }
     }
 
     private static IReadOnlyList<MenuNode> GetIndexedSliderNodes(
@@ -8482,6 +8504,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
     {
         _menuControlValues.Clear();
         _explicitMenuControlValues.Clear();
+        _indexedConditionValues.Clear();
         RefreshMenuDefaultControlValues(definition);
     }
 
@@ -9305,6 +9328,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             previousTracker = _menuStateTracker;
             previousNavigator = _menuNavigator;
             previousState = previousTracker?.Current;
+            var previousConditionKey = ActiveConditionKey();
             var retainedValues = (preserveMenuState || preserveValidationProgress)
                 && _menuDefinition?.Id.Equals(definition.Id, StringComparison.OrdinalIgnoreCase) == true
                 ? _menuControlValues.Where(pair => _explicitMenuControlValues.Contains(pair.Key)).ToArray()
@@ -9314,7 +9338,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _menuNavigator = navigator;
             ResetMenuExternalStateValues(definition, _settings);
             ResetMenuControlValues(definition);
-            foreach (var (retainedNodeId, value) in retainedValues)
+            RestoreActiveConditionValues();
+            foreach (var (retainedNodeId, value) in previousConditionKey == ActiveConditionKey() ? retainedValues : [])
             {
                 if (!definition.Nodes.TryGetValue(retainedNodeId, out var node))
                 {
@@ -10245,15 +10270,27 @@ public sealed class SamsungControllerService : IAsyncDisposable
         try
         {
             SamsungWebSettings updated;
+            bool displayChanged;
             lock (_sync)
             {
                 updated = update(_settings);
+                displayChanged = !ConditionDisplayKey.Equals(updated.DisplayDefinitionPath ?? updated.Host ?? "unassigned-display", StringComparison.OrdinalIgnoreCase);
+                if (displayChanged)
+                {
+                    updated = StoreActiveCondition(updated);
+                }
             }
 
             await updated.SaveAsync(_settingsPath, cancellationToken).ConfigureAwait(false);
             lock (_sync)
             {
                 _settings = updated;
+                if (displayChanged)
+                {
+                    ResetMenuControlValues(_menuDefinition);
+                    RestoreActiveConditionValues();
+                    _conditionProfileRevision++;
+                }
             }
         }
         finally

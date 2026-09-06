@@ -201,7 +201,22 @@ public sealed record MenuControlProfileValue(
 
 public sealed record MenuControlProfileSnapshot(
     string? DefinitionId,
+    IReadOnlyList<MenuControlProfileValue> Values,
+    IReadOnlyList<MenuControlProfileValue>? CurrentValues = null,
+    string? ConditionKey = null,
+    int Revision = 0,
+    int SavedConditionCount = 0);
+
+public sealed record MenuControlConditionValues(
+    IReadOnlyDictionary<string, string> Conditions,
     IReadOnlyList<MenuControlProfileValue> Values);
+
+public sealed record MenuControlConditionBank(
+    string DefinitionId,
+    string DisplayKey,
+    IReadOnlyDictionary<string, string> Conditions,
+    IReadOnlyList<MenuControlProfileValue> CurrentValues,
+    IReadOnlyList<MenuControlProfileValue> TargetValues);
 
 public sealed record MenuControlTargetProfile(
     int Version,
@@ -211,14 +226,17 @@ public sealed record MenuControlTargetProfile(
     string? Model,
     MenuDefinitionContext? Context,
     DateTimeOffset ExportedAtUtc,
-    IReadOnlyList<MenuControlProfileValue> Values);
+    IReadOnlyList<MenuControlProfileValue> Values,
+    IReadOnlyList<MenuControlConditionValues>? ConditionValues = null);
 
 public sealed record SavedMenuControlState(
     string Id,
     string Name,
     string DefinitionId,
     DateTimeOffset SavedAtUtc,
-    IReadOnlyList<MenuControlProfileValue> Values);
+    IReadOnlyList<MenuControlProfileValue> Values,
+    IReadOnlyDictionary<string, string>? Conditions = null,
+    string? DisplayKey = null);
 
 public sealed record SavedMenuControlStateSummary(
     string Id,

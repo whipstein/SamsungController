@@ -1,74 +1,138 @@
-# Calibration target files
+# Calibration files for all input conditions
 
-SamsungController uses `.samsung-calibration.json` files for portable menu
-values. A calibration file is not a menu definition. The values can be used in
-either of two explicitly selected roles:
+A single `.samsung-calibration.json` file can hold settings for every saved
+input-condition combination. Load it once: selecting **External HDMI Signal**
+color format or bit depth automatically selects the matching saved values.
+Other declared external states, such as a physical HDMI input, participate too.
 
-- the shared YAML or JSON menu definition describes where controls exist and
-  how to reach them;
-- a current-TV state is the baseline SamsungController should use for relative
-  moves;
-- under **Adjust TV**, the file describes the values you want to reach;
-- under **Enter current settings**, the file describes values you assert are
-  already present on the TV.
+The shared YAML/JSON menu definition still describes the topology and
+conditional factory defaults. Personal current settings and calibration targets
+are stored separately from both the menu and its verification.
 
-Both loading paths validate the file and send no TV command. **Adjust TV**
-stages the values without replacing the current-TV baseline. **Enter current
-settings** fills its command-free draft; review it and select **Save entered
-values** before it becomes the prediction baseline. Only use that second path
-when the display already matches the file.
+## Save and load from the UI
 
-## Format
+1. Select the display/menu combination and the correct External HDMI Signal values.
+   These selectors describe the signal; they do not change your source equipment.
+2. Under **Menu → Enter current settings**, enter values already on the TV,
+   then choose **Save entered values**. Repeat for each input combination you
+   want to record. Values and named states are kept separately for each combination.
+3. Choose **Download all current settings**. One file includes all saved
+   current-value combinations for this display and menu, including indexed grids.
+   Unsaved drafts and unconfirmed defaults are not exported as known settings.
+4. To restore the whole collection, use **Load calibration JSON as current**
+   once. This immediately installs every included combination as a local current
+   baseline. Use this only when the TV actually has those settings. Manual
+   entry still uses a draft and requires **Save entered values**.
+5. To use that same collection as desired calibration settings instead, open
+   **Adjust TV** and use **Load calibration JSON to apply**. Every combination
+   is staged and saved locally; current baselines are left unchanged.
+6. Switching signal selectors restores the matching current values and targets.
+   Select **Apply** to update only the currently selected combination.
+   Loading or switching never sends TV commands, even in immediate-update mode.
+7. **Download all targets** exports all saved target combinations into one file.
+   Staged target edits are remembered locally when you edit them.
+
+You can load the same file once into each role if it represents both the
+existing TV settings and the desired calibration. Loading targets never silently
+asserts that the TV already contains them. Saved collections survive an app
+restart. A combination without saved current values uses its conditional defaults
+as explicitly labeled assumptions, not values from the previously selected input.
+
+Imports replace the selected role's values for combinations included in the file.
+Other combinations and the opposite role are preserved. In a partial combination,
+omitted current values fall back to assumed defaults; omitted targets have no
+staged adjustment. The entire file is validated before any combination is saved.
+
+## Version 2 format
 
 ```json
 {
-  "version": 1,
-  "name": "Reference SDR calibration",
-  "definitionId": "s95f-1296-sdr",
-  "definitionName": "S95F 1296 SDR",
-  "model": "S95F",
-  "context": {
-    "firmware": "1296",
-    "signal": "SDR",
-    "pictureMode": "Filmmaker Mode",
-    "input": "Home Theater System"
-  },
-  "exportedAtUtc": "2026-08-30T12:00:00Z",
-  "values": [
+  "version": 2,
+  "name": "My display — all inputs",
+  "definitionId": "my-tv-menu",
+  "definitionName": "My TV menu",
+  "model": "My TV",
+  "context": { "firmware": "1296" },
+  "exportedAtUtc": "2026-09-06T12:00:00Z",
+  "values": [],
+  "conditionValues": [
     {
-      "nodeId": "brightness",
-      "value": "25"
+      "conditions": {
+        "pgen-output-format": "RGB",
+        "hdmi-bit-depth": "8-bit"
+      },
+      "values": [
+        { "nodeId": "brightness", "value": "25" },
+        {
+          "nodeId": "white-balance-20-point-red",
+          "value": "2",
+          "selectorNodeId": "white-balance-20-point-interval",
+          "selectorValue": "5%"
+        }
+      ]
     },
     {
-      "nodeId": "white-balance-20-point-red",
-      "value": "2",
-      "selectorNodeId": "white-balance-20-point-interval",
-      "selectorValue": "5%"
+      "conditions": {
+        "pgen-output-format": "RGB",
+        "hdmi-bit-depth": "10-bit"
+      },
+      "values": [
+        { "nodeId": "brightness", "value": "40" },
+        {
+          "nodeId": "white-balance-20-point-red",
+          "value": "4",
+          "selectorNodeId": "white-balance-20-point-interval",
+          "selectorValue": "5%"
+        }
+      ]
+    },
+    {
+      "conditions": {
+        "pgen-output-format": "YCbCr422",
+        "hdmi-bit-depth": "10-bit"
+      },
+      "values": [
+        { "nodeId": "brightness", "value": "35" }
+      ]
     }
   ]
 }
 ```
 
-`version`, `name`, `definitionId`, and at least one `values` entry are required.
-The active menu definition ID must match `definitionId`. Ordinary controls use
-`nodeId` and `value`. A fixed indexed-grid cell also supplies both
-`selectorNodeId` and `selectorValue`; supplying only one is invalid. IDs and
-values must exist in the active definition, slider values must be whole numbers
-inside their declared boundaries, and duplicate ordinary or indexed keys are
-rejected.
+Use the IDs and options from your menu, not necessarily those in this example.
 
-The Menu page exports every desired value currently shown. A hand-authored file
-may contain only selected values. Loading it under Adjust TV merges those values
-with the other desired values and saves the resulting local target profile.
-Loading it under Enter current settings merges those values into the current
-draft, leaving unspecified controls at their existing baseline. Files are
-limited to 2 MB and 5,000 values. Invalid JSON errors include a one-based line
-and column.
+- `version`, `name`, `definitionId`, and nonempty `conditionValues` are required
+  for an all-conditions file. Leave top-level `values` empty or omit it.
+- Each `conditions` map must specify **every external state declared by the
+  menu**. Matching is exact, case-insensitive, and independent of map order.
+  There are no wildcard/priority rules here: each stored combination is unambiguous.
+  A menu without external states uses `"conditions": {}`.
+- If your menu declares `hdmi-input`, add it to every map, for example
+  `"hdmi-input": "HDMI 1"`. Unknown state IDs and unsupported options are rejected.
+- Every combination needs at least one value. Ordinary controls use `nodeId`
+  and `value`; indexed grid cells also need both `selectorNodeId` and
+  `selectorValue`.
+- Node/selector IDs and selection values must exist in the menu. Sliders must
+  contain whole numbers inside their declared boundaries. Duplicate combinations
+  or duplicate control/indexed keys within a combination are rejected.
+- Limits: 2 MB per file, 128 combinations, 20 conditions per combination,
+  5,000 values per combination, and 50,000 values total. JSON syntax errors show
+  a one-based line and column; invalid values identify the combination.
+- Import is bound locally to the selected display and menu. The portable file
+  contains no TV address, tokens, or verification records.
+
+Older version-1 files containing only top-level `values` can still be loaded.
+Their values are bound to the currently selected input combination; they do not
+apply to every signal condition. New downloads use version 2.
 
 ## Safe application
 
-Large Apply, reset-to-defaults, and reset/apply operations show a red sticky progress strip. Select
-**Cancel active update** as soon as the visible TV state differs from the phase
-shown. Cancellation prevents the next key after an already in-flight send or
-wait, and deliberately sends no automatic cleanup commands. Inspect the TV and
-record a new current-TV baseline before retrying a partly completed operation.
+Relative controls require an accurate starting value. SamsungController does
+not read the actual slider values from the TV. If you change settings with the
+physical remote, record the new current values before applying a calibration.
+
+Large Apply, reset-to-defaults, and reset/apply operations show a red sticky
+progress strip. Select **Cancel active update** if the visible TV state differs
+from the expected state. Cancellation prevents subsequent keys after any
+already in-flight send or wait and sends no automatic cleanup commands.
+Inspect the TV and record the current values before retrying a partial operation.

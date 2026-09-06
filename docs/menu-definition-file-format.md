@@ -608,10 +608,12 @@ states. Empty and duplicate conditions are rejected with the node and rule
 number in the error.
 
 Changing the header's signal selections sends **no TV commands**. Default-based
-estimates update for the new context; saved/entered current values, applied
-values, and staged target values are not replaced just because the defaults
-changed. Use **Enter current settings** to confirm the actual baseline when
-switching sources. An explicit **Reset to defaults** operation resets the TV
+estimates update for the new context. Saved/entered current values, applied
+values, and staged targets are retained **for their own input combination**;
+switching restores the selected combination, not the previous signal's values.
+All combinations can be saved and loaded in [one calibration file](calibration-target-files.md).
+Use **Enter current settings** to confirm the actual baseline when switching
+sources. An explicit **Reset to defaults** operation resets the TV
 and uses the matching defaults for the selected signal. Guided verification
 restores the prior value after testing. New or changed rules reopen the related
 control verification, while merely choosing another signal does not rewrite

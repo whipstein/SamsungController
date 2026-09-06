@@ -42,7 +42,7 @@ public sealed partial class ControllerMenuIntegrationTests
     }
 
     [Fact]
-    public async Task SignalChangesUpdateOnlyDefaultBasedPredictionsAndExposeResolvedDefaults()
+    public async Task SignalChangesRestoreConditionSpecificPredictionsAndExposeResolvedDefaults()
     {
         var (controller, transport) = await CreateConnectedControllerAsync(ConditionalDefaultsYaml, installedMenu: true);
         await using (controller)
@@ -60,11 +60,13 @@ public sealed partial class ControllerMenuIntegrationTests
             await controller.SaveCurrentMenuControlStateAsync("Entered values", [new("brightness", "40")]);
             await controller.SetMenuExternalStateAsync("hdmi-bit-depth", "8-bit");
             snapshot = controller.GetMenuNavigationSnapshot();
-            Assert.Equal("40", snapshot.ControlValues["brightness"]);
+            Assert.Equal("25", snapshot.ControlValues["brightness"]);
             Assert.Equal("25", snapshot.Nodes.Single(node => node.Id == "brightness").ResolvedDefaultValue);
             Assert.Equal("off", snapshot.ControlValues["master"]);
             Assert.Equal("Low", snapshot.ControlValues["mode"]);
             await controller.ReloadMenuDefinitionAsync();
+            Assert.Equal("25", controller.GetMenuNavigationSnapshot().ControlValues["brightness"]);
+            await controller.SetMenuExternalStateAsync("hdmi-bit-depth", "10-bit");
             Assert.Equal("40", controller.GetMenuNavigationSnapshot().ControlValues["brightness"]);
             Assert.Empty(GetSentKeys(transport));
         }
@@ -81,8 +83,9 @@ public sealed partial class ControllerMenuIntegrationTests
             await controller.ApplyMenuControlValuesAsync([new("brightness", "40", "41")], new Dictionary<string, string>(), false);
             Assert.Single(GetSentKeys(transport), key => key == "KEY_RIGHT");
             await controller.SetMenuExternalStateAsync("hdmi-bit-depth", "8-bit");
-            Assert.Equal("41", controller.GetMenuNavigationSnapshot().ControlValues["brightness"]);
+            Assert.Equal("25", controller.GetMenuNavigationSnapshot().ControlValues["brightness"]);
             await controller.SetMenuExternalStateAsync("hdmi-bit-depth", "10-bit");
+            Assert.Equal("41", controller.GetMenuNavigationSnapshot().ControlValues["brightness"]);
             await controller.ResetMenuControlsToFactoryDefaultsAsync("reset", "Reset");
             Assert.Equal("40", controller.GetMenuNavigationSnapshot().ControlValues["brightness"]);
             await controller.SetMenuExternalStateAsync("pgen-output-format", "YCbCr422");

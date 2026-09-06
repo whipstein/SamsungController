@@ -51,6 +51,8 @@ internal sealed record SamsungWebSettings
 
     public IReadOnlyList<MenuControlProfileValue>? MenuControlProfileValues { get; init; }
 
+    public IReadOnlyList<MenuControlConditionBank>? MenuControlConditionBanks { get; init; }
+
     public IReadOnlyList<SavedMenuControlState>? SavedMenuControlStates { get; init; }
 
     public string? MenuExternalStateDefinitionId { get; init; }

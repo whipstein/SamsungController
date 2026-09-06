@@ -469,9 +469,12 @@ TV topology file.
 
 The Menu page can also export those desired values as a portable, versioned
 `.samsung-calibration.json` document with the menu-definition ID, model, display
-context, and ordinary/indexed values. Import validates the complete document and
-stages its values without sending remote commands or changing the separately
-recorded current-TV baseline. A file for another menu-definition ID is rejected.
+context, and ordinary/indexed values. Version 2 stores every saved external-input
+combination in one `conditionValues` array. Import validates the complete document
+before staging targets (or, when explicitly selected, installing current baselines)
+for all included combinations without sending commands. Switching external input
+selectors restores the matching local current/target set, including indexed cells.
+The inactive sets persist across restart. A file for another menu-definition ID is rejected.
 Relative Samsung controls still require an accurate current-TV baseline or a
 verified reset to declared defaults before Apply.
 

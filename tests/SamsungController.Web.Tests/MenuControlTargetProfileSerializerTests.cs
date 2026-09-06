@@ -6,6 +6,42 @@ namespace SamsungController.Web.Tests;
 public sealed class MenuControlTargetProfileSerializerTests
 {
     [Fact]
+    public void RoundTripPreservesAllConditionSetsAndIndexedValues()
+    {
+        var document = new MenuControlTargetProfile(2, "Combined", "test", null, null, null, DateTimeOffset.UtcNow, [],
+        [
+            new(new Dictionary<string, string> { ["format"] = "RGB", ["depth"] = "8-bit" }, [new("brightness", "25")]),
+            new(new Dictionary<string, string> { ["format"] = "RGB", ["depth"] = "10-bit" }, [new("red", "3", "interval", "5%")])
+        ]);
+        var restored = MenuControlTargetProfileSerializer.Deserialize(MenuControlTargetProfileSerializer.Serialize(document));
+        Assert.Empty(restored.Values);
+        Assert.Equal(2, restored.ConditionValues!.Count);
+        Assert.Equal("10-bit", restored.ConditionValues[1].Conditions["depth"]);
+        Assert.Equal(document.ConditionValues![1].Values, restored.ConditionValues[1].Values);
+    }
+
+    [Theory]
+    [InlineData("duplicate", "duplicated")]
+    [InlineData("empty", "at least one value")]
+    [InlineData("mixed", "without top-level values")]
+    [InlineData("version", "version 2")]
+    public void InvalidCombinedDocumentsAreRejected(string kind, string expected)
+    {
+        var set = new MenuControlConditionValues(new Dictionary<string, string> { ["format"] = "RGB", ["depth"] = "8-bit" }, [new("brightness", "25")]);
+        var document = new MenuControlTargetProfile(2, "Combined", "test", null, null, null, DateTimeOffset.UtcNow, [], [set]);
+        document = kind switch
+        {
+            "duplicate" => document with { ConditionValues = [set, set with { Conditions = new Dictionary<string, string> { ["DEPTH"] = "8-BIT", ["FORMAT"] = "rgb" } }] },
+            "empty" => document with { ConditionValues = [set with { Values = [] }] },
+            "mixed" => document with { Values = [new("brightness", "20")] },
+            "version" => document with { Version = 1 },
+            _ => document
+        };
+        var error = Assert.Throws<InvalidOperationException>(() => MenuControlTargetProfileSerializer.Serialize(document));
+        Assert.Contains(expected, error.Message);
+    }
+
+    [Fact]
     public void RoundTripPreservesPortableTargetMetadataAndIndexedValues()
     {
         var document = new MenuControlTargetProfile(

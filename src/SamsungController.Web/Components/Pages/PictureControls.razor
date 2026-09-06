@@ -23,7 +23,7 @@
                 <li><strong>Adjust TV</strong> sends or stages commands. <strong>Enter current settings</strong> uses an independent local draft and never sends commands to the TV.</li>
                 <li><strong>Immediate</strong> sends one changed control at a time. <strong>Apply button</strong> can stage a controller and its newly enabled settings together.</li>
                 <li><strong>Cancel active update</strong> stops a large Apply or reset/apply batch before the next key. It never sends cleanup keys after cancellation.</li>
-                <li>A calibration JSON file can be loaded in either workspace. <strong>Adjust TV</strong> stages its values as targets; <strong>Enter current settings</strong> imports them into the command-free current-state draft.</li>
+                <li>One calibration JSON file holds all saved input combinations. Load once under <strong>Adjust TV</strong> to stage targets, or under <strong>Enter current settings</strong> to install current baselines. Switching signal selectors chooses the matching set without sending commands.</li>
                 <li><strong>Reset to defaults</strong> runs the verified reset and makes the declared defaults both the current baseline and saved targets. <strong>Reset &amp; apply all</strong> instead reapplies the saved calibration after the reset.</li>
                 <li>Use <strong>Enter current settings</strong> to record values already visible on the TV and later load them as the prediction baseline. Saving or loading a state sends no remote commands.</li>
                 <li>This page unlocks only after Display Verification is complete for the selected menu structure, TV model, firmware, and configurations.</li>
@@ -99,6 +99,12 @@ else
     </section>
 }
 
+<section class="panel condition-profile-summary">
+    <strong>Settings for: @ActiveSignalLabel</strong>
+    <p>@Profile.SavedConditionCount saved input combinations · One calibration file holds all saved combinations. Selecting a signal restores its values locally; it does not change the TV signal or apply settings.</p>
+    <small>@((Profile.CurrentValues?.Count ?? 0) > 0 ? "Saved or applied current values are loaded for this combination. Any other values use assumed defaults." : "No recorded current values for this combination. Shown defaults are assumptions; confirm the TV values before applying relative adjustments.")</small>
+</section>
+
 @if (WorkspaceMode == MenuWorkspaceMode.CurrentState)
 {
     <section class="panel current-state-workspace">
@@ -136,8 +142,8 @@ else
         <div class="current-state-file-import">
             <div>
                 <span>PORTABLE CALIBRATION FILE</span>
-                <strong>Load values as the TV's current settings.</strong>
-                <small>The file fills the command-free draft below. Review the values, then choose Save entered values to make them the prediction baseline.</small>
+                <strong>One file for current settings across all input conditions.</strong>
+                <small>Load once to replace the local current-value baselines for every combination in the file. Only use values that already match the TV. Targets remain separate, and no TV commands are sent. Manual edits below still require Save entered values.</small>
             </div>
             <label class="target-calibration-file @(IsBusy ? "disabled" : string.Empty)">
                 <span>LOAD CALIBRATION JSON AS CURRENT</span>
@@ -146,6 +152,7 @@ else
                            accept=".json,application/json"
                            disabled="@IsBusy" />
             </label>
+            <button class="secondary-action" @onclick="DownloadCurrentCalibrationAsync" disabled="@(!CanExportTargetCalibration)">Download all current settings</button>
         </div>
     </section>
 }
@@ -154,8 +161,8 @@ else
     <section class="panel target-calibration-panel">
         <div class="target-calibration-copy">
             <span>PORTABLE CALIBRATION FILE · APPLY</span>
-            <strong>Load desired values separately from the TV's current baseline.</strong>
-            <small>Loading stages values and saves the local target profile; it sends no TV commands. Before Apply, load a matching current-TV state or use the verified reset/apply workflow—relative Samsung controls cannot recover from an incorrect starting value.</small>
+            <strong>One file for target settings across all input conditions.</strong>
+            <small>Load once to stage every combination in the file. The matching targets appear when you change the External HDMI Signal selectors. Loading sends no TV commands, even in immediate mode. Apply affects only the selected combination; first ensure its current-TV baseline is correct.</small>
         </div>
         <label class="target-calibration-name">
             <span>FILE NAME</span>
@@ -164,7 +171,7 @@ else
         <button class="secondary-action"
                 @onclick="DownloadTargetCalibrationAsync"
                 disabled="@(!CanExportTargetCalibration)">
-            Download targets
+            Download all targets
         </button>
         <label class="target-calibration-file @(IsBusy ? "disabled" : string.Empty)">
             <span>LOAD CALIBRATION JSON TO APPLY</span>
@@ -589,6 +596,10 @@ else
     private string SelectedSavedStateId { get; set; } = string.Empty;
     private string TargetCalibrationName { get; set; } = "Calibration target";
     private int TargetFileInputKey { get; set; }
+    private string? LoadedConditionKey { get; set; }
+    private int LoadedProfileRevision { get; set; } = -1;
+    private readonly Dictionary<string, Dictionary<string, string>> ConditionDrafts = new(StringComparer.Ordinal);
+    private string ActiveSignalLabel => string.Join(" · ", (Navigation.ExternalStates ?? []).Select(state => $"{state.Label}: {state.Value}")) is { Length: > 0 } label ? label : "Default input";
     private CancellationTokenSource? ActiveUpdateSource { get; set; }
     private string ActiveUpdateLabel { get; set; } = "Applying menu values";
 
@@ -711,6 +722,10 @@ else
         {
             await ApplyAsync([control]);
         }
+        else
+        {
+            await SaveStagedConditionTargetsAsync();
+        }
     }
 
     private async Task SaveUpdateBehaviorAsync()
@@ -778,6 +793,10 @@ else
         if (UpdateMode == PictureUpdateMode.Immediate && cell.Pending)
         {
             await ApplyChangesAsync([], [new IndexedCellChange(group, cell)]);
+        }
+        else
+        {
+            await SaveStagedConditionTargetsAsync();
         }
     }
 
@@ -1072,7 +1091,22 @@ else
         }
     }
 
-    private async Task DownloadTargetCalibrationAsync()
+    private async Task SaveStagedConditionTargetsAsync()
+    {
+        try
+        {
+            await Controller.SaveMenuControlProfileAsync(CreateControlProfileValues());
+        }
+        catch (Exception exception)
+        {
+            LocalError = $"Could not remember this combination's targets: {exception.Message}";
+        }
+    }
+
+    private Task DownloadTargetCalibrationAsync() => DownloadCalibrationAsync(currentValues: false);
+    private Task DownloadCurrentCalibrationAsync() => DownloadCalibrationAsync(currentValues: true);
+
+    private async Task DownloadCalibrationAsync(bool currentValues)
     {
         if (!CanExportTargetCalibration)
         {
@@ -1087,22 +1121,18 @@ else
             var name = string.IsNullOrWhiteSpace(TargetCalibrationName)
                 ? $"{Navigation.DefinitionName ?? Navigation.Model ?? "TV"} calibration"
                 : TargetCalibrationName.Trim();
-            var document = new MenuControlTargetProfile(
-                MenuControlTargetProfileSerializer.CurrentVersion,
-                name,
-                Profile.DefinitionId!,
-                Navigation.DefinitionName,
-                Navigation.Model,
-                Navigation.Context,
-                DateTimeOffset.UtcNow,
-                CreateControlProfileValues());
+            if (!currentValues)
+            {
+                await Controller.SaveMenuControlProfileAsync(CreateControlProfileValues());
+            }
+            var document = Controller.ExportCalibrationConditions(currentValues ? SavedStateName : name, currentValues);
             var json = MenuControlTargetProfileSerializer.Serialize(document);
-            var fileName = $"{CreateTargetFileStem(name)}.samsung-calibration.json";
+            var fileName = $"{CreateTargetFileStem(currentValues ? SavedStateName : name)}.{(currentValues ? "current" : "targets")}.samsung-calibration.json";
             await JavaScript.InvokeVoidAsync(
                 "samsungController.downloadText",
                 fileName,
                 json);
-            LocalStatus = $"Downloaded '{fileName}' with {document.Values.Count} desired values. No TV commands were sent.";
+            LocalStatus = $"Downloaded '{fileName}' with {document.ConditionValues!.Count} input combinations. No TV commands were sent. Unsaved current-entry drafts are not included.";
         }
         catch (Exception exception)
         {
@@ -1121,26 +1151,12 @@ else
         LocalStatus = null;
         try
         {
-            var (document, normalizedValues) = await ReadCalibrationFileAsync(args);
-            var (controlAssignments, indexedAssignments) = ResolveCalibrationAssignments(
-                normalizedValues);
-
-            foreach (var assignment in controlAssignments)
-            {
-                assignment.Control.DesiredValue = assignment.Value;
-            }
-
-            foreach (var assignment in indexedAssignments)
-            {
-                assignment.Cell.DesiredValue = assignment.Value;
-            }
-
-            ClearPendingValuesThatBecameUnavailable();
-            EnsureSelectedMenuArea();
-            await Controller.SaveMenuControlProfileAsync(CreateControlProfileValues());
-            Profile = Controller.GetMenuControlProfileSnapshot();
+            var document = await ReadCalibrationFileAsync(args);
+            await Controller.ImportCalibrationConditionsAsync(document, asCurrent: false);
+            Refresh();
+            ReconcileControls();
             TargetCalibrationName = document.Name;
-            LocalStatus = $"Loaded '{document.Name}' and staged {PendingCount} difference{(PendingCount == 1 ? string.Empty : "s")} from the current-TV baseline. The targets were saved locally; no TV commands were sent. Review the differences, then choose Apply when ready.";
+            LocalStatus = $"Loaded '{document.Name}' for {document.ConditionValues?.Count ?? 1} input combinations. {PendingCount} target differences for the selected signal. All combinations are saved locally; no TV commands were sent. Review, then choose Apply when ready.";
         }
         catch (Exception exception)
         {
@@ -1160,22 +1176,15 @@ else
         LocalStatus = null;
         try
         {
-            var (document, normalizedValues) = await ReadCalibrationFileAsync(args);
-            var (controlAssignments, indexedAssignments) = ResolveCalibrationAssignments(
-                normalizedValues);
-            foreach (var assignment in controlAssignments)
-            {
-                CurrentStateDraft[ControlDraftKey(assignment.Control.Node.Id)] = assignment.Value;
-            }
-
-            foreach (var assignment in indexedAssignments)
-            {
-                CurrentStateDraft[IndexedDraftKey(assignment.Group, assignment.Cell)] = assignment.Value;
-            }
-
+            var document = await ReadCalibrationFileAsync(args);
+            await Controller.ImportCalibrationConditionsAsync(document, asCurrent: true);
+            ConditionDrafts.Clear();
+            Refresh();
+            ReconcileControls();
+            ResetCurrentStateDraft();
             SavedStateName = document.Name;
             EnsureSelectedMenuArea();
-            LocalStatus = $"Loaded {normalizedValues.Count} value{(normalizedValues.Count == 1 ? string.Empty : "s")} from '{document.Name}' into the current-settings draft. No TV commands were sent. Review the values, then choose Save entered values.";
+            LocalStatus = $"Loaded '{document.Name}' as current settings for {document.ConditionValues?.Count ?? 1} input combinations. Switch signal selectors to see each set; no further file loads are needed. Existing targets were preserved. No TV commands were sent.";
         }
         catch (Exception exception)
         {
@@ -1188,9 +1197,7 @@ else
         }
     }
 
-    private async Task<(
-        MenuControlTargetProfile Document,
-        IReadOnlyList<MenuControlProfileValue> Values)> ReadCalibrationFileAsync(
+    private async Task<MenuControlTargetProfile> ReadCalibrationFileAsync(
         InputFileChangeEventArgs args)
     {
         const long maximumFileSize = 2 * 1024 * 1024;
@@ -1213,67 +1220,10 @@ else
                 $"Calibration '{document.Name}' belongs to menu definition '{document.DefinitionId}', but the active definition is '{Profile.DefinitionId ?? "none"}'. Load the matching menu structure first.");
         }
 
-        return (document, Controller.ValidateMenuControlProfileValues(document.Values));
+        Controller.ValidateCalibrationConditions(document);
+        return document;
     }
 
-    private (
-        IReadOnlyList<(PictureControlEdit Control, string Value)> Controls,
-        IReadOnlyList<(IndexedControlGroupEdit Group, IndexedCellEdit Cell, string Value)> Indexed)
-        ResolveCalibrationAssignments(IReadOnlyList<MenuControlProfileValue> values)
-    {
-        var controlAssignments = new List<(PictureControlEdit Control, string Value)>();
-        var indexedAssignments = new List<(
-            IndexedControlGroupEdit Group,
-            IndexedCellEdit Cell,
-            string Value)>();
-        var unavailable = new List<string>();
-        foreach (var value in values)
-        {
-            if (string.IsNullOrWhiteSpace(value.SelectorNodeId))
-            {
-                var control = Controls.FirstOrDefault(candidate =>
-                    !IsIndexedControl(candidate.Node.Id)
-                    && candidate.Node.Id.Equals(value.NodeId, StringComparison.OrdinalIgnoreCase));
-                if (control is null)
-                {
-                    unavailable.Add(value.NodeId);
-                }
-                else
-                {
-                    controlAssignments.Add((control, value.Value));
-                }
-
-                continue;
-            }
-
-            var group = IndexedGroups.FirstOrDefault(candidate => candidate.Selector.Id.Equals(
-                value.SelectorNodeId,
-                StringComparison.OrdinalIgnoreCase));
-            var row = group?.Rows.FirstOrDefault(candidate => candidate.SelectorValue.Equals(
-                value.SelectorValue,
-                StringComparison.OrdinalIgnoreCase));
-            var cell = row?.Cells.FirstOrDefault(candidate => candidate.Slider.Id.Equals(
-                value.NodeId,
-                StringComparison.OrdinalIgnoreCase));
-            if (group is null || cell is null)
-            {
-                unavailable.Add(
-                    $"{value.SelectorNodeId}/{value.SelectorValue}/{value.NodeId}");
-            }
-            else
-            {
-                indexedAssignments.Add((group, cell, value.Value));
-            }
-        }
-
-        if (unavailable.Count > 0)
-        {
-            throw new InvalidOperationException(
-                $"The active verified Menu page cannot load {unavailable.Count} calibration value{(unavailable.Count == 1 ? string.Empty : "s")}: {string.Join(", ", unavailable.Take(5))}{(unavailable.Count > 5 ? ", …" : string.Empty)}.");
-        }
-
-        return (controlAssignments, indexedAssignments);
-    }
 
     private static string CreateTargetFileStem(string name)
     {
@@ -1295,7 +1245,8 @@ else
             var state = await Controller.SaveCurrentMenuControlStateAsync(
                 SavedStateName,
                 CreateCurrentStateProfileValues());
-            ApplySavedTvState(state);
+            Refresh();
+            ReconcileControls();
             ResetCurrentStateDraft();
             SavedTvStates = Controller.GetSavedMenuControlStates();
             SelectedSavedStateId = state.Id;
@@ -1320,7 +1271,8 @@ else
         try
         {
             var state = await Controller.LoadMenuControlStateAsync(SelectedSavedStateId);
-            ApplySavedTvState(state);
+            Refresh();
+            ReconcileControls();
             ResetCurrentStateDraft();
             SavedStateName = state.Name;
             LocalStatus = $"Loaded '{state.Name}' as the current prediction baseline. No TV commands were sent.";
@@ -1360,67 +1312,6 @@ else
         }
     }
 
-    private void ApplySavedTvState(SavedMenuControlState state)
-    {
-        foreach (var control in Controls.Where(control => !IsIndexedControl(control.Node.Id)))
-        {
-            var savedValue = state.Values.FirstOrDefault(value =>
-                string.IsNullOrWhiteSpace(value.SelectorNodeId)
-                && value.NodeId.Equals(control.Node.Id, StringComparison.OrdinalIgnoreCase));
-            if (savedValue is null)
-            {
-                continue;
-            }
-
-            var normalized = NormalizeControlValueWithoutError(
-                control.Node,
-                savedValue.Value);
-            if (normalized is null)
-            {
-                continue;
-            }
-
-            control.AppliedValue = normalized;
-            control.DesiredValue = normalized;
-        }
-
-        foreach (var group in IndexedGroups)
-        {
-            foreach (var row in group.Rows)
-            {
-                foreach (var cell in row.Cells)
-                {
-                    var savedValue = state.Values.FirstOrDefault(value =>
-                        value.NodeId.Equals(cell.Slider.Id, StringComparison.OrdinalIgnoreCase)
-                        && value.SelectorNodeId?.Equals(
-                            group.Selector.Id,
-                            StringComparison.OrdinalIgnoreCase) == true
-                        && value.SelectorValue?.Equals(
-                            row.SelectorValue,
-                            StringComparison.OrdinalIgnoreCase) == true);
-                    if (savedValue is null)
-                    {
-                        continue;
-                    }
-
-                    var normalized = NormalizeControlValueWithoutError(
-                        cell.Slider,
-                        savedValue.Value);
-                    if (normalized is null)
-                    {
-                        continue;
-                    }
-
-                    cell.AppliedValue = normalized;
-                    cell.DesiredValue = normalized;
-                    cell.UsesDefaultBaseline = false;
-                }
-            }
-
-        }
-
-        ClearPendingValuesThatBecameUnavailable();
-    }
 
     private void SelectWorkspace(MenuWorkspaceMode mode)
     {
@@ -2206,6 +2097,30 @@ else
 
     private void ReconcileControls()
     {
+        if (LoadedConditionKey != Profile.ConditionKey || LoadedProfileRevision != Profile.Revision)
+        {
+            if (LoadedConditionKey is not null && LoadedConditionKey != Profile.ConditionKey)
+            {
+                ConditionDrafts[LoadedConditionKey] = new(CurrentStateDraft, StringComparer.OrdinalIgnoreCase);
+            }
+            else if (LoadedConditionKey is not null)
+            {
+                ConditionDrafts.Remove(LoadedConditionKey);
+            }
+            Controls.Clear();
+            IndexedGroups.Clear();
+            CurrentStateDraft.Clear();
+            if (Profile.ConditionKey is not null && LoadedConditionKey != Profile.ConditionKey
+                && ConditionDrafts.TryGetValue(Profile.ConditionKey, out var draft))
+            {
+                foreach (var pair in draft)
+                {
+                    CurrentStateDraft[pair.Key] = pair.Value;
+                }
+            }
+            LoadedConditionKey = Profile.ConditionKey;
+            LoadedProfileRevision = Profile.Revision;
+        }
         if (!MenuIsAvailable)
         {
             Controls.Clear();
@@ -2366,6 +2281,16 @@ else
                             option,
                             slider,
                             NormalizeDefaultValue(slider)!);
+                        var currentValue = (Profile.CurrentValues ?? []).FirstOrDefault(value =>
+                            value.NodeId.Equals(slider.Id, StringComparison.OrdinalIgnoreCase)
+                            && value.SelectorNodeId?.Equals(selector.Id, StringComparison.OrdinalIgnoreCase) == true
+                            && value.SelectorValue?.Equals(option, StringComparison.OrdinalIgnoreCase) == true);
+                        if (currentValue is not null && NormalizeControlValueWithoutError(slider, currentValue.Value) is { } baseline)
+                        {
+                            cell.AppliedValue = baseline;
+                            cell.DesiredValue = baseline;
+                            cell.UsesDefaultBaseline = false;
+                        }
                         var profileValue = Profile.Values.FirstOrDefault(value =>
                             value.NodeId.Equals(slider.Id, StringComparison.OrdinalIgnoreCase)
                             && value.SelectorNodeId?.Equals(

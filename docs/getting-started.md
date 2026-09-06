@@ -379,9 +379,13 @@ of changes.
 2. Select **Enter current settings**. Do not use **Adjust TV** for this step.
 3. Read each relevant value from the TV and enter it in the app. If the TV
    already matches a calibration JSON file, use **Load calibration JSON as
-   current** to fill the same draft. This workspace sends no TV commands.
+   current** to install all its input-condition baselines at once (no separate
+   Save is needed for file import). This workspace sends no TV commands.
 4. Enter a clear state name such as `Filmmaker SDR before calibration`.
-5. Select **Save entered values**.
+5. Select **Save entered values** for manual edits. Repeat for each signal
+   combination, then **Download all current settings** to keep them in one file.
+   Loading this file once restores every combination; the External HDMI Signal
+   selectors choose the matching values automatically.
 
 Loading a saved current-TV state changes SamsungController's prediction
 baseline; it does not update the television. If settings are later changed with
@@ -417,7 +421,10 @@ rows expose synchronized slider, minus/plus, and raw-number controls.
 Under **Adjust TV**, load a `.samsung-calibration.json` file to validate and
 stage desired values without sending commands. Review the differences, then
 apply them. Under **Enter current settings**, load the same file as current to
-fill the command-free draft when the TV already matches those values.
+install all its input-condition baselines when the TV already matches those
+values. Load just once per role; switching External HDMI Signal selectors picks
+the matching set. **Download all current settings** and **Download all targets**
+each produce one combined file. See [Calibration files](calibration-target-files.md).
 
 Because Samsung does not report slider values, relative changes are trustworthy
 only when the loaded current-TV state matches the display. **Reset to defaults**
