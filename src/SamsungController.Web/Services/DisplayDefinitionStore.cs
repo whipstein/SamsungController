@@ -21,6 +21,14 @@ internal sealed record DisplayConnectionDefinition
     public int? Port { get; init; }
 
     public bool AllowUntrustedCertificate { get; init; } = true;
+
+    public int? KeepAliveIntervalSeconds { get; init; }
+
+    public int? KeepAliveTimeoutSeconds { get; init; }
+
+    public int? PostConnectWarmupMilliseconds { get; init; }
+
+    public int? ReconnectAfterIdleSeconds { get; init; }
 }
 
 internal sealed record DisplayMenuDefinitionReference
@@ -161,6 +169,30 @@ internal sealed class DisplayDefinitionStore
         else if (definition.Connection.Port is <= 0 or > 65_535)
         {
             errors.Add("connection.port: Use a port from 1 through 65535, or omit it for automatic selection.");
+        }
+
+        if (definition.Connection is { } connection)
+        {
+            if (connection.KeepAliveIntervalSeconds is < 5 or > 120)
+            {
+                errors.Add("connection.keepAliveIntervalSeconds: Use 5 through 120 seconds.");
+            }
+
+            if (connection.KeepAliveTimeoutSeconds is < 0 or 1 or > 60
+                || connection.KeepAliveTimeoutSeconds > connection.KeepAliveIntervalSeconds)
+            {
+                errors.Add("connection.keepAliveTimeoutSeconds: Use 0 or 2 through 60 seconds, no greater than the health-check interval.");
+            }
+
+            if (connection.PostConnectWarmupMilliseconds is < 0 or > 10_000)
+            {
+                errors.Add("connection.postConnectWarmupMilliseconds: Use 0 through 10000 milliseconds.");
+            }
+
+            if (connection.ReconnectAfterIdleSeconds is < 0 or (> 0 and < 30) or > 3600)
+            {
+                errors.Add("connection.reconnectAfterIdleSeconds: Use 0 or 30 through 3600 seconds.");
+            }
         }
 
         if (definition.Menus is null || definition.Menus.Count == 0)

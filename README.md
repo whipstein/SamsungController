@@ -137,16 +137,18 @@ The server listens only on the local computer by default. That is intentional: t
 ### Connect for the first time
 
 1. Open **Connection**.
-2. Select a saved **Display definition**, or leave **Manual / not linked** selected and enter a display name and the TV's IP address.
-3. Choose a detected **Menu structure**, then choose the **Menu configuration** matching the rows currently visible on the TV. The dropdown scans user data, the repository catalog, and the installation catalog for valid YAML and JSON structures. Copies with the same definition ID remain separately selectable and are labeled **User data**, **Repository**, or **Installation**; the selected copy is also labeled **Active**.
-4. For a manual display, select **Save display** to bind the connection and selected menu/configuration for later one-step selection. Updating the same display with another menu adds another linked context without changing validation.
-5. Leave **Secure WebSocket** enabled, **Accept TV certificate** enabled, and the port empty for the normal secure port 8002.
-6. Select **Connect to display**.
-7. Watch the TV and choose **Allow** when its authorization prompt appears.
+2. The default **Use saved combination** view lists saved display/menu/layout combinations. Select one, then select **Connect to display**. Use **Refresh list** to discover newly added files.
+3. If your display is not listed, choose **Create new combination**. Enter its name and IP address in **1 · Display**.
+4. In **2 · Menu**, choose **Use an existing menu**, select a menu definition, and choose its layout. The list scans user data, repository, and installation folders for YAML and JSON structures, labeling each file's location. Alternatively, choose **Define a new menu** and enter the TV model and firmware; signal, picture mode, and input are optional context.
+5. Keep the recommended settings in **3 · Connection settings**. **Advanced connection settings** is collapsed by default and contains security, port, health-check, and warm-up options.
+6. Select **Save combination**, then **Connect to display**. For a new menu, **Save & define menu** saves the combination and opens Build & Verify to enter its tree. Return to Connection when ready to connect.
+7. Watch the TV and choose **Allow** when its authorization prompt appears. For future sessions, use the saved combination directly.
+
+Use **Edit combination** while disconnected to change a saved display's address or settings, or link another menu/layout to that display. Choosing a menu in setup only updates the draft; **Save changes** applies it and **Cancel** discards it. The menu file stays at its original location, and existing verification is retained. File errors and **Reload menu file** are under **Files and connection details**.
 
 The TV may take several seconds to show the prompt. When pairing succeeds, SamsungController stores the token for that TV address and reuses it on later connections. The saved address also enables the persistent **Connect**/**Disconnect** button at the top of every page.
 
-Expand **Channel readiness** to tune first-command reliability. The defaults send a WebSocket health check every 20 seconds, require a response within 10 seconds, wait 1.5 seconds after Samsung authorizes a new channel, and refresh the authenticated channel before the first command after five idle minutes. During that refresh the UI shows **Warming**, holds one requested command, and sends it exactly once. Set **Refresh channel after idle** to `0` to disable the proactive refresh. Set **Health-check timeout** to `0` only if a TV does not answer standard WebSocket PINGs. Increase the warm-up value if a newly powered-on TV still ignores or delays the first key.
+To tune first-command reliability, use **Edit combination → Connection settings → Advanced connection settings**, then save. These settings are remembered with the display. The defaults send a WebSocket health check every 20 seconds, require a response within 10 seconds, wait 1.5 seconds after Samsung authorizes a new channel, and refresh the authenticated channel before the first command after five idle minutes. During that refresh the UI shows **Warming**, holds one requested command, and sends it exactly once. Set **Refresh channel after idle** to `0` to disable the proactive refresh. Set **Health-check timeout** to `0` only if a TV does not answer standard WebSocket PINGs. Increase the warm-up value if a newly powered-on TV still ignores or delays the first key.
 
 If the active menu definition has a verified anchor, a successful web connection runs its preferred known-state sequence automatically. A verified `normal-video` anchor is preferred. This establishes the application's expected menu position before other navigation.
 

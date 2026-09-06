@@ -1,284 +1,319 @@
 @page "/"
 @implements IDisposable
 @inject SamsungControllerService Controller
+@inject NavigationManager PageNavigation
 
 <PageTitle>Connection · SamsungController</PageTitle>
 
-<section class="page-heading">
+<section class="page-heading compact-heading">
     <div>
         <span class="eyebrow">CONNECTION</span>
-        <h1>Your display, one quiet connection away.</h1>
-        <p>Pair once, retain the local token, and keep the control channel open while you work.</p>
+        <h1>Choose your display.</h1>
+        <p>Open a saved display and menu together, or set up a new combination.</p>
     </div>
     <div class="page-heading-actions">
-        <HelpBubble Title="Connect SamsungController to your TV" ButtonText="Page help">
-            <ol>
-                <li>Select a saved display definition, or enter a friendly display name and the TV's current IPv4 address.</li>
-                <li>Keep <strong>Secure WebSocket</strong> and <strong>Accept TV certificate</strong> enabled for the usual port 8002 connection.</li>
-                <li>Select <strong>Connect to display</strong>, then choose <strong>Allow</strong> on the TV when prompted.</li>
-                <li>After the first approval, the saved host and token are reused by the web UI and CLI.</li>
-                <li>Channel-readiness defaults verify the WebSocket and briefly warm the TV before its first command.</li>
-                <li>Choose an automatically discovered menu structure and the configuration matching the rows currently visible on the TV. The list identifies active, user-data, repository, and installation copies separately.</li>
-            </ol>
-            <p class="help-callout safe">A successful connection may run the preferred verified anchor to establish a known menu position. This can send visible menu keys immediately after pairing.</p>
-            <p>If no approval prompt appears, check the TV's Device Connect Manager and remove any denied or stale SamsungController entry before trying again.</p>
+        <HelpBubble Title="Choose or create a display/menu combination" ButtonText="Page help">
+            <p><strong>Use saved combination</strong> restores the display's connection settings, menu file, and menu layout. Choose a combination, then connect.</p>
+            <p><strong>Create new combination</strong> guides you through the display name, address, and menu. Use an existing menu file or start a new menu for your TV model and firmware.</p>
+            <p><strong>Edit combination</strong> changes the selected display's settings. Choosing another menu or layout adds a saved combination for that display. Existing menu links remain available.</p>
+            <p>Setup changes take effect when you save. Cancel discards the form. Menu files stay where they are referenced; display verification stays in your personal data folder.</p>
+            <p>Keep the recommended connection defaults. On first connection, watch the TV and select <strong>Allow</strong> when prompted.</p>
         </HelpBubble>
-        <div class="state-orb @StateClass" aria-label="@Snapshot.ConnectionState">
-            <span></span>
-            <strong>@StateLabel</strong>
-            <small>@StateDetail</small>
-        </div>
     </div>
 </section>
 
 @if (!string.IsNullOrWhiteSpace(ErrorMessage))
 {
-    <div class="notice danger" role="alert"><strong>@(Snapshot.ConnectionState == SamsungConnectionState.Connected ? "Connection warning" : "Connection error")</strong><span>@ErrorMessage</span></div>
+    <div class="notice danger" role="alert"><strong>Needs attention</strong><span>@ErrorMessage</span></div>
 }
 else if (Snapshot.ConnectionState == SamsungConnectionState.Pairing)
 {
-    <div class="notice pairing" role="status"><strong>Approval needed</strong><span>Accept SamsungController on the TV. Pairing will continue automatically.</span></div>
+    <div class="notice pairing" role="status"><strong>Approval needed</strong><span>Select Allow on the TV. Pairing will continue automatically.</span></div>
 }
 else if (Snapshot.ConnectionState == SamsungConnectionState.Warming)
 {
-    <div class="notice pairing" role="status"><strong>Warming TV</strong><span>The channel is authorized. Commands remain held until the TV's remote service is ready.</span></div>
+    <div class="notice pairing" role="status"><strong>Warming TV</strong><span>The connection is authorized. Commands wait briefly for the TV to be ready.</span></div>
 }
 else if (!string.IsNullOrWhiteSpace(LocalStatus))
 {
-    <div class="notice" role="status"><strong>Display / menu profile</strong><span>@LocalStatus</span></div>
+    <div class="notice" role="status"><strong>Display and menu</strong><span>@LocalStatus</span></div>
 }
 
-<section class="dashboard-grid">
-    <div class="panel connection-panel">
-        <div class="panel-label"><span>TV PROFILE</span><span>01</span></div>
-        <div class="display-definition-picker">
-            <div class="connection-menu-profile-heading">
-                <span>DISPLAY DEFINITION</span>
-                <small>Select once to restore the display, connection, menu, and layout together</small>
+<div class="connection-workspace">
+    <nav class="connection-mode-picker" aria-label="Display setup options">
+        <button type="button" class="@(Mode == ConnectionPageMode.Saved ? "active" : "")"
+                aria-pressed="@(Mode == ConnectionPageMode.Saved)" @onclick="CancelSetup" disabled="@ControlsBusy">
+            <strong>Use saved combination</strong><span>Choose a display and menu, then connect.</span>
+        </button>
+        <button type="button" class="@(Mode == ConnectionPageMode.Create ? "active" : "")"
+                aria-pressed="@(Mode == ConnectionPageMode.Create)" @onclick="BeginCreateAsync" disabled="@(ControlsBusy || CanDisconnect)">
+            <strong>Create new combination</strong><span>Set up a display with an existing or new menu.</span>
+        </button>
+    </nav>
+
+    @if (Mode == ConnectionPageMode.Saved)
+    {
+        <section class="panel saved-combination-panel">
+            <div class="connection-section-heading">
+                <div><h2>Saved combinations</h2><p>Each choice includes the display, menu, and saved layout.</p></div>
+                <button type="button" class="secondary-action" @onclick="RefreshCatalogsAsync" disabled="@ControlsBusy">Refresh list</button>
             </div>
-            <div class="display-definition-controls">
-                <label>
-                    <span>Saved display</span>
-                    <select value="@Snapshot.DisplayDefinitionPath"
-                            @onchange="ChangeDisplayDefinitionAsync"
-                            disabled="@DisplayDefinitionSelectionDisabled"
-                            aria-label="Display definition">
-                        <option value="">Manual / not linked</option>
-                        @foreach (var definition in DisplayDefinitions)
-                        {
-                            <option value="@definition.Path" disabled="@(!definition.IsValid)">@FormatDisplayDefinition(definition)</option>
-                        }
-                    </select>
-                </label>
-            </div>
-            @if (ActiveDisplayDefinition is { } activeDisplay)
+            @if (SavedCombinations.Count == 0)
             {
-                <label class="display-menu-reference-selector">
-                    <span>Menu linked to this display</span>
-                    <select value="@SelectedDisplayMenuReferenceId"
-                            @onchange="ChangeDisplayMenuReferenceAsync"
-                            disabled="@MenuProfileControlDisabled">
-                        @if (string.IsNullOrWhiteSpace(SelectedDisplayMenuReferenceId))
-                        {
-                            <option value="">Current menu is not linked yet — save the display to add it</option>
-                        }
-                        @foreach (var menu in activeDisplay.Menus)
-                        {
-                            <option value="@menu.Id">@FormatDisplayMenuReference(menu)</option>
-                        }
-                    </select>
-                </label>
-            }
-            <p>Selecting a display restores its connection and default menu context. You can still choose or add another linked menu below.</p>
-            @if (InvalidDisplayDefinitions.Count > 0)
-            {
-                <div class="menu-definition-file-errors" role="alert">
-                    <strong>Display definitions needing attention</strong>
-                    @foreach (var definition in InvalidDisplayDefinitions)
-                    {
-                        <div>
-                            <code>@Path.GetFileName(definition.Path) · @definition.Location</code>
-                            <span>@definition.Error</span>
-                        </div>
-                    }
+                <div class="connection-empty-state">
+                    <strong>No saved combinations yet.</strong>
+                    <p>Choose Create new combination above to enter your TV address and select or define its menu.</p>
                 </div>
             }
-        </div>
-        <div class="field-grid">
-            <label>
-                <span>Display name</span>
-                <input @bind="DisplayName" aria-label="Display name" disabled="@IsBusy" />
-            </label>
-            <label>
-                <span>IP address</span>
-                <input @bind="Host" aria-label="IP address" placeholder="192.0.2.10" disabled="@IsBusy" />
-            </label>
-        </div>
-        <div class="connection-options">
-            <label class="toggle-row"><input type="checkbox" @bind="Secure" disabled="@IsBusy" /> Secure WebSocket <small>Recommended</small></label>
-            <label class="toggle-row"><input type="checkbox" @bind="AllowUntrustedCertificate" disabled="@IsBusy" /> Accept TV certificate <small>Local TV certificate</small></label>
-            <label class="toggle-row compact-option"><span>Port override</span><InputNumber @bind-Value="Port" placeholder="Automatic" disabled="@IsBusy" /></label>
-        </div>
-        <div class="connection-menu-profile">
-            <div class="connection-menu-profile-heading">
-                <span>MENU DEFINITION</span>
-                <small>Detected from user data, the repository, and the installation</small>
-                <button class="secondary-action menu-file-reload" type="button"
-                        @onclick="ReloadMenuDefinitionAsync"
-                        disabled="@(MenuProfileControlDisabled || string.IsNullOrWhiteSpace(Navigation.DefinitionPath))">
-                    @(MenuFileReloading ? "Reloading…" : "Reload menu file")
+            else
+            {
+                <label class="saved-combination-selector">
+                    <span>Display / menu combination</span>
+                    <select value="@ActiveCombinationKey" @onchange="ChangeCombinationAsync" disabled="@(ControlsBusy || CanDisconnect)" aria-label="Saved combination">
+                        @if (ActiveCombination is null)
+                        {
+                            <option value="">Choose a saved combination…</option>
+                        }
+                        @foreach (var combination in SavedCombinations)
+                        {
+                            <option value="@combination.Key">@combination.Label</option>
+                        }
+                    </select>
+                </label>
+            }
+            @if (ActiveCombination is { } active)
+            {
+                <dl class="combination-summary">
+                    <div><dt>Display</dt><dd>@active.Display.Name<small>@(Snapshot.Host ?? "Address needed — edit this combination")</small></dd></div>
+                    <div><dt>Menu</dt><dd>@Navigation.DefinitionName<small>@ActiveMenuContext</small></dd></div>
+                    <div><dt>Layout</dt><dd>@ActiveConfigurationName<small>@ActiveConfigurationConditions</small></dd></div>
+                </dl>
+                <div class="combination-actions">
+                    @if (CanDisconnect)
+                    {
+                        <button type="button" class="secondary-action danger-action" @onclick="DisconnectAsync" disabled="@ControlsBusy">Disconnect</button>
+                    }
+                    else
+                    {
+                        <button type="button" class="primary-action" @onclick="ConnectAsync" disabled="@(ControlsBusy || string.IsNullOrWhiteSpace(Snapshot.Host))">
+                            @(IsBusy ? "Connecting…" : "Connect to display") <span>→</span>
+                        </button>
+                    }
+                    <button type="button" class="secondary-action" @onclick="BeginEditAsync" disabled="@(ControlsBusy || CanDisconnect)">Edit combination</button>
+                </div>
+                <p class="connection-hint">@ConnectionHint</p>
+                <div class="combination-next-links">
+                    <a href="menu">Open Menu →</a>
+                    <a href="verification">Verify this display →</a>
+                    <a href="menu/build">Build &amp; Verify →</a>
+                </div>
+            }
+            else if (CanDisconnect)
+            {
+                <p class="connection-hint">Disconnect before selecting or creating a saved combination.</p>
+                <button type="button" class="secondary-action danger-action" @onclick="DisconnectAsync" disabled="@ControlsBusy">Disconnect</button>
+            }
+            else if (SavedCombinations.Count > 0)
+            {
+                <p class="connection-hint">Choose a combination to load its settings. If your display is not listed, create a new combination.</p>
+            }
+        </section>
+    }
+    else
+    {
+        <section class="panel combination-setup-panel">
+            <div class="connection-section-heading">
+                <div>
+                    <h2>@(Mode == ConnectionPageMode.Edit ? "Edit combination" : "Create new combination")</h2>
+                    <p>Set the display, choose its menu, then save. Nothing in this form is applied before saving.</p>
+                </div>
+                <button type="button" class="secondary-action" @onclick="CancelSetup" disabled="@ControlsBusy">Cancel</button>
+            </div>
+            <fieldset class="combination-setup-step" disabled="@(ControlsBusy || CanDisconnect)">
+                <legend><b>1</b> Display</legend>
+                <div class="field-grid">
+                    <label><span>Display name</span><input @bind="DisplayName" placeholder="e.g. Living room TV" aria-label="Display name" /></label>
+                    <label><span>IP address</span><input @bind="Host" placeholder="192.0.2.10" aria-label="IP address" /></label>
+                </div>
+                <p class="connection-hint">Find the TV's address in its network settings. Use a distinct display name for each physical TV.</p>
+            </fieldset>
+
+            <fieldset class="combination-setup-step" disabled="@(ControlsBusy || CanDisconnect)">
+                <legend><b>2</b> Menu</legend>
+                <div class="menu-source-options" role="group" aria-label="Menu source">
+                    <label><input type="radio" name="menu-source" checked="@(!CreateNewMenu)" @onchange="() => CreateNewMenu = false" /><span>Use an existing menu</span></label>
+                    <label><input type="radio" name="menu-source" checked="@CreateNewMenu" @onchange="() => CreateNewMenu = true" /><span>Define a new menu</span></label>
+                </div>
+                @if (CreateNewMenu)
+                {
+                    <div class="field-grid">
+                        <label><span>TV model number</span><input @bind="NewMenuModel" placeholder="e.g. S95F" /></label>
+                        <label><span>Firmware version</span><input @bind="NewMenuFirmware" placeholder="e.g. 1296" /></label>
+                        <label><span>Signal type</span><input @bind="NewMenuSignal" placeholder="Any, SDR, or HDR" /></label>
+                        <label><span>Picture mode</span><input @bind="NewMenuPictureMode" placeholder="Any, or a specific mode" /></label>
+                        <label><span>Input / source</span><input @bind="NewMenuInput" placeholder="Any, or e.g. HDMI 1" /></label>
+                        <label><span>File format</span><select @bind="NewMenuFormat"><option value="@MenuDefinitionFileFormat.Yaml">YAML (default)</option><option value="@MenuDefinitionFileFormat.Json">JSON</option></select></label>
+                    </div>
+                    <p class="connection-hint">The menu name and filename are generated from the model, firmware, and any specific context. After saving, you'll continue to Build &amp; Verify to enter the menu tree.</p>
+                }
+                else
+                {
+                    <label>
+                        <span>Menu definition</span>
+                        <select value="@DraftMenuPath" @onchange="ChangeDraftMenuAsync" aria-label="Menu definition">
+                            <option value="">Choose a menu file…</option>
+                            @foreach (var menuEntry in MenuDefinitions.Where(item => item.IsValid))
+                            {
+                                <option value="@menuEntry.Path">@FormatMenuDefinition(menuEntry)</option>
+                            }
+                        </select>
+                    </label>
+                    @if (DraftMenu is { } menu)
+                    {
+                        <p class="connection-hint">@FormatMenuContext(menu.Model, menu.Context)</p>
+                        <label class="draft-menu-layout">
+                            <span>Menu layout</span>
+                            <select @bind="DraftConfigurationId" aria-label="Menu layout">
+                                @if (menu.Configurations.Count == 0)
+                                {
+                                    <option value="">Default layout</option>
+                                }
+                                @foreach (var configuration in menu.Configurations.Values)
+                                {
+                                    <option value="@configuration.Id">@configuration.Name</option>
+                                }
+                            </select>
+                        </label>
+                        <p class="connection-hint">@menu.Configurations.GetValueOrDefault(DraftConfigurationId)?.Conditions</p>
+                    }
+                    else
+                    {
+                        <p class="connection-hint">Menus are discovered from your personal data, repository, and installation folders. If none matches your TV, choose Define a new menu.</p>
+                    }
+                }
+            </fieldset>
+
+            <fieldset class="combination-setup-step" disabled="@(ControlsBusy || CanDisconnect)">
+                <legend><b>3</b> Connection settings</legend>
+                <p class="connection-hint">Recommended defaults work for most Samsung TVs. Expand only if you need to adjust them.</p>
+                <details class="connection-advanced">
+                    <summary>Advanced connection settings</summary>
+                    <div class="connection-options">
+                        <label class="toggle-row"><input type="checkbox" @bind="Secure" /> Secure WebSocket <small>Recommended</small></label>
+                        <label class="toggle-row"><input type="checkbox" @bind="AllowUntrustedCertificate" /> Accept TV certificate <small>Local TV certificate</small></label>
+                        <label class="toggle-row compact-option"><span>Port override</span><InputNumber @bind-Value="Port" min="1" max="65535" placeholder="Automatic" /></label>
+                    </div>
+                    <div class="field-grid">
+                        <label><span>Health-check interval (seconds)</span><InputNumber @bind-Value="KeepAliveIntervalSeconds" min="5" max="120" /></label>
+                        <label><span>Health-check timeout (seconds)</span><InputNumber @bind-Value="KeepAliveTimeoutSeconds" min="0" max="60" /></label>
+                        <label><span>Post-connect warm-up (ms)</span><InputNumber @bind-Value="PostConnectWarmupMilliseconds" min="0" max="10000" step="100" /></label>
+                        <label><span>Refresh channel after idle (seconds)</span><InputNumber @bind-Value="ReconnectAfterIdleSeconds" min="0" max="3600" step="30" /></label>
+                    </div>
+                    <p class="connection-hint">Set idle refresh to 0 to disable it. Set health-check timeout to 0 only if the TV does not answer WebSocket health checks.</p>
+                    <label><span>Display file ID</span><input @bind="DisplayDefinitionId" placeholder="Generated from display name" disabled="@(Mode == ConnectionPageMode.Edit)" /></label>
+                </details>
+                @if (!ReadinessSettingsValid)
+                {
+                    <p class="connection-form-error" role="alert">Use a 5–120 second interval, a 0 or 2–60 second timeout no greater than the interval, a 0–10,000 ms warm-up, and a 0 or 30–3,600 second idle refresh.</p>
+                }
+            </fieldset>
+            @if (PendingDisplayDefinitionReplacement is { } replacement)
+            {
+                <div class="definition-replacement-confirmation" role="alert">
+                    <div><strong>A display with this ID already exists.</strong><p>Replace @Path.GetFileName(replacement.Path)? Its existing menu links will be retained.</p></div>
+                    <div>
+                        <button type="button" class="secondary-action" @onclick="() => PendingDisplayDefinitionReplacement = null" disabled="@ControlsBusy">Keep existing</button>
+                        <button type="button" class="secondary-action danger-action" @onclick="() => SaveCombinationAsync(true)" disabled="@(ControlsBusy || CanDisconnect)">Replace and save</button>
+                    </div>
+                </div>
+            }
+            <div class="combination-actions setup-save-actions">
+                <button type="button" class="primary-action" @onclick="() => SaveCombinationAsync()" disabled="@(ControlsBusy || CanDisconnect)">
+                    @(IsBusy ? "Saving…" : CreateNewMenu ? "Save & define menu" : Mode == ConnectionPageMode.Edit ? "Save changes" : "Save combination") <span>→</span>
                 </button>
+                <button type="button" class="secondary-action" @onclick="CancelSetup" disabled="@ControlsBusy">Cancel</button>
             </div>
-            <label>
-                <span>Menu structure</span>
-                <select value="@Navigation.DefinitionPath"
-                        @onchange="ChangeMenuDefinitionAsync"
-                        disabled="@MenuProfileControlDisabled"
-                        aria-label="Menu structure">
-                    @if (MenuDefinitions.Count == 0)
-                    {
-                        <option value="">No valid menu structures found</option>
-                    }
-                    else if (!MenuDefinitions.Any(definition => definition.IsActive))
-                    {
-                        <option value="@Navigation.DefinitionPath" disabled>Configured menu file unavailable — choose another structure</option>
-                    }
-                    @foreach (var definition in MenuDefinitions)
-                    {
-                        <option value="@definition.Path" disabled="@(!definition.IsValid)">@FormatMenuDefinition(definition)</option>
-                    }
-                </select>
-            </label>
-            <label>
-                <span>Menu configuration</span>
-                <select value="@Navigation.ActiveConfigurationId"
-                        @onchange="ChangeMenuConfigurationAsync"
-                        disabled="@(MenuProfileControlDisabled || Navigation.Configurations.Count == 0)"
-                        aria-label="Menu configuration">
-                    @if (Navigation.Configurations.Count == 0)
-                    {
-                        <option value="">No configurations available</option>
-                    }
-                    @foreach (var configuration in Navigation.Configurations)
-                    {
-                        <option value="@configuration.Id">@configuration.Name</option>
-                    }
-                </select>
-            </label>
-            <p>@ActiveMenuContext</p>
-            @if (InvalidMenuDefinitions.Count > 0)
+            @if (CanDisconnect)
             {
-                <div class="menu-definition-file-errors" role="alert">
-                    <strong>Menu files needing attention</strong>
-                    @foreach (var definition in InvalidMenuDefinitions)
-                    {
-                        <div>
-                            <code>@Path.GetFileName(definition.Path) · @definition.Location</code>
-                            <span>@definition.Error</span>
-                        </div>
-                    }
-                    <a href="menu/build">Open Build &amp; Verify →</a>
-                </div>
+                <p class="connection-hint">Disconnect from the TV before saving setup changes.</p>
             }
-        </div>
-        <div class="display-definition-save">
-            <label>
-                <span>Display ID</span>
-                <input @bind="DisplayDefinitionId" placeholder="Generated from display name" disabled="@MenuProfileControlDisabled" />
-            </label>
-            <button class="secondary-action" type="button" @onclick="SaveDisplayDefinitionAsync" disabled="@(MenuProfileControlDisabled || Navigation.DefinitionName is null)">
-                @(DisplayDefinitionBusy ? "Saving…" : Snapshot.DisplayDefinitionPath is null ? "Save display" : "Update display")
-            </button>
-            <p>Save the connection and selected menu/configuration together. Existing menu links are retained, and Display Verification is never copied, reset, or altered.</p>
-            @if (PendingDisplayDefinitionReplacement is not null)
-            {
-                <div class="definition-replacement-confirmation display-definition-replacement">
-                    <div>
-                        <span>DISPLAY ID ALREADY EXISTS</span>
-                        <strong>Replace @Path.GetFileName(PendingDisplayDefinitionReplacement.Path)?</strong>
-                        <p>This replaces only the user display definition. It does not modify the referenced menu or any validation records.</p>
-                    </div>
-                    <div>
-                        <button class="secondary-action" type="button" @onclick="CancelDisplayDefinitionReplacement">Cancel</button>
-                        <button class="secondary-action danger-action" type="button" @onclick="ReplaceDisplayDefinitionAsync">Replace display</button>
-                    </div>
-                </div>
-            }
-        </div>
-        <details class="connection-readiness-settings">
-            <summary><span>Channel readiness</span><small>Recommended defaults</small></summary>
-            <div class="readiness-field-grid">
-                <label>
-                    <span>Health-check interval</span>
-                    <div class="number-with-unit"><InputNumber @bind-Value="KeepAliveIntervalSeconds" min="5" max="120" disabled="@IsBusy" /><b>sec</b></div>
-                </label>
-                <label>
-                    <span>Health-check timeout</span>
-                    <div class="number-with-unit"><InputNumber @bind-Value="KeepAliveTimeoutSeconds" min="0" max="60" disabled="@IsBusy" /><b>sec</b></div>
-                </label>
-                <label>
-                    <span>Post-connect warm-up</span>
-                    <div class="number-with-unit"><InputNumber @bind-Value="PostConnectWarmupMilliseconds" min="0" max="10000" step="100" disabled="@IsBusy" /><b>ms</b></div>
-                </label>
-                <label>
-                    <span>Refresh channel after idle</span>
-                    <div class="number-with-unit"><InputNumber @bind-Value="ReconnectAfterIdleSeconds" min="0" max="3600" step="30" disabled="@IsBusy" /><b>sec</b></div>
-                </label>
-            </div>
-            <p>After the idle threshold, the next command waits for a fresh authorization and warm-up, then sends exactly once. Set idle refresh to 0 to disable proactive refresh, or health-check timeout to 0 if this TV does not answer WebSocket PINGs.</p>
-            @if (!ReadinessSettingsValid)
-            {
-                <p class="readiness-validation" role="alert">Use 5–120 seconds for the interval, either 0 or 2–60 seconds for its timeout, 0–10,000 ms for warm-up, and either 0 or 30–3,600 seconds for idle refresh. Timeout cannot exceed the interval.</p>
-            }
-        </details>
-        @if (CanDisconnect)
-        {
-            <button class="secondary-action danger-action" type="button" @onclick="DisconnectAsync" disabled="@(IsBusy || Snapshot.MacroRunning || Snapshot.NavigationRunning)">Disconnect <span>×</span></button>
-        }
-        else
-        {
-            <button class="primary-action" type="button" @onclick="ConnectAsync" disabled="@(IsBusy || string.IsNullOrWhiteSpace(Host) || !ReadinessSettingsValid)">
-                @(IsBusy ? "Opening channel…" : "Connect to display") <span>→</span>
-            </button>
-        }
-        <p class="field-note">After connecting, SamsungController automatically runs the preferred verified anchor to establish a known menu state. The TV may ask you to approve the first connection.</p>
-    </div>
+        </section>
+    }
 
-    <div class="panel signal-panel">
-        <div class="panel-label"><span>SESSION SIGNAL</span><span>LIVE</span></div>
-        <div class="signal-visual" aria-hidden="true">
-            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-        </div>
+    <details class="panel connection-diagnostics">
+        <summary>Files and connection details
+            @if (InvalidFileCount > 0)
+            {
+                <b>@InvalidFileCount file issue@(InvalidFileCount == 1 ? "" : "s")</b>
+            }
+        </summary>
+        @if (InvalidFileCount > 0)
+        {
+            <div class="menu-definition-file-errors" role="alert">
+                <strong>Files needing attention</strong>
+                @foreach (var file in DisplayDefinitions.Where(item => !item.IsValid))
+                {
+                    <div><code>@Path.GetFileName(file.Path) · @file.Location</code><span>@file.Error</span></div>
+                }
+                @foreach (var file in MenuDefinitions.Where(item => !item.IsValid))
+                {
+                    <div><code>@Path.GetFileName(file.Path) · @file.Location</code><span>@file.Error</span></div>
+                }
+                <a href="menu/build">Inspect menu files in Build &amp; Verify →</a>
+            </div>
+        }
         <dl class="metric-list">
-            <div><dt>Transport</dt><dd>@TransportLabel</dd></div>
+            <div><dt>Connection</dt><dd>@Snapshot.ConnectionState</dd></div>
+            <div><dt>Transport</dt><dd>@(Snapshot.Secure ? "WSS" : "WS") : @(Snapshot.Port ?? (Snapshot.Secure ? 8002 : 8001))</dd></div>
             <div><dt>Authorization</dt><dd>@(Snapshot.HasToken ? "Token retained" : "Pair on connect")</dd></div>
-            <div><dt>Generation</dt><dd>@(Snapshot.ConnectionGeneration == 0 ? "—" : Snapshot.ConnectionGeneration)</dd></div>
-            <div><dt>Protocol capture</dt><dd>@(Snapshot.ConnectionState == SamsungConnectionState.Connected ? "Recording" : "Armed")</dd></div>
-            <div><dt>Channel readiness</dt><dd>@Snapshot.PostConnectWarmupMilliseconds ms warm-up</dd></div>
-            <div><dt>Menu prediction</dt><dd>@Snapshot.MenuConfidence</dd></div>
+            <div><dt>Warm-up</dt><dd>@Snapshot.PostConnectWarmupMilliseconds ms</dd></div>
         </dl>
-    </div>
-
-    <div class="panel quick-panel">
-        <div class="panel-label"><span>NEXT ACTIONS</span><span>04</span></div>
-        <div class="quick-links">
-            <a href="remote"><span>Remote</span><small>Directional and volume control</small><b>→</b></a>
-            <a href="menu"><span>Menu</span><small>Verified controls grouped like the TV</small><b>→</b></a>
-            <a href="macros"><span>Macro runner</span><small>Validated repeatable sequences</small><b>→</b></a>
-            <a href="protocol"><span>Protocol</span><small>Inspect every RX / TX message</small><b>→</b></a>
+        <p class="connection-file-path"><strong>Active menu file</strong><span>@Navigation.DefinitionPath</span></p>
+        <div class="combination-actions">
+            <button type="button" class="secondary-action" @onclick="ReloadMenuDefinitionAsync" disabled="@(ControlsBusy || Mode != ConnectionPageMode.Saved || string.IsNullOrWhiteSpace(Navigation.DefinitionPath))">Reload menu file</button>
+            <button type="button" class="secondary-action" @onclick="RefreshCatalogsAsync" disabled="@ControlsBusy">Refresh file lists</button>
         </div>
-    </div>
-</section>
+    </details>
+</div>
 
 @code {
+    private enum ConnectionPageMode { Saved, Create, Edit }
+
+    private sealed record SavedCombination(DisplayDefinitionCatalogEntry Display, DisplayMenuReferenceSummary Menu)
+    {
+        public string Key => $"{Display.Path}|{Menu.Id}";
+        public string Label => $"{Display.Name} — {Menu.MenuDefinitionName} · {Menu.MenuConfigurationId ?? "default"} · {Display.Location}";
+    }
+
+    private ConnectionPageMode Mode { get; set; } = ConnectionPageMode.Saved;
     private ControllerSnapshot Snapshot { get; set; } = null!;
     private MenuNavigationSnapshot Navigation { get; set; } = null!;
     private IReadOnlyList<MenuDefinitionCatalogEntry> MenuDefinitions { get; set; } = [];
     private IReadOnlyList<DisplayDefinitionCatalogEntry> DisplayDefinitions { get; set; } = [];
+    private IReadOnlyList<SavedCombination> SavedCombinations => DisplayDefinitions
+        .Where(display => display.IsValid)
+        .SelectMany(display => display.Menus.Select(menu => new SavedCombination(display, menu)))
+        .ToArray();
+    private SavedCombination? ActiveCombination => SavedCombinations.FirstOrDefault(item =>
+        string.Equals(item.Display.Path, Snapshot.DisplayDefinitionPath, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(item.Menu.ResolvedMenuDefinitionPath, Navigation.DefinitionPath, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(item.Menu.MenuConfigurationId, Navigation.ActiveConfigurationId, StringComparison.OrdinalIgnoreCase));
+    private string ActiveCombinationKey => ActiveCombination?.Key ?? string.Empty;
+    private string ActiveConfigurationName => Navigation.Configurations.FirstOrDefault(item => item.IsActive)?.Name ?? "Default";
+    private string? ActiveConfigurationConditions => Navigation.Configurations.FirstOrDefault(item => item.IsActive)?.Conditions;
+    private string ActiveMenuContext => Navigation.Context is null ? "No menu loaded" : FormatMenuContext(Navigation.Model, Navigation.Context);
+    private int InvalidFileCount => DisplayDefinitions.Count(item => !item.IsValid) + MenuDefinitions.Count(item => !item.IsValid);
+    private bool IsBusy { get; set; }
+    private bool ControlsBusy => IsBusy || Snapshot.MacroRunning || Snapshot.NavigationRunning || Controller.GetMenuAuthoringSnapshot().IsRecording;
+    private bool CanDisconnect => ConnectionStatePresentation.CanDisconnect(Snapshot.ConnectionState);
+    private string? LocalError { get; set; }
+    private string? LocalStatus { get; set; }
+    private string? ErrorMessage => LocalError ?? Snapshot.LastError;
+    private string ConnectionHint => CanDisconnect
+        ? "Disconnect to change displays or edit this combination."
+        : "On first connection, select Allow on the TV when prompted.";
+    private string DisplayName { get; set; } = string.Empty;
     private string DisplayDefinitionId { get; set; } = string.Empty;
-    private bool DisplayDefinitionBusy { get; set; }
-    private DisplayDefinitionSavePreview? PendingDisplayDefinitionReplacement { get; set; }
-    private string DisplayName { get; set; } = "Samsung TV";
     private string Host { get; set; } = string.Empty;
     private bool Secure { get; set; } = true;
     private bool AllowUntrustedCertificate { get; set; } = true;
@@ -287,306 +322,258 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
     private int KeepAliveTimeoutSeconds { get; set; } = 10;
     private int PostConnectWarmupMilliseconds { get; set; } = 1500;
     private int ReconnectAfterIdleSeconds { get; set; } = 300;
-    private bool IsBusy { get; set; }
-    private bool MenuProfileBusy { get; set; }
-    private bool MenuFileReloading { get; set; }
-    private string? LocalError { get; set; }
-    private string? LocalStatus { get; set; }
-    private IReadOnlyList<MenuDefinitionCatalogEntry> InvalidMenuDefinitions =>
-        MenuDefinitions.Where(definition => !definition.IsValid).ToArray();
-    private IReadOnlyList<DisplayDefinitionCatalogEntry> InvalidDisplayDefinitions =>
-        DisplayDefinitions.Where(definition => !definition.IsValid).ToArray();
-    private DisplayDefinitionCatalogEntry? ActiveDisplayDefinition =>
-        DisplayDefinitions.FirstOrDefault(definition => definition.IsActive && definition.IsValid);
-    private string? SelectedDisplayMenuReferenceId => ActiveDisplayDefinition?.Menus
-        .FirstOrDefault(menu => menu.ResolvedMenuDefinitionPath.Equals(
-                                   Navigation.DefinitionPath,
-                                   StringComparison.OrdinalIgnoreCase)
-                               && string.Equals(
-                                   menu.MenuConfigurationId,
-                                   Navigation.ActiveConfigurationId,
-                                   StringComparison.OrdinalIgnoreCase))?.Id;
-
-    private string? ErrorMessage => LocalError ?? Snapshot.LastError;
+    private string DraftMenuPath { get; set; } = string.Empty;
+    private string DraftConfigurationId { get; set; } = string.Empty;
+    private MenuDefinition? DraftMenu { get; set; }
+    private bool CreateNewMenu { get; set; }
+    private string NewMenuModel { get; set; } = string.Empty;
+    private string NewMenuFirmware { get; set; } = string.Empty;
+    private string NewMenuSignal { get; set; } = string.Empty;
+    private string NewMenuPictureMode { get; set; } = string.Empty;
+    private string NewMenuInput { get; set; } = string.Empty;
+    private MenuDefinitionFileFormat NewMenuFormat { get; set; } = MenuDefinitionFileFormat.Yaml;
+    private DisplayDefinitionSavePreview? PendingDisplayDefinitionReplacement { get; set; }
     private bool ReadinessSettingsValid => KeepAliveIntervalSeconds is >= 5 and <= 120
         && (KeepAliveTimeoutSeconds == 0 || KeepAliveTimeoutSeconds is >= 2 and <= 60)
         && KeepAliveTimeoutSeconds <= KeepAliveIntervalSeconds
         && PostConnectWarmupMilliseconds is >= 0 and <= 10_000
-        && (ReconnectAfterIdleSeconds == 0
-            || ReconnectAfterIdleSeconds is >= 30 and <= 3600);
-    private bool CanDisconnect => ConnectionStatePresentation.CanDisconnect(
-        Snapshot.ConnectionState);
-    private bool MenuProfileControlDisabled => IsBusy
-        || MenuProfileBusy
-        || DisplayDefinitionBusy
-        || Snapshot.MacroRunning
-        || Snapshot.NavigationRunning;
-    private bool DisplayDefinitionSelectionDisabled => MenuProfileControlDisabled
-        || CanDisconnect;
-    private string ActiveMenuContext => Navigation.Context is null
-        ? "No menu/display context loaded."
-        : $"{Navigation.Model} · firmware {Navigation.Context.Firmware} · {Navigation.Context.Signal} · {Navigation.Context.PictureMode} · {Navigation.Context.Input}";
-    private string TransportLabel => $"{(Secure ? "WSS" : "WS")} : {Port ?? (Secure ? 8002 : 8001)}";
-    private string StateClass => Snapshot.ConnectionState switch
-    {
-        SamsungConnectionState.Connected => "connected",
-        SamsungConnectionState.Connecting or SamsungConnectionState.Pairing or SamsungConnectionState.Warming or
-            SamsungConnectionState.Reconnecting or SamsungConnectionState.Disconnecting => "working",
-        SamsungConnectionState.Faulted => "faulted",
-        _ => "disconnected"
-    };
-    private string StateLabel => Snapshot.ConnectionState switch
-    {
-        SamsungConnectionState.Connected => "Online",
-        SamsungConnectionState.Pairing => "Pairing",
-        SamsungConnectionState.Warming => "Warming",
-        SamsungConnectionState.Connecting => "Opening",
-        SamsungConnectionState.Reconnecting => "Retrying",
-        SamsungConnectionState.Disconnecting => "Closing",
-        SamsungConnectionState.Faulted => "Faulted",
-        _ => "Offline"
-    };
-    private string StateDetail => Snapshot.ConnectionState switch
-    {
-        SamsungConnectionState.Connected => Snapshot.Host ?? "Active channel",
-        SamsungConnectionState.Pairing => "Check the TV",
-        SamsungConnectionState.Warming => "Preparing commands",
-        SamsungConnectionState.Connecting => "Negotiating",
-        SamsungConnectionState.Reconnecting => "Recovering channel",
-        SamsungConnectionState.Disconnecting => "Ending session",
-        SamsungConnectionState.Faulted => "Review error",
-        _ => "No active channel"
-    };
+        && (ReconnectAfterIdleSeconds == 0 || ReconnectAfterIdleSeconds is >= 30 and <= 3600);
 
     protected override async Task OnInitializedAsync()
     {
-        Snapshot = Controller.GetSnapshot();
-        Navigation = Controller.GetMenuNavigationSnapshot();
+        RefreshSnapshot();
         Controller.Changed += HandleControllerChanged;
         await Controller.InitializeAsync();
-        ApplySnapshotToForm(Controller.GetSnapshot());
+        await LoadCatalogsAsync();
+    }
+
+    private void RefreshSnapshot()
+    {
+        Snapshot = Controller.GetSnapshot();
         Navigation = Controller.GetMenuNavigationSnapshot();
+    }
+
+    private async Task LoadCatalogsAsync()
+    {
         MenuDefinitions = await Controller.DiscoverMenuDefinitionsAsync();
         DisplayDefinitions = await Controller.DiscoverDisplayDefinitionsAsync();
-        DisplayDefinitionId = DisplayDefinitions.FirstOrDefault(item => item.IsActive)?.Id
-            ?? string.Empty;
+        RefreshSnapshot();
     }
 
-    private async Task ConnectAsync()
+    private async Task RefreshCatalogsAsync() => await RunAsync(async () =>
     {
-        IsBusy = true;
-        LocalError = null;
-        try
+        await LoadCatalogsAsync();
+        LocalStatus = "Saved combinations and menu file lists refreshed.";
+    });
+
+    private async Task ChangeCombinationAsync(ChangeEventArgs args)
+    {
+        var combination = SavedCombinations.FirstOrDefault(item => item.Key == args.Value?.ToString());
+        if (combination is null || CanDisconnect)
         {
-            await Controller.ConnectAsync(new TvConnectionRequest(
-                DisplayName,
-                Host,
-                Secure,
-                Port,
-                AllowUntrustedCertificate,
-                KeepAliveIntervalSeconds,
-                KeepAliveTimeoutSeconds,
-                PostConnectWarmupMilliseconds,
-                ReconnectAfterIdleSeconds));
+            return;
         }
-        catch (Exception exception)
+
+        await RunAsync(async () =>
         {
-            LocalError = exception.Message;
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+            await Controller.SetDisplayMenuReferenceAsync(combination.Display.Path, combination.Menu.Id);
+            await LoadCatalogsAsync();
+            LocalStatus = $"Loaded {combination.Display.Name} with {combination.Menu.MenuDefinitionName}. Ready to connect.";
+        });
     }
 
-    private async Task DisconnectAsync()
+    private async Task BeginCreateAsync()
     {
-        IsBusy = true;
-        LocalError = null;
-        try
+        if (CanDisconnect || ControlsBusy)
         {
-            await Controller.DisconnectAsync();
+            return;
         }
-        catch (Exception exception)
+
+        await RunAsync(async () =>
         {
-            LocalError = exception.Message;
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+            await LoadCatalogsAsync();
+            ApplySnapshotToForm();
+            if (Snapshot.DisplayDefinitionPath is not null)
+            {
+                DisplayName = string.Empty;
+                Host = string.Empty;
+                Secure = true;
+                AllowUntrustedCertificate = true;
+                Port = null;
+                KeepAliveIntervalSeconds = 20;
+                KeepAliveTimeoutSeconds = 10;
+                PostConnectWarmupMilliseconds = 1500;
+                ReconnectAfterIdleSeconds = 300;
+            }
+
+            DisplayDefinitionId = string.Empty;
+            DraftMenuPath = string.Empty;
+            DraftConfigurationId = string.Empty;
+            DraftMenu = null;
+            CreateNewMenu = false;
+            NewMenuModel = NewMenuFirmware = NewMenuSignal = NewMenuPictureMode = NewMenuInput = string.Empty;
+            NewMenuFormat = MenuDefinitionFileFormat.Yaml;
+            PendingDisplayDefinitionReplacement = null;
+            Mode = ConnectionPageMode.Create;
+        });
     }
 
-    private async Task ChangeMenuDefinitionAsync(ChangeEventArgs args)
+    private async Task BeginEditAsync()
     {
-        var path = args.Value?.ToString();
+        if (CanDisconnect || ControlsBusy || ActiveCombination is not { } active)
+        {
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            ApplySnapshotToForm();
+            DisplayDefinitionId = active.Display.Id;
+            CreateNewMenu = false;
+            await LoadDraftMenuAsync(Navigation.DefinitionPath, Navigation.ActiveConfigurationId);
+            PendingDisplayDefinitionReplacement = null;
+            Mode = ConnectionPageMode.Edit;
+        });
+    }
+
+    private void CancelSetup()
+    {
+        Mode = ConnectionPageMode.Saved;
+        DraftMenu = null;
+        PendingDisplayDefinitionReplacement = null;
+        LocalError = LocalStatus = null;
+    }
+
+    private async Task ChangeDraftMenuAsync(ChangeEventArgs args) => await RunAsync(async () =>
+    {
+        PendingDisplayDefinitionReplacement = null;
+        await LoadDraftMenuAsync(args.Value?.ToString() ?? string.Empty);
+    });
+
+    private async Task LoadDraftMenuAsync(string path, string? configurationId = null)
+    {
+        DraftMenuPath = path;
+        DraftMenu = null;
+        DraftConfigurationId = string.Empty;
         if (string.IsNullOrWhiteSpace(path))
         {
             return;
         }
 
-        MenuProfileBusy = true;
-        LocalError = null;
-        LocalStatus = null;
-        try
-        {
-            await Controller.SetMenuDefinitionAsync(path);
-            Navigation = Controller.GetMenuNavigationSnapshot();
-            MenuDefinitions = await Controller.DiscoverMenuDefinitionsAsync();
-            DisplayDefinitions = await Controller.DiscoverDisplayDefinitionsAsync();
-            Snapshot = Controller.GetSnapshot();
-            LocalStatus = $"Selected {Navigation.DefinitionName}. Choose the configuration matching the TV's visible menu layout.";
-        }
-        catch (Exception exception)
-        {
-            LocalError = exception.Message;
-        }
-        finally
-        {
-            MenuProfileBusy = false;
-        }
+        // Inspect the draft without activating it or changing the saved TV state.
+        DraftMenu = await new MenuDefinitionParser().ParseFileAsync(path);
+        DraftConfigurationId = configurationId is not null && DraftMenu.Configurations.ContainsKey(configurationId)
+            ? configurationId
+            : DraftMenu.ActiveConfigurationId ?? DraftMenu.Configurations.Keys.FirstOrDefault() ?? string.Empty;
     }
 
-    private async Task ReloadMenuDefinitionAsync()
+    private async Task SaveCombinationAsync(bool replaceExisting = false)
     {
-        MenuProfileBusy = true;
-        MenuFileReloading = true;
-        LocalError = null;
-        LocalStatus = null;
-        try
-        {
-            await Controller.ReloadMenuDefinitionAsync();
-            Navigation = Controller.GetMenuNavigationSnapshot();
-            MenuDefinitions = await Controller.DiscoverMenuDefinitionsAsync();
-            DisplayDefinitions = await Controller.DiscoverDisplayDefinitionsAsync();
-            Snapshot = Controller.GetSnapshot();
-            LocalStatus = $"Reloaded {Path.GetFileName(Navigation.DefinitionPath)} from disk. Generated routes and required verification checks are up to date.";
-        }
-        catch (Exception exception)
-        {
-            LocalError = exception.Message;
-            Navigation = Controller.GetMenuNavigationSnapshot();
-            MenuDefinitions = await Controller.DiscoverMenuDefinitionsAsync();
-            DisplayDefinitions = await Controller.DiscoverDisplayDefinitionsAsync();
-        }
-        finally
-        {
-            MenuFileReloading = false;
-            MenuProfileBusy = false;
-        }
-    }
-
-    private async Task ChangeMenuConfigurationAsync(ChangeEventArgs args)
-    {
-        var configurationId = args.Value?.ToString();
-        if (string.IsNullOrWhiteSpace(configurationId))
+        if (ControlsBusy || CanDisconnect)
         {
             return;
         }
 
-        MenuProfileBusy = true;
-        LocalError = null;
-        LocalStatus = null;
-        try
+        await RunAsync(async () =>
         {
-            await Controller.SetMenuConfigurationAsync(configurationId);
-            Navigation = Controller.GetMenuNavigationSnapshot();
-            DisplayDefinitions = await Controller.DiscoverDisplayDefinitionsAsync();
-            Snapshot = Controller.GetSnapshot();
-            var selected = Navigation.Configurations.First(configuration => configuration.IsActive);
-            LocalStatus = $"Selected menu configuration: {selected.Name}.";
-        }
-        catch (Exception exception)
-        {
-            LocalError = exception.Message;
-        }
-        finally
-        {
-            MenuProfileBusy = false;
-        }
-    }
-
-    private async Task ChangeDisplayDefinitionAsync(ChangeEventArgs args)
-    {
-        DisplayDefinitionBusy = true;
-        LocalError = null;
-        LocalStatus = null;
-        PendingDisplayDefinitionReplacement = null;
-        try
-        {
-            var path = args.Value?.ToString();
-            if (string.IsNullOrWhiteSpace(path))
+            if (string.IsNullOrWhiteSpace(DisplayName) || string.IsNullOrWhiteSpace(Host))
             {
-                await Controller.ClearDisplayDefinitionSelectionAsync();
-                Snapshot = Controller.GetSnapshot();
-                DisplayDefinitions = await Controller.DiscoverDisplayDefinitionsAsync();
-                DisplayDefinitionId = string.Empty;
-                LocalStatus = "Using manual connection and menu selections.";
-                return;
+                throw new InvalidOperationException("Enter a display name and IP address in step 1.");
             }
 
-            await Controller.SetDisplayDefinitionAsync(path);
-            Snapshot = Controller.GetSnapshot();
-            Navigation = Controller.GetMenuNavigationSnapshot();
-            ApplySnapshotToForm(Snapshot);
-            MenuDefinitions = await Controller.DiscoverMenuDefinitionsAsync();
-            DisplayDefinitions = await Controller.DiscoverDisplayDefinitionsAsync();
-            DisplayDefinitionId = DisplayDefinitions.First(item => item.IsActive).Id;
-            LocalStatus = $"Loaded display definition {DisplayName} with {Navigation.DefinitionName}. Existing display verification was preserved.";
-        }
-        catch (Exception exception)
-        {
-            LocalError = exception.Message;
-        }
-        finally
-        {
-            DisplayDefinitionBusy = false;
-        }
-    }
+            if (!ReadinessSettingsValid || Port is <= 0 or > 65_535)
+            {
+                throw new InvalidOperationException("Check the advanced connection settings in step 3. The port must be 1–65535 or automatic, and channel-readiness values must be within their allowed ranges.");
+            }
 
-    private async Task SaveDisplayDefinitionAsync()
-    {
-        LocalError = null;
-        try
-        {
-            var request = CreateDisplayDefinitionEditRequest();
+            var newMenu = CreateNewMenu;
+            MenuDefinitionCreationRequest? creation = null;
+            MenuDefinitionCreationPreview? menuPreview = null;
+            if (newMenu)
+            {
+                if (string.IsNullOrWhiteSpace(NewMenuModel) || string.IsNullOrWhiteSpace(NewMenuFirmware))
+                {
+                    throw new InvalidOperationException("Enter the TV model number and firmware version in step 2.");
+                }
+
+                creation = new MenuDefinitionCreationRequest(string.Empty, string.Empty, NewMenuModel,
+                    NewMenuFirmware, NewMenuSignal, NewMenuPictureMode, NewMenuInput, NewMenuFormat);
+                menuPreview = Controller.PreviewMenuDefinitionCreation(creation);
+                if (menuPreview.FileExists)
+                {
+                    throw new InvalidOperationException($"A menu file named {Path.GetFileName(menuPreview.Path)} already exists. Choose Use an existing menu to link it, or change the model/firmware/context for a different menu.");
+                }
+            }
+            else if (DraftMenu is null
+                || (DraftMenu.Configurations.Count > 0 && !DraftMenu.Configurations.ContainsKey(DraftConfigurationId)))
+            {
+                throw new InvalidOperationException("Choose a menu definition and layout in step 2.");
+            }
+
+            var request = new DisplayDefinitionEditRequest(DisplayDefinitionId, DisplayName, Host, Secure, Port,
+                AllowUntrustedCertificate, menuPreview?.Path ?? DraftMenuPath, menuPreview?.Id ?? DraftMenu!.Id,
+                newMenu ? "default" : string.IsNullOrWhiteSpace(DraftConfigurationId) ? null : DraftConfigurationId,
+                KeepAliveIntervalSeconds, KeepAliveTimeoutSeconds, PostConnectWarmupMilliseconds, ReconnectAfterIdleSeconds);
             var preview = Controller.PreviewDisplayDefinitionSave(request);
-            if (preview.FileExists && !preview.IsActiveUserDefinition)
+            if (preview.FileExists && (Mode == ConnectionPageMode.Create || !preview.IsActiveUserDefinition)
+                && (!replaceExisting || PendingDisplayDefinitionReplacement?.Path != preview.Path))
             {
                 PendingDisplayDefinitionReplacement = preview;
                 return;
             }
 
-            await PersistDisplayDefinitionAsync(request, replaceExisting: false);
-        }
-        catch (Exception exception)
-        {
-            LocalError = exception.Message;
-        }
+            if (creation is not null)
+            {
+                await Controller.CreateMenuDefinitionAsync(creation);
+                // Retain the created file as a draft if the display save needs to be retried.
+                await LoadDraftMenuAsync(menuPreview!.Path, "default");
+                CreateNewMenu = false;
+            }
+
+            var savedPath = await Controller.SaveDisplayDefinitionAsync(request, replaceExisting);
+            await Controller.SetDisplayDefinitionAsync(savedPath);
+            await LoadCatalogsAsync();
+            PendingDisplayDefinitionReplacement = null;
+            Mode = ConnectionPageMode.Saved;
+            LocalStatus = $"Saved {DisplayName}. Select Connect to display when ready.";
+            if (newMenu)
+            {
+                PageNavigation.NavigateTo("menu/build");
+            }
+        });
     }
 
-    private async Task ChangeDisplayMenuReferenceAsync(ChangeEventArgs args)
+    private async Task ConnectAsync() => await RunAsync(async () =>
     {
-        var referenceId = args.Value?.ToString();
-        if (string.IsNullOrWhiteSpace(referenceId)
-            || ActiveDisplayDefinition is not { } activeDisplay)
+        // Connect using the selected combination, never an unsaved setup draft.
+        RefreshSnapshot();
+        await Controller.ConnectAsync(new TvConnectionRequest(Snapshot.DisplayName, Snapshot.Host ?? string.Empty,
+            Snapshot.Secure, Snapshot.Port, Snapshot.AllowUntrustedCertificate,
+            Snapshot.KeepAliveIntervalSeconds, Snapshot.KeepAliveTimeoutSeconds,
+            Snapshot.PostConnectWarmupMilliseconds, Snapshot.ReconnectAfterIdleSeconds));
+    });
+
+    private async Task DisconnectAsync() => await RunAsync(() => Controller.DisconnectAsync());
+
+    private async Task ReloadMenuDefinitionAsync() => await RunAsync(async () =>
+    {
+        await Controller.ReloadMenuDefinitionAsync();
+        await LoadCatalogsAsync();
+        LocalStatus = "Menu file reloaded. Routes and required verification checks are up to date.";
+    });
+
+    private async Task RunAsync(Func<Task> operation)
+    {
+        if (ControlsBusy)
         {
             return;
         }
 
-        MenuProfileBusy = true;
-        LocalError = null;
-        LocalStatus = null;
+        IsBusy = true;
+        LocalError = LocalStatus = null;
         try
         {
-            await Controller.SetDisplayMenuReferenceAsync(
-                activeDisplay.Path,
-                referenceId);
-            Snapshot = Controller.GetSnapshot();
-            Navigation = Controller.GetMenuNavigationSnapshot();
-            MenuDefinitions = await Controller.DiscoverMenuDefinitionsAsync();
-            DisplayDefinitions = await Controller.DiscoverDisplayDefinitionsAsync();
-            LocalStatus = $"Selected {Navigation.DefinitionName} for {DisplayName}. Existing display verification was preserved.";
+            await operation();
         }
         catch (Exception exception)
         {
@@ -594,141 +581,35 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
         }
         finally
         {
-            MenuProfileBusy = false;
+            RefreshSnapshot();
+            IsBusy = false;
         }
     }
 
-    private async Task ReplaceDisplayDefinitionAsync()
+    private void ApplySnapshotToForm()
     {
-        try
-        {
-            await PersistDisplayDefinitionAsync(
-                CreateDisplayDefinitionEditRequest(),
-                replaceExisting: true);
-        }
-        catch (Exception exception)
-        {
-            LocalError = exception.Message;
-        }
+        DisplayName = Snapshot.DisplayName;
+        Host = Snapshot.Host ?? string.Empty;
+        Secure = Snapshot.Secure;
+        Port = Snapshot.Port;
+        AllowUntrustedCertificate = Snapshot.AllowUntrustedCertificate;
+        KeepAliveIntervalSeconds = Snapshot.KeepAliveIntervalSeconds;
+        KeepAliveTimeoutSeconds = Snapshot.KeepAliveTimeoutSeconds;
+        PostConnectWarmupMilliseconds = Snapshot.PostConnectWarmupMilliseconds;
+        ReconnectAfterIdleSeconds = Snapshot.ReconnectAfterIdleSeconds;
     }
 
-    private async Task PersistDisplayDefinitionAsync(
-        DisplayDefinitionEditRequest request,
-        bool replaceExisting)
+    private static string FormatMenuDefinition(MenuDefinitionCatalogEntry definition) =>
+        $"{definition.Name} · {Path.GetFileName(definition.Path)} · {definition.Location}";
+
+    private static string FormatMenuContext(string? model, MenuDefinitionContext context) =>
+        $"{model} · firmware {context.Firmware} · {context.Signal} · {context.PictureMode} · {context.Input}";
+
+    private void HandleControllerChanged() => _ = InvokeAsync(() =>
     {
-        DisplayDefinitionBusy = true;
-        LocalError = null;
-        LocalStatus = null;
-        try
-        {
-            var path = await Controller.SaveDisplayDefinitionAsync(
-                request,
-                replaceExisting);
-            Snapshot = Controller.GetSnapshot();
-            DisplayDefinitions = await Controller.DiscoverDisplayDefinitionsAsync();
-            DisplayDefinitionId = DisplayDefinitions.First(item => item.Path.Equals(
-                path,
-                StringComparison.OrdinalIgnoreCase)).Id;
-            PendingDisplayDefinitionReplacement = null;
-            LocalStatus = $"Saved display definition {DisplayDefinitionId}. Menu and display validation records were not changed.";
-        }
-        catch (Exception exception)
-        {
-            LocalError = exception.Message;
-        }
-        finally
-        {
-            DisplayDefinitionBusy = false;
-        }
-    }
+        RefreshSnapshot();
+        StateHasChanged();
+    });
 
-    private DisplayDefinitionEditRequest CreateDisplayDefinitionEditRequest()
-    {
-        var selectedMenu = MenuDefinitions.FirstOrDefault(definition =>
-            definition.IsValid
-            && definition.Path.Equals(
-                Navigation.DefinitionPath,
-                StringComparison.OrdinalIgnoreCase))
-            ?? throw new InvalidOperationException(
-                "Load a valid menu definition before saving the display definition.");
-        return new DisplayDefinitionEditRequest(
-            DisplayDefinitionId,
-            DisplayName,
-            Host,
-            Secure,
-            Port,
-            AllowUntrustedCertificate,
-            selectedMenu.Path,
-            selectedMenu.Id,
-            Navigation.ActiveConfigurationId);
-    }
-
-    private void CancelDisplayDefinitionReplacement() =>
-        PendingDisplayDefinitionReplacement = null;
-
-    private void HandleControllerChanged()
-    {
-        Snapshot = Controller.GetSnapshot();
-        Navigation = Controller.GetMenuNavigationSnapshot();
-        _ = InvokeAsync(StateHasChanged);
-    }
-
-    private static string FormatMenuDefinition(MenuDefinitionCatalogEntry definition)
-    {
-        var location = definition.IsActive
-            ? $"Active / {definition.Location}"
-            : definition.Location;
-        if (!definition.IsValid)
-        {
-            return $"{Path.GetFileName(definition.Path)} · INVALID · {location}";
-        }
-
-        return $"{definition.Name} · {definition.Model} · firmware {definition.Context.Firmware} · {definition.Context.Signal} · {definition.Context.PictureMode} · {definition.Context.Input} · {location}";
-    }
-
-    private static string FormatDisplayDefinition(DisplayDefinitionCatalogEntry definition)
-    {
-        var location = definition.IsActive
-            ? $"Active / {definition.Location}"
-            : definition.Location;
-        if (!definition.IsValid)
-        {
-            return $"{Path.GetFileName(definition.Path)} · INVALID · {location}";
-        }
-
-        var host = string.IsNullOrWhiteSpace(definition.Host)
-            ? "IP entered separately"
-            : definition.Host;
-        var menuCount = definition.Menus.Count == 1
-            ? definition.MenuDefinitionName
-            : $"{definition.Menus.Count} linked menus";
-        return $"{definition.Name} · {host} · {menuCount} · {location}";
-    }
-
-    private static string FormatDisplayMenuReference(DisplayMenuReferenceSummary menu)
-    {
-        var configuration = string.IsNullOrWhiteSpace(menu.MenuConfigurationId)
-            ? "default layout"
-            : menu.MenuConfigurationId;
-        return $"{menu.MenuDefinitionName} · {configuration}{(menu.IsDefault ? " · default" : string.Empty)}";
-    }
-
-    private void ApplySnapshotToForm(ControllerSnapshot snapshot)
-    {
-        Snapshot = snapshot;
-        DisplayName = snapshot.DisplayName;
-        Host = snapshot.Host ?? string.Empty;
-        Secure = snapshot.Secure;
-        Port = snapshot.Port;
-        AllowUntrustedCertificate = snapshot.AllowUntrustedCertificate;
-        KeepAliveIntervalSeconds = snapshot.KeepAliveIntervalSeconds;
-        KeepAliveTimeoutSeconds = snapshot.KeepAliveTimeoutSeconds;
-        PostConnectWarmupMilliseconds = snapshot.PostConnectWarmupMilliseconds;
-        ReconnectAfterIdleSeconds = snapshot.ReconnectAfterIdleSeconds;
-    }
-
-    public void Dispose()
-    {
-        Controller.Changed -= HandleControllerChanged;
-    }
+    public void Dispose() => Controller.Changed -= HandleControllerChanged;
 }

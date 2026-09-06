@@ -159,26 +159,33 @@ current page without sending anything to the TV.
 
 1. Fully power on the TV and leave it on normal video.
 2. Open **Connection**.
-3. Select a saved **Display definition**, or choose **Manual / not linked** and
-   enter a friendly display name and the TV's IPv4 address.
-4. Choose a **Menu structure** matching the TV model and firmware if one is
-   available. The final label shows whether each copy comes from **User data**,
-   the source **Repository**, or the application **Installation**; the selected
-   copy also says **Active**. Copies with the same definition ID are listed
-   separately so you can deliberately choose the installed base or a personal
-   override. An invalid YAML or JSON file remains visible as **INVALID**, with
-   its exact parser or schema error below the selector; correct it and refresh
-   the page rather than assuming the directory was skipped.
-5. Choose the **Menu configuration** that matches the rows currently visible on
-   the TV. A configuration may represent a particular input, signal type,
-   picture mode, or option-dependent layout.
-6. For a manual display, select **Save display** to retain its connection,
-   selected menu, and menu configuration. Updating that display after choosing
-   another menu adds a linked context; it does not reset Display Verification.
-7. Leave **Secure WebSocket** and **Accept TV certificate** enabled. Leave the
-   port blank to use the normal secure port, 8002.
+3. **Use saved combination** is selected by default. If your display/menu/layout
+   is listed, select it and skip to step 8. **Refresh list** discovers new files.
+4. Otherwise, select **Create new combination**. In **1 · Display**, enter a
+   friendly display name and the TV's IP address.
+5. In **2 · Menu**, select **Use an existing menu** and choose a matching menu
+   definition and layout. Each file is labeled **User data**, **Repository**, or
+   **Installation**, so copies remain distinguishable. File errors are listed
+   under the collapsed **Files and connection details** section. Fix the file,
+   then refresh the lists. If no matching menu exists, choose **Define a new
+   menu** and enter the model and firmware. Add signal, picture mode, and input
+   only when they are specific to this menu; YAML is the default format.
+6. In **3 · Connection settings**, keep the recommended defaults. Security,
+   port, warm-up, and health checks are under **Advanced connection settings**.
+   The usual connection uses Secure WebSocket, Accept TV certificate, and an
+   empty port override for port 8002.
+7. Select **Save combination**. Setup choices take effect only when saved;
+   **Cancel** returns to saved combinations without applying your draft. If
+   defining a new menu, **Save & define menu** opens Build & Verify next. Enter
+   the tree there, then return to Connection and select your saved combination.
 8. Select **Connect to display**.
 9. Watch the TV and select **Allow** when its device-connection dialog appears.
+
+To adjust a saved combination, disconnect and select **Edit combination**.
+Changing its menu or layout and saving adds that context to the same display;
+all saved contexts are listed together in the combination picker. Verification
+and the referenced menu file are retained. Use **Files and connection details →
+Reload menu file** after editing the menu outside the app.
 
 The authorization dialog can take several seconds. SamsungController stores a
 host-specific token after approval, so normal reconnects do not ask again.
@@ -495,7 +502,8 @@ failing before token authorization.
 
 ### A first command after idle is ignored
 
-Expand **Channel readiness** on Connection. SamsungController can refresh an
+On Connection, disconnect and open **Edit combination → Connection settings →
+Advanced connection settings**. SamsungController can refresh an
 idle channel and hold one requested command until warm-up completes. Increase
 the post-authorization warm-up if the TV still ignores the first key after
 power-on.

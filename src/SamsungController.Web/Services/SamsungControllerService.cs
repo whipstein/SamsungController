@@ -2004,7 +2004,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 Host = string.IsNullOrWhiteSpace(request.Host) ? null : request.Host.Trim(),
                 Secure = request.Secure,
                 Port = request.Port,
-                AllowUntrustedCertificate = request.AllowUntrustedCertificate
+                AllowUntrustedCertificate = request.AllowUntrustedCertificate,
+                KeepAliveIntervalSeconds = request.KeepAliveIntervalSeconds ?? existingDefinition?.Connection.KeepAliveIntervalSeconds,
+                KeepAliveTimeoutSeconds = request.KeepAliveTimeoutSeconds ?? existingDefinition?.Connection.KeepAliveTimeoutSeconds,
+                PostConnectWarmupMilliseconds = request.PostConnectWarmupMilliseconds ?? existingDefinition?.Connection.PostConnectWarmupMilliseconds,
+                ReconnectAfterIdleSeconds = request.ReconnectAfterIdleSeconds ?? existingDefinition?.Connection.ReconnectAfterIdleSeconds
             },
             Menus = menus,
             DefaultMenu = activeMenuReferenceId
@@ -2022,7 +2026,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     Host = document.Connection.Host ?? current.Host,
                     Secure = document.Connection.Secure,
                     Port = document.Connection.Port,
-                    AllowUntrustedCertificate = document.Connection.AllowUntrustedCertificate
+                    AllowUntrustedCertificate = document.Connection.AllowUntrustedCertificate,
+                    KeepAliveIntervalSeconds = document.Connection.KeepAliveIntervalSeconds ?? current.KeepAliveIntervalSeconds,
+                    KeepAliveTimeoutSeconds = document.Connection.KeepAliveTimeoutSeconds ?? current.KeepAliveTimeoutSeconds,
+                    PostConnectWarmupMilliseconds = document.Connection.PostConnectWarmupMilliseconds ?? current.PostConnectWarmupMilliseconds,
+                    ReconnectAfterIdleSeconds = document.Connection.ReconnectAfterIdleSeconds ?? current.ReconnectAfterIdleSeconds
                 },
                 cancellationToken)
             .ConfigureAwait(false);
@@ -9272,7 +9280,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     Host = definition.Connection.Host ?? current.Host,
                     Secure = definition.Connection.Secure,
                     Port = definition.Connection.Port,
-                    AllowUntrustedCertificate = definition.Connection.AllowUntrustedCertificate
+                    AllowUntrustedCertificate = definition.Connection.AllowUntrustedCertificate,
+                    KeepAliveIntervalSeconds = definition.Connection.KeepAliveIntervalSeconds ?? current.KeepAliveIntervalSeconds,
+                    KeepAliveTimeoutSeconds = definition.Connection.KeepAliveTimeoutSeconds ?? current.KeepAliveTimeoutSeconds,
+                    PostConnectWarmupMilliseconds = definition.Connection.PostConnectWarmupMilliseconds ?? current.PostConnectWarmupMilliseconds,
+                    ReconnectAfterIdleSeconds = definition.Connection.ReconnectAfterIdleSeconds ?? current.ReconnectAfterIdleSeconds
                 },
                 cancellationToken)
             .ConfigureAwait(false);

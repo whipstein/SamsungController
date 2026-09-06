@@ -9,12 +9,12 @@ Selecting one display on **Connection** can therefore restore all of these at
 once:
 
 - display name and optional IP address;
-- secure/non-secure connection, port override, and certificate behavior;
+- secure/non-secure connection, port override, certificate behavior, and saved channel-readiness settings;
 - the default menu definition; and
 - the menu configuration used for that definition.
 
-It does not copy menu topology, timing, calibration values, pairing tokens, or
-verification evidence. Use **Reload menu file** on Connection after editing the
+It does not copy menu topology, key timing, calibration values, pairing tokens, or
+verification evidence. Use **Files and connection details → Reload menu file** on Connection after editing the
 referenced file outside the app; this reparses the same file rather than making
 a copy. Display Verification continues to use the menu
 definition ID plus model, firmware, signal, picture mode, and input/source.
@@ -24,24 +24,30 @@ fingerprints or their `menu-verifications` sidecar.
 ## Create one in the interface
 
 1. Open **Connection** while disconnected.
-2. Enter the display name and IP address.
-3. Select the menu definition and menu configuration that currently apply.
-4. Optionally enter a stable **Display ID**. When blank, the app generates one
-   from the display name.
-5. Select **Save display**.
+2. Select **Create new combination**. The default view shows only saved combinations.
+3. In **Display**, enter the display name and IP address.
+4. In **Menu**, choose an existing menu definition and layout, or **Define a new menu**
+   with the model, firmware, and optional signal/picture-mode/input context.
+5. Keep the recommended **Connection settings**, or expand **Advanced connection
+   settings** to change them. The optional **Display file ID** is generated from
+   the display name when blank.
+6. Select **Save combination**. When defining a new menu, **Save & define menu**
+   opens Build & Verify to enter its tree next. **Cancel** discards the draft
+   without changing the active display or menu.
 
 The app writes `<id>.display.json` under the per-user configuration directory's
 `display-definitions/` folder. If that ID already exists, it asks before
 replacing the user file.
 
-To associate another menu or layout with the same physical display, leave the
-display selected, choose the other menu/configuration, and select **Update
-display**. The new reference is added and becomes the file's default. Existing
-references remain available in **Menu linked to this display**. This is useful
+To associate another menu or layout with the same physical display, choose its
+saved combination, select **Edit combination**, choose the other menu/layout,
+and select **Save changes**. The new reference is added and becomes the file's
+default. Every linked context appears as a separate choice under **Use saved
+combination**. This is useful
 for separate SDR, HDR, input, picture-mode, or settings-dependent menu files.
 
-Selecting **Manual / not linked** forgets only the active display-definition
-selection. It does not delete the file, menu, token, or verification evidence.
+Selecting a saved combination loads that exact menu/layout for the display.
+Disconnect before switching combinations or editing connection settings.
 
 ## Discovery locations
 
@@ -52,8 +58,9 @@ The Connection page discovers `*.display.json` files recursively in:
 3. the installed application's `display-definitions/` directory; and
 4. the explicitly active custom file, if one is outside those catalogs.
 
-Invalid files remain visible as **INVALID** with their diagnostic. JSON syntax
-and unknown-field errors include a one-based line and column.
+Invalid files appear under **Files and connection details** with their diagnostic;
+only usable combinations appear in the main picker. JSON syntax and unknown-field
+errors include a one-based line and column. Use **Refresh list** to rescan.
 
 ## Version 1 format
 
@@ -100,6 +107,13 @@ Fields:
   explicit value from 1 through 65535.
 - `connection.allowUntrustedCertificate` should normally remain `true` for a
   Samsung TV's local certificate.
+- `connection.keepAliveIntervalSeconds` is optional (5–120 seconds).
+- `connection.keepAliveTimeoutSeconds` is optional (0 to disable, or 2–60 seconds;
+  it must not exceed the interval).
+- `connection.postConnectWarmupMilliseconds` is optional (0–10000 ms).
+- `connection.reconnectAfterIdleSeconds` is optional (0 to disable, or 30–3600 seconds).
+  The setup form saves all four readiness values with the display; definitions
+  that omit them retain the current local values when selected.
 - `defaultMenu` names the menu-reference ID loaded when the display is selected.
   When omitted, the first entry is used.
 - `menus` contains one or more references. Reference IDs must be unique.

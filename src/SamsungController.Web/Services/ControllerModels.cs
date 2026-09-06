@@ -75,7 +75,11 @@ public sealed record DisplayDefinitionEditRequest(
     bool AllowUntrustedCertificate,
     string MenuDefinitionPath,
     string MenuDefinitionId,
-    string? MenuConfigurationId);
+    string? MenuConfigurationId,
+    int? KeepAliveIntervalSeconds = null,
+    int? KeepAliveTimeoutSeconds = null,
+    int? PostConnectWarmupMilliseconds = null,
+    int? ReconnectAfterIdleSeconds = null);
 
 public sealed record DisplayDefinitionSavePreview(
     string Id,
