@@ -114,6 +114,15 @@ public sealed partial class ControllerMenuIntegrationTests
             id: installed-control-audit
             name: Installed Control Audit
             model: Test TV
+            externalStates:
+              - id: pgen-output-format
+                label: External HDMI Signal
+                defaultValue: RGB
+                options: [RGB, YCbCr422, YCbCr444]
+              - id: input-mode
+                label: Input mode
+                defaultValue: Standard
+                options: [Standard, Game]
             nodes:
               - id: normal-video
                 label: Normal video
@@ -147,6 +156,8 @@ public sealed partial class ControllerMenuIntegrationTests
         await using (controller)
         {
             Assert.NotNull(controller.GetMenuNavigationSnapshot().DefinitionName);
+            await controller.SetMenuExternalStateAsync("pgen-output-format", "YCbCr422");
+            await controller.SetMenuExternalStateAsync("input-mode", "Game");
             var expectedKind = controlType switch
             {
                 "slider" => MenuVerificationCheckKind.SliderBehavior,
@@ -160,6 +171,16 @@ public sealed partial class ControllerMenuIntegrationTests
             await using var renderer = new VerificationPageTestRenderer(services) { CheckId = check.Id };
             await renderer.StartAsync();
             await renderer.ClickAsync("Run guided test");
+            Assert.DoesNotContain("was not found", renderer.LineText);
+            Assert.Contains("Count pass", renderer.LineText);
+            await renderer.ClickAsync("Failed");
+            Assert.False(controller.GetMenuDefinitionVerificationSnapshot().Checks.Single(item => item.Id == check.Id).Verified);
+            if (controlType != "confirmation")
+            {
+                Assert.Equal(defaultValue, controller.GetMenuNavigationSnapshot().ControlValues["control"]);
+            }
+            Assert.Equal("normal-video", controller.GetMenuNavigationSnapshot().State.NodeId);
+            await renderer.ClickAsync("Run guided test");
             await renderer.ClickAsync("Count pass");
             await controller.ReloadMenuDefinitionAsync();
             Assert.True(controller.GetMenuDefinitionVerificationSnapshot().Checks.Single(item => item.Id == check.Id).Verified);
@@ -167,6 +188,10 @@ public sealed partial class ControllerMenuIntegrationTests
             {
                 Assert.Equal(defaultValue, controller.GetMenuNavigationSnapshot().ControlValues["control"]);
             }
+            var navigation = controller.GetMenuNavigationSnapshot();
+            Assert.Equal("YCbCr422", navigation.ExternalStates!.Single(state => state.Id == "pgen-output-format").Value);
+            Assert.Equal("Game", navigation.ExternalStates!.Single(state => state.Id == "input-mode").Value);
+            Assert.DoesNotContain(navigation.ControlValues.Keys, key => key.StartsWith("external-state:", StringComparison.Ordinal));
             renderer.CheckId = "display";
             await renderer.ClickAsync("Confirm this display");
             Assert.True(controller.GetMenuDefinitionVerificationSnapshot().Checks.Single(item => item.Id == "display").Verified);

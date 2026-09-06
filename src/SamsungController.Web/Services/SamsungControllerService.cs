@@ -8406,8 +8406,19 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 node.DefaultValue!);
         }
 
+        // Guided tests and restoration can pass an already-expanded value snapshot.
+        // External conditions are not TV controls: refresh them from the current
+        // external-state selection below instead of looking them up as menu nodes.
+        var externalValueKeys = definition.ExternalStates.Keys
+            .Select(ExternalStateValueKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var (nodeId, value) in knownValues)
         {
+            if (externalValueKeys.Contains(nodeId))
+            {
+                continue;
+            }
+
             var node = definition.GetRequiredNode(nodeId);
             values[node.Id] = NormalizePictureControlValue(definition, node, value);
         }

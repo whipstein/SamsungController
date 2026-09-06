@@ -3663,6 +3663,11 @@ public sealed partial class ControllerMenuIntegrationTests : IDisposable
             id: guided-condition-verification
             name: Guided Condition Verification
             model: Test TV
+            externalStates:
+              - id: pgen-output-format
+                label: External HDMI Signal
+                defaultValue: RGB
+                options: [RGB, YCbCr422, YCbCr444]
             nodes:
               - id: normal-video
                 label: Normal video
