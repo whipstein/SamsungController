@@ -15,6 +15,18 @@ configurations:
     name: Standard menu
     conditions: Replace with the setting values that produce this visible list.
 
+# These are independent, manually selected source properties, not TV commands.
+# Change the equipment first, then match both selectors in the app header.
+externalStates:
+  - id: pgen-output-format
+    label: Color format
+    defaultValue: RGB
+    options: [RGB, YCbCr422, YCbCr444]
+  - id: hdmi-bit-depth
+    label: Bit depth
+    defaultValue: 8-bit
+    options: [8-bit, 10-bit]
+
 timing:
   defaultDelay: 300ms
   screenChangeDelay: 800ms

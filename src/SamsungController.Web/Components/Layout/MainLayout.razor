@@ -42,7 +42,7 @@
                             <li><strong>Quick access</strong> runs pinned remote keys or behaviorally verified macros. Return to video is pinned by default.</li>
                             <li><strong>Current menu</strong> is the application's expected location, not a cursor position reported by the TV.</li>
                             <li><strong>Menu configuration</strong> identifies which settings-dependent list layout is active. Change it before navigation when the TV adds or removes menu rows.</li>
-                            <li><strong>External HDMI Signal</strong> records source-format state the TV does not report, such as RGB or YCbCr output. Change the source equipment first, then choose the matching value here.</li>
+                            <li><strong>External HDMI Signal</strong> records source settings the TV does not report. Color format (RGB/YCbCr) and bit depth (8-bit/10-bit) are independent. Change the source equipment first, then match both selectors here; these selectors do not send TV commands.</li>
                             <li><strong>Warming</strong> means authorization succeeded and a requested command is being held until the TV is ready.</li>
                         </ul>
                         <p class="help-callout safe">Commands are temporarily disabled while a macro, verified traversal, or live recording owns the TV connection.</p>
@@ -120,20 +120,26 @@
                 {
                     <div class="persistent-external-state">
                         <span>EXTERNAL HDMI SIGNAL</span>
-                        @foreach (var state in Navigation.ExternalStates ?? [])
-                        {
-                            <label title="Set the external equipment first, then choose its matching state here.">
-                                <select value="@state.Value"
-                                        @onchange="args => ChangeExternalStateAsync(state.Id, args)"
-                                        disabled="@ExternalStateControlDisabled"
-                                        aria-label="External HDMI Signal: @state.Label">
-                                    @foreach (var option in state.Options)
-                                    {
-                                        <option value="@option">@option</option>
-                                    }
-                                </select>
-                            </label>
-                        }
+                        <div class="external-signal-fields">
+                            @foreach (var state in Navigation.ExternalStates ?? [])
+                            {
+                                var label = state.Id.Equals("pgen-output-format", StringComparison.OrdinalIgnoreCase)
+                                    ? "Color format"
+                                    : state.Label;
+                                <label title="Set the external equipment first, then choose its matching state here.">
+                                    <span>@label</span>
+                                    <select value="@state.Value"
+                                            @onchange="args => ChangeExternalStateAsync(state.Id, args)"
+                                            disabled="@ExternalStateControlDisabled"
+                                            aria-label="External HDMI Signal: @label">
+                                        @foreach (var option in state.Options)
+                                        {
+                                            <option value="@option">@option</option>
+                                        }
+                                    </select>
+                                </label>
+                            }
+                        </div>
                     </div>
                 }
 

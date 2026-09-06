@@ -2289,7 +2289,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     "Default",
                     "Default menu layout.")
             ],
-            activeConfigurationId: "default");
+            activeConfigurationId: "default",
+            externalStates:
+            [
+                new MenuExternalState("pgen-output-format", "Color format", "RGB", ["RGB", "YCbCr422", "YCbCr444"]),
+                new MenuExternalState("hdmi-bit-depth", "Bit depth", "8-bit", ["8-bit", "10-bit"])
+            ]);
         new MenuDefinitionValidator().ValidateAndThrow(definition);
         var path = Path.Combine(
             _configurationDirectory,
@@ -6050,6 +6055,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     || (node.SelectionOptions ?? []).Contains(
                         "Cancel",
                         StringComparer.OrdinalIgnoreCase)))
+            // A fixed choice (for example ST.2084-only gamma) cannot demonstrate
+            // selection changes; use another available representative instead.
+            .Where(node => check.Kind != MenuVerificationCheckKind.Selection
+                || node.SelectionOptions is { Count: > 1 })
             .Where(node => HasVerifiedPictureControlRoute(effectiveDefinition, node.Id)
                 || HasConditionalAncestorWithVerifiedParent(definition, node))
             .Where(node => CanAutomaticallyMakeMenuNodeAvailable(

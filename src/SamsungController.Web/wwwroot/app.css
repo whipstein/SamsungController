@@ -145,7 +145,7 @@ html[data-theme="light"] .theme-toggle-state.light { display: inline-flex; }
 .topbar-connection-button:hover:not(:disabled) { background: var(--cyan-soft); border-color: rgba(var(--cyan-rgb),.5); color: var(--ink); }
 .topbar-connection-button:disabled { cursor: not-allowed; opacity: .48; }
 .persistent-control-bar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(210px, .32fr) minmax(210px, .32fr); gap: 24px; align-items: stretch; padding: 12px 0 14px; border-top: 1px solid var(--line); }
-.persistent-control-bar.has-external-states { grid-template-columns: minmax(0, 1fr) minmax(190px, .3fr) minmax(180px, .28fr) minmax(210px, .32fr); gap: 18px; }
+.persistent-control-bar.has-external-states { grid-template-columns: minmax(0, 1fr) minmax(190px, .3fr) minmax(240px, .38fr) minmax(210px, .32fr); gap: 18px; }
 .topbar-label { display: block; margin-bottom: 7px; color: var(--faint); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .13em; }
 .quick-access-region { min-width: 0; }
 .quick-access-actions { display: flex; gap: 7px; min-width: 0; overflow-x: auto; padding-bottom: 1px; }
@@ -168,7 +168,9 @@ html[data-theme="light"] .theme-toggle-state.light { display: inline-flex; }
 .persistent-menu-state.unknown { border-color: var(--danger); }
 .persistent-external-state { min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 3px 0 3px 14px; border-left: 3px solid var(--cyan); }
 .persistent-external-state > span { color: var(--faint); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .12em; }
+.external-signal-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 8px 12px; }
 .persistent-external-state label { display: block; min-width: 0; }
+.persistent-external-state label > span { display: block; color: var(--muted); font-size: 12px; line-height: 1.3; }
 .persistent-external-state select { width: 100%; max-width: 210px; padding: 3px 24px 3px 0; border: 0; background-color: transparent; color: var(--ink); font-size: 17px; line-height: 1.1; font-weight: 600; letter-spacing: -.02em; }
 .persistent-external-state select:disabled { cursor: not-allowed; opacity: .5; }
 .persistent-verification-state { min-width: 0; display: flex; flex-direction: column; justify-content: center; padding: 3px 0 3px 17px; border-left: 3px solid var(--danger); color: inherit; text-decoration: none; transition: .16s ease; }

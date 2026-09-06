@@ -8,7 +8,7 @@ A distributable structure contains:
 
 - the nested on-screen menu tree;
 - control types, options, slider bounds, and conditional visibility rules;
-- declared external equipment states, such as an RGB/YCbCr generator mode;
+- independent external equipment states, such as RGB/YCbCr color format and 8-bit/10-bit depth;
 - navigation anchors, return strategies, routes, and timing definitions;
 - named menu configurations when settings change the visible topology.
 
@@ -25,6 +25,10 @@ descriptive filename such as `s95f-1296.yaml`; add signal, picture mode, or inpu
 only when those conditions genuinely require a different topology.
 
 The generic authoring tutorial remains in `samples/menus/menu.example.yaml`.
+It includes both External HDMI Signal selectors. See the
+[file-format tutorial](../docs/menu-definition-file-format.md#independent-color-format-and-bit-depth)
+for bit-depth-dependent rows and selection choices without combining all six
+color-format/bit-depth combinations into separate profiles.
 
 ## Included structures
 

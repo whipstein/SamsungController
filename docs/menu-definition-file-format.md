@@ -114,9 +114,13 @@ configurations:
 
 externalStates:
   - id: pgen-output-format
-    label: PGen output format
+    label: Color format
     defaultValue: RGB
     options: [RGB, YCbCr422, YCbCr444]
+  - id: hdmi-bit-depth
+    label: Bit depth
+    defaultValue: 8-bit
+    options: [8-bit, 10-bit]
 
 timing:
   defaultDelay: 150ms
@@ -247,9 +251,15 @@ allowed.
   "externalStates": [
     {
       "id": "pgen-output-format",
-      "label": "PGen output format",
+      "label": "Color format",
       "defaultValue": "RGB",
       "options": ["RGB", "YCbCr422", "YCbCr444"]
+    },
+    {
+      "id": "hdmi-bit-depth",
+      "label": "Bit depth",
+      "defaultValue": "8-bit",
+      "options": ["8-bit", "10-bit"]
     }
   ],
   "timing": {
@@ -401,8 +411,99 @@ external signal may have changed what is on screen.
 External state is intentionally separate from `configurations`. Use a
 configuration when the menu is actually reordered and needs a different route
 set. Use an external state when a row remains in cursor order but becomes gray
-or hidden. A separate bit-depth state is optional; omit it from a condition when
-8-bit versus 10-bit does not affect that row.
+or hidden. Newly created menu definitions include separate **Color format**
+and **Bit depth** selectors. Existing files can add `hdmi-bit-depth` to their
+`externalStates` array as shown above, then use **Reload menu definition**.
+Keep `pgen-output-format` as the existing color-format ID so its conditions and
+remembered values still work. The header displays it as `Color format` even if
+an existing file retains the label `PGen output format`; there is no need to
+rename it or disturb that definition's existing verification fingerprints.
+
+### Independent color format and bit depth
+
+The two selectors are independent: RGB, YCbCr422, and YCbCr444 can each be paired
+with 8-bit or 10-bit. Changing one does not change the other, send remote keys,
+or invalidate existing verification merely because a different value is selected.
+They describe the actual source output; selecting 10-bit does not configure your
+generator, imply HDR, or choose a TV gamma curve. Confirm both values against
+your equipment rather than relying on the template defaults of RGB and 8-bit.
+
+For a row that is absent at 8-bit, use:
+
+```yaml
+hiddenWhen:
+  - externalState: hdmi-bit-depth
+    equals: 8-bit
+```
+
+Use `disabledWhen` instead if the row stays visible and gray. Conditions on bit
+depth alone apply regardless of color format. Keep an HDMI Black Level rule
+that depends only on RGB/YCbCr tied to `pgen-output-format` alone. These condition
+lists mean **OR**, not AND: adding a color-format condition would also hide or
+disable the row whenever that color format is selected.
+
+If the *choices inside a selection control* differ, define two adjacent,
+mutually exclusive versions of that row. Each has a unique ID, the same visible
+label, its own ordered `options` and `defaultValue`, and the opposite bit depth
+in `hiddenWhen`. Only the visible variant contributes to navigation offsets.
+For example, this models an observed display with BT.1886/2.2 at 8-bit and only
+ST.2084 at 10-bit. Use the exact choices and order observed on your own display;
+this is not a universal bit-depth-to-gamma rule:
+
+```yaml
+# These two entries occupy the same visible row, inside their parent's children.
+- id: gamma-8bit
+  label: Gamma
+  controlType: selection
+  defaultValue: BT.1886
+  options: [BT.1886, "2.2"]
+  hiddenWhen:
+    - externalState: hdmi-bit-depth
+      equals: 10-bit
+- id: gamma-10bit
+  label: Gamma
+  controlType: selection
+  defaultValue: ST.2084
+  options: [ST.2084]
+  hiddenWhen:
+    - externalState: hdmi-bit-depth
+      equals: 8-bit
+- id: bt.1886
+  label: BT.1886
+  controlType: slider
+  defaultValue: 0
+  minimumValue: -3
+  maximumValue: 3
+  hiddenWhen:
+    - externalState: hdmi-bit-depth
+      equals: 10-bit
+    - setting: gamma-8bit
+      equals: "2.2"
+- id: st.2084
+  label: ST.2084
+  controlType: slider
+  defaultValue: 0
+  minimumValue: -3
+  maximumValue: 3
+  hiddenWhen:
+    - externalState: hdmi-bit-depth
+      equals: 8-bit
+```
+
+The fixed ST.2084-only control does not offer a value change. Guided selection
+verification uses another available multi-choice control instead of trying to
+change it. The ST.2084 adjustment slider is still adjustable and verifiable;
+in this example it occupies the same cursor position as the BT.1886 slider at
+8-bit. Slider ranges/defaults must also match the actual display.
+
+In JSON, the condition is
+`"hiddenWhen": [{ "externalState": "hdmi-bit-depth", "equals": "8-bit" }]`.
+In the outline editor it is `hiddenWhen=external:hdmi-bit-depth=8-bit`.
+The node editor also lists **Bit depth** as a condition source after the state
+has been declared. If other rows depend on a gamma value, point their `setting`
+conditions at the appropriate variant ID and give them matching bit-depth
+visibility rules. Check the actual current values in **Enter current settings** after
+changing the source; the remote protocol cannot read the TV's resulting values.
 
 ## Node fields and control types
 
