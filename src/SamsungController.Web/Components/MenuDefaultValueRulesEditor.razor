@@ -1,0 +1,93 @@
+<details class="selection-option-editor conditional-default-editor">
+    <summary>Signal-dependent defaults (@Rules.Count)</summary>
+    <p>All selected conditions in a rule must match. The first matching rule wins; otherwise the default setting above is used. Put specific combinations before broader rules.</p>
+    @for (var index = 0; index < Rules.Count; index++)
+    {
+        var ruleIndex = index;
+        var rule = Rules[ruleIndex];
+        <fieldset class="conditional-default-rule" disabled="@Disabled">
+            <legend>Rule @(ruleIndex + 1)</legend>
+            <div class="conditional-default-fields">
+                @foreach (var state in States)
+                {
+                    <label>
+                        <span>@state.Label</span>
+                        <select value="@rule.When.GetValueOrDefault(state.Id, string.Empty)"
+                                @onchange="args => SetConditionAsync(ruleIndex, state.Id, args.Value?.ToString())"
+                                aria-label="Rule @(ruleIndex + 1): @state.Label">
+                            <option value="">Any</option>
+                            @foreach (var option in state.Options)
+                            {
+                                <option value="@option">@option</option>
+                            }
+                        </select>
+                    </label>
+                }
+                <label>
+                    <span>Default value</span>
+                    <input value="@rule.Value" @oninput="args => SetValueAsync(ruleIndex, args.Value?.ToString())"
+                           aria-label="Rule @(ruleIndex + 1): default value" />
+                </label>
+            </div>
+            @if (rule.When.Count == 0)
+            {
+                <p class="danger" role="alert">Select at least one condition, or remove this rule and use the fallback default.</p>
+            }
+            <div class="button-row">
+                <button type="button" class="quiet-action" @onclick="() => MoveAsync(ruleIndex, -1)" disabled="@(Disabled || ruleIndex == 0)" aria-label="Move default rule @(ruleIndex + 1) up">↑</button>
+                <button type="button" class="quiet-action" @onclick="() => MoveAsync(ruleIndex, 1)" disabled="@(Disabled || ruleIndex == Rules.Count - 1)" aria-label="Move default rule @(ruleIndex + 1) down">↓</button>
+                <button type="button" class="quiet-action" @onclick="() => RemoveAsync(ruleIndex)" disabled="@Disabled">Remove rule @(ruleIndex + 1)</button>
+            </div>
+        </fieldset>
+    }
+    <button type="button" class="secondary-action" @onclick="AddAsync" disabled="@(Disabled || States.Count == 0 || Rules.Count >= 20)">+ Add default rule</button>
+    <small>These are file defaults, not current readings from the TV. Save/Update the menu item to save the rules. Values must fit the control's range or available choices.</small>
+</details>
+
+@code {
+    [Parameter] public IReadOnlyList<MenuNodeDefaultValueRule> Rules { get; set; } = [];
+    [Parameter] public EventCallback<IReadOnlyList<MenuNodeDefaultValueRule>> RulesChanged { get; set; }
+    [Parameter] public IReadOnlyList<MenuExternalStateSummary> States { get; set; } = [];
+    [Parameter] public string FallbackValue { get; set; } = string.Empty;
+    [Parameter] public bool Disabled { get; set; }
+
+    private Task AddAsync() => Disabled || States.Count == 0 || Rules.Count >= 20
+        ? Task.CompletedTask
+        : RulesChanged.InvokeAsync(Rules.Append(new MenuNodeDefaultValueRule(
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { [States[0].Id] = States[0].Value },
+            FallbackValue)).ToArray());
+
+    private Task SetConditionAsync(int index, string stateId, string? value)
+    {
+        var when = new Dictionary<string, string>(Rules[index].When, StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            when.Remove(stateId);
+        }
+        else
+        {
+            when[stateId] = value;
+        }
+        return ReplaceAsync(index, Rules[index] with { When = when });
+    }
+
+    private Task SetValueAsync(int index, string? value) => ReplaceAsync(index, Rules[index] with { Value = value ?? string.Empty });
+
+    private Task ReplaceAsync(int index, MenuNodeDefaultValueRule rule) => Disabled
+        ? Task.CompletedTask
+        : RulesChanged.InvokeAsync(Rules.Select((existing, ruleIndex) => ruleIndex == index ? rule : existing).ToArray());
+
+    private Task RemoveAsync(int index) => Disabled ? Task.CompletedTask
+        : RulesChanged.InvokeAsync(Rules.Where((_, ruleIndex) => ruleIndex != index).ToArray());
+
+    private Task MoveAsync(int index, int direction)
+    {
+        if (Disabled || index + direction < 0 || index + direction >= Rules.Count)
+        {
+            return Task.CompletedTask;
+        }
+        var rules = Rules.ToArray();
+        (rules[index], rules[index + direction]) = (rules[index + direction], rules[index]);
+        return RulesChanged.InvokeAsync(rules);
+    }
+}

@@ -140,6 +140,19 @@ public sealed class MenuDefinitionWriter
         AppendOptionalScalar(yaml, fieldIndentation, "description", node.Description);
         AppendScalar(yaml, fieldIndentation, "controlType", FormatControlType(node.ControlType));
         AppendOptionalScalar(yaml, fieldIndentation, "defaultValue", node.DefaultValue);
+        if (node.DefaultValueWhen is { Count: > 0 })
+        {
+            yaml.Append(' ', fieldIndentation).AppendLine("defaultValueWhen:");
+            foreach (var rule in node.DefaultValueWhen)
+            {
+                AppendListScalar(yaml, fieldIndentation + 2, "value", rule.Value);
+                yaml.Append(' ', fieldIndentation + 4).AppendLine("when:");
+                foreach (var condition in rule.When)
+                {
+                    AppendScalar(yaml, fieldIndentation + 6, condition.Key, condition.Value);
+                }
+            }
+        }
         AppendOptionalDecimal(yaml, fieldIndentation, "minimumValue", node.MinimumValue);
         AppendOptionalDecimal(yaml, fieldIndentation, "maximumValue", node.MaximumValue);
         if (node.Disabled)

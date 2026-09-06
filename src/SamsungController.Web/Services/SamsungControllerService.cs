@@ -51,6 +51,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _menuControlValues = new(
         StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _explicitMenuControlValues = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _menuExternalStateValues = new(
         StringComparer.OrdinalIgnoreCase);
 
@@ -186,8 +187,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 _menuDefinition = menuDefinition;
                 _menuStateTracker = menuStateTracker;
                 _menuNavigator = menuNavigator;
-                ResetMenuControlValues(menuDefinition);
                 ResetMenuExternalStateValues(menuDefinition, settings);
+                ResetMenuControlValues(menuDefinition);
                 _navigationError = navigationError;
                 _initialized = true;
             }
@@ -350,7 +351,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         IsMenuNodeHiddenByDefault(definition, node),
                         node.SelectionOptions ?? [],
                         node.MinimumValue,
-                        node.MaximumValue))
+                        node.MaximumValue,
+                        node.DefaultValueWhen ?? [],
+                        MenuDefaultValueResolver.Resolve(definition, node, _menuExternalStateValues)))
                     .ToArray();
             var anchors = definition is null
                 ? []
@@ -459,6 +462,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 _menuExternalStateValues[item.Id] = item.Value;
             }
 
+            RefreshMenuDefaultControlValues(definition);
             _navigationPlan = null;
             _navigationStatus = $"External state selected · {state.Label}: {_menuExternalStateValues[state.Id]}";
             if (_menuStateTracker?.Current.NodeId is { } nodeId
@@ -803,6 +807,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
         MenuDefinitionVerificationCheck check;
         Dictionary<string, string> effectiveValues;
         MenuControlVerificationSnapshot controlVerification;
+        HashSet<string> explicitlyKnown;
         lock (_sync)
         {
             definition = _menuDefinition
@@ -818,6 +823,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 _menuControlValues,
                 _menuExternalStateValues);
             controlVerification = GetMenuControlVerificationSnapshot();
+            explicitlyKnown = new HashSet<string>(_explicitMenuControlValues, StringComparer.OrdinalIgnoreCase);
         }
 
         if (check.TargetNodeId is null)
@@ -826,7 +832,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 $"'{check.Label}' does not have an automated TV target.");
         }
 
-        return check.Kind switch
+        var result = check.Kind switch
         {
             MenuVerificationCheckKind.SliderBehavior =>
                 await RunAdjustableMenuDefinitionVerificationTestAsync(
@@ -880,6 +886,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     .ConfigureAwait(false),
             _ => throw new InvalidOperationException(
                 $"'{check.Label}' is verified through its existing Build & Verify workflow rather than an automated control adjustment.")
+        };
+        return result with
+        {
+            DefaultBasedNodeIds = result.AppliedUpdates.Select(update => update.NodeId)
+                .Where(nodeId => !explicitlyKnown.Contains(nodeId)).ToArray()
         };
     }
 
@@ -1023,6 +1034,15 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     cancellationToken)
                 .ConfigureAwait(false);
             effectiveValues[node.Id] = applied.FromValue;
+            if (test.DefaultBasedNodeIds?.Contains(node.Id, StringComparer.OrdinalIgnoreCase) == true
+                && applied.FromValue.Equals(NormalizePictureControlValue(definition, node,
+                    MenuDefaultValueResolver.Resolve(definition, node, _menuExternalStateValues)!), StringComparison.OrdinalIgnoreCase))
+            {
+                lock (_sync)
+                {
+                    _explicitMenuControlValues.Remove(node.Id);
+                }
+            }
             restoredCount++;
         }
 
@@ -2607,7 +2627,11 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 "A node's stable ID cannot be changed after creation. Its display name can be renamed.");
         }
 
-        node = node with { Id = existing.Id };
+        node = node with
+        {
+            Id = existing.Id,
+            DefaultValueWhen = request.DefaultValueWhen is null ? existing.DefaultValueWhen : node.DefaultValueWhen
+        };
         var parentChanged = !string.Equals(
             existing.ParentId,
             node.ParentId,
@@ -4577,7 +4601,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 $"'{definition.GetPath(resetNode.Id)}' is hidden by the current predicted menu settings.");
         }
 
-        var operations = CreateConfirmationOperations(resetNode, choice);
+        var operations = CreateConfirmationOperations(resetNode with
+        {
+            DefaultValue = MenuDefaultValueResolver.Resolve(definition, resetNode, _menuExternalStateValues)
+        }, choice);
         await RunNavigationAsync(
                 $"Factory reset · {definition.GetPath(resetNode.Id)}",
                 async (navigator, token) =>
@@ -4743,6 +4770,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                             lock (_sync)
                             {
                                 _menuControlValues[update.NodeId] = update.ToValue;
+                                _explicitMenuControlValues.Add(update.NodeId);
                             }
                             tracker.ConfirmNode(
                                 update.NodeId,
@@ -4895,6 +4923,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                                 lock (_sync)
                                 {
                                     _menuControlValues[selector.Id] = row.Key;
+                                    _explicitMenuControlValues.Add(selector.Id);
                                 }
 
                                 tracker.ConfirmNode(
@@ -4932,6 +4961,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                                 lock (_sync)
                                 {
                                     _menuControlValues[node.Id] = update.ToValue;
+                                    _explicitMenuControlValues.Add(node.Id);
                                 }
 
                                 tracker.ConfirmNode(
@@ -6132,7 +6162,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 ?? throw new InvalidOperationException("No menu state tracker is available.");
         }
 
-        var operations = CreateConfirmationOperations(node, safeChoice);
+        var operations = CreateConfirmationOperations(node with
+        {
+            DefaultValue = MenuDefaultValueResolver.Resolve(definition, node, _menuExternalStateValues)
+        }, safeChoice);
         await RunNavigationAsync(
                 $"Verify confirmation · {definition.GetPath(node.Id)}",
                 async (_, token) =>
@@ -7034,7 +7067,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     condition.EqualsValue.Trim(),
                     condition.SourceKind))
                 .ToArray() ?? [],
-            request.Disabled);
+            request.Disabled,
+            request.DefaultValueWhen?.Select(rule => rule with { Value = rule.Value.Trim() }).ToArray());
 
     private static MenuRecordingRequest NormalizeRecordingRequest(MenuRecordingRequest request) =>
         request with
@@ -8294,6 +8328,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                 definition,
                 node,
                 value.Value);
+            _explicitMenuControlValues.Add(node.Id);
         }
     }
 
@@ -8412,7 +8447,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             values[node.Id] = NormalizePictureControlValue(
                 definition,
                 node,
-                node.DefaultValue!);
+                MenuDefaultValueResolver.Resolve(definition, node, externalStateValues)!);
         }
 
         // Guided tests and restoration can pass an already-expanded value snapshot.
@@ -8446,6 +8481,12 @@ public sealed class SamsungControllerService : IAsyncDisposable
     private void ResetMenuControlValues(MenuDefinition? definition)
     {
         _menuControlValues.Clear();
+        _explicitMenuControlValues.Clear();
+        RefreshMenuDefaultControlValues(definition);
+    }
+
+    private void RefreshMenuDefaultControlValues(MenuDefinition? definition)
+    {
         if (definition is null)
         {
             return;
@@ -8457,12 +8498,13 @@ public sealed class SamsungControllerService : IAsyncDisposable
                          or MenuControlType.Selection
                          or MenuControlType.SubmenuSelection
                          or MenuControlType.IndexedSelection
-                     && !string.IsNullOrWhiteSpace(node.DefaultValue)))
+                     && !string.IsNullOrWhiteSpace(node.DefaultValue)
+                     && !_explicitMenuControlValues.Contains(node.Id)))
         {
             _menuControlValues[node.Id] = NormalizePictureControlValue(
                 definition,
                 node,
-                node.DefaultValue!);
+                MenuDefaultValueResolver.Resolve(definition, node, _menuExternalStateValues)!);
         }
     }
 
@@ -8512,7 +8554,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
         return sourceKind == MenuConditionSourceKind.ExternalState
             ? definition.ExternalStates.GetValueOrDefault(sourceId)?.DefaultValue
-            : definition.Nodes.GetValueOrDefault(sourceId)?.DefaultValue;
+            : definition.Nodes.TryGetValue(sourceId, out var node)
+                ? MenuDefaultValueResolver.Resolve(definition, node)
+                : null;
     }
 
     private static MenuControlValueUpdate[] OrderPictureControlUpdates(
@@ -8672,7 +8716,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
         var adjustedNodes = definition.Nodes.Values.Select(node =>
             effectiveValues.TryGetValue(node.Id, out var value)
-                ? node with { DefaultValue = value }
+                ? node with { DefaultValue = value, DefaultValueWhen = [] }
                 : node).ToArray();
         var adjustedExternalStates = definition.ExternalStates.Values.Select(state =>
             effectiveValues.TryGetValue(ExternalStateValueKey(state.Id), out var value)
@@ -9261,11 +9305,33 @@ public sealed class SamsungControllerService : IAsyncDisposable
             previousTracker = _menuStateTracker;
             previousNavigator = _menuNavigator;
             previousState = previousTracker?.Current;
+            var retainedValues = (preserveMenuState || preserveValidationProgress)
+                && _menuDefinition?.Id.Equals(definition.Id, StringComparison.OrdinalIgnoreCase) == true
+                ? _menuControlValues.Where(pair => _explicitMenuControlValues.Contains(pair.Key)).ToArray()
+                : [];
             _menuDefinition = definition;
             _menuStateTracker = tracker;
             _menuNavigator = navigator;
-            ResetMenuControlValues(definition);
             ResetMenuExternalStateValues(definition, _settings);
+            ResetMenuControlValues(definition);
+            foreach (var (retainedNodeId, value) in retainedValues)
+            {
+                if (!definition.Nodes.TryGetValue(retainedNodeId, out var node))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    _menuControlValues[node.Id] = NormalizePictureControlValue(definition, node, value);
+                    _explicitMenuControlValues.Add(node.Id);
+                }
+                catch (InvalidOperationException)
+                {
+                    // A changed control type, range, or option list can make an
+                    // old prediction invalid. Keep its newly declared default.
+                }
+            }
             _navigationPlan = null;
             _navigationProgress = null;
             _navigationStatus = "Menu definition loaded";

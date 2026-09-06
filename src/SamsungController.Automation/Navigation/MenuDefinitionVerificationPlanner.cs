@@ -641,7 +641,13 @@ public static class MenuDefinitionVerificationPlanner
         node.DefaultValue ?? string.Empty,
         node.MinimumValue?.ToString("G29", CultureInfo.InvariantCulture) ?? string.Empty,
         node.MaximumValue?.ToString("G29", CultureInfo.InvariantCulture) ?? string.Empty,
-        string.Join("\u001e", node.SelectionOptions ?? []));
+        string.Join("\u001e", node.SelectionOptions ?? []))
+        + (node.DefaultValueWhen is { Count: > 0 }
+            ? "|conditional-defaults:" + string.Join("\u001d", node.DefaultValueWhen.Select(rule =>
+                rule.Value + "=" + string.Join("\u001e", rule.When
+                    .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+                    .Select(pair => $"{pair.Key}:{pair.Value}"))))
+            : string.Empty);
 
     private static string ConditionShape(MenuDefinition definition, MenuNode node) => string.Join(
         "|",

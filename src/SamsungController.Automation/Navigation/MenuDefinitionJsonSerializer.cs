@@ -172,6 +172,16 @@ public sealed class MenuDefinitionJsonSerializer
         };
         AddOptional(result, "description", node.Description);
         AddOptional(result, "defaultValue", node.DefaultValue);
+        if (node.DefaultValueWhen is { Count: > 0 })
+        {
+            result["defaultValueWhen"] = new JsonArray(node.DefaultValueWhen.Select(rule =>
+                (JsonNode?)new JsonObject
+                {
+                    ["when"] = new JsonObject(rule.When.Select(condition =>
+                        new KeyValuePair<string, JsonNode?>(condition.Key, JsonValue.Create(condition.Value)))),
+                    ["value"] = rule.Value
+                }).ToArray());
+        }
         if (node.MinimumValue is { } minimum)
         {
             result["minimumValue"] = minimum;

@@ -308,7 +308,9 @@ public static class TopologyRouteGenerator
         MenuConditionSourceKind sourceKind) =>
         sourceKind == MenuConditionSourceKind.ExternalState
             ? definition.ExternalStates.GetValueOrDefault(sourceId)?.DefaultValue
-            : definition.Nodes.GetValueOrDefault(sourceId)?.DefaultValue;
+            : definition.Nodes.TryGetValue(sourceId, out var node)
+                ? MenuDefaultValueResolver.Resolve(definition, node)
+                : null;
 
     private static IReadOnlyList<MenuOperation> Coalesce(IEnumerable<MenuOperation> operations)
     {

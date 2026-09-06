@@ -24,7 +24,9 @@ public sealed class MenuDefinitionParser
     private static readonly HashSet<string> ExternalStateFields =
         new(["id", "label", "defaultValue", "options"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> NodeFields =
-        new(["id", "label", "children", "description", "controlType", "defaultValue", "minimumValue", "maximumValue", "options", "disabled", "disabledWhen", "hiddenWhen"], StringComparer.OrdinalIgnoreCase);
+        new(["id", "label", "children", "description", "controlType", "defaultValue", "defaultValueWhen", "minimumValue", "maximumValue", "options", "disabled", "disabledWhen", "hiddenWhen"], StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> DefaultValueRuleFields =
+        new(["when", "value"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ValueConditionFields =
         new(["setting", "externalState", "equals"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> AnchorFields =
@@ -295,7 +297,10 @@ public sealed class MenuDefinitionParser
                         RequireSequence(hiddenWhenNode, $"hiddenWhen in {context}"),
                         context)
                     : [],
-                OptionalBoolean(fields, "disabled", context)));
+                OptionalBoolean(fields, "disabled", context),
+                fields.TryGetValue("defaultValueWhen", out var defaultRules)
+                    ? ParseDefaultValueRules(RequireSequence(defaultRules, $"defaultValueWhen in {context}"), context)
+                    : []));
 
             if (fields.TryGetValue("children", out var childrenNode))
             {
@@ -312,6 +317,29 @@ public sealed class MenuDefinitionParser
                     $"child of '{id}'");
             }
         }
+    }
+
+    private static IReadOnlyList<MenuNodeDefaultValueRule> ParseDefaultValueRules(YamlSequenceNode sequence, string nodeContext)
+    {
+        var rules = new List<MenuNodeDefaultValueRule>();
+        for (var index = 0; index < sequence.Children.Count; index++)
+        {
+            var context = $"{nodeContext} defaultValueWhen rule {index + 1}";
+            var fields = ReadFields(RequireMapping(sequence.Children[index], context), context);
+            EnsureAllowedFields(fields, DefaultValueRuleFields, context);
+            if (!fields.TryGetValue("when", out var when))
+            {
+                throw new MenuDefinitionParseException($"'when' is required in {context}.");
+            }
+
+            var conditions = ReadFields(RequireMapping(when, $"when in {context}"), context);
+            rules.Add(new MenuNodeDefaultValueRule(
+                conditions.ToDictionary(pair => pair.Key,
+                    pair => RequiredScalar(conditions, pair.Key, context), StringComparer.OrdinalIgnoreCase),
+                RequiredScalar(fields, "value", context)));
+        }
+
+        return rules;
     }
 
     private static MenuControlType ParseControlType(string? value, string context)

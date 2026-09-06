@@ -97,6 +97,7 @@ public sealed class MenuDefinitionValidator
             }
 
             ValidateMenuNodeBehavior(definition, node, errors);
+            ValidateDefaultValueRules(definition, node, errors);
         }
 
         DetectParentCycles(definition, errors);
@@ -196,6 +197,58 @@ public sealed class MenuDefinitionValidator
         }
 
         return errors;
+    }
+
+    private static void ValidateDefaultValueRules(
+        MenuDefinition definition,
+        MenuNode node,
+        ICollection<MenuDefinitionValidationError> errors)
+    {
+        var rules = node.DefaultValueWhen ?? [];
+        if (rules.Count > 20)
+        {
+            errors.Add(new($"node '{node.Id}' defaultValueWhen", "At most 20 conditional defaults are allowed."));
+        }
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var index = 0; index < rules.Count; index++)
+        {
+            var rule = rules[index];
+            var location = $"node '{node.Id}' defaultValueWhen rule {index + 1}";
+            if (rule.When.Count == 0)
+            {
+                errors.Add(new(location, "'when' must contain at least one external-state condition; use defaultValue for the fallback."));
+            }
+            if (rule.When.Count > 20)
+            {
+                errors.Add(new(location, "A conditional default can match at most 20 external states."));
+            }
+            foreach (var condition in rule.When)
+            {
+                if (!definition.ExternalStates.TryGetValue(condition.Key, out var state))
+                {
+                    errors.Add(new(location, $"External state '{condition.Key}' does not exist."));
+                }
+                else if (!state.Options.Contains(condition.Value, StringComparer.OrdinalIgnoreCase))
+                {
+                    errors.Add(new(location, $"Value '{condition.Value}' is not an available option for external state '{condition.Key}'."));
+                }
+            }
+
+            var signature = string.Join("\u001e", rule.When.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(pair => $"{pair.Key}\u001f{pair.Value}"));
+            if (!seen.Add(signature))
+            {
+                errors.Add(new(location, "These conditions duplicate an earlier default rule and would never be used."));
+            }
+
+            var valueErrors = new List<MenuDefinitionValidationError>();
+            ValidateMenuNodeBehavior(definition, node with { DefaultValue = rule.Value, DefaultValueWhen = [] }, valueErrors);
+            foreach (var error in valueErrors)
+            {
+                errors.Add(new(location, error.Message));
+            }
+        }
     }
 
     private static void ValidateMenuNodeBehavior(

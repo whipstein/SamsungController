@@ -515,11 +515,107 @@ Every node requires `id` and `label`. These fields are optional:
 | `description` | Notes for users and future development. |
 | `controlType` | Interaction type; defaults to `submenu`. |
 | `defaultValue` | Expected value after reset/startup. Required for value-bearing controls; forbidden for `submenu` and `action`. |
+| `defaultValueWhen` | Ordered external-signal default overrides. Every condition in a rule must match; the first matching rule wins. `defaultValue` remains the fallback. |
 | `minimumValue`, `maximumValue` | Numeric slider boundaries; both are required for sliders only. |
 | `options` | Ordered values for choice controls. |
 | `disabled` | Set to `true` when this row is always visible but permanently gray/unavailable. Descendants inherit this state. |
 | `disabledWhen` | OR-list of conditions that leave this row present but gray/unavailable. Descendants inherit this state. |
 | `hiddenWhen` | OR-list of conditions that remove this row and all descendants. |
+
+### Defaults that depend on HDMI input or signal
+
+Use **Build & Verify → Define menu tree → edit a control → Signal-dependent
+defaults** to add rules without editing raw files. For each rule, select the
+color format, bit depth, or other declared external state, then enter the
+default value. **Any** leaves that state unconstrained. Use the up/down buttons
+to put specific combinations first, then **Save/Update** the menu item. Remove
+all rules to return to a single unconditional default. The outline editor
+preserves these rules when renaming or reorganizing existing items; use the node
+editor or the raw file to change the rules themselves.
+
+Example values below illustrate the syntax, not recommended TV settings:
+
+```yaml
+- id: brightness
+  label: Brightness
+  controlType: slider
+  minimumValue: 0
+  maximumValue: 50
+  defaultValue: 25
+  defaultValueWhen:
+    - when:
+        pgen-output-format: RGB
+        hdmi-bit-depth: 10-bit
+      value: 40
+    - when:
+        hdmi-bit-depth: 10-bit
+      value: 35
+```
+
+This uses 40 for RGB + 10-bit, 35 for other color formats at 10-bit, and 25 when
+neither rule matches. Conditions within `when` are **AND**. Rule order is
+significant: putting the broad 10-bit rule first would mask the RGB-specific
+rule. Unlike `disabledWhen` and `hiddenWhen`, these are not OR-lists of individual
+conditions.
+
+The equivalent JSON node is:
+
+```json
+{
+  "id": "brightness",
+  "label": "Brightness",
+  "controlType": "slider",
+  "minimumValue": 0,
+  "maximumValue": 50,
+  "defaultValue": "25",
+  "defaultValueWhen": [
+    {
+      "when": { "pgen-output-format": "RGB", "hdmi-bit-depth": "10-bit" },
+      "value": "40"
+    },
+    {
+      "when": { "hdmi-bit-depth": "10-bit" },
+      "value": "35"
+    }
+  ]
+}
+```
+
+Every key in `when` must reference an ID declared in the root `externalStates`
+list, and every condition value must be one of that state's options. This can
+include a physical HDMI connector as well as color format. For example, append
+this state to the existing list, using the input names available on your TV:
+
+```yaml
+- id: hdmi-input
+  label: HDMI input
+  defaultValue: HDMI 1
+  options: [HDMI 1, HDMI 2]
+```
+
+Then a rule can use `when: { hdmi-input: HDMI 2, hdmi-bit-depth: 10-bit }`.
+The new input selector appears beside the other external signal controls.
+Like those selectors, it records the source you selected on the equipment;
+it does **not** switch the TV input or query the TV.
+
+Conditional defaults work for sliders, switches, selections, submenu/indexed
+selections, and confirmation dialogs' initially highlighted choices. They do
+not change slider bounds or selection options. Each override must be legal for
+its control, just like the fallback: within the slider bounds, `on`/`off` for
+a switch, or one of the declared choices. Submenus and actions cannot have
+defaults. Each control supports up to 20 rules, each matching up to 20 external
+states. Empty and duplicate conditions are rejected with the node and rule
+number in the error.
+
+Changing the header's signal selections sends **no TV commands**. Default-based
+estimates update for the new context; saved/entered current values, applied
+values, and staged target values are not replaced just because the defaults
+changed. Use **Enter current settings** to confirm the actual baseline when
+switching sources. An explicit **Reset to defaults** operation resets the TV
+and uses the matching defaults for the selected signal. Guided verification
+restores the prior value after testing. New or changed rules reopen the related
+control verification, while merely choosing another signal does not rewrite
+the menu file or discard its verification.
 
 Supported `controlType` values are:
 

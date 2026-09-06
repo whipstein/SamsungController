@@ -169,7 +169,12 @@ public sealed record MenuNodeSummary(
     bool IsHiddenByDefault,
     IReadOnlyList<string> SelectionOptions,
     decimal? MinimumValue,
-    decimal? MaximumValue);
+    decimal? MaximumValue,
+    IReadOnlyList<MenuNodeDefaultValueRule>? DefaultValueWhen = null,
+    string? EffectiveDefaultValue = null)
+{
+    public string? ResolvedDefaultValue => EffectiveDefaultValue ?? DefaultValue;
+}
 
 public sealed record MenuSliderValueUpdate(
     string NodeId,
@@ -272,7 +277,8 @@ public sealed record MenuDefinitionVerificationTestResult(
     string TargetPath,
     MenuControlType? ControlType,
     string ActionDescription,
-    IReadOnlyList<MenuControlValueUpdate> AppliedUpdates);
+    IReadOnlyList<MenuControlValueUpdate> AppliedUpdates,
+    IReadOnlyList<string>? DefaultBasedNodeIds = null);
 
 public sealed record MenuAnchorSummary(
     string Id,
@@ -372,7 +378,8 @@ public sealed record MenuNodeEditRequest(
     decimal? MinimumValue = null,
     decimal? MaximumValue = null,
     IReadOnlyList<MenuNodeHiddenCondition>? HiddenWhen = null,
-    bool Disabled = false);
+    bool Disabled = false,
+    IReadOnlyList<MenuNodeDefaultValueRule>? DefaultValueWhen = null);
 
 public sealed record MenuTopologyOutlineRequest(
     string ParentNodeId,

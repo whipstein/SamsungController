@@ -872,6 +872,7 @@ else
                 foreach (var change in appliedChanges)
                 {
                     change.Cell.AppliedValue = completed[IndexedUpdateKey(change)];
+                    change.Cell.UsesDefaultBaseline = false;
                 }
 
                 foreach (var group in appliedChanges.Select(change => change.Group).Distinct())
@@ -1412,6 +1413,7 @@ else
 
                     cell.AppliedValue = normalized;
                     cell.DesiredValue = normalized;
+                    cell.UsesDefaultBaseline = false;
                 }
             }
 
@@ -1507,6 +1509,7 @@ else
                 if (defaultValue is not null)
                 {
                     cell.AppliedValue = defaultValue;
+                    cell.UsesDefaultBaseline = true;
                 }
             }
         }
@@ -1995,7 +1998,7 @@ else
         return Navigation.ControlValues.GetValueOrDefault(nodeId)
             ?? Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
             nodeId,
-            StringComparison.OrdinalIgnoreCase))?.DefaultValue;
+            StringComparison.OrdinalIgnoreCase))?.ResolvedDefaultValue;
     }
 
     private string? GetConditionValue(
@@ -2222,6 +2225,19 @@ else
         {
             if (existing.TryGetValue(node.Id, out var edit))
             {
+                var oldDefault = NormalizeDefaultValue(edit.Node);
+                var newDefault = NormalizeDefaultValue(node);
+                if (newDefault is not null && newDefault != oldDefault
+                    && edit.AppliedValue == oldDefault
+                    && Navigation.ControlValues.GetValueOrDefault(node.Id) == newDefault)
+                {
+                    if (!edit.Pending && !Profile.Values.Any(value => value.NodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase)
+                            && string.IsNullOrWhiteSpace(value.SelectorNodeId)))
+                    {
+                        edit.DesiredValue = newDefault;
+                    }
+                    edit.AppliedValue = newDefault;
+                }
                 edit.Node = node;
                 Controls.Add(edit);
                 continue;
@@ -2330,6 +2346,18 @@ else
                         var key = $"{selector.Id}\u001f{option}\u001f{slider.Id}";
                         if (existingCells.TryGetValue(key, out var existing))
                         {
+                            var newDefault = NormalizeDefaultValue(slider);
+                            if (existing.UsesDefaultBaseline && newDefault is not null
+                                && newDefault != NormalizeDefaultValue(existing.Slider))
+                            {
+                                if (!existing.Pending && !Profile.Values.Any(value => value.NodeId.Equals(slider.Id, StringComparison.OrdinalIgnoreCase)
+                                        && value.SelectorNodeId?.Equals(selector.Id, StringComparison.OrdinalIgnoreCase) == true
+                                        && value.SelectorValue?.Equals(option, StringComparison.OrdinalIgnoreCase) == true))
+                                {
+                                    existing.DesiredValue = newDefault;
+                                }
+                                existing.AppliedValue = newDefault;
+                            }
                             existing.Slider = slider;
                             return existing;
                         }
@@ -2448,13 +2476,13 @@ else
     {
         MenuControlType.Slider => node.MinimumValue is not null
             && node.MaximumValue is not null
-            && !string.IsNullOrWhiteSpace(node.DefaultValue),
-        MenuControlType.Switch => !string.IsNullOrWhiteSpace(node.DefaultValue),
-        MenuControlType.Selection => !string.IsNullOrWhiteSpace(node.DefaultValue)
+            && !string.IsNullOrWhiteSpace(node.ResolvedDefaultValue),
+        MenuControlType.Switch => !string.IsNullOrWhiteSpace(node.ResolvedDefaultValue),
+        MenuControlType.Selection => !string.IsNullOrWhiteSpace(node.ResolvedDefaultValue)
             && node.SelectionOptions.Count > 0,
-        MenuControlType.SubmenuSelection => !string.IsNullOrWhiteSpace(node.DefaultValue)
+        MenuControlType.SubmenuSelection => !string.IsNullOrWhiteSpace(node.ResolvedDefaultValue)
             && node.SelectionOptions.Count > 0,
-        MenuControlType.IndexedSelection => !string.IsNullOrWhiteSpace(node.DefaultValue)
+        MenuControlType.IndexedSelection => !string.IsNullOrWhiteSpace(node.ResolvedDefaultValue)
             && node.SelectionOptions.Count > 0,
         _ => false
     };
@@ -2464,7 +2492,7 @@ else
         if (node.ControlType == MenuControlType.Slider)
         {
             if (!decimal.TryParse(
-                    node.DefaultValue,
+                    node.ResolvedDefaultValue,
                     NumberStyles.Number,
                     CultureInfo.InvariantCulture,
                     out var defaultValue))
@@ -2480,11 +2508,11 @@ else
 
         if (node.ControlType == MenuControlType.Switch)
         {
-            return node.DefaultValue!.Equals("on", StringComparison.OrdinalIgnoreCase) ? "on" : "off";
+            return node.ResolvedDefaultValue!.Equals("on", StringComparison.OrdinalIgnoreCase) ? "on" : "off";
         }
 
         return node.SelectionOptions.FirstOrDefault(option => option.Equals(
-            node.DefaultValue,
+            node.ResolvedDefaultValue,
             StringComparison.OrdinalIgnoreCase));
     }
 
@@ -2673,6 +2701,7 @@ else
     {
         public string SelectorValue { get; } = selectorValue;
         public MenuNodeSummary Slider { get; set; } = slider;
+        public bool UsesDefaultBaseline { get; set; } = true;
         public string AppliedValue { get; set; } = defaultValue;
         public string DesiredValue { get; set; } = defaultValue;
         public bool Pending => !DesiredValue.Equals(AppliedValue, StringComparison.OrdinalIgnoreCase);

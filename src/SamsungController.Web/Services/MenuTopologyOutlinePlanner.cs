@@ -111,7 +111,8 @@ internal static class MenuTopologyOutlinePlanner
                 minimumValue,
                 maximumValue,
                 hiddenWhen,
-                disabled);
+                disabled,
+                controlType is MenuControlType.Submenu or MenuControlType.Action ? [] : existing?.DefaultValueWhen);
             nodesById[node.Id] = node;
             if (!plannedChildren.TryGetValue(resolvedParentId, out var children))
             {

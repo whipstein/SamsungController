@@ -94,6 +94,10 @@ public sealed record MenuNodeHiddenCondition(
     public string SettingNodeId => SourceId;
 }
 
+public sealed record MenuNodeDefaultValueRule(
+    IReadOnlyDictionary<string, string> When,
+    string Value);
+
 public sealed record MenuNode(
     string Id,
     string Label,
@@ -106,7 +110,8 @@ public sealed record MenuNode(
     decimal? MinimumValue = null,
     decimal? MaximumValue = null,
     IReadOnlyList<MenuNodeHiddenCondition>? HiddenWhen = null,
-    bool Disabled = false);
+    bool Disabled = false,
+    IReadOnlyList<MenuNodeDefaultValueRule>? DefaultValueWhen = null);
 
 public sealed record MenuOperation(
     string Key,
