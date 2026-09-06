@@ -372,7 +372,7 @@
                 break;
             case MenuVerificationCheckKind.ReturnScript
                 when check.ReturnScriptKind == MenuReturnScriptKind.NodeOverride:
-                await Controller.PrepareMenuRecordingSourceAsync(check.TargetNodeId!);
+                await Controller.PrepareMenuVerificationSourceAsync(check.TargetNodeId!);
                 break;
             case MenuVerificationCheckKind.ReturnScript
                 when check.ReturnScriptKind is { } returnKind:
@@ -539,6 +539,8 @@
     private static bool CanConfirm(MenuDefinitionVerificationCheckSummary check) =>
         !RequiresEvidenceTest(check) || check.ExistingEvidenceReady;
 
+    // Planner metadata describes actual definitions. The abbreviated builder list
+    // intentionally omits some covered entry routes and is not a validity check.
     private bool CanRunEvidenceTest(MenuDefinitionVerificationCheckSummary check) =>
         check.Kind switch
         {
@@ -552,11 +554,7 @@
             MenuVerificationCheckKind.Anchor or MenuVerificationCheckKind.Route =>
                 check.AuthoringItemKind is not null
                 && check.AuthoringItemId is not null
-                && Authoring.DraftCandidates.Any(candidate =>
-                    candidate.Kind == check.AuthoringItemKind
-                    && candidate.Id.Equals(
-                        check.AuthoringItemId,
-                        StringComparison.OrdinalIgnoreCase)),
+                && !NeedsRelatedReturnCheck(check),
             _ => false
         };
 

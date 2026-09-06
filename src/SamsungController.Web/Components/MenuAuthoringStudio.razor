@@ -2947,10 +2947,10 @@
             kind == MenuReturnScriptKind.BelowMenuRoot ? DeepReturnTestNodeId : null));
 
     private Task PrepareReturnOverrideStartAsync() =>
-        RunBusyAsync(() => Controller.PrepareMenuRecordingSourceAsync(OverrideReturnNodeId));
+        RunBusyAsync(() => Controller.PrepareMenuVerificationSourceAsync(OverrideReturnNodeId));
 
     private Task PrepareReturnOverrideStartAsync(string nodeId) =>
-        RunBusyAsync(() => Controller.PrepareMenuRecordingSourceAsync(nodeId));
+        RunBusyAsync(() => Controller.PrepareMenuVerificationSourceAsync(nodeId));
 
     private Task RunReturnOverrideValidationAsync(string nodeId) => RunBusyAsync(async () =>
     {

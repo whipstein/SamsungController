@@ -4,6 +4,25 @@ namespace SamsungController.Automation.Navigation;
 
 public static class TopologyRouteGenerator
 {
+    public static bool CoversSeed(MenuTransition route, MenuTransition seed)
+    {
+        if (!route.GeneratedFromTopology
+            || !string.Equals(route.TopologySeedTransitionId, seed.Id, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(route.FromNodeId, seed.FromNodeId, StringComparison.OrdinalIgnoreCase)
+            || !SameConfiguration(route.ConfigurationId, seed.ConfigurationId)
+            || seed.ReturnToVideoOperations is { Count: > 0 })
+        {
+            return false;
+        }
+
+        static IEnumerable<(string Key, RemoteKeyAction Action, TimeSpan? Delay)> Commands(MenuTransition transition) =>
+            transition.Operations.SelectMany(operation => Enumerable.Repeat(
+                (operation.Key.ToUpperInvariant(), operation.Action, operation.DelayAfter), operation.Repeat));
+        var seedCommands = Commands(seed).ToArray();
+        return seedCommands.Length > 0
+            && Commands(route).Take(seedCommands.Length).SequenceEqual(seedCommands);
+    }
+
     public static MenuDefinition Regenerate(MenuDefinition definition)
     {
         ArgumentNullException.ThrowIfNull(definition);

@@ -102,6 +102,13 @@ public static class MenuDefinitionVerificationOverlay
             if (transition.GeneratedFromTopology
                 && !string.IsNullOrWhiteSpace(transition.ValidationGroupId))
             {
+                if (transition.TopologySeedTransitionId is { } seedId
+                    && cleanTopology.Transitions.TryGetValue(seedId, out var seed)
+                    && TopologyRouteGenerator.CoversSeed(transition, seed))
+                {
+                    verifiedTransitionIds.Add(seed.Id);
+                }
+
                 foreach (var grouped in cleanTopology.Transitions.Values.Where(candidate =>
                              candidate.GeneratedFromTopology
                              && candidate.ValidationGroupId?.Equals(

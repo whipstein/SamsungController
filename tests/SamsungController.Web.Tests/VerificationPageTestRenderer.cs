@@ -14,6 +14,7 @@ internal sealed class VerificationPageTestRenderer(IServiceProvider services)
     private int _rootId;
     public override Dispatcher Dispatcher { get; } = Dispatcher.CreateDefault();
     public string LineLabel { get; set; } = "System-wide command timing";
+    public string? CheckId { get; set; }
     private RenderTreeFrame[] Frames
     {
         get
@@ -30,7 +31,10 @@ internal sealed class VerificationPageTestRenderer(IServiceProvider services)
             return frames.Select((frame, index) => (frame, index))
                 .Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "article")
                 .Select(item => frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray())
-                .Single(article => article.Select((frame, index) => (frame, index))
+                .Single(article => CheckId is not null
+                    ? article.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute
+                        && frame.AttributeName == "id" && frame.AttributeValue?.ToString() == $"verification-check-{CheckId}")
+                    : article.Select((frame, index) => (frame, index))
                     .Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "strong")
                     .Any(item => FrameText(article.Skip(item.index).Take(item.frame.ElementSubtreeLength)).Trim() == LineLabel));
         }

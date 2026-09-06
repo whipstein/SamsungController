@@ -3107,11 +3107,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             throw new InvalidOperationException("Select a timing traversal from the active menu configuration.");
         }
 
-        await RunNavigationAsync(
-                $"Prepare system timing start · {definition.GetPath(transition.FromNodeId)}",
-                (navigator, token) => navigator.PrepareValidationSourceAsync(transition.FromNodeId, token),
-                clearPlanOnSuccess: true,
-                cancellationToken)
+        await PrepareMenuVerificationSourceAsync(transition.FromNodeId, cancellationToken)
             .ConfigureAwait(false);
         lock (_sync)
         {
@@ -3618,18 +3614,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
             _ => throw new InvalidOperationException(
                 "Only the base-menu and deeper-menu anchor checks have generated preparation routes.")
         };
-        var route = definition.ApplicableTransitions
-            .Where(transition => transition.FromNodeId.Equals(
-                context.Anchor.TargetNodeId,
-                StringComparison.OrdinalIgnoreCase))
-            .Where(transition => transition.ToNodeId.Equals(
-                targetNodeId,
-                StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(transition => transition.Verified)
-            .ThenBy(transition => transition.Operations.Sum(operation => operation.Repeat))
-            .FirstOrDefault()
-            ?? throw new InvalidOperationException(
-                $"No generated route from normal video to '{definition.GetPath(targetNodeId)}' is available yet.");
+        var route = new NavigationPlanner().Plan(
+            definition, context.Anchor.TargetNodeId, targetNodeId, includeDraftTransitions: true);
 
         await RunNavigationAsync(
                 $"Prepare anchor verification · {definition.GetPath(targetNodeId)}",
@@ -3643,15 +3629,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
                                 "No menu state tracker is available.");
                     }
 
-                    await ExecuteAuthoringOperationsAsync(
-                            "Prepare anchor return line item",
-                            definition.GetPath(context.Anchor.TargetNodeId),
-                            definition.GetPath(targetNodeId),
-                            route.Operations,
-                            definition.Timing,
-                            token)
-                        .ConfigureAwait(false);
-                    tracker.ApplyTransition(route);
+                    tracker.AssumeNode(context.Anchor.TargetNodeId, "The explicit return-test setup starts from normal video.");
+                    await ExecuteVerificationPreparationRouteAsync(definition, route, tracker, token).ConfigureAwait(false);
                 },
                 clearPlanOnSuccess: true,
                 cancellationToken)
@@ -4026,7 +4005,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     "This validation item does not define a source to prepare.");
             }
 
-            await PrepareMenuRecordingSourceAsync(sourceNodeId, cancellationToken)
+            await PrepareMenuVerificationSourceAsync(sourceNodeId, cancellationToken)
                 .ConfigureAwait(false);
             return;
         }
@@ -4040,12 +4019,13 @@ public sealed class SamsungControllerService : IAsyncDisposable
             plan = new NavigationPlanner().Plan(
                 definition,
                 returnAnchor.TargetNodeId,
-                transition.FromNodeId);
+                transition.FromNodeId,
+                includeDraftTransitions: true);
         }
         catch (NavigationPlanningException)
         {
             // The recorded return is still sent. The user can finish positioning
-            // the TV manually when the forward source has no verified route yet.
+            // the TV manually when no forward source route has been defined yet.
         }
 
         await RunNavigationAsync(
@@ -4077,7 +4057,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         });
                         if (plan is { Transitions.Count: > 0 })
                         {
-                            await navigator.ExecutePlanAsync(plan, token)
+                            await ExecuteVerificationPreparationRouteAsync(definition, plan, tracker, token)
                                 .ConfigureAwait(false);
                         }
                     }
@@ -4100,6 +4080,59 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
 
         NotifyChanged();
+    }
+
+    public async Task PrepareMenuVerificationSourceAsync(
+        string sourceNodeId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceNodeId);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("prepare a visual verification source");
+        EnsureNoMenuRecording("prepare a visual verification source");
+        string sourcePath;
+        lock (_sync)
+        {
+            sourcePath = (_menuDefinition ?? throw new InvalidOperationException("No menu definition is loaded."))
+                .GetPath(sourceNodeId);
+            _menuAuthoringError = null;
+        }
+
+        await RunNavigationAsync(
+            "Prepare visual verification source",
+            (navigator, token) => navigator.PrepareValidationSourceAsync(sourceNodeId, token),
+            clearPlanOnSuccess: true,
+            cancellationToken).ConfigureAwait(false);
+        lock (_sync)
+        {
+            _menuAuthoringStatus = $"Source ready · {sourcePath}. Check the TV before running the test.";
+        }
+
+        NotifyChanged();
+    }
+
+    private async Task ExecuteVerificationPreparationRouteAsync(
+        MenuDefinition definition,
+        NavigationPlan plan,
+        MenuStateTracker tracker,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            foreach (var transition in plan.Transitions)
+            {
+                await ExecuteAuthoringOperationsAsync(
+                    "Prepare visual verification source",
+                    definition.GetPath(transition.FromNodeId), definition.GetPath(transition.ToNodeId),
+                    transition.Operations, definition.Timing, cancellationToken).ConfigureAwait(false);
+                tracker.ApplyTransition(transition);
+            }
+        }
+        catch
+        {
+            tracker.MarkUnknown("Visual verification preparation did not complete.");
+            throw;
+        }
     }
 
     public async Task DeleteMenuAuthoringDraftAsync(
@@ -6823,13 +6856,23 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
         var plan = MenuDefinitionVerificationPlanner.Create(definition);
         var completedIds = checks.Select(check => check.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        // An identical return script is also evidence for the anchor fallback.
-        // Record (or invalidate) both in the sidecar, without rewriting either script.
+        var coveredSeedIds = checks.Where(check => check.Kind == MenuVerificationCheckKind.Route
+                && check.SourceItemId is not null)
+            .Select(check => definition.Transitions[check.SourceItemId!])
+            .Where(route => route.TopologySeedTransitionId is { } seedId
+                && definition.Transitions.TryGetValue(seedId, out var seed)
+                && TopologyRouteGenerator.CoversSeed(route, seed))
+            .Select(route => route.TopologySeedTransitionId!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // Save covered entry routes and matching anchor fallbacks alongside the
+        // tested check. Verification must not rewrite any of their commands.
         checks = checks.Concat(plan.Checks.Where(check =>
-                check.Kind == MenuVerificationCheckKind.Anchor
+                (check.Kind == MenuVerificationCheckKind.Anchor
                 && check.SourceItemId is { } anchorId
                 && GetRelatedAnchorReturnCheckId(definition.GetRequiredAnchor(anchorId)) is { } returnCheckId
-                && completedIds.Contains(returnCheckId)))
+                && completedIds.Contains(returnCheckId))
+                || (check.Kind == MenuVerificationCheckKind.Route
+                    && check.SourceItemId is { } routeId && coveredSeedIds.Contains(routeId))))
             .DistinctBy(check => check.Id, StringComparer.OrdinalIgnoreCase)
             .ToArray();
         MenuDefinition updated;
@@ -7370,9 +7413,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
                                              selectedTransition.ValidationGroupId,
                                              StringComparison.OrdinalIgnoreCase) == true;
             var topologySeed = selectedTransition.GeneratedFromTopology
-                               && transition.Id.Equals(
-                                   selectedTransition.TopologySeedTransitionId,
-                                   StringComparison.OrdinalIgnoreCase);
+                               && TopologyRouteGenerator.CoversSeed(selectedTransition, transition);
             return selectedItem || coveredByTopologyGroup || topologySeed
                 ? transition with { Verified = true }
                 : transition;
@@ -8049,9 +8090,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             generated.GeneratedFromTopology
             && !generated.Verified
             && generated.IsValidationRoute
-            && generated.TopologySeedTransitionId?.Equals(
-                transition.Id,
-                StringComparison.OrdinalIgnoreCase) == true);
+            && TopologyRouteGenerator.CoversSeed(generated, transition));
     }
 
     private static int GetCoveredTopologyRouteCount(

@@ -13,12 +13,12 @@ using SamsungController.Web.Components;
 
 namespace SamsungController.Web.Tests;
 
-public sealed class ControllerMenuIntegrationTests : IDisposable
+public sealed partial class ControllerMenuIntegrationTests : IDisposable
 {
     private readonly string _directory = Path.Combine(
         Path.GetTempPath(),
         $"SamsungController.Web.Tests-{Guid.NewGuid():N}");
-    private readonly List<string> _installedTestMenus = [];
+    private readonly Dictionary<string, string> _installedTestMenus = [];
 
     [Fact]
     public async Task InitializationLoadsConfiguredMenuDefinitionIntoSnapshot()
@@ -3253,7 +3253,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                   - key: KEY_DOWN
                     repeat: 2
             """;
-        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml, installedMenu: true);
         await using (controller)
         {
             var menuPath = controller.GetMenuNavigationSnapshot().DefinitionPath;
@@ -3338,7 +3338,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 steps:
                   - key: KEY_MENU
             """;
-        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml, installedMenu: true);
         await using (controller)
         {
             var result = await controller.RunMenuDefinitionVerificationTestAsync(
@@ -3469,7 +3469,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                   - key: KEY_DOWN
                   - key: KEY_ENTER
             """;
-        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml, installedMenu: true);
         await using (controller)
         {
             var check = Assert.Single(
@@ -3632,7 +3632,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                   - key: KEY_MENU
                   - key: KEY_ENTER
             """;
-        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml, installedMenu: true);
         await using (controller)
         {
             var result = await controller.RunMenuDefinitionVerificationTestAsync(
@@ -3717,7 +3717,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                   - key: KEY_MENU
                   - key: KEY_ENTER
             """;
-        var (controller, _) = await CreateConnectedControllerAsync(yaml);
+        var (controller, _) = await CreateConnectedControllerAsync(yaml, installedMenu: true);
         await using (controller)
         {
             var result = await controller.RunMenuDefinitionVerificationTestAsync(
@@ -4696,7 +4696,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         if (installedMenu)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(definitionPath)!);
-            _installedTestMenus.Add(definitionPath);
+            _installedTestMenus.Add(definitionPath, definitionYaml ?? ExplicitValidationMenuYaml);
         }
         await File.WriteAllTextAsync(
             definitionPath,
@@ -4780,8 +4780,14 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
 
     public void Dispose()
     {
-        foreach (var path in _installedTestMenus)
+        var modifiedInstalledMenus = new List<string>();
+        foreach (var (path, original) in _installedTestMenus)
         {
+            if (!File.Exists(path) || File.ReadAllText(path) != original)
+            {
+                modifiedInstalledMenus.Add(path);
+            }
+
             File.Delete(path);
         }
 
@@ -4789,6 +4795,8 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
         {
             Directory.Delete(_directory, recursive: true);
         }
+
+        Assert.Empty(modifiedInstalledMenus);
     }
 
     private const string ValidMenuYaml =

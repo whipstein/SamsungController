@@ -355,6 +355,13 @@ item** in Build & Verify tests the saved commands without saving editor changes.
 Both workflows work with read-only installation menus: results go only into
 personal `menu-verifications/`, and the referenced menu is not changed or copied.
 
+Every defined route can be tested directly on Display Verification, including
+entry routes such as Settings that the shorter Build & Verify list omits.
+Passing a generated branch also records its unchanged entry commands, so that
+coverage survives reloads. An entry with its own untested return script still
+needs its own check. **Prepare start** may use defined draft paths during
+verification; this does not unlock them for normal navigation.
+
 Equivalent controls share representative behavior checks. You should not need
 to validate every slider or every dropdown. When all current fingerprints
 match, every group and the persistent header profile badge turn green, and the

@@ -5,6 +5,23 @@ namespace SamsungController.Automation.Tests;
 public sealed class TopologyRouteGeneratorTests
 {
     [Fact]
+    public void BranchCoverageOnlyIncludesTheExactEntryCommandsAndNoUntestedReturn()
+    {
+        var seed = new MenuTransition("entry", "video", "settings", [new MenuOperation("KEY_MENU", Repeat: 2)]);
+        var branch = new MenuTransition("branch", "video", "picture",
+            [new MenuOperation("KEY_MENU"), new MenuOperation("KEY_MENU"), new MenuOperation("KEY_ENTER")],
+            GeneratedFromTopology: true, TopologySeedTransitionId: seed.Id);
+        Assert.True(TopologyRouteGenerator.CoversSeed(branch, seed));
+        Assert.False(TopologyRouteGenerator.CoversSeed(branch, seed with { Operations = [new MenuOperation("KEY_HOME")] }));
+        Assert.False(TopologyRouteGenerator.CoversSeed(branch, seed with
+        {
+            Operations = [new MenuOperation("KEY_MENU", Repeat: 2, DelayAfter: TimeSpan.FromSeconds(1))]
+        }));
+        Assert.False(TopologyRouteGenerator.CoversSeed(branch, seed with { ReturnToVideoOperations = [new MenuOperation("KEY_RETURN")] }));
+        Assert.False(TopologyRouteGenerator.CoversSeed(branch, seed with { ConfigurationId = "other-layout" }));
+    }
+
+    [Fact]
     public void GeneratesAllDescendantRoutesWithOneCoverageRoutePerTopLevelBranch()
     {
         var generated = TopologyRouteGenerator.Regenerate(CreateDefinition());
