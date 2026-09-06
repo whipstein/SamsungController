@@ -469,14 +469,18 @@
                                     {
                                         var conditionIndex = index;
                                         var condition = NodeEditorDisabledConditions[conditionIndex];
-                                        var conditionValues = GetDisabledConditionChoices(condition.SettingNodeId);
+                                        var conditionValues = GetDisabledConditionChoices(condition.SourceChoice);
                                         <div class="node-disabled-rule-row">
                                             <span>Disabled when</span>
-                                            <select @bind="condition.SettingNodeId" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">
-                                                <option value="">Choose setting</option>
+                                            <select @bind="condition.SourceChoice" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">
+                                                <option value="">Choose source</option>
                                                 @foreach (var setting in AvailableDisabledConditionSettings)
                                                 {
-                                                    <option value="@setting.Id">@setting.Path · @FormatControlType(setting.ControlType)</option>
+                                                    <option value="@ToMenuSettingChoice(setting.Id)">@setting.Path · @FormatControlType(setting.ControlType)</option>
+                                                }
+                                                @foreach (var state in Navigation.ExternalStates ?? [])
+                                                {
+                                                    <option value="@ToExternalStateChoice(state.Id)">External · @state.Label</option>
                                                 }
                                             </select>
                                             <span>equals</span>
@@ -514,14 +518,18 @@
                                     {
                                         var conditionIndex = index;
                                         var condition = NodeEditorHiddenConditions[conditionIndex];
-                                        var conditionValues = GetDisabledConditionChoices(condition.SettingNodeId);
+                                        var conditionValues = GetDisabledConditionChoices(condition.SourceChoice);
                                         <div class="node-disabled-rule-row">
                                             <span>Hidden when</span>
-                                            <select @bind="condition.SettingNodeId" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">
-                                                <option value="">Choose setting</option>
+                                            <select @bind="condition.SourceChoice" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)">
+                                                <option value="">Choose source</option>
                                                 @foreach (var setting in AvailableDisabledConditionSettings)
                                                 {
-                                                    <option value="@setting.Id">@setting.Path · @FormatControlType(setting.ControlType)</option>
+                                                    <option value="@ToMenuSettingChoice(setting.Id)">@setting.Path · @FormatControlType(setting.ControlType)</option>
+                                                }
+                                                @foreach (var state in Navigation.ExternalStates ?? [])
+                                                {
+                                                    <option value="@ToExternalStateChoice(state.Id)">External · @state.Label</option>
                                                 }
                                             </select>
                                             <span>equals</span>
@@ -1340,10 +1348,12 @@
     private bool CanAddNodeDisabledCondition => CanEditMenuTree
         && !NodeEditorDisabled
         && NodeEditorDisabledConditions.Count < 20
-        && AvailableDisabledConditionSettings.Count > 0;
+        && (AvailableDisabledConditionSettings.Count > 0
+            || (Navigation.ExternalStates ?? []).Count > 0);
     private bool CanAddNodeHiddenCondition => CanEditMenuTree
         && NodeEditorHiddenConditions.Count < 20
-        && AvailableDisabledConditionSettings.Count > 0;
+        && (AvailableDisabledConditionSettings.Count > 0
+            || (Navigation.ExternalStates ?? []).Count > 0);
     private bool CanStartRecording => !IsBusy && !Snapshot.MacroRunning && !Navigation.IsRunning &&
         (IsConnected || CanConnectForRecording) &&
         !string.IsNullOrWhiteSpace(ExistingTargetId)
@@ -1540,10 +1550,10 @@
         && IsSelectionOptionsValid
         && (!NodeEditorDisabled || NodeEditorDisabledConditions.Count == 0)
         && NodeEditorDisabledConditions.All(condition =>
-            !string.IsNullOrWhiteSpace(condition.SettingNodeId)
+            !string.IsNullOrWhiteSpace(condition.SourceId)
             && !string.IsNullOrWhiteSpace(condition.EqualsValue))
         && NodeEditorHiddenConditions.All(condition =>
-            !string.IsNullOrWhiteSpace(condition.SettingNodeId)
+            !string.IsNullOrWhiteSpace(condition.SourceId)
             && !string.IsNullOrWhiteSpace(condition.EqualsValue))
         && (IsAddingMenuNode
             ? !Navigation.Nodes.Any(node => node.Id.Equals(
@@ -2337,19 +2347,36 @@
 
     private void AddNodeDisabledCondition()
     {
-        var settingId = AvailableDisabledConditionSettings
+        var sourceChoice = AvailableDisabledConditionSettings
             .FirstOrDefault(node => NodeEditorDisabledConditions.All(condition =>
-                !condition.SettingNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase)))?.Id
-            ?? AvailableDisabledConditionSettings.FirstOrDefault()?.Id
-            ?? string.Empty;
-        NodeEditorDisabledConditions.Add(new NodeDisabledConditionEdit(settingId, string.Empty));
+                !condition.SourceId.Equals(node.Id, StringComparison.OrdinalIgnoreCase)
+                || condition.SourceKind != MenuConditionSourceKind.MenuSetting))?.Id;
+        sourceChoice = sourceChoice is null ? null : ToMenuSettingChoice(sourceChoice);
+        sourceChoice ??= (Navigation.ExternalStates ?? [])
+            .FirstOrDefault(state => NodeEditorDisabledConditions.All(condition =>
+                !condition.SourceId.Equals(state.Id, StringComparison.OrdinalIgnoreCase)
+                || condition.SourceKind != MenuConditionSourceKind.ExternalState)) is { } state
+                ? ToExternalStateChoice(state.Id)
+                : null;
+        sourceChoice ??= AvailableDisabledConditionSettings.FirstOrDefault() is { } setting
+            ? ToMenuSettingChoice(setting.Id)
+            : string.Empty;
+        NodeEditorDisabledConditions.Add(new NodeDisabledConditionEdit(sourceChoice, string.Empty));
         LocalError = null;
     }
 
-    private IReadOnlyList<string> GetDisabledConditionChoices(string settingNodeId)
+    private IReadOnlyList<string> GetDisabledConditionChoices(string sourceChoice)
     {
+        var (sourceId, sourceKind) = ParseConditionSourceChoice(sourceChoice);
+        if (sourceKind == MenuConditionSourceKind.ExternalState)
+        {
+            return (Navigation.ExternalStates ?? []).FirstOrDefault(state => state.Id.Equals(
+                sourceId,
+                StringComparison.OrdinalIgnoreCase))?.Options ?? [];
+        }
+
         var setting = Navigation.Nodes.FirstOrDefault(node => node.Id.Equals(
-            settingNodeId,
+            sourceId,
             StringComparison.OrdinalIgnoreCase));
         return setting?.ControlType switch
         {
@@ -2373,12 +2400,21 @@
 
     private void AddNodeHiddenCondition()
     {
-        var settingId = AvailableDisabledConditionSettings
+        var sourceChoice = AvailableDisabledConditionSettings
             .FirstOrDefault(node => NodeEditorHiddenConditions.All(condition =>
-                !condition.SettingNodeId.Equals(node.Id, StringComparison.OrdinalIgnoreCase)))?.Id
-            ?? AvailableDisabledConditionSettings.FirstOrDefault()?.Id
-            ?? string.Empty;
-        NodeEditorHiddenConditions.Add(new NodeHiddenConditionEdit(settingId, string.Empty));
+                !condition.SourceId.Equals(node.Id, StringComparison.OrdinalIgnoreCase)
+                || condition.SourceKind != MenuConditionSourceKind.MenuSetting))?.Id;
+        sourceChoice = sourceChoice is null ? null : ToMenuSettingChoice(sourceChoice);
+        sourceChoice ??= (Navigation.ExternalStates ?? [])
+            .FirstOrDefault(state => NodeEditorHiddenConditions.All(condition =>
+                !condition.SourceId.Equals(state.Id, StringComparison.OrdinalIgnoreCase)
+                || condition.SourceKind != MenuConditionSourceKind.ExternalState)) is { } state
+                ? ToExternalStateChoice(state.Id)
+                : null;
+        sourceChoice ??= AvailableDisabledConditionSettings.FirstOrDefault() is { } setting
+            ? ToMenuSettingChoice(setting.Id)
+            : string.Empty;
+        NodeEditorHiddenConditions.Add(new NodeHiddenConditionEdit(sourceChoice, string.Empty));
         LocalError = null;
     }
 
@@ -2444,16 +2480,48 @@
     private IReadOnlyList<MenuNodeDisabledCondition> CreateNodeDisabledConditions() =>
         NodeEditorDisabledConditions
             .Select(condition => new MenuNodeDisabledCondition(
-                condition.SettingNodeId,
-                condition.EqualsValue))
+                condition.SourceId,
+                condition.EqualsValue,
+                condition.SourceKind))
             .ToArray();
 
     private IReadOnlyList<MenuNodeHiddenCondition> CreateNodeHiddenConditions() =>
         NodeEditorHiddenConditions
             .Select(condition => new MenuNodeHiddenCondition(
-                condition.SettingNodeId,
-                condition.EqualsValue))
+                condition.SourceId,
+                condition.EqualsValue,
+                condition.SourceKind))
             .ToArray();
+
+    private static string ToMenuSettingChoice(string sourceId) => $"setting:{sourceId}";
+
+    private static string ToExternalStateChoice(string sourceId) => $"external:{sourceId}";
+
+    private static (string SourceId, MenuConditionSourceKind SourceKind)
+        ParseConditionSourceChoice(string sourceChoice)
+    {
+        const string externalPrefix = "external:";
+        const string settingPrefix = "setting:";
+        if (sourceChoice.StartsWith(externalPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return (
+                sourceChoice[externalPrefix.Length..],
+                MenuConditionSourceKind.ExternalState);
+        }
+
+        return (
+            sourceChoice.StartsWith(settingPrefix, StringComparison.OrdinalIgnoreCase)
+                ? sourceChoice[settingPrefix.Length..]
+                : sourceChoice,
+            MenuConditionSourceKind.MenuSetting);
+    }
+
+    private static string FormatOutlineConditionSource(
+        string sourceId,
+        MenuConditionSourceKind sourceKind) =>
+        sourceKind == MenuConditionSourceKind.ExternalState
+            ? ToExternalStateChoice(sourceId)
+            : sourceId;
 
     private IReadOnlyList<string> CreateSelectionOptions() => NodeEditorSelectionOptions
         .Select(option => option.Value.Trim())
@@ -3385,13 +3453,13 @@
         if (node.DisabledWhen.Count > 0)
         {
             details.Add("disabledWhen=" + string.Join('|', node.DisabledWhen.Select(condition =>
-                $"{condition.SettingNodeId}={condition.EqualsValue}")));
+                $"{FormatOutlineConditionSource(condition.SourceId, condition.SourceKind)}={condition.EqualsValue}")));
         }
 
         if (node.HiddenWhen.Count > 0)
         {
             details.Add("hiddenWhen=" + string.Join('|', node.HiddenWhen.Select(condition =>
-                $"{condition.SettingNodeId}={condition.EqualsValue}")));
+                $"{FormatOutlineConditionSource(condition.SourceId, condition.SourceKind)}={condition.EqualsValue}")));
         }
 
         return "{" + string.Join("; ", details) + "}";
@@ -3406,10 +3474,17 @@
 
         var rules = node.DisabledWhen.Select(condition =>
         {
+            if (condition.SourceKind == MenuConditionSourceKind.ExternalState)
+            {
+                var state = (Navigation.ExternalStates ?? []).FirstOrDefault(candidate =>
+                    candidate.Id.Equals(condition.SourceId, StringComparison.OrdinalIgnoreCase));
+                return $"{state?.Label ?? condition.SourceId} = {condition.EqualsValue}";
+            }
+
             var setting = Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
-                condition.SettingNodeId,
+                condition.SourceId,
                 StringComparison.OrdinalIgnoreCase));
-            return $"{setting?.Label ?? condition.SettingNodeId} = {condition.EqualsValue}";
+            return $"{setting?.Label ?? condition.SourceId} = {condition.EqualsValue}";
         });
         return (node.IsDisabledByDefault ? "Disabled by default · " : "Disabled when ")
                + string.Join(" or ", rules);
@@ -3583,36 +3658,48 @@
 
     private sealed class NodeDisabledConditionEdit
     {
-        public NodeDisabledConditionEdit(string settingNodeId, string equalsValue)
+        public NodeDisabledConditionEdit(string sourceChoice, string equalsValue)
         {
-            SettingNodeId = settingNodeId;
+            SourceChoice = sourceChoice;
             EqualsValue = equalsValue;
         }
 
         public NodeDisabledConditionEdit(MenuNodeDisabledCondition condition)
-            : this(condition.SettingNodeId, condition.EqualsValue)
+            : this(condition.SourceKind == MenuConditionSourceKind.ExternalState
+                ? ToExternalStateChoice(condition.SourceId)
+                : ToMenuSettingChoice(condition.SourceId), condition.EqualsValue)
         {
         }
 
-        public string SettingNodeId { get; set; }
+        public string SourceChoice { get; set; }
+
+        public string SourceId => ParseConditionSourceChoice(SourceChoice).SourceId;
+
+        public MenuConditionSourceKind SourceKind => ParseConditionSourceChoice(SourceChoice).SourceKind;
 
         public string EqualsValue { get; set; }
     }
 
     private sealed class NodeHiddenConditionEdit
     {
-        public NodeHiddenConditionEdit(string settingNodeId, string equalsValue)
+        public NodeHiddenConditionEdit(string sourceChoice, string equalsValue)
         {
-            SettingNodeId = settingNodeId;
+            SourceChoice = sourceChoice;
             EqualsValue = equalsValue;
         }
 
         public NodeHiddenConditionEdit(MenuNodeHiddenCondition condition)
-            : this(condition.SettingNodeId, condition.EqualsValue)
+            : this(condition.SourceKind == MenuConditionSourceKind.ExternalState
+                ? ToExternalStateChoice(condition.SourceId)
+                : ToMenuSettingChoice(condition.SourceId), condition.EqualsValue)
         {
         }
 
-        public string SettingNodeId { get; set; }
+        public string SourceChoice { get; set; }
+
+        public string SourceId => ParseConditionSourceChoice(SourceChoice).SourceId;
+
+        public MenuConditionSourceKind SourceKind => ParseConditionSourceChoice(SourceChoice).SourceKind;
 
         public string EqualsValue { get; set; }
     }

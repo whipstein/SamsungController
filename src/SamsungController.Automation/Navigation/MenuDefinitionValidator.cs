@@ -45,6 +45,11 @@ public sealed class MenuDefinitionValidator
             ValidateRequired(location, "name", configuration.Name, errors);
         }
 
+        foreach (var state in definition.ExternalStates.Values)
+        {
+            ValidateExternalState(state, errors);
+        }
+
         if (definition.ActiveConfigurationId is { } activeConfigurationId
             && !definition.Configurations.ContainsKey(activeConfigurationId))
         {
@@ -356,8 +361,9 @@ public sealed class MenuDefinitionValidator
             definition,
             node,
             (node.DisabledWhen ?? []).Select(condition => (
-                condition.SettingNodeId,
-                condition.EqualsValue)),
+                condition.SourceId,
+                condition.EqualsValue,
+                condition.SourceKind)),
             "disabledWhen",
             "disabled",
             errors);
@@ -365,8 +371,9 @@ public sealed class MenuDefinitionValidator
             definition,
             node,
             (node.HiddenWhen ?? []).Select(condition => (
-                condition.SettingNodeId,
-                condition.EqualsValue)),
+                condition.SourceId,
+                condition.EqualsValue,
+                condition.SourceKind)),
             "hiddenWhen",
             "hidden",
             errors);
@@ -375,7 +382,10 @@ public sealed class MenuDefinitionValidator
     private static void ValidateValueConditions(
         MenuDefinition definition,
         MenuNode node,
-        IEnumerable<(string SettingNodeId, string EqualsValue)> source,
+        IEnumerable<(
+            string SourceId,
+            string EqualsValue,
+            MenuConditionSourceKind SourceKind)> source,
         string fieldName,
         string behavior,
         ICollection<MenuDefinitionValidationError> errors)
@@ -393,20 +403,41 @@ public sealed class MenuDefinitionValidator
         foreach (var condition in conditions)
         {
             var conditionLocation = $"{location} {fieldName}";
-            ValidateIdentifier(conditionLocation, condition.SettingNodeId, errors);
+            ValidateIdentifier(conditionLocation, condition.SourceId, errors);
             ValidateRequired(conditionLocation, "equals", condition.EqualsValue, errors);
-            if (!uniqueConditions.Add($"{condition.SettingNodeId}\u001f{condition.EqualsValue}"))
+            if (!uniqueConditions.Add(
+                    $"{condition.SourceKind}\u001f{condition.SourceId}\u001f{condition.EqualsValue}"))
             {
                 errors.Add(new MenuDefinitionValidationError(
                     conditionLocation,
-                    $"Condition '{condition.SettingNodeId} = {condition.EqualsValue}' is duplicated."));
+                    $"Condition '{condition.SourceId} = {condition.EqualsValue}' is duplicated."));
             }
 
-            if (!definition.Nodes.TryGetValue(condition.SettingNodeId, out var setting))
+            if (condition.SourceKind == MenuConditionSourceKind.ExternalState)
+            {
+                if (!definition.ExternalStates.TryGetValue(condition.SourceId, out var externalState))
+                {
+                    errors.Add(new MenuDefinitionValidationError(
+                        conditionLocation,
+                        $"External state '{condition.SourceId}' does not exist."));
+                }
+                else if (!externalState.Options.Any(option => option.Equals(
+                             condition.EqualsValue,
+                             StringComparison.OrdinalIgnoreCase)))
+                {
+                    errors.Add(new MenuDefinitionValidationError(
+                        conditionLocation,
+                        $"Value '{condition.EqualsValue}' is not an available option for external state '{condition.SourceId}'."));
+                }
+
+                continue;
+            }
+
+            if (!definition.Nodes.TryGetValue(condition.SourceId, out var setting))
             {
                 errors.Add(new MenuDefinitionValidationError(
                     conditionLocation,
-                    $"Setting node '{condition.SettingNodeId}' does not exist."));
+                    $"Setting node '{condition.SourceId}' does not exist."));
             }
             else if (setting.Id.Equals(node.Id, StringComparison.OrdinalIgnoreCase))
             {
@@ -420,7 +451,7 @@ public sealed class MenuDefinitionValidator
             {
                 errors.Add(new MenuDefinitionValidationError(
                     conditionLocation,
-                    $"Setting node '{condition.SettingNodeId}' must be a slider, selection, submenu selection, indexed selection, or switch."));
+                    $"Setting node '{condition.SourceId}' must be a slider, selection, submenu selection, indexed selection, or switch."));
             }
             else if (setting.ControlType is MenuControlType.Selection
                          or MenuControlType.SubmenuSelection
@@ -431,7 +462,7 @@ public sealed class MenuDefinitionValidator
             {
                 errors.Add(new MenuDefinitionValidationError(
                     conditionLocation,
-                    $"Value '{condition.EqualsValue}' is not an available option for selection '{condition.SettingNodeId}'."));
+                    $"Value '{condition.EqualsValue}' is not an available option for selection '{condition.SourceId}'."));
             }
             else if (setting.ControlType == MenuControlType.Switch
                      && !condition.EqualsValue.Equals("on", StringComparison.OrdinalIgnoreCase)
@@ -439,8 +470,54 @@ public sealed class MenuDefinitionValidator
             {
                 errors.Add(new MenuDefinitionValidationError(
                     conditionLocation,
-                    $"Value '{condition.EqualsValue}' for switch '{condition.SettingNodeId}' must be 'on' or 'off'."));
+                    $"Value '{condition.EqualsValue}' for switch '{condition.SourceId}' must be 'on' or 'off'."));
             }
+        }
+    }
+
+    private static void ValidateExternalState(
+        MenuExternalState state,
+        ICollection<MenuDefinitionValidationError> errors)
+    {
+        var location = $"external state '{state.Id}'";
+        ValidateIdentifier(location, state.Id, errors);
+        ValidateRequired(location, "label", state.Label, errors);
+        ValidateRequired(location, "defaultValue", state.DefaultValue, errors);
+        if (state.Options.Count == 0)
+        {
+            errors.Add(new MenuDefinitionValidationError(
+                location,
+                "An external state must define at least one option."));
+            return;
+        }
+
+        if (state.Options.Count > 100)
+        {
+            errors.Add(new MenuDefinitionValidationError(
+                location,
+                "An external state can define at most 100 options."));
+        }
+
+        var uniqueOptions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var index = 0; index < state.Options.Count; index++)
+        {
+            var option = state.Options[index];
+            ValidateRequired($"{location} option {index + 1}", "value", option, errors);
+            if (!uniqueOptions.Add(option))
+            {
+                errors.Add(new MenuDefinitionValidationError(
+                    $"{location} option {index + 1}",
+                    $"External-state option '{option}' is duplicated."));
+            }
+        }
+
+        if (!state.Options.Any(option => option.Equals(
+                state.DefaultValue,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            errors.Add(new MenuDefinitionValidationError(
+                location,
+                $"Default value '{state.DefaultValue}' must match an available option."));
         }
     }
 

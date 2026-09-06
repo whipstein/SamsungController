@@ -33,6 +33,23 @@ public sealed class MenuDefinitionWriter
             }
         }
 
+        if (definition.ExternalStates.Count > 0)
+        {
+            yaml.AppendLine();
+            yaml.AppendLine("externalStates:");
+            foreach (var state in definition.ExternalStates.Values)
+            {
+                AppendListScalar(yaml, 2, "id", state.Id);
+                AppendScalar(yaml, 4, "label", state.Label);
+                AppendScalar(yaml, 4, "defaultValue", state.DefaultValue);
+                yaml.AppendLine("    options:");
+                foreach (var option in state.Options)
+                {
+                    yaml.Append("      - ").AppendLine(Quote(option));
+                }
+            }
+        }
+
         yaml.AppendLine();
         yaml.AppendLine("timing:");
         AppendDuration(yaml, 2, "defaultDelay", definition.Timing.DefaultDelayMilliseconds);
@@ -146,7 +163,13 @@ public sealed class MenuDefinitionWriter
             yaml.Append(' ', fieldIndentation).AppendLine("disabledWhen:");
             foreach (var condition in node.DisabledWhen)
             {
-                AppendListScalar(yaml, fieldIndentation + 2, "setting", condition.SettingNodeId);
+                AppendListScalar(
+                    yaml,
+                    fieldIndentation + 2,
+                    condition.SourceKind == MenuConditionSourceKind.ExternalState
+                        ? "externalState"
+                        : "setting",
+                    condition.SourceId);
                 AppendScalar(yaml, fieldIndentation + 4, "equals", condition.EqualsValue);
             }
         }
@@ -156,7 +179,13 @@ public sealed class MenuDefinitionWriter
             yaml.Append(' ', fieldIndentation).AppendLine("hiddenWhen:");
             foreach (var condition in node.HiddenWhen)
             {
-                AppendListScalar(yaml, fieldIndentation + 2, "setting", condition.SettingNodeId);
+                AppendListScalar(
+                    yaml,
+                    fieldIndentation + 2,
+                    condition.SourceKind == MenuConditionSourceKind.ExternalState
+                        ? "externalState"
+                        : "setting",
+                    condition.SourceId);
                 AppendScalar(yaml, fieldIndentation + 4, "equals", condition.EqualsValue);
             }
         }

@@ -284,6 +284,17 @@ public sealed record MenuConfigurationSummary(
     string? Conditions,
     bool IsActive);
 
+public sealed record MenuExternalStateValue(
+    string Id,
+    string Value);
+
+public sealed record MenuExternalStateSummary(
+    string Id,
+    string Label,
+    string Value,
+    string DefaultValue,
+    IReadOnlyList<string> Options);
+
 public sealed record MenuDefinitionCatalogEntry(
     string Path,
     string Id,
@@ -310,7 +321,8 @@ public sealed record MenuNavigationSnapshot(
     string? Status,
     NavigationProgress? Progress,
     string? Error,
-    IReadOnlyDictionary<string, string> ControlValues);
+    IReadOnlyDictionary<string, string> ControlValues,
+    IReadOnlyList<MenuExternalStateSummary>? ExternalStates = null);
 
 public sealed record MenuTraversalFailureReport(
     string DraftTransitionId,

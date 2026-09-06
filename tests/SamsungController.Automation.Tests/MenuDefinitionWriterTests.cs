@@ -9,6 +9,55 @@ public sealed class MenuDefinitionWriterTests : IDisposable
         Path.GetTempPath(),
         $"SamsungController.MenuDefinitionWriterTests-{Guid.NewGuid():N}");
 
+    [Theory]
+    [InlineData("menu.yaml")]
+    [InlineData("menu.json")]
+    public async Task ExternalSignalConditionsRoundTrip(string fileName)
+    {
+        var definition = new MenuDefinition(
+            "external-signal",
+            "External signal",
+            "Test TV",
+            new MenuDefinitionContext(),
+            [
+                new MenuNode("normal-video", "Normal video"),
+                new MenuNode(
+                    "hdmi-black-level",
+                    "HDMI Black Level",
+                    "normal-video",
+                    ControlType: MenuControlType.Selection,
+                    DefaultValue: "Auto",
+                    DisabledWhen:
+                    [
+                        new MenuNodeDisabledCondition(
+                            "pgen-output-format",
+                            "YCbCr422",
+                            MenuConditionSourceKind.ExternalState)
+                    ],
+                    SelectionOptions: ["Auto", "Low", "Normal"])
+            ],
+            [],
+            [],
+            externalStates:
+            [
+                new MenuExternalState(
+                    "pgen-output-format",
+                    "PGen output format",
+                    "RGB",
+                    ["RGB", "YCbCr422", "YCbCr444"])
+            ]);
+        var path = Path.Combine(_directory, fileName);
+
+        await new MenuDefinitionWriter().WriteFileAsync(path, definition);
+        var reparsed = await new MenuDefinitionParser().ParseFileAsync(path);
+
+        Assert.Equal("RGB", reparsed.ExternalStates["pgen-output-format"].DefaultValue);
+        var condition = Assert.Single(reparsed.Nodes["hdmi-black-level"].DisabledWhen!);
+        Assert.Equal(MenuConditionSourceKind.ExternalState, condition.SourceKind);
+        Assert.Equal("pgen-output-format", condition.SourceId);
+        Assert.Equal("YCbCr422", condition.EqualsValue);
+    }
+
     [Fact]
     public async Task WrittenDefinitionRoundTripsWithoutLosingAuthoringData()
     {

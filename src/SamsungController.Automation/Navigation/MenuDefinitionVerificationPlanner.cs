@@ -30,7 +30,9 @@ public sealed record MenuDefinitionVerificationCheck(
     string? ConfigurationId = null,
     string? SourceItemId = null,
     string? SourceNodeId = null,
-    string? PreparationAnchorId = null);
+    string? PreparationAnchorId = null,
+    string? ExternalStateId = null,
+    string? ExternalStateValue = null);
 
 public sealed record MenuDefinitionVerificationPlan(
     MenuVerificationDisplay Display,
@@ -471,23 +473,31 @@ public static class MenuDefinitionVerificationPlanner
             .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase);
         foreach (var group in groups)
         {
-            var nodes = group
+            var entries = group.ToArray();
+            var nodes = entries
                 .Select(entry => entry.Node)
                 .DistinctBy(node => node.Id, StringComparer.OrdinalIgnoreCase)
                 .OrderBy(node => node.Id, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
             var representative = SelectRepresentative(definition, nodes);
-            var controllerNodeId = group.Key.Equals(
+            var external = group.Key.StartsWith("external-", StringComparison.OrdinalIgnoreCase);
+            var representativeEntry = entries
+                .Where(entry => !external || entry.Node.Id.Equals(
+                    representative.Id,
+                    StringComparison.OrdinalIgnoreCase))
+                .OrderBy(entry => entry.SourceId, StringComparer.OrdinalIgnoreCase)
+                .First();
+            var targetNodeId = group.Key.Equals(
                     "always-disabled",
                     StringComparison.OrdinalIgnoreCase)
                 ? representative.ParentId ?? representative.Id
-                : nodes
-                    .SelectMany(node => group.Key.Equals("disabled", StringComparison.OrdinalIgnoreCase)
-                        ? (node.DisabledWhen ?? []).Select(condition => condition.SettingNodeId)
-                        : (node.HiddenWhen ?? []).Select(condition => condition.SettingNodeId))
-                    .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
-                    .First();
-            var controller = definition.GetRequiredNode(controllerNodeId);
+                : external
+                    ? representative.ParentId ?? representative.Id
+                    : representativeEntry.SourceId!;
+            var controllerLabel = external
+                ? definition.ExternalStates[representativeEntry.SourceId!].Label
+                : definition.GetPath(targetNodeId);
+            var viewPath = definition.GetPath(representative.ParentId ?? representative.Id);
             var affected = nodes.Length == 1
                 ? definition.GetPath(representative.Id)
                 : $"{nodes.Length} related rows, including {definition.GetPath(representative.Id)}";
@@ -502,6 +512,8 @@ public static class MenuDefinitionVerificationPlanner
                 "always-disabled" => ("Permanently disabled rows", "is present but permanently gray and cannot be selected"),
                 "disabled" => ("Shared disabled-row behavior", "becomes disabled and remains visible"),
                 "hidden" => ("Shared hidden-row behavior", "disappears and is removed from sibling offsets"),
+                "external-disabled" => ("External-state disabled rows", "is disabled and remains visible"),
+                "external-hidden" => ("External-state hidden rows", "disappears and is removed from sibling offsets"),
                 _ => throw new InvalidOperationException($"Unknown conditional behavior class '{group.Key}'.")
             };
             Add(
@@ -511,10 +523,14 @@ public static class MenuDefinitionVerificationPlanner
                 MenuVerificationCheckKind.ConditionalVisibility,
                 label,
                 group.Key.Equals("always-disabled", StringComparison.OrdinalIgnoreCase)
-                    ? $"Open {definition.GetPath(controller.Id)} and verify the representative {behavior}. This covers {affected}."
-                    : $"Change {definition.GetPath(controller.Id)} and verify the representative {behavior}. This covers {affected} across {distinctRuleCount} declared conditional rule{(distinctRuleCount == 1 ? string.Empty : "s")}.",
+                    ? $"Open {viewPath} and verify the representative {behavior}. This covers {affected}."
+                    : external
+                        ? $"Set the external equipment and the app's {controllerLabel} selector to {representativeEntry.EqualsValue}, then open {viewPath} and verify the representative {behavior}. This covers {affected} across {distinctRuleCount} declared conditional rule{(distinctRuleCount == 1 ? string.Empty : "s")}."
+                        : $"Change {controllerLabel} and verify the representative {behavior}. This covers {affected} across {distinctRuleCount} declared conditional rule{(distinctRuleCount == 1 ? string.Empty : "s")}.",
                 $"representative-condition-coverage-v3|{group.Key}|{string.Join(";", nodes.Select(node => ConditionShape(definition, node)))}",
-                controller.Id);
+                targetNodeId,
+                externalStateId: external ? representativeEntry.SourceId : null,
+                externalStateValue: external ? representativeEntry.EqualsValue : null);
         }
     }
 
@@ -594,7 +610,9 @@ public static class MenuDefinitionVerificationPlanner
         string? configurationId = null,
         string? sourceItemId = null,
         string? sourceNodeId = null,
-        string? preparationAnchorId = null)
+        string? preparationAnchorId = null,
+        string? externalStateId = null,
+        string? externalStateValue = null)
     {
         var fingerprint = Fingerprint($"{FingerprintVersion}|{CanonicalDisplay(display)}|{id}|{content}");
         checks.Add(new MenuDefinitionVerificationCheck(
@@ -608,7 +626,9 @@ public static class MenuDefinitionVerificationPlanner
             configurationId,
             sourceItemId,
             sourceNodeId,
-            preparationAnchorId));
+            preparationAnchorId,
+            externalStateId,
+            externalStateValue));
     }
 
     private static string NormalizeConfiguration(string? value) =>
@@ -630,24 +650,41 @@ public static class MenuDefinitionVerificationPlanner
         "|",
         node.Id,
         node.Disabled,
-        string.Join("\u001e", (node.DisabledWhen ?? []).Select(condition => $"{condition.SettingNodeId}={condition.EqualsValue}")),
-        string.Join("\u001e", (node.HiddenWhen ?? []).Select(condition => $"{condition.SettingNodeId}={condition.EqualsValue}")),
+        string.Join("\u001e", (node.DisabledWhen ?? []).Select(ConditionShape)),
+        string.Join("\u001e", (node.HiddenWhen ?? []).Select(ConditionShape)),
         string.Join(
             "\u001e",
             (node.DisabledWhen ?? []).Concat((node.HiddenWhen ?? []).Select(condition =>
-                    new MenuNodeDisabledCondition(condition.SettingNodeId, condition.EqualsValue)))
-                .Select(condition => definition.GetRequiredNode(condition.SettingNodeId))
-                .DistinctBy(setting => setting.Id, StringComparer.OrdinalIgnoreCase)
-                .OrderBy(setting => setting.Id, StringComparer.OrdinalIgnoreCase)
-                .Select(ControlShape)));
+                    new MenuNodeDisabledCondition(
+                        condition.SourceId,
+                        condition.EqualsValue,
+                        condition.SourceKind)))
+                .Select(condition => condition.SourceKind == MenuConditionSourceKind.ExternalState
+                    ? ExternalStateShape(definition.ExternalStates[condition.SourceId])
+                    : ControlShape(definition.GetRequiredNode(condition.SourceId)))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(shape => shape, StringComparer.OrdinalIgnoreCase)));
+
+    private static string ConditionShape(MenuNodeDisabledCondition condition) =>
+        $"{condition.SourceKind}:{condition.SourceId}={condition.EqualsValue}";
+
+    private static string ConditionShape(MenuNodeHiddenCondition condition) =>
+        $"{condition.SourceKind}:{condition.SourceId}={condition.EqualsValue}";
+
+    private static string ExternalStateShape(MenuExternalState state) => string.Join(
+        "|",
+        state.Id,
+        state.Label,
+        state.DefaultValue,
+        string.Join("\u001e", state.Options));
 
     private static string ConditionPredicate(MenuNode node) => string.Join(
         "|",
         $"disabled:{string.Join("&", (node.DisabledWhen ?? [])
-            .Select(condition => $"{condition.SettingNodeId}={condition.EqualsValue}")
+            .Select(ConditionShape)
             .OrderBy(value => value, StringComparer.OrdinalIgnoreCase))}",
         $"hidden:{string.Join("&", (node.HiddenWhen ?? [])
-            .Select(condition => $"{condition.SettingNodeId}={condition.EqualsValue}")
+            .Select(ConditionShape)
             .OrderBy(value => value, StringComparer.OrdinalIgnoreCase))}");
 
     private static IEnumerable<ConditionalCoverageEntry> CreateConditionalCoverageEntries(
@@ -657,14 +694,29 @@ public static class MenuDefinitionVerificationPlanner
         {
             yield return new ConditionalCoverageEntry(node, "always-disabled");
         }
-        else if (node.DisabledWhen is { Count: > 0 })
+
+        foreach (var condition in node.DisabledWhen ?? [])
         {
-            yield return new ConditionalCoverageEntry(node, "disabled");
+            yield return new ConditionalCoverageEntry(
+                node,
+                condition.SourceKind == MenuConditionSourceKind.ExternalState
+                    ? "external-disabled"
+                    : "disabled",
+                condition.SourceId,
+                condition.SourceKind,
+                condition.EqualsValue);
         }
 
-        if (node.HiddenWhen is { Count: > 0 })
+        foreach (var condition in node.HiddenWhen ?? [])
         {
-            yield return new ConditionalCoverageEntry(node, "hidden");
+            yield return new ConditionalCoverageEntry(
+                node,
+                condition.SourceKind == MenuConditionSourceKind.ExternalState
+                    ? "external-hidden"
+                    : "hidden",
+                condition.SourceId,
+                condition.SourceKind,
+                condition.EqualsValue);
         }
     }
 
@@ -690,7 +742,10 @@ public static class MenuDefinitionVerificationPlanner
 
     private sealed record ConditionalCoverageEntry(
         MenuNode Node,
-        string BehaviorClass);
+        string BehaviorClass,
+        string? SourceId = null,
+        MenuConditionSourceKind SourceKind = MenuConditionSourceKind.MenuSetting,
+        string? EqualsValue = null);
 
     private sealed record CalculatedNavigationRepresentative(
         string AnchorId,

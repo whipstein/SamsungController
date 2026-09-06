@@ -184,7 +184,8 @@ internal static class MenuTopologyOutlinePlanner
             definition.Timing,
             definition.Configurations.Values,
             definition.ActiveConfigurationId,
-            definition.Verification);
+            definition.Verification,
+            definition.ExternalStates.Values);
         new MenuDefinitionValidator().ValidateAndThrow(candidate);
 
         var preview = new MenuTopologyOutlinePreview(
@@ -473,8 +474,9 @@ internal static class MenuTopologyOutlinePlanner
             }
 
             result.Add(new MenuNodeDisabledCondition(
-                rawCondition[..equals].Trim(),
-                rawCondition[(equals + 1)..].Trim()));
+                ParseConditionSource(rawCondition[..equals].Trim()).SourceId,
+                rawCondition[(equals + 1)..].Trim(),
+                ParseConditionSource(rawCondition[..equals].Trim()).SourceKind));
         }
 
         return result;
@@ -500,11 +502,21 @@ internal static class MenuTopologyOutlinePlanner
             }
 
             result.Add(new MenuNodeHiddenCondition(
-                rawCondition[..equals].Trim(),
-                rawCondition[(equals + 1)..].Trim()));
+                ParseConditionSource(rawCondition[..equals].Trim()).SourceId,
+                rawCondition[(equals + 1)..].Trim(),
+                ParseConditionSource(rawCondition[..equals].Trim()).SourceKind));
         }
 
         return result;
+    }
+
+    private static (string SourceId, MenuConditionSourceKind SourceKind)
+        ParseConditionSource(string value)
+    {
+        const string externalPrefix = "external:";
+        return value.StartsWith(externalPrefix, StringComparison.OrdinalIgnoreCase)
+            ? (value[externalPrefix.Length..].Trim(), MenuConditionSourceKind.ExternalState)
+            : (value.Trim(), MenuConditionSourceKind.MenuSetting);
     }
 
     private static MenuNode? ResolveExistingNode(
@@ -792,6 +804,7 @@ internal static class MenuTopologyOutlinePlanner
                    pair.First.SettingNodeId.Equals(
                        pair.Second.SettingNodeId,
                        StringComparison.OrdinalIgnoreCase)
+                   && pair.First.SourceKind == pair.Second.SourceKind
                    && pair.First.EqualsValue.Equals(
                        pair.Second.EqualsValue,
                        StringComparison.Ordinal));
@@ -808,6 +821,7 @@ internal static class MenuTopologyOutlinePlanner
                    pair.First.SettingNodeId.Equals(
                        pair.Second.SettingNodeId,
                        StringComparison.OrdinalIgnoreCase)
+                   && pair.First.SourceKind == pair.Second.SourceKind
                    && pair.First.EqualsValue.Equals(
                        pair.Second.EqualsValue,
                        StringComparison.Ordinal));

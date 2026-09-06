@@ -105,6 +105,13 @@ public sealed class MenuDefinitionJsonSerializer
                 .ToArray<JsonNode?>());
         }
 
+        if (definition.ExternalStates.Count > 0)
+        {
+            root["externalStates"] = new JsonArray(definition.ExternalStates.Values
+                .Select(CreateExternalState)
+                .ToArray<JsonNode?>());
+        }
+
         root["timing"] = new JsonObject
         {
             ["defaultDelay"] = $"{definition.Timing.DefaultDelayMilliseconds}ms",
@@ -132,6 +139,16 @@ public sealed class MenuDefinitionJsonSerializer
         AddOptional(result, "conditions", configuration.Conditions);
         return result;
     }
+
+    private static JsonObject CreateExternalState(MenuExternalState state) => new()
+    {
+        ["id"] = state.Id,
+        ["label"] = state.Label,
+        ["defaultValue"] = state.DefaultValue,
+        ["options"] = new JsonArray(state.Options
+            .Select(option => (JsonNode?)JsonValue.Create(option))
+            .ToArray())
+    };
 
     private static JsonArray CreateNodes(MenuDefinition definition)
     {
@@ -179,12 +196,12 @@ public sealed class MenuDefinitionJsonSerializer
         if (node.DisabledWhen is { Count: > 0 })
         {
             result["disabledWhen"] = CreateConditions(node.DisabledWhen.Select(condition =>
-                (condition.SettingNodeId, condition.EqualsValue)));
+                (condition.SourceId, condition.EqualsValue, condition.SourceKind)));
         }
         if (node.HiddenWhen is { Count: > 0 })
         {
             result["hiddenWhen"] = CreateConditions(node.HiddenWhen.Select(condition =>
-                (condition.SettingNodeId, condition.EqualsValue)));
+                (condition.SourceId, condition.EqualsValue, condition.SourceKind)));
         }
         if (childrenByParent.TryGetValue(node.Id, out var children))
         {
@@ -195,11 +212,18 @@ public sealed class MenuDefinitionJsonSerializer
         return result;
     }
 
-    private static JsonArray CreateConditions(IEnumerable<(string Setting, string ExpectedValue)> conditions) =>
-        new(conditions.Select(condition => (JsonNode?)new JsonObject
+    private static JsonArray CreateConditions(
+        IEnumerable<(string SourceId, string ExpectedValue, MenuConditionSourceKind SourceKind)> conditions) =>
+        new(conditions.Select(condition =>
         {
-            ["setting"] = condition.Setting,
-            ["equals"] = condition.ExpectedValue
+            var result = new JsonObject
+            {
+                [condition.SourceKind == MenuConditionSourceKind.ExternalState
+                    ? "externalState"
+                    : "setting"] = condition.SourceId,
+                ["equals"] = condition.ExpectedValue
+            };
+            return (JsonNode?)result;
         }).ToArray());
 
     private static JsonObject CreateAnchor(MenuAnchor anchor)

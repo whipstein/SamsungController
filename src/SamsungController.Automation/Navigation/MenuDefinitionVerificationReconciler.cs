@@ -91,7 +91,8 @@ public static class MenuDefinitionVerificationReconciler
             timing,
             definition.Configurations.Values,
             definition.ActiveConfigurationId,
-            new MenuVerificationManifest(manifest.Display, validRecords));
+            new MenuVerificationManifest(manifest.Display, validRecords),
+            definition.ExternalStates.Values);
     }
 
     private static MenuReturnScript InvalidateScript(MenuReturnScript script, bool stale) =>

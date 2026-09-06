@@ -5,6 +5,58 @@ namespace SamsungController.Automation.Tests;
 public sealed class MenuDefinitionVerificationPlannerTests
 {
     [Fact]
+    public void ExternalStateRulesUseOneDedicatedGuidedCheck()
+    {
+        var definition = new MenuDefinition(
+            "external-condition",
+            "External condition",
+            "S95F",
+            new MenuDefinitionContext("1296", "SDR", "Movie", "HDMI 1"),
+            [
+                new MenuNode("normal-video", "Normal video"),
+                new MenuNode("settings", "Settings", "normal-video"),
+                new MenuNode(
+                    "hdmi-black-level",
+                    "HDMI Black Level",
+                    "settings",
+                    ControlType: MenuControlType.Selection,
+                    DefaultValue: "Auto",
+                    DisabledWhen:
+                    [
+                        new MenuNodeDisabledCondition(
+                            "pgen-output-format",
+                            "YCbCr422",
+                            MenuConditionSourceKind.ExternalState),
+                        new MenuNodeDisabledCondition(
+                            "pgen-output-format",
+                            "YCbCr444",
+                            MenuConditionSourceKind.ExternalState)
+                    ],
+                    SelectionOptions: ["Auto", "Low", "Normal"])
+            ],
+            [],
+            [],
+            externalStates:
+            [
+                new MenuExternalState(
+                    "pgen-output-format",
+                    "PGen output format",
+                    "RGB",
+                    ["RGB", "YCbCr422", "YCbCr444"])
+            ]);
+
+        var check = Assert.Single(
+            MenuDefinitionVerificationPlanner.Create(definition).Checks,
+            candidate => candidate.Id == "condition:external-disabled-behavior");
+
+        Assert.Equal(MenuVerificationCheckKind.ConditionalVisibility, check.Kind);
+        Assert.Equal("pgen-output-format", check.ExternalStateId);
+        Assert.Contains(check.ExternalStateValue, new[] { "YCbCr422", "YCbCr444" });
+        Assert.Equal("settings", check.TargetNodeId);
+        Assert.Contains("app's PGen output format selector", check.Description);
+    }
+
+    [Fact]
     public void SelectionEditReopensOnlySharedSelectionVerificationCheck()
     {
         var original = CreateDefinition(["Standard", "Movie"]);

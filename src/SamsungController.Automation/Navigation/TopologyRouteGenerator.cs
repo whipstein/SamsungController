@@ -97,7 +97,8 @@ public static class TopologyRouteGenerator
             definition.Timing,
             definition.Configurations.Values,
             definition.ActiveConfigurationId,
-            definition.Verification);
+            definition.Verification,
+            definition.ExternalStates.Values);
     }
 
     private static bool CanGenerateFromSeed(
@@ -257,10 +258,10 @@ public static class TopologyRouteGenerator
         {
             if (current.Disabled
                 || (current.DisabledWhen ?? []).Any(condition =>
-                    definition.Nodes.TryGetValue(condition.SettingNodeId, out var setting)
-                    && setting.DefaultValue?.Equals(
-                        condition.EqualsValue,
-                        StringComparison.OrdinalIgnoreCase) == true))
+                    GetDefaultConditionValue(definition, condition.SourceId, condition.SourceKind)
+                        ?.Equals(
+                            condition.EqualsValue,
+                            StringComparison.OrdinalIgnoreCase) == true))
             {
                 return true;
             }
@@ -277,10 +278,18 @@ public static class TopologyRouteGenerator
 
     private static bool IsHiddenByDefault(MenuDefinition definition, MenuNode node) =>
         (node.HiddenWhen ?? []).Any(condition =>
-            definition.Nodes.TryGetValue(condition.SettingNodeId, out var setting)
-            && setting.DefaultValue?.Equals(
-                condition.EqualsValue,
-                StringComparison.OrdinalIgnoreCase) == true);
+            GetDefaultConditionValue(definition, condition.SourceId, condition.SourceKind)
+                ?.Equals(
+                    condition.EqualsValue,
+                    StringComparison.OrdinalIgnoreCase) == true);
+
+    private static string? GetDefaultConditionValue(
+        MenuDefinition definition,
+        string sourceId,
+        MenuConditionSourceKind sourceKind) =>
+        sourceKind == MenuConditionSourceKind.ExternalState
+            ? definition.ExternalStates.GetValueOrDefault(sourceId)?.DefaultValue
+            : definition.Nodes.GetValueOrDefault(sourceId)?.DefaultValue;
 
     private static IReadOnlyList<MenuOperation> Coalesce(IEnumerable<MenuOperation> operations)
     {

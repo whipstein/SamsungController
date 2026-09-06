@@ -8,7 +8,7 @@ namespace SamsungController.Automation.Navigation;
 public sealed class MenuDefinitionParser
 {
     private static readonly HashSet<string> RootFields =
-        new(["version", "id", "name", "model", "context", "verification", "configurations", "timing", "nodes", "anchors", "transitions"], StringComparer.OrdinalIgnoreCase);
+        new(["version", "id", "name", "model", "context", "verification", "configurations", "externalStates", "timing", "nodes", "anchors", "transitions"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ContextFields =
         new(["firmware", "signal", "pictureMode", "input"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> TimingFields =
@@ -21,10 +21,12 @@ public sealed class MenuDefinitionParser
         new(["id", "fingerprint", "verifiedAt"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ConfigurationFields =
         new(["id", "name", "conditions"], StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> ExternalStateFields =
+        new(["id", "label", "defaultValue", "options"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> NodeFields =
         new(["id", "label", "children", "description", "controlType", "defaultValue", "minimumValue", "maximumValue", "options", "disabled", "disabledWhen", "hiddenWhen"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ValueConditionFields =
-        new(["setting", "equals"], StringComparer.OrdinalIgnoreCase);
+        new(["setting", "externalState", "equals"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> AnchorFields =
         new(["id", "label", "target", "configuration", "verified", "description", "validationSource", "returnStrategy", "steps"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ReturnStrategyFields =
@@ -62,6 +64,9 @@ public sealed class MenuDefinitionParser
             var configurations = fields.TryGetValue("configurations", out var configurationsNode)
                 ? ParseConfigurations(RequireSequence(configurationsNode, "configurations"))
                 : [];
+            var externalStates = fields.TryGetValue("externalStates", out var externalStatesNode)
+                ? ParseExternalStates(RequireSequence(externalStatesNode, "externalStates"))
+                : [];
             var timing = ParseTiming(fields.GetValueOrDefault("timing"));
             var nodes = ParseNodes(RequiredSequence(fields, "nodes", "document root"));
             var anchors = fields.TryGetValue("anchors", out var anchorsNode)
@@ -81,7 +86,8 @@ public sealed class MenuDefinitionParser
                 anchors,
                 timing,
                 configurations,
-                verification: verification);
+                verification: verification,
+                externalStates: externalStates);
         }
         catch (MenuDefinitionParseException)
         {
@@ -188,6 +194,24 @@ public sealed class MenuDefinitionParser
         }
 
         return configurations;
+    }
+
+    private static IReadOnlyList<MenuExternalState> ParseExternalStates(YamlSequenceNode sequence)
+    {
+        var states = new List<MenuExternalState>(sequence.Children.Count);
+        for (var index = 0; index < sequence.Children.Count; index++)
+        {
+            var context = $"external state {index + 1}";
+            var fields = ReadFields(RequireMapping(sequence.Children[index], context), context);
+            EnsureAllowedFields(fields, ExternalStateFields, context);
+            states.Add(new MenuExternalState(
+                RequiredScalar(fields, "id", context),
+                RequiredScalar(fields, "label", context),
+                RequiredScalar(fields, "defaultValue", context),
+                ParseSelectionOptions(RequiredSequence(fields, "options", context), context)));
+        }
+
+        return states;
     }
 
     private static int ParseTimingMilliseconds(
@@ -322,9 +346,11 @@ public sealed class MenuDefinitionParser
             var context = $"{nodeContext} disabled condition {index + 1}";
             var fields = ReadFields(RequireMapping(sequence.Children[index], context), context);
             EnsureAllowedFields(fields, ValueConditionFields, context);
+            var source = ParseConditionSource(fields, context);
             conditions.Add(new MenuNodeDisabledCondition(
-                RequiredScalar(fields, "setting", context),
-                RequiredScalar(fields, "equals", context)));
+                source.Id,
+                RequiredScalar(fields, "equals", context),
+                source.Kind));
         }
 
         return conditions;
@@ -340,12 +366,31 @@ public sealed class MenuDefinitionParser
             var context = $"{nodeContext} hidden condition {index + 1}";
             var fields = ReadFields(RequireMapping(sequence.Children[index], context), context);
             EnsureAllowedFields(fields, ValueConditionFields, context);
+            var source = ParseConditionSource(fields, context);
             conditions.Add(new MenuNodeHiddenCondition(
-                RequiredScalar(fields, "setting", context),
-                RequiredScalar(fields, "equals", context)));
+                source.Id,
+                RequiredScalar(fields, "equals", context),
+                source.Kind));
         }
 
         return conditions;
+    }
+
+    private static (string Id, MenuConditionSourceKind Kind) ParseConditionSource(
+        IReadOnlyDictionary<string, YamlNode> fields,
+        string context)
+    {
+        var hasSetting = fields.ContainsKey("setting");
+        var hasExternalState = fields.ContainsKey("externalState");
+        if (hasSetting == hasExternalState)
+        {
+            throw new MenuDefinitionParseException(
+                $"{context} must define exactly one of 'setting' or 'externalState'.");
+        }
+
+        return hasExternalState
+            ? (RequiredScalar(fields, "externalState", context), MenuConditionSourceKind.ExternalState)
+            : (RequiredScalar(fields, "setting", context), MenuConditionSourceKind.MenuSetting);
     }
 
     private static IReadOnlyList<string> ParseSelectionOptions(

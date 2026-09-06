@@ -53,6 +53,10 @@ internal sealed record SamsungWebSettings
 
     public IReadOnlyList<SavedMenuControlState>? SavedMenuControlStates { get; init; }
 
+    public string? MenuExternalStateDefinitionId { get; init; }
+
+    public IReadOnlyList<MenuExternalStateValue>? MenuExternalStateValues { get; init; }
+
     public bool MenuControlApplyImmediately { get; init; }
 
     public bool MenuControlReturnToNormalVideo { get; init; }

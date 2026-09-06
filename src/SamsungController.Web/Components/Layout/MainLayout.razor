@@ -40,6 +40,7 @@
                             <li><strong>Quick access</strong> runs pinned remote keys or behaviorally verified macros. Return to video is pinned by default.</li>
                             <li><strong>Current menu</strong> is the application's expected location, not a cursor position reported by the TV.</li>
                             <li><strong>Menu configuration</strong> identifies which settings-dependent list layout is active. Change it before navigation when the TV adds or removes menu rows.</li>
+                            <li><strong>External signal</strong> records equipment state the TV does not report, such as a PGen's RGB or YCbCr output. Change the equipment first, then choose the matching value here.</li>
                             <li><strong>Warming</strong> means authorization succeeded and a requested command is being held until the TV is ready.</li>
                         </ul>
                         <p class="help-callout safe">Commands are temporarily disabled while a macro, verified traversal, or live recording owns the TV connection.</p>
@@ -57,7 +58,7 @@
                 </div>
             </div>
 
-            <div class="persistent-control-bar">
+            <div class="persistent-control-bar @((Navigation.ExternalStates ?? []).Count > 0 ? "has-external-states" : "")">
                 <div class="quick-access-region">
                     <span class="topbar-label">QUICK ACCESS</span>
                     <div class="quick-access-actions">
@@ -104,6 +105,28 @@
                     }
                 </div>
 
+                @if ((Navigation.ExternalStates ?? []).Count > 0)
+                {
+                    <div class="persistent-external-state">
+                        <span>EXTERNAL SIGNAL</span>
+                        @foreach (var state in Navigation.ExternalStates ?? [])
+                        {
+                            <label title="Set the external equipment first, then choose its matching state here.">
+                                <small>@state.Label</small>
+                                <select value="@state.Value"
+                                        @onchange="args => ChangeExternalStateAsync(state.Id, args)"
+                                        disabled="@ExternalStateControlDisabled"
+                                        aria-label="@state.Label">
+                                    @foreach (var option in state.Options)
+                                    {
+                                        <option value="@option">@option</option>
+                                    }
+                                </select>
+                            </label>
+                        }
+                    </div>
+                }
+
                 <a href="verification"
                    class="persistent-verification-state @(Verification.FullyVerified ? "verified" : "required")"
                    title="@VerificationStatusTitle">
@@ -120,6 +143,10 @@
             else if (!string.IsNullOrWhiteSpace(MenuConfigurationError))
             {
                 <div class="topbar-feedback danger" role="alert">@MenuConfigurationError</div>
+            }
+            else if (!string.IsNullOrWhiteSpace(ExternalStateError))
+            {
+                <div class="topbar-feedback danger" role="alert">@ExternalStateError</div>
             }
             else if (!string.IsNullOrWhiteSpace(QuickAccessError))
             {
@@ -234,10 +261,12 @@
     private bool QuickActionBusy { get; set; }
     private bool ConnectionControlBusy { get; set; }
     private bool MenuConfigurationBusy { get; set; }
+    private bool ExternalStateBusy { get; set; }
     private string? QuickAccessError { get; set; }
     private string? QuickAccessStatus { get; set; }
     private string? ConnectionControlError { get; set; }
     private string? MenuConfigurationError { get; set; }
+    private string? ExternalStateError { get; set; }
     private PendingQuickMacroExecution? PendingQuickMacro { get; set; }
 
     private bool QuickControlsDisabled => Snapshot.ConnectionState != SamsungConnectionState.Connected ||
@@ -249,6 +278,10 @@
         Snapshot.MacroRunning || Snapshot.NavigationRunning || Authoring.IsRecording ||
         (!CanDisconnectFromHeader && string.IsNullOrWhiteSpace(Snapshot.Host));
     private bool MenuConfigurationControlDisabled => MenuConfigurationBusy
+        || Snapshot.MacroRunning
+        || Snapshot.NavigationRunning
+        || Authoring.IsRecording;
+    private bool ExternalStateControlDisabled => ExternalStateBusy
         || Snapshot.MacroRunning
         || Snapshot.NavigationRunning
         || Authoring.IsRecording;
@@ -363,6 +396,27 @@
         finally
         {
             MenuConfigurationBusy = false;
+            Refresh();
+        }
+    }
+
+    private async Task ChangeExternalStateAsync(string stateId, ChangeEventArgs args)
+    {
+        ExternalStateBusy = true;
+        ExternalStateError = null;
+        try
+        {
+            var value = args.Value?.ToString()
+                ?? throw new InvalidOperationException("Choose an external signal value.");
+            await Controller.SetMenuExternalStateAsync(stateId, value);
+        }
+        catch (Exception exception)
+        {
+            ExternalStateError = exception.Message;
+        }
+        finally
+        {
+            ExternalStateBusy = false;
             Refresh();
         }
     }

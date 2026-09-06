@@ -80,6 +80,7 @@ matching sidecar fingerprints only to its in-memory navigation model.
 menu structure
 ├── identity and display context
 ├── configurations (optional alternate menu layouts)
+├── externalStates (equipment context not reported by the TV)
 ├── timing (system-wide waits)
 ├── nodes (ordered on-screen tree and control behavior)
 ├── anchors (known-state recovery and return behavior)
@@ -113,6 +114,12 @@ configurations:
   - id: default
     name: Default menu
     conditions: Game Mode = Off
+
+externalStates:
+  - id: pgen-output-format
+    label: PGen output format
+    defaultValue: RGB
+    options: [RGB, YCbCr422, YCbCr444]
 
 timing:
   defaultDelay: 150ms
@@ -154,6 +161,16 @@ nodes:
                 defaultValue: "50"
                 minimumValue: 0
                 maximumValue: 100
+              - id: hdmi-black-level
+                label: HDMI Black Level
+                controlType: selection
+                defaultValue: Auto
+                options: [Auto, Low, Normal]
+                disabledWhen:
+                  - externalState: pgen-output-format
+                    equals: YCbCr422
+                  - externalState: pgen-output-format
+                    equals: YCbCr444
               - id: contrast-enhancer
                 label: Contrast Enhancer
                 controlType: switch
@@ -231,6 +248,14 @@ allowed.
       "id": "default",
       "name": "Default menu",
       "conditions": "Game Mode = Off"
+    }
+  ],
+  "externalStates": [
+    {
+      "id": "pgen-output-format",
+      "label": "PGen output format",
+      "defaultValue": "RGB",
+      "options": ["RGB", "YCbCr422", "YCbCr444"]
     }
   ],
   "timing": {
@@ -328,6 +353,7 @@ allowed.
 | `model` | Yes | TV model or model family. |
 | `context` | No | Firmware, signal, picture mode, and input for which routes were observed. |
 | `configurations` | No | Named alternate menu layouts. |
+| `externalStates` | No | User-selected equipment or signal context the TV protocol does not report. |
 | `timing` | No | Default waits; omitted fields use built-in defaults. |
 | `nodes` | Yes | At least one ordered root topology node; submenu descendants are nested under `children`. |
 | `anchors` | No | Deterministic known-state/recovery scripts. |
@@ -362,6 +388,25 @@ is stored in local application settings, not inside this file.
 An anchor or transition with `configuration` is eligible only when that layout
 is active. Omitting `configuration` makes the behavior universal, so do that
 only after verifying it in every intended layout.
+
+### `externalStates`
+
+Use an external state for a fact that changes row availability but cannot be
+read through the Samsung remote protocol—for example, a PGen output format.
+Each entry requires a stable `id`, a `label`, a `defaultValue`, and one or more
+ordered `options`. The default must occur in the options.
+
+The app renders these states as persistent selectors in the header. Change the
+external equipment first, then choose its matching value in SamsungController.
+The selection is remembered per menu definition. Changing it while the app
+expects to be inside a TV menu marks that menu position unknown, because the
+external signal may have changed what is on screen.
+
+External state is intentionally separate from `configurations`. Use a
+configuration when the menu is actually reordered and needs a different route
+set. Use an external state when a row remains in cursor order but becomes gray
+or hidden. A separate bit-depth state is optional; omit it from a condition when
+8-bit versus 10-bit does not affect that row.
 
 ## Node fields and control types
 
@@ -419,9 +464,12 @@ A disabled row remains part of the TV's cursor order, so generated Up/Down
 offsets count it even though SamsungController will not execute it as a target.
 Only a hidden row is removed from directional offsets.
 
-Use `disabledWhen` only when availability depends on another modeled setting.
+Use `disabledWhen` only when availability depends on another modeled setting or
+declared external state.
 
-Both conditional fields contain objects with `setting` and `equals`:
+Both conditional fields contain objects with `equals` and exactly one source:
+`setting` for a TV menu value, or `externalState` for declared equipment
+context:
 
 ```yaml
 disabledWhen:
@@ -429,12 +477,15 @@ disabledWhen:
     equals: on
   - setting: picture-mode
     equals: Dynamic
+  - externalState: pgen-output-format
+    equals: YCbCr422
 ```
 
 ```json
 "disabledWhen": [
   { "setting": "game-mode", "equals": "on" },
-  { "setting": "picture-mode", "equals": "Dynamic" }
+  { "setting": "picture-mode", "equals": "Dynamic" },
+  { "externalState": "pgen-output-format", "equals": "YCbCr422" }
 ]
 ```
 
@@ -442,14 +493,23 @@ Multiple entries use **OR**, not AND: any match activates the behavior. The
 referenced setting must be a slider, selection, submenu selection, indexed
 selection, or switch. A condition cannot refer to its own node. Selection values
 must appear in that setting's options; switch values must be `on` or `off`.
+An `externalState` must exist at the document root and the compared value must
+appear in its options.
+
+In the Build & Verify outline editor, the same external condition can be written
+as `disabledWhen=external:pgen-output-format=YCbCr422`. The node editor lists
+external sources alongside TV settings. Display Verification creates one
+representative guided check for external disabled rows and one for external
+hidden rows; it asks you to set both the hardware and header selector before it
+navigates to the row.
 
 When a submenu is disabled, every descendant is also unavailable automatically.
 Define `disabledWhen` only on that submenu; repeating the same condition on its
 children is unnecessary. When the controlling value enables the submenu again,
 its descendants become available and generated routes use the inherited state.
 
-Use separate configurations if combinations require AND logic or cannot be
-represented by one modeled value.
+Conditions are currently OR-only. Use separate configurations if a combination
+requires AND logic or cannot be represented by one modeled value.
 
 ## Timing and key steps
 
@@ -562,6 +622,8 @@ maintainer-only notes.
 - **Unknown field:** check spelling and whether the field belongs at that level.
 - **Missing node reference:** define the referenced node in `nodes`, or correct the `from`, `to`, `target`,
   `setting`, `menuRoot`, or override node before referencing it.
+- **Missing external-state reference:** declare the `externalState` at the root
+  and include the compared value in its `options`.
 - **Choice default not found:** add the exact default to `options`.
 - **Invalid slider:** provide both bounds and keep the default inside them.
 - **Invalid JSON:** remove comments/trailing commas and quote keys and strings.

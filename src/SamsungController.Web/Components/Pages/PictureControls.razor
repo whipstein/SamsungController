@@ -1609,7 +1609,7 @@ else
         {
             if (current.Disabled
                 || current.DisabledWhen.Any(condition =>
-                    GetPredictedValue(condition.SettingNodeId)?.Equals(
+                    GetConditionValue(condition.SourceId, condition.SourceKind)?.Equals(
                         condition.EqualsValue,
                         StringComparison.OrdinalIgnoreCase) == true))
             {
@@ -1643,7 +1643,9 @@ else
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         while (visited.Add(current.Id))
         {
-            if (current.HiddenWhen.Any(condition => GetPredictedValue(condition.SettingNodeId)
+            if (current.HiddenWhen.Any(condition => GetConditionValue(
+                        condition.SourceId,
+                        condition.SourceKind)
                     ?.Equals(condition.EqualsValue, StringComparison.OrdinalIgnoreCase) == true))
             {
                 return true;
@@ -1992,9 +1994,18 @@ else
 
         return Navigation.ControlValues.GetValueOrDefault(nodeId)
             ?? Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
-                nodeId,
-                StringComparison.OrdinalIgnoreCase))?.DefaultValue;
+            nodeId,
+            StringComparison.OrdinalIgnoreCase))?.DefaultValue;
     }
+
+    private string? GetConditionValue(
+        string sourceId,
+        MenuConditionSourceKind sourceKind) =>
+        sourceKind == MenuConditionSourceKind.ExternalState
+            ? (Navigation.ExternalStates ?? []).FirstOrDefault(state => state.Id.Equals(
+                sourceId,
+                StringComparison.OrdinalIgnoreCase))?.Value
+            : GetPredictedValue(sourceId);
 
     private string GetDisabledReason(PictureControlEdit control) =>
         GetDisabledReason(control.Node);
@@ -2015,14 +2026,21 @@ else
         }
 
         var matches = disabledNode.DisabledWhen.Where(condition =>
-            GetPredictedValue(condition.SettingNodeId)?.Equals(
+            GetConditionValue(condition.SourceId, condition.SourceKind)?.Equals(
                 condition.EqualsValue,
                 StringComparison.OrdinalIgnoreCase) == true).Select(condition =>
         {
+            if (condition.SourceKind == MenuConditionSourceKind.ExternalState)
+            {
+                var state = (Navigation.ExternalStates ?? []).FirstOrDefault(candidate =>
+                    candidate.Id.Equals(condition.SourceId, StringComparison.OrdinalIgnoreCase));
+                return $"{state?.Label ?? condition.SourceId} = {GetConditionValue(condition.SourceId, condition.SourceKind)}";
+            }
+
             var setting = Navigation.Nodes.FirstOrDefault(candidate => candidate.Id.Equals(
-                condition.SettingNodeId,
+                condition.SourceId,
                 StringComparison.OrdinalIgnoreCase));
-            return $"{setting?.Label ?? condition.SettingNodeId} = {GetPredictedValue(condition.SettingNodeId)}";
+            return $"{setting?.Label ?? condition.SourceId} = {GetPredictedValue(condition.SourceId)}";
         }).ToArray();
         if (matches.Length == 0)
         {

@@ -40,7 +40,8 @@ public static class MenuDefinitionVerificationOverlay
             anchors,
             definition.Timing with { Verified = false },
             definition.Configurations.Values,
-            definition.ActiveConfigurationId);
+            definition.ActiveConfigurationId,
+            externalStates: definition.ExternalStates.Values);
     }
 
     public static MenuDefinition Apply(
@@ -163,7 +164,8 @@ public static class MenuDefinitionVerificationOverlay
             cleanTopology.Timing with { Verified = verifiedCheckIds.Contains("timing") },
             cleanTopology.Configurations.Values,
             cleanTopology.ActiveConfigurationId,
-            manifest);
+            manifest,
+            cleanTopology.ExternalStates.Values);
     }
 
     public static MenuVerificationManifest? CreateLegacyManifest(

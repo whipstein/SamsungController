@@ -8,6 +8,7 @@ A distributable structure contains:
 
 - the nested on-screen menu tree;
 - control types, options, slider bounds, and conditional visibility rules;
+- declared external equipment states, such as an RGB/YCbCr generator mode;
 - navigation anchors, return strategies, routes, and timing definitions;
 - named menu configurations when settings change the visible topology.
 

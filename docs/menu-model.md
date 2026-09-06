@@ -43,6 +43,13 @@ or protocol feedback from the TV. The default **Return to video** quick-access
 button runs the verified `normal-video` anchor and, on success, restores a
 Synchronized prediction.
 
+Menu definitions may also expose persistent external-state selectors for facts
+the TV does not report, such as a PGen's RGB/YCbCr output. Set the hardware
+first, then match the header selector. Conditional rows immediately reflect the
+selected context: disabled rows still count in Up/Down offsets, while hidden
+rows do not. These selectors are separate from menu configurations because they
+do not select a different topology or route catalog.
+
 The web connection workflow also runs the preferred verified anchor once after
 the control channel is authorized. It prioritizes a target named
 `normal-video`, then falls back to another verified anchor. No additional anchor

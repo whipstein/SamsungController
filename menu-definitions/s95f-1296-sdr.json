@@ -16,6 +16,14 @@
             "conditions": "Record the setting values that affect which menu items are visible."
         }
     ],
+    "externalStates": [
+        {
+            "id": "pgen-output-format",
+            "label": "PGen output format",
+            "defaultValue": "RGB",
+            "options": ["RGB", "YCbCr422", "YCbCr444"]
+        }
+    ],
     "timing": {
         "defaultDelay": "150ms",
         "screenChangeDelay": "800ms",
@@ -2104,8 +2112,12 @@
                                             "options": ["Auto", "Low", "High"],
                                             "disabledWhen": [
                                                 {
-                                                    "setting": "quick-media-switching",
-                                                    "equals": "on"
+                                                    "externalState": "pgen-output-format",
+                                                    "equals": "YCbCr422"
+                                                },
+                                                {
+                                                    "externalState": "pgen-output-format",
+                                                    "equals": "YCbCr444"
                                                 }
                                             ]
                                         }
@@ -6504,6 +6516,40 @@
                 },
                 {
                     "key": "KEY_ENTER"
+                }
+            ]
+        },
+        {
+            "id": "topology-to-settings-to-hdmi-black-level",
+            "from": "normal-video",
+            "to": "hdmi-black-level",
+            "configuration": "default",
+            "description": "Generated from the ordered menu topology using 'to-settings'.",
+            "generatedFromTopology": true,
+            "topologySeed": "to-settings",
+            "validationGroup": "topology-to-settings-general-privacy",
+            "validationRoute": false,
+            "steps": [
+                {
+                    "key": "KEY_MENU"
+                },
+                {
+                    "key": "KEY_DOWN",
+                    "repeat": 5
+                },
+                {
+                    "key": "KEY_ENTER"
+                },
+                {
+                    "key": "KEY_DOWN",
+                    "repeat": 5
+                },
+                {
+                    "key": "KEY_ENTER"
+                },
+                {
+                    "key": "KEY_DOWN",
+                    "repeat": 2
                 }
             ]
         },

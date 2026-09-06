@@ -3568,6 +3568,66 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task ExternalSignalSelectionImmediatelyControlsMenuAvailability()
+    {
+        const string yaml =
+            """
+            version: 1
+            id: external-signal-availability
+            name: External Signal Availability
+            model: Test TV
+            externalStates:
+              - id: pgen-output-format
+                label: PGen output format
+                defaultValue: RGB
+                options: [RGB, YCbCr422, YCbCr444]
+            nodes:
+              - id: normal-video
+                label: Normal video
+                children:
+                  - id: hdmi-black-level
+                    label: HDMI Black Level
+                    controlType: selection
+                    defaultValue: Auto
+                    options: [Auto, Low, Normal]
+                    disabledWhen:
+                      - externalState: pgen-output-format
+                        equals: YCbCr422
+                      - externalState: pgen-output-format
+                        equals: YCbCr444
+            transitions:
+              - id: open-hdmi-black-level
+                from: normal-video
+                to: hdmi-black-level
+                verified: true
+                steps:
+                  - key: KEY_MENU
+            """;
+        var (controller, _) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            var initialState = Assert.Single(
+                controller.GetMenuNavigationSnapshot().ExternalStates!);
+            Assert.Equal("RGB", initialState.Value);
+            Assert.Equal("hdmi-black-level", controller.CreateNavigationPlan(
+                "hdmi-black-level").TargetNodeId);
+
+            await controller.SetMenuExternalStateAsync("pgen-output-format", "YCbCr422");
+
+            var selectedState = Assert.Single(
+                controller.GetMenuNavigationSnapshot().ExternalStates!);
+            Assert.Equal("YCbCr422", selectedState.Value);
+            var exception = Assert.Throws<InvalidOperationException>(() =>
+                controller.CreateNavigationPlan("hdmi-black-level"));
+            Assert.Contains("disabled", exception.Message, StringComparison.OrdinalIgnoreCase);
+
+            await controller.SetMenuExternalStateAsync("pgen-output-format", "RGB");
+            Assert.Equal("hdmi-black-level", controller.CreateNavigationPlan(
+                "hdmi-black-level").TargetNodeId);
+        }
+    }
+
+    [Fact]
     public async Task LocalVerificationSidecarPersistsAndOnlyReopensChangedCheck()
     {
         const string yaml =

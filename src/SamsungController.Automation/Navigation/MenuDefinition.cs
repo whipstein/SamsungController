@@ -14,6 +14,12 @@ public sealed record MenuConfiguration(
     string Name,
     string? Conditions = null);
 
+public sealed record MenuExternalState(
+    string Id,
+    string Label,
+    string DefaultValue,
+    IReadOnlyList<string> Options);
+
 public sealed record MenuVerificationDisplay(
     string Model,
     string Firmware,
@@ -73,13 +79,27 @@ public enum MenuControlType
     Action
 }
 
+public enum MenuConditionSourceKind
+{
+    MenuSetting,
+    ExternalState
+}
+
 public sealed record MenuNodeDisabledCondition(
-    string SettingNodeId,
-    string EqualsValue);
+    string SourceId,
+    string EqualsValue,
+    MenuConditionSourceKind SourceKind = MenuConditionSourceKind.MenuSetting)
+{
+    public string SettingNodeId => SourceId;
+}
 
 public sealed record MenuNodeHiddenCondition(
-    string SettingNodeId,
-    string EqualsValue);
+    string SourceId,
+    string EqualsValue,
+    MenuConditionSourceKind SourceKind = MenuConditionSourceKind.MenuSetting)
+{
+    public string SettingNodeId => SourceId;
+}
 
 public sealed record MenuNode(
     string Id,
@@ -146,6 +166,7 @@ public sealed class MenuDefinition
     private readonly IReadOnlyDictionary<string, MenuTransition> _transitions;
     private readonly IReadOnlyDictionary<string, MenuAnchor> _anchors;
     private readonly IReadOnlyDictionary<string, MenuConfiguration> _configurations;
+    private readonly IReadOnlyDictionary<string, MenuExternalState> _externalStates;
 
     public MenuDefinition(
         string id,
@@ -158,7 +179,8 @@ public sealed class MenuDefinition
         MenuTimingProfile? timing = null,
         IEnumerable<MenuConfiguration>? configurations = null,
         string? activeConfigurationId = null,
-        MenuVerificationManifest? verification = null)
+        MenuVerificationManifest? verification = null,
+        IEnumerable<MenuExternalState>? externalStates = null)
     {
         Id = id;
         Name = name;
@@ -172,6 +194,10 @@ public sealed class MenuDefinition
             configurations ?? [],
             configuration => configuration.Id,
             "configuration");
+        _externalStates = ToUniqueDictionary(
+            externalStates ?? [],
+            state => state.Id,
+            "external state");
         ActiveConfigurationId = string.IsNullOrWhiteSpace(activeConfigurationId)
             ? null
             : activeConfigurationId.Trim();
@@ -195,6 +221,8 @@ public sealed class MenuDefinition
     public IReadOnlyDictionary<string, MenuAnchor> Anchors => _anchors;
 
     public IReadOnlyDictionary<string, MenuConfiguration> Configurations => _configurations;
+
+    public IReadOnlyDictionary<string, MenuExternalState> ExternalStates => _externalStates;
 
     public string? ActiveConfigurationId { get; }
 
@@ -222,7 +250,8 @@ public sealed class MenuDefinition
         Timing,
         Configurations.Values,
         configurationId,
-        Verification);
+        Verification,
+        ExternalStates.Values);
 
     public MenuNode GetRequiredNode(string nodeId) =>
         _nodes.TryGetValue(nodeId, out var node)

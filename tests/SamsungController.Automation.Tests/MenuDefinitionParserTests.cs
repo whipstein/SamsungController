@@ -5,6 +5,92 @@ namespace SamsungController.Automation.Tests;
 
 public sealed class MenuDefinitionParserTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ParsesExternalSignalStatesAndConditions(bool json)
+    {
+        const string yaml =
+            """
+            version: 1
+            id: external-signal
+            name: External signal
+            model: Test TV
+            externalStates:
+              - id: pgen-output-format
+                label: PGen output format
+                defaultValue: RGB
+                options: [RGB, YCbCr422, YCbCr444]
+            nodes:
+              - id: normal-video
+                label: Normal video
+                children:
+                  - id: hdmi-black-level
+                    label: HDMI Black Level
+                    controlType: selection
+                    defaultValue: Auto
+                    options: [Auto, Low, Normal]
+                    disabledWhen:
+                      - externalState: pgen-output-format
+                        equals: YCbCr422
+                      - externalState: pgen-output-format
+                        equals: YCbCr444
+            """;
+        const string jsonText =
+            """
+            {
+              "version": 1,
+              "id": "external-signal",
+              "name": "External signal",
+              "model": "Test TV",
+              "externalStates": [
+                {
+                  "id": "pgen-output-format",
+                  "label": "PGen output format",
+                  "defaultValue": "RGB",
+                  "options": ["RGB", "YCbCr422", "YCbCr444"]
+                }
+              ],
+              "nodes": [
+                {
+                  "id": "normal-video",
+                  "label": "Normal video",
+                  "children": [
+                    {
+                      "id": "hdmi-black-level",
+                      "label": "HDMI Black Level",
+                      "controlType": "selection",
+                      "defaultValue": "Auto",
+                      "options": ["Auto", "Low", "Normal"],
+                      "disabledWhen": [
+                        { "externalState": "pgen-output-format", "equals": "YCbCr422" },
+                        { "externalState": "pgen-output-format", "equals": "YCbCr444" }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+            """;
+
+        var definition = json
+            ? new MenuDefinitionJsonSerializer().Parse(jsonText)
+            : new MenuDefinitionParser().Parse(yaml);
+
+        var state = Assert.Single(definition.ExternalStates.Values);
+        Assert.Equal("pgen-output-format", state.Id);
+        Assert.Equal("RGB", state.DefaultValue);
+        Assert.Equal(["RGB", "YCbCr422", "YCbCr444"], state.Options);
+        var conditions = definition.Nodes["hdmi-black-level"].DisabledWhen!;
+        Assert.Equal(2, conditions.Count);
+        Assert.All(conditions, condition =>
+        {
+            Assert.Equal(MenuConditionSourceKind.ExternalState, condition.SourceKind);
+            Assert.Equal("pgen-output-format", condition.SourceId);
+        });
+        new MenuDefinitionValidator().ValidateAndThrow(definition);
+    }
+
     [Fact]
     public async Task BundledOdysseyDefinitionIsValidAfterTopologyRegeneration()
     {
