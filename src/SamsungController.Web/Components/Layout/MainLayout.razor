@@ -1,6 +1,7 @@
 @inherits LayoutComponentBase
 @implements IDisposable
 @inject SamsungControllerService Controller
+@inject IJSRuntime JavaScript
 
 <div class="app-shell">
     <aside class="sidebar">
@@ -36,6 +37,7 @@
                     <span class="eyebrow">SAMSUNG CONTROL PLANE</span>
                     <HelpBubble Title="Controls available on every page" Class="topbar-help">
                         <ul>
+                            <li><strong>Light/Dark</strong> switches the complete interface palette and remembers the choice in this browser.</li>
                             <li><strong>Connect/Disconnect</strong> uses the TV profile last saved on the Connection page.</li>
                             <li><strong>Quick access</strong> runs pinned remote keys or behaviorally verified macros. Return to video is pinned by default.</li>
                             <li><strong>Current menu</strong> is the application's expected location, not a cursor position reported by the TV.</li>
@@ -47,6 +49,16 @@
                     </HelpBubble>
                 </div>
                 <div class="topbar-connection-control">
+                    <button type="button"
+                            class="theme-toggle"
+                            title="@ThemeToggleTitle"
+                            aria-label="@ThemeToggleTitle"
+                            aria-pressed="@IsLightTheme"
+                            @onclick="ToggleThemeAsync"
+                            disabled="@ThemeControlBusy">
+                        <span aria-hidden="true">@(IsLightTheme ? "☀" : "☾")</span>
+                        @(IsLightTheme ? "Light" : "Dark")
+                    </button>
                     <div class="connection-pill @StateClass"><span></span>@Snapshot.ConnectionState</div>
                     <button type="button"
                             class="topbar-connection-button @(CanDisconnectFromHeader ? "disconnect" : "connect")"
@@ -260,6 +272,7 @@
     private bool QuickEditorBusy { get; set; }
     private bool QuickActionBusy { get; set; }
     private bool ConnectionControlBusy { get; set; }
+    private bool ThemeControlBusy { get; set; }
     private bool MenuConfigurationBusy { get; set; }
     private bool ExternalStateBusy { get; set; }
     private string? QuickAccessError { get; set; }
@@ -268,6 +281,7 @@
     private string? MenuConfigurationError { get; set; }
     private string? ExternalStateError { get; set; }
     private PendingQuickMacroExecution? PendingQuickMacro { get; set; }
+    private string ActiveTheme { get; set; } = "dark";
 
     private bool QuickControlsDisabled => Snapshot.ConnectionState != SamsungConnectionState.Connected ||
         Snapshot.MacroRunning || Snapshot.NavigationRunning || Authoring.IsRecording || QuickActionBusy ||
@@ -290,6 +304,10 @@
         : string.IsNullOrWhiteSpace(Snapshot.Host)
             ? "Save a TV IP address on the Connection page first"
             : $"Connect to {Snapshot.Host}";
+    private bool IsLightTheme => ActiveTheme.Equals("light", StringComparison.OrdinalIgnoreCase);
+    private string ThemeToggleTitle => IsLightTheme
+        ? "Switch to dark mode"
+        : "Switch to light mode";
     private bool CanAddQuickAction => !QuickEditorBusy && QuickActions.Count < 12 &&
         (QuickEditorKind == QuickAccessActionKind.RemoteKey
             ? !string.IsNullOrWhiteSpace(QuickKey)
@@ -332,6 +350,51 @@
         Controller.Changed += HandleControllerChanged;
         await Controller.InitializeAsync();
         Refresh();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            ActiveTheme = await JavaScript.InvokeAsync<string>("samsungTheme.get");
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (JSDisconnectedException)
+        {
+            // The browser closed while the server-rendered layout was becoming interactive.
+        }
+        catch (JSException)
+        {
+            // Keep the server-rendered dark-mode label if the theme helper cannot load.
+        }
+    }
+
+    private async Task ToggleThemeAsync()
+    {
+        ThemeControlBusy = true;
+        try
+        {
+            ActiveTheme = await JavaScript.InvokeAsync<string>(
+                "samsungTheme.set",
+                IsLightTheme ? "dark" : "light");
+        }
+        catch (JSDisconnectedException)
+        {
+            // A disconnected browser cannot display the requested theme change.
+        }
+        catch (JSException)
+        {
+            // Leave the current theme in place if browser storage or scripting is unavailable.
+        }
+        finally
+        {
+            ThemeControlBusy = false;
+        }
     }
 
     private async Task ToggleConnectionAsync()
