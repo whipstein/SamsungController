@@ -346,9 +346,6 @@ public sealed record MenuDefinitionCreationRequest(
     string Name,
     string Model,
     string Firmware,
-    string Signal,
-    string PictureMode,
-    string Input,
     MenuDefinitionFileFormat Format = MenuDefinitionFileFormat.Yaml);
 
 public sealed record MenuDefinitionCreationPreview(

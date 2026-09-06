@@ -18,9 +18,6 @@ public sealed class MenuDefinitionWriter
         yaml.AppendLine();
         yaml.AppendLine("context:");
         AppendScalar(yaml, 2, "firmware", definition.Context.Firmware);
-        AppendScalar(yaml, 2, "signal", definition.Context.Signal);
-        AppendScalar(yaml, 2, "pictureMode", definition.Context.PictureMode);
-        AppendScalar(yaml, 2, "input", definition.Context.Input);
         if (definition.Configurations.Count > 0)
         {
             yaml.AppendLine();

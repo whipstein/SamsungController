@@ -139,7 +139,7 @@ The left navigation follows the normal workflow:
 4. **Macros** builds and verifies repeatable command sequences.
 5. **Build & Verify** defines or repairs a TV's menu structure and navigation.
 6. **Display Verification** confirms that a structure really matches a specific
-   model, firmware, signal, picture mode, and input.
+   model and firmware.
 7. **Protocol** provides diagnostics and redacted protocol capture.
 
 The header remains visible on every page:
@@ -168,8 +168,8 @@ current page without sending anything to the TV.
    **Installation**, so copies remain distinguishable. File errors are listed
    under the collapsed **Files and connection details** section. Fix the file,
    then refresh the lists. If no matching menu exists, choose **Define a new
-   menu** and enter the model and firmware. Add signal, picture mode, and input
-   only when they are specific to this menu; YAML is the default format.
+   menu** and enter the model and firmware. Firmware is the only context field;
+   YAML is the default format.
 6. In **3 · Connection settings**, keep the recommended defaults. Security,
    port, warm-up, and health checks are under **Advanced connection settings**.
    The usual connection uses Secure WebSocket, Accept TV certificate, and an
@@ -226,8 +226,8 @@ next required action.
 
 1. Enter the TV model and firmware exactly as shown in the TV's support or
    about screen.
-2. Add signal type, picture mode, and input/source when they affect visible
-   menu rows. These values are used in the suggested filename.
+2. The suggested name and filename use the model and firmware, such as
+   `s95f-1296.yaml`. No signal, picture-mode, or input context is required.
 3. Choose YAML unless you specifically prefer JSON. Both formats represent the
    same nested topology.
 4. Enter the menu rows in their exact on-screen order. Use two spaces per tree
@@ -325,7 +325,7 @@ changes or duplicates the referenced menu file.
 Open **Display Verification**. This binds reusable structure behavior to the
 specific display combination shown at the top.
 
-1. Confirm the model, firmware, signal, picture mode, and input/source.
+1. Confirm the model and firmware.
 2. Select **Carry forward existing verified work**. Unchanged, matching evidence
    is reused.
 3. Work through the remaining groups in order.

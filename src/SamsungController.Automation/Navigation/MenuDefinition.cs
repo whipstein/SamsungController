@@ -3,11 +3,7 @@ using SamsungController.Core.Protocol;
 
 namespace SamsungController.Automation.Navigation;
 
-public sealed record MenuDefinitionContext(
-    string Firmware = "unrecorded",
-    string Signal = "any",
-    string PictureMode = "any",
-    string Input = "any");
+public sealed record MenuDefinitionContext(string Firmware = "unrecorded");
 
 public sealed record MenuConfiguration(
     string Id,
@@ -22,10 +18,7 @@ public sealed record MenuExternalState(
 
 public sealed record MenuVerificationDisplay(
     string Model,
-    string Firmware,
-    string Signal,
-    string PictureMode,
-    string Input);
+    string Firmware);
 
 public sealed record MenuVerificationRecord(
     string Id,

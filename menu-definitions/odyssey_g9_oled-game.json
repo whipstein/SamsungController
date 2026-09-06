@@ -4,10 +4,7 @@
     "name": "Odyssey G9 OLED · firmware 2231",
     "model": "Odyssey G9 OLED",
     "context": {
-        "firmware": "2231",
-        "signal": "Game",
-        "pictureMode": "any",
-        "input": "any"
+        "firmware": "2231"
     },
     "configurations": [
         {

@@ -51,8 +51,8 @@ Display definitions are web/application profiles above the navigation model.
 They contain connection defaults and source-aware references to one or more
 menu-definition IDs/configurations. Selecting one resolves the existing menu
 file and then uses the normal menu loader. It does not copy the menu or
-verification data. The verification key remains menu-definition ID plus model,
-firmware, signal, picture mode, and input/source.
+verification data. The verification key is the menu-definition ID plus model
+and firmware.
 
 The macro automation, web interface, and data-driven menu-navigation layer are
 model-independent. Menu topology and real-TV verification have a strict storage

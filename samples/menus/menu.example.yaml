@@ -7,9 +7,6 @@ model: Replace with your TV model
 # Nothing in this example is marked verified or eligible for execution.
 context:
   firmware: unrecorded
-  signal: unrecorded
-  pictureMode: unrecorded
-  input: unrecorded
 
 # Keep settings-dependent menu layouts in this same model file. Add another
 # configuration when a TV selection causes rows to appear, disappear, or move.

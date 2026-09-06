@@ -65,7 +65,7 @@ public sealed class MenuDefinitionWriterTests : IDisposable
             "test-menu",
             "Owner's Test Menu",
             "Test TV",
-            new MenuDefinitionContext("example-fw", "SDR", "Movie", "HDMI 1"),
+            new MenuDefinitionContext("example-fw"),
             [
                 new MenuNode("normal-video", "Normal video"),
                 new MenuNode("settings", "Settings", "normal-video", "Owner's settings"),
@@ -347,18 +347,13 @@ public sealed class MenuDefinitionWriterTests : IDisposable
     [Fact]
     public void VerificationManifestIsNeverWrittenIntoMenuTopology()
     {
-        var display = new MenuVerificationDisplay(
-            "S95F",
-            "1296",
-            "SDR",
-            "Filmmaker Mode",
-            "Home Theater System");
+        var display = new MenuVerificationDisplay("S95F", "1296");
         var verifiedAt = new DateTimeOffset(2026, 8, 30, 15, 30, 0, TimeSpan.Zero);
         var definition = new MenuDefinition(
             "verified-menu",
             "Verified menu",
             "S95F",
-            new MenuDefinitionContext("1296", "SDR", "Filmmaker Mode", "Home Theater System"),
+            new MenuDefinitionContext("1296"),
             [new MenuNode("normal-video", "Normal video")],
             [],
             [],
@@ -382,7 +377,7 @@ public sealed class MenuDefinitionWriterTests : IDisposable
             "json-menu",
             "JSON menu",
             "S95F",
-            new MenuDefinitionContext("1296", "SDR", "Filmmaker Mode", "HDMI 1"),
+            new MenuDefinitionContext("1296"),
             [
                 new MenuNode("normal-video", "Normal video"),
                 new MenuNode("settings", "Settings", "normal-video"),
@@ -446,12 +441,7 @@ public sealed class MenuDefinitionWriterTests : IDisposable
                 AdjustmentDelayMilliseconds: 65),
             [new MenuConfiguration("default", "Default", "Game Mode = Off")],
             verification: new MenuVerificationManifest(
-                new MenuVerificationDisplay(
-                    "S95F",
-                    "1296",
-                    "SDR",
-                    "Filmmaker Mode",
-                    "HDMI 1"),
+                new MenuVerificationDisplay("S95F", "1296"),
                 [new MenuVerificationRecord("display", new string('b', 64), verifiedAt)]));
         var path = Path.Combine(_directory, "menu.json");
 

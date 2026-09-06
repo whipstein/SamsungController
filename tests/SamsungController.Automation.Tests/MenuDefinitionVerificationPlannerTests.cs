@@ -5,13 +5,32 @@ namespace SamsungController.Automation.Tests;
 public sealed class MenuDefinitionVerificationPlannerTests
 {
     [Fact]
+    public void VerificationIdentityUsesModelAndFirmwareAndRejectsChangedFirmware()
+    {
+        var original = new MenuDefinition("firmware-test", "Firmware Test", "S95F",
+            new MenuDefinitionContext("1296"), [new MenuNode("normal-video", "Normal video")], [], []);
+        var plan = MenuDefinitionVerificationPlanner.Create(original);
+        Assert.Equal(new MenuVerificationDisplay("S95F", "1296"), plan.Display);
+        Assert.Equal("S95F · firmware 1296", MenuDefinitionVerificationPlanner.FormatDisplay(plan.Display));
+        var evidence = new MenuVerificationManifest(plan.Display, plan.Checks.Select(check =>
+            new MenuVerificationRecord(check.Id, check.Fingerprint, DateTimeOffset.UtcNow)).ToArray());
+        var updated = new MenuDefinition(original.Id, original.Name, original.Model,
+            new MenuDefinitionContext("1300"), original.Nodes.Values, [], [], verification: evidence);
+
+        var changedPlan = MenuDefinitionVerificationPlanner.Create(updated);
+
+        Assert.Equal("1300", changedPlan.Display.Firmware);
+        Assert.All(changedPlan.Checks, check => Assert.False(MenuDefinitionVerificationPlanner.IsCurrent(updated, check)));
+    }
+
+    [Fact]
     public void ExternalStateRulesUseOneDedicatedGuidedCheck()
     {
         var definition = new MenuDefinition(
             "external-condition",
             "External condition",
             "S95F",
-            new MenuDefinitionContext("1296", "SDR", "Movie", "HDMI 1"),
+            new MenuDefinitionContext("1296"),
             [
                 new MenuNode("normal-video", "Normal video"),
                 new MenuNode("settings", "Settings", "normal-video"),
@@ -91,7 +110,7 @@ public sealed class MenuDefinitionVerificationPlannerTests
             "complete",
             "Complete",
             "S95F",
-            new MenuDefinitionContext("1296", "SDR", "Movie", "HDMI 1"),
+            new MenuDefinitionContext("1296"),
             [
                 new MenuNode("normal-video", "Normal video"),
                 new MenuNode("settings", "Settings", "normal-video"),
@@ -176,7 +195,7 @@ public sealed class MenuDefinitionVerificationPlannerTests
             "representative",
             "Representative",
             "S95F",
-            new MenuDefinitionContext("1296", "SDR", "Movie", "HDMI 1"),
+            new MenuDefinitionContext("1296"),
             nodes,
             [],
             []);
@@ -269,7 +288,7 @@ public sealed class MenuDefinitionVerificationPlannerTests
             "permanently-disabled",
             "Permanently disabled",
             "S95F",
-            new MenuDefinitionContext("1296", "SDR", "Movie", "HDMI 1"),
+            new MenuDefinitionContext("1296"),
             [
                 new MenuNode("normal-video", "Normal video"),
                 new MenuNode("settings", "Settings", "normal-video"),
@@ -314,7 +333,7 @@ public sealed class MenuDefinitionVerificationPlannerTests
             "route-edit",
             "Route edit",
             "S95F",
-            new MenuDefinitionContext("1296", "SDR", "Movie", "HDMI 1"),
+            new MenuDefinitionContext("1296"),
             [
                 new MenuNode("normal-video", "Normal video"),
                 new MenuNode("settings", "Settings", "normal-video")
@@ -356,7 +375,7 @@ public sealed class MenuDefinitionVerificationPlannerTests
         "cross-branch-verification",
         "Cross branch verification",
         "S95F",
-        new MenuDefinitionContext("1296", "SDR", "Movie", "HDMI 1"),
+        new MenuDefinitionContext("1296"),
         [
             new MenuNode("normal-video", "Normal video"),
             new MenuNode("white-balance", "White Balance", "normal-video"),
@@ -412,7 +431,7 @@ public sealed class MenuDefinitionVerificationPlannerTests
             "draft-route",
             "Draft route",
             "S95F",
-            new MenuDefinitionContext("1296", "SDR", "Movie", "HDMI 1"),
+            new MenuDefinitionContext("1296"),
             [
                 new MenuNode("normal-video", "Normal video"),
                 new MenuNode("settings", "Settings", "normal-video")
@@ -454,7 +473,7 @@ public sealed class MenuDefinitionVerificationPlannerTests
             "planner",
             "Planner",
             "S95F",
-            new MenuDefinitionContext("1296", "SDR", "Movie", "HDMI 1"),
+            new MenuDefinitionContext("1296"),
             [
                 new MenuNode("normal-video", "Normal video"),
                 new MenuNode(

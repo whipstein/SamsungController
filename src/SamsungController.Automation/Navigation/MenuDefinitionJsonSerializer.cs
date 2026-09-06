@@ -92,10 +92,7 @@ public sealed class MenuDefinitionJsonSerializer
             ["model"] = definition.Model,
             ["context"] = new JsonObject
             {
-                ["firmware"] = definition.Context.Firmware,
-                ["signal"] = definition.Context.Signal,
-                ["pictureMode"] = definition.Context.PictureMode,
-                ["input"] = definition.Context.Input
+                ["firmware"] = definition.Context.Firmware
             }
         };
         if (definition.Configurations.Count > 0)

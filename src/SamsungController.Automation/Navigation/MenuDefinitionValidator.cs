@@ -659,9 +659,6 @@ public sealed class MenuDefinitionValidator
 
         ValidateRequired("verification display", "model", verification.Display.Model, errors);
         ValidateRequired("verification display", "firmware", verification.Display.Firmware, errors);
-        ValidateRequired("verification display", "signal", verification.Display.Signal, errors);
-        ValidateRequired("verification display", "pictureMode", verification.Display.PictureMode, errors);
-        ValidateRequired("verification display", "input", verification.Display.Input, errors);
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var check in verification.Checks)
         {

@@ -43,7 +43,6 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
         <div><span>Definition</span><strong>@(Navigation.DefinitionName ?? "Not loaded")</strong></div>
         <div><span>Model</span><strong>@(Navigation.Model ?? "—")</strong></div>
         <div><span>Firmware</span><strong>@(Navigation.Context?.Firmware ?? "—")</strong></div>
-        <div><span>Context</span><strong>@ContextLabel</strong></div>
         <div><span>File format</span><strong>@DefinitionFormatLabel</strong></div>
         <div title="@ActiveConfiguration?.Conditions">
             <span>Menu configuration</span>
@@ -188,9 +187,6 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
     private IReadOnlyList<MenuDefinitionSchemaInspection>? SchemaInspections { get; set; }
 
     private string? ErrorMessage => LocalError ?? Navigation.Error;
-    private string ContextLabel => Navigation.Context is null
-        ? "—"
-        : $"{Navigation.Context.Signal} · {Navigation.Context.PictureMode} · {Navigation.Context.Input}";
     private string DefinitionFormatLabel => Path.GetExtension(Navigation.DefinitionPath)
         .ToLowerInvariant() switch
     {

@@ -47,10 +47,7 @@ public static class MenuDefinitionVerificationPlanner
         ArgumentNullException.ThrowIfNull(definition);
         var display = new MenuVerificationDisplay(
             definition.Model,
-            definition.Context.Firmware,
-            definition.Context.Signal,
-            definition.Context.PictureMode,
-            definition.Context.Input);
+            definition.Context.Firmware);
         var checks = new List<MenuDefinitionVerificationCheck>();
 
         Add(
@@ -59,7 +56,7 @@ public static class MenuDefinitionVerificationPlanner
             "display",
             MenuVerificationCheckKind.Display,
             "Display combination",
-            $"Confirm {FormatDisplay(display)} is the display and viewing context being tested.",
+            $"Confirm {FormatDisplay(display)} matches the display being tested.",
             CanonicalDisplay(display));
         Add(
             checks,
@@ -173,7 +170,7 @@ public static class MenuDefinitionVerificationPlanner
     }
 
     public static string FormatDisplay(MenuVerificationDisplay display) =>
-        $"{display.Model} · firmware {display.Firmware} · {display.Signal} · {display.PictureMode} · {display.Input}";
+        $"{display.Model} · firmware {display.Firmware}";
 
     private static void AddReturnScript(
         ICollection<MenuDefinitionVerificationCheck> checks,
@@ -635,7 +632,7 @@ public static class MenuDefinitionVerificationPlanner
         string.IsNullOrWhiteSpace(value) ? "default" : value.Trim();
 
     private static string CanonicalDisplay(MenuVerificationDisplay display) =>
-        $"{display.Model}|{display.Firmware}|{display.Signal}|{display.PictureMode}|{display.Input}";
+        $"{display.Model}|{display.Firmware}";
 
     private static string ControlShape(MenuNode node) => string.Join(
         "|",

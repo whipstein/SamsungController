@@ -100,15 +100,12 @@ of the schema.
 
 ```yaml
 version: 1
-id: s95f-1296-sdr-filmmaker-hdmi-1
+id: s95f-1296
 name: S95F · firmware 1296
 model: S95F
 
 context:
   firmware: "1296"
-  signal: SDR
-  pictureMode: Filmmaker Mode
-  input: HDMI 1
 
 configurations:
   - id: default
@@ -234,14 +231,11 @@ allowed.
 ```json
 {
   "version": 1,
-  "id": "s95f-1296-sdr-filmmaker-hdmi-1",
+  "id": "s95f-1296",
   "name": "S95F · firmware 1296",
   "model": "S95F",
   "context": {
-    "firmware": "1296",
-    "signal": "SDR",
-    "pictureMode": "Filmmaker Mode",
-    "input": "HDMI 1"
+    "firmware": "1296"
   },
   "configurations": [
     {
@@ -351,7 +345,7 @@ allowed.
 | `id` | Yes | Stable profile ID used for per-profile settings. |
 | `name` | Yes | Human-readable profile name. |
 | `model` | Yes | TV model or model family. |
-| `context` | No | Firmware, signal, picture mode, and input for which routes were observed. |
+| `context` | No | Firmware version associated with the menu definition. |
 | `configurations` | No | Named alternate menu layouts. |
 | `externalStates` | No | User-selected equipment or signal context the TV protocol does not report. |
 | `timing` | No | Default waits; omitted fields use built-in defaults. |
@@ -369,13 +363,15 @@ when a TV label changes.
 | Field | Default | Guidance |
 | --- | --- | --- |
 | `firmware` | `unrecorded` | Quote numeric-looking firmware in hand-authored files for clarity. |
-| `signal` | `any` | For example `SDR`, `HDR10`, or `HDR10+`. |
-| `pictureMode` | `any` | For example `Filmmaker Mode`. |
-| `input` | `any` | Input/source observed during verification. |
 
-Use `any` only when behavior was actually verified as independent of that
-dimension. Display Verification binds this structure to a recorded combination
-in a local sidecar without modifying the structure file.
+Firmware is the only supported context field. The TV model remains at the root
+under `model`. Remove `signal`, `pictureMode`, and `input` from older context
+blocks; unknown fields produce a schema error. Generated filenames use model
+and firmware, for example `s95f-1296.yaml` or `s95f-1296.json`.
+
+Display Verification binds the structure to the model and firmware in a local
+sidecar. Named menu configurations, setting conditions, and external equipment
+states remain separate features for menus whose available rows change.
 
 ### `configurations`
 
@@ -587,8 +583,8 @@ routes and verification plan.
 
 Display Verification writes local JSON under the platform configuration
 directory's `menu-verifications/` folder. A sidecar is keyed by the stable menu
-structure ID and can contain separate profiles for multiple model, firmware,
-signal, picture-mode, and input combinations. Each check stores an app-defined
+structure ID and can contain separate profiles for multiple model/firmware
+combinations. Each check stores an app-defined
 ID, a SHA-256 fingerprint, and an ISO-8601 timestamp.
 
 Fingerprints include the display combination and relevant structure behavior.
@@ -598,6 +594,10 @@ hidden behavior classes. Changing only a slider's bounds reopens the shared
 slider check without invalidating unrelated routes. Sidecars are local evidence:
 do not add them to the repository menu catalog or distribute them as proof for
 another physical display.
+
+Verification fingerprints now use model and firmware only. Evidence produced
+with the older signal/picture-mode/input identity will no longer match; review
+the required checks in Display Verification after updating an older file.
 
 ## YAML and JSON differences
 

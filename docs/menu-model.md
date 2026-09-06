@@ -74,9 +74,6 @@ model: Replace with your TV model
 
 context:
   firmware: unrecorded
-  signal: unrecorded
-  pictureMode: unrecorded
-  input: unrecorded
 
 # Display Verification stores its fingerprints in a local sidecar rather than
 # adding display-bound evidence to this distributable structure.
@@ -322,13 +319,12 @@ can be planned or sent.
 
 ## Observation workflow
 
-1. Record the TV firmware, input, SDR/HDR state, and picture mode.
+1. Record the TV model and firmware version.
 2. Connect in the web interface and open **Build & Verify**.
 3. Follow the highlighted three-stage guide. In **Define menu**, create the TV
    profile and enter the model number and firmware version. The default
-   definition name uses those two values. The generated file ID also appends
-   signal type, picture mode, and input/source when their value is more specific
-   than `any`. YAML is created by default; JSON can be selected in the profile
+   definition name and generated file ID use those two values only. Firmware is
+   the only field in the definition's context. YAML is created by default; JSON can be selected in the profile
    form. The definition is stored in the per-user configuration directory and
    loaded automatically. Reusing an existing file ID opens a destructive
    replacement confirmation instead of failing silently or overwriting it

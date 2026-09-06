@@ -109,7 +109,6 @@ public sealed class MenuDefinitionParserTests
         Assert.Equal("odyssey_g9_oled-2231-game", definition.Id);
         Assert.Equal("Odyssey G9 OLED", definition.Model);
         Assert.Equal("2231", definition.Context.Firmware);
-        Assert.Equal("Game", definition.Context.Signal);
         Assert.Null(definition.Verification);
         new MenuDefinitionValidator().ValidateAndThrow(definition);
     }
@@ -304,9 +303,6 @@ public sealed class MenuDefinitionParserTests
 
         Assert.Equal("generic-picture-menu", definition.Id);
         Assert.Equal("unrecorded", definition.Context.Firmware);
-        Assert.Equal("unrecorded", definition.Context.Signal);
-        Assert.Equal("unrecorded", definition.Context.PictureMode);
-        Assert.Equal("unrecorded", definition.Context.Input);
         Assert.Equal(300, definition.Timing.DefaultDelayMilliseconds);
         Assert.Equal(800, definition.Timing.ScreenChangeDelayMilliseconds);
         Assert.Equal(300, definition.Timing.ReturnDelayMilliseconds);
@@ -333,17 +329,15 @@ public sealed class MenuDefinitionParserTests
     [Fact]
     public async Task BundledS95fDefinitionIsAValidDistributableStructure()
     {
-        var path = Path.Combine(
-            AppContext.BaseDirectory,
-            "menu-definitions",
-            "s95f-1296-sdr.json");
+        var directory = Path.Combine(AppContext.BaseDirectory, "menu-definitions");
+        var renamedPath = Path.Combine(directory, "s95f-1296.json");
+        var path = File.Exists(renamedPath) ? renamedPath : Path.Combine(directory, "s95f-1296-sdr.json");
 
         var definition = await new MenuDefinitionParser().ParseFileAsync(path);
 
-        Assert.Equal("s95f-1296-sdr", definition.Id);
+        Assert.Equal(Path.GetFileNameWithoutExtension(path), definition.Id);
         Assert.Equal("S95F", definition.Model);
         Assert.Equal("1296", definition.Context.Firmware);
-        Assert.Equal("SDR", definition.Context.Signal);
         Assert.Null(definition.Verification);
         Assert.Contains("normal-video", definition.Nodes.Keys);
         Assert.Contains("settings", definition.Nodes.Keys);
@@ -351,6 +345,34 @@ public sealed class MenuDefinitionParserTests
         Assert.NotEmpty(definition.Anchors);
         Assert.NotEmpty(definition.Transitions);
         Assert.Empty(new MenuDefinitionValidator().Validate(definition));
+    }
+
+    [Theory]
+    [InlineData("signal", false)]
+    [InlineData("pictureMode", false)]
+    [InlineData("input", false)]
+    [InlineData("signal", true)]
+    [InlineData("pictureMode", true)]
+    [InlineData("input", true)]
+    public void ContextRejectsRemovedFieldsInBothFormats(string field, bool json)
+    {
+        MenuDefinitionParseException exception;
+        if (json)
+        {
+            var text = new MenuDefinitionJsonSerializer().Serialize(new MenuDefinitionParser().Parse(ValidYaml));
+            var root = System.Text.Json.Nodes.JsonNode.Parse(text)!;
+            root["context"]![field] = "unused";
+            exception = Assert.Throws<MenuDefinitionParseException>(() =>
+                new MenuDefinitionJsonSerializer().Parse(root.ToJsonString()));
+        }
+        else
+        {
+            var yaml = ValidYaml.Replace("firmware: 1234.5", $"firmware: 1234.5\n  {field}: unused");
+            exception = Assert.Throws<MenuDefinitionParseException>(() => new MenuDefinitionParser().Parse(yaml));
+        }
+
+        Assert.Contains("context", exception.Message);
+        Assert.Contains(field, exception.Message);
     }
 
     private const string ValidYaml =
@@ -361,9 +383,6 @@ public sealed class MenuDefinitionParserTests
         model: Test TV
         context:
           firmware: 1234.5
-          signal: SDR
-          pictureMode: Movie
-          input: HDMI 1
         nodes:
           - id: normal-video
             label: Normal video

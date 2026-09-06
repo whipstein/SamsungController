@@ -10,13 +10,13 @@ public sealed class MenuDefinitionParser
     private static readonly HashSet<string> RootFields =
         new(["version", "id", "name", "model", "context", "verification", "configurations", "externalStates", "timing", "nodes", "anchors", "transitions"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ContextFields =
-        new(["firmware", "signal", "pictureMode", "input"], StringComparer.OrdinalIgnoreCase);
+        new(["firmware"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> TimingFields =
         new(["defaultDelay", "screenChangeDelay", "returnDelay", "adjustmentDelay", "verified"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> VerificationFields =
         new(["display", "checks"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> VerificationDisplayFields =
-        new(["model", "firmware", "signal", "pictureMode", "input"], StringComparer.OrdinalIgnoreCase);
+        new(["model", "firmware"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> VerificationCheckFields =
         new(["id", "fingerprint", "verifiedAt"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ConfigurationFields =
@@ -142,10 +142,7 @@ public sealed class MenuDefinitionParser
         EnsureAllowedFields(displayFields, VerificationDisplayFields, "verification display");
         var display = new MenuVerificationDisplay(
             RequiredScalar(displayFields, "model", "verification display"),
-            RequiredScalar(displayFields, "firmware", "verification display"),
-            RequiredScalar(displayFields, "signal", "verification display"),
-            RequiredScalar(displayFields, "pictureMode", "verification display"),
-            RequiredScalar(displayFields, "input", "verification display"));
+            RequiredScalar(displayFields, "firmware", "verification display"));
 
         var checks = new List<MenuVerificationRecord>();
         if (fields.TryGetValue("checks", out var checksNode))
@@ -251,10 +248,7 @@ public sealed class MenuDefinitionParser
         var fields = ReadFields(RequireMapping(node, "context"), "context");
         EnsureAllowedFields(fields, ContextFields, "context");
         return new MenuDefinitionContext(
-            OptionalScalar(fields, "firmware") ?? "unrecorded",
-            OptionalScalar(fields, "signal") ?? "any",
-            OptionalScalar(fields, "pictureMode") ?? "any",
-            OptionalScalar(fields, "input") ?? "any");
+            OptionalScalar(fields, "firmware") ?? "unrecorded");
     }
 
     private static IReadOnlyList<MenuNode> ParseNodes(YamlSequenceNode sequence)

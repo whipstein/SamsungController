@@ -17,7 +17,7 @@ It does not copy menu topology, key timing, calibration values, pairing tokens, 
 verification evidence. Use **Files and connection details → Reload menu file** on Connection after editing the
 referenced file outside the app; this reparses the same file rather than making
 a copy. Display Verification continues to use the menu
-definition ID plus model, firmware, signal, picture mode, and input/source.
+definition ID plus model and firmware.
 Creating, editing, or selecting a display definition does not change those
 fingerprints or their `menu-verifications` sidecar.
 
@@ -27,7 +27,7 @@ fingerprints or their `menu-verifications` sidecar.
 2. Select **Create new combination**. The default view shows only saved combinations.
 3. In **Display**, enter the display name and IP address.
 4. In **Menu**, choose an existing menu definition and layout, or **Define a new menu**
-   with the model, firmware, and optional signal/picture-mode/input context.
+   with the model and firmware.
 5. Keep the recommended **Connection settings**, or expand **Advanced connection
    settings** to change them. The optional **Display file ID** is generated from
    the display name when blank.
@@ -44,7 +44,9 @@ saved combination, select **Edit combination**, choose the other menu/layout,
 and select **Save changes**. The new reference is added and becomes the file's
 default. Every linked context appears as a separate choice under **Use saved
 combination**. This is useful
-for separate SDR, HDR, input, picture-mode, or settings-dependent menu files.
+for separate menu files or settings-dependent layouts. Menu context contains
+only firmware; signal and setting dependencies can be represented by menu
+conditions or external equipment states.
 
 Selecting a saved combination loads that exact menu/layout for the display.
 Disconnect before switching combinations or editing connection settings.

@@ -131,10 +131,7 @@ internal sealed class MenuVerificationStore
     private static string FormatDisplayKey(MenuVerificationDisplay display) => string.Join(
         "\u001f",
         display.Model,
-        display.Firmware,
-        display.Signal,
-        display.PictureMode,
-        display.Input);
+        display.Firmware);
 
     private sealed record MenuVerificationStoreDocument(
         int Version,

@@ -14,7 +14,7 @@ public sealed class MenuControlTargetProfileSerializerTests
             "s95f-1296-sdr",
             "S95F 1296 SDR",
             "S95F",
-            new MenuDefinitionContext("1296", "SDR", "Filmmaker Mode", "Home Theater System"),
+            new MenuDefinitionContext("1296"),
             DateTimeOffset.Parse("2026-08-30T12:00:00Z"),
             [
                 new MenuControlProfileValue("brightness", "25"),

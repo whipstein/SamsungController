@@ -4,10 +4,7 @@
     "name": "S95F · firmware 1296",
     "model": "S95F",
     "context": {
-        "firmware": "1296",
-        "signal": "SDR",
-        "pictureMode": "any",
-        "input": "any"
+        "firmware": "1296"
     },
     "configurations": [
         {

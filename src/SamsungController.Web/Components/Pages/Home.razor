@@ -149,12 +149,9 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
                     <div class="field-grid">
                         <label><span>TV model number</span><input @bind="NewMenuModel" placeholder="e.g. S95F" /></label>
                         <label><span>Firmware version</span><input @bind="NewMenuFirmware" placeholder="e.g. 1296" /></label>
-                        <label><span>Signal type</span><input @bind="NewMenuSignal" placeholder="Any, SDR, or HDR" /></label>
-                        <label><span>Picture mode</span><input @bind="NewMenuPictureMode" placeholder="Any, or a specific mode" /></label>
-                        <label><span>Input / source</span><input @bind="NewMenuInput" placeholder="Any, or e.g. HDMI 1" /></label>
                         <label><span>File format</span><select @bind="NewMenuFormat"><option value="@MenuDefinitionFileFormat.Yaml">YAML (default)</option><option value="@MenuDefinitionFileFormat.Json">JSON</option></select></label>
                     </div>
-                    <p class="connection-hint">The menu name and filename are generated from the model, firmware, and any specific context. After saving, you'll continue to Build &amp; Verify to enter the menu tree.</p>
+                    <p class="connection-hint">The menu name and filename are generated from the model and firmware. After saving, you'll continue to Build &amp; Verify to enter the menu tree.</p>
                 }
                 else
                 {
@@ -328,9 +325,6 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
     private bool CreateNewMenu { get; set; }
     private string NewMenuModel { get; set; } = string.Empty;
     private string NewMenuFirmware { get; set; } = string.Empty;
-    private string NewMenuSignal { get; set; } = string.Empty;
-    private string NewMenuPictureMode { get; set; } = string.Empty;
-    private string NewMenuInput { get; set; } = string.Empty;
     private MenuDefinitionFileFormat NewMenuFormat { get; set; } = MenuDefinitionFileFormat.Yaml;
     private DisplayDefinitionSavePreview? PendingDisplayDefinitionReplacement { get; set; }
     private bool ReadinessSettingsValid => KeepAliveIntervalSeconds is >= 5 and <= 120
@@ -411,7 +405,7 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
             DraftConfigurationId = string.Empty;
             DraftMenu = null;
             CreateNewMenu = false;
-            NewMenuModel = NewMenuFirmware = NewMenuSignal = NewMenuPictureMode = NewMenuInput = string.Empty;
+            NewMenuModel = NewMenuFirmware = string.Empty;
             NewMenuFormat = MenuDefinitionFileFormat.Yaml;
             PendingDisplayDefinitionReplacement = null;
             Mode = ConnectionPageMode.Create;
@@ -497,7 +491,7 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
                 }
 
                 creation = new MenuDefinitionCreationRequest(string.Empty, string.Empty, NewMenuModel,
-                    NewMenuFirmware, NewMenuSignal, NewMenuPictureMode, NewMenuInput, NewMenuFormat);
+                    NewMenuFirmware, NewMenuFormat);
                 menuPreview = Controller.PreviewMenuDefinitionCreation(creation);
                 if (menuPreview.FileExists)
                 {
@@ -603,7 +597,7 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
         $"{definition.Name} · {Path.GetFileName(definition.Path)} · {definition.Location}";
 
     private static string FormatMenuContext(string? model, MenuDefinitionContext context) =>
-        $"{model} · firmware {context.Firmware} · {context.Signal} · {context.PictureMode} · {context.Input}";
+        $"{model} · firmware {context.Firmware}";
 
     private void HandleControllerChanged() => _ = InvokeAsync(() =>
     {

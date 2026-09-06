@@ -135,7 +135,7 @@ Status was reconciled with the repository on 2026-08-30. A checked box means the
 ## In progress
 
 - [ ] Complete and reverify the local TV menu map for every intended picture setting.
-- [ ] Record separate contexts where firmware, input/source, SDR/HDR signal, or picture mode changes traversal behavior.
+- [x] Simplify menu context to firmware only; identify menus and verification by model/firmware and keep setting conditions and external states separate.
 - [ ] Keep real-TV observations in ignored `user-data/research-notes.md` and publish only deliberately sanitized conclusions.
 - [ ] Expand automated menu-planning fixtures as new tree shapes and state-specific return rules are discovered.
 - [ ] Reconcile empirical questions in `docs/architecture.md` with sanitized, repeatable observations.

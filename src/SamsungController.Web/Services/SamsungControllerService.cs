@@ -2262,24 +2262,17 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
         var model = request.Model.Trim();
         var firmware = NormalizeContextValue(request.Firmware);
-        var signal = NormalizeContextValue(request.Signal);
-        var pictureMode = NormalizeContextValue(request.PictureMode);
-        var input = NormalizeContextValue(request.Input);
         var definitionName = string.IsNullOrWhiteSpace(request.Name)
             ? $"{model} · firmware {firmware}"
             : request.Name.Trim();
         var definitionId = string.IsNullOrWhiteSpace(request.Id)
-            ? CreateMenuDefinitionId(model, firmware, signal, pictureMode, input)
+            ? CreateMenuDefinitionId(model, firmware)
             : request.Id.Trim();
         var definition = new MenuDefinition(
             definitionId,
             definitionName,
             model,
-            new MenuDefinitionContext(
-                firmware,
-                signal,
-                pictureMode,
-                input),
+            new MenuDefinitionContext(firmware),
             [
                 new MenuNode("tv-interface", "TV interface", Description: "Root for the modeled TV interface."),
                 new MenuNode("normal-video", "Normal video", "tv-interface", "No TV menu is expected to be visible.")
@@ -2304,16 +2297,9 @@ public sealed class SamsungControllerService : IAsyncDisposable
 
     private static string CreateMenuDefinitionId(
         string model,
-        string firmware,
-        string signal,
-        string pictureMode,
-        string input)
+        string firmware)
     {
-        var fileIdParts = new List<string> { model, firmware };
-        AddSpecificDefinitionContext(fileIdParts, signal);
-        AddSpecificDefinitionContext(fileIdParts, pictureMode);
-        AddSpecificDefinitionContext(fileIdParts, input);
-        var normalized = new string(string.Join('-', fileIdParts).Trim().ToLowerInvariant()
+        var normalized = new string($"{model}-{firmware}".Trim().ToLowerInvariant()
             .Select(character => char.IsLetterOrDigit(character) || character == '_'
                 ? character
                 : '-')
@@ -2332,16 +2318,6 @@ public sealed class SamsungControllerService : IAsyncDisposable
         return char.IsLetter(normalized[0]) || normalized[0] == '_'
             ? normalized
             : $"tv-{normalized}";
-    }
-
-    private static void AddSpecificDefinitionContext(ICollection<string> parts, string value)
-    {
-        if (!value.Equals("any", StringComparison.OrdinalIgnoreCase)
-            && !value.Equals("unknown", StringComparison.OrdinalIgnoreCase)
-            && !value.Equals("unrecorded", StringComparison.OrdinalIgnoreCase))
-        {
-            parts.Add(value);
-        }
     }
 
     public async Task SetMenuConfigurationAsync(

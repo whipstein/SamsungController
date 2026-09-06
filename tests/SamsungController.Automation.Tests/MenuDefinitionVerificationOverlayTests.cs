@@ -81,7 +81,7 @@ public sealed class MenuDefinitionVerificationOverlayTests
             "overlay-test",
             "Overlay test",
             "S95F",
-            new MenuDefinitionContext("1296", "SDR", "Movie", "HDMI 1"),
+            new MenuDefinitionContext("1296"),
             [
                 new MenuNode("normal-video", "Normal video"),
                 new MenuNode("settings", "Settings", "normal-video")

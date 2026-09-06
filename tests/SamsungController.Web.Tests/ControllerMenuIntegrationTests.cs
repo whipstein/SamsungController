@@ -54,9 +54,6 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             model: Test TV 2
             context:
               firmware: "2000"
-              signal: HDR
-              pictureMode: Movie
-              input: HDMI 1
             configurations:
               - id: standard
                 name: Standard
@@ -516,10 +513,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             "new-tv",
             "New TV Menu",
             "Samsung Test TV",
-            "1000",
-            "SDR",
-            "Movie",
-            "HDMI 1"));
+            "1000"));
 
         var snapshot = controller.GetMenuNavigationSnapshot();
         Assert.Equal("New TV Menu", snapshot.DefinitionName);
@@ -868,10 +862,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             "replace-tv",
             "Replacement TV Menu",
             "Samsung Test TV",
-            "1000",
-            "SDR",
-            "Movie",
-            "HDMI 1");
+            "1000");
 
         await controller.CreateMenuDefinitionAsync(request);
         await controller.CreateMenuNodeAsync(new MenuNodeEditRequest(
@@ -899,7 +890,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task NewDefinitionDefaultsItsNameAndIdFromModelFirmwareAndSpecificContext()
+    public async Task NewDefinitionDefaultsItsNameAndIdFromModelAndFirmware()
     {
         Directory.CreateDirectory(_directory);
         await using var controller = CreateController();
@@ -909,25 +900,22 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             string.Empty,
             string.Empty,
             "QN90D",
-            "1296",
-            "SDR",
-            "Filmmaker Mode",
-            "HDMI 1"));
+            "1296"));
 
         var snapshot = controller.GetMenuNavigationSnapshot();
         Assert.Equal("QN90D · firmware 1296", snapshot.DefinitionName);
         Assert.EndsWith(
-            "qn90d-1296-sdr-filmmaker-mode-hdmi-1.yaml",
+            "qn90d-1296.yaml",
             snapshot.DefinitionPath,
             StringComparison.Ordinal);
 
         var reparsed = await new MenuDefinitionParser().ParseFileAsync(snapshot.DefinitionPath);
-        Assert.Equal("qn90d-1296-sdr-filmmaker-mode-hdmi-1", reparsed.Id);
+        Assert.Equal("qn90d-1296", reparsed.Id);
         Assert.Equal("QN90D · firmware 1296", reparsed.Name);
     }
 
     [Fact]
-    public async Task NewDefinitionFileIdOmitsNonSpecificContextValues()
+    public async Task NewDefinitionWritesOnlyFirmwareContext()
     {
         Directory.CreateDirectory(_directory);
         await using var controller = CreateController();
@@ -937,16 +925,20 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             string.Empty,
             string.Empty,
             "QN90D",
-            "1296",
-            "any",
-            "unknown",
-            "unrecorded"));
+            "1296"));
 
         var snapshot = controller.GetMenuNavigationSnapshot();
         Assert.EndsWith("qn90d-1296.yaml", snapshot.DefinitionPath, StringComparison.Ordinal);
 
         var reparsed = await new MenuDefinitionParser().ParseFileAsync(snapshot.DefinitionPath);
         Assert.Equal("qn90d-1296", reparsed.Id);
+        Assert.Equal("1296", reparsed.Context.Firmware);
+        using var json = JsonDocument.Parse(new MenuDefinitionJsonSerializer().Serialize(reparsed));
+        Assert.Equal("firmware", Assert.Single(json.RootElement.GetProperty("context").EnumerateObject()).Name);
+        var yaml = await File.ReadAllTextAsync(snapshot.DefinitionPath);
+        Assert.DoesNotContain("signal:", yaml);
+        Assert.DoesNotContain("pictureMode:", yaml);
+        Assert.DoesNotContain("input:", yaml);
     }
 
     [Fact]
@@ -961,9 +953,6 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             "JSON TV",
             "S95F",
             "1296",
-            "SDR",
-            "Filmmaker Mode",
-            "HDMI 1",
             MenuDefinitionFileFormat.Json));
         await controller.CreateMenuNodeAsync(new MenuNodeEditRequest(
             "settings",
@@ -991,10 +980,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             "tree-first",
             "Tree First Menu",
             "Samsung Test TV",
-            "1000",
-            "SDR",
-            "Movie",
-            "HDMI 1"));
+            "1000"));
 
         await controller.CreateMenuNodeAsync(new MenuNodeEditRequest(
             "settings",
@@ -1066,10 +1052,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             "outline-tv",
             "Outline TV",
             "Samsung Test TV",
-            "1000",
-            "SDR",
-            "Movie",
-            "HDMI 1"));
+            "1000"));
 
         const string outline =
             """
@@ -1179,10 +1162,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             "format-error-tv",
             "Format Error TV",
             "Samsung Test TV",
-            "1000",
-            "SDR",
-            "Movie",
-            "HDMI 1"));
+            "1000"));
 
         var exception = Assert.Throws<InvalidOperationException>(() =>
             controller.PreviewMenuTopologyOutline(new MenuTopologyOutlineRequest(
@@ -3638,9 +3618,6 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
             model: S95F
             context:
               firmware: 1296
-              signal: SDR
-              pictureMode: Filmmaker Mode
-              input: Home Theater System
             nodes:
               - id: normal-video
                 label: Normal video

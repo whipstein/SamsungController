@@ -142,6 +142,9 @@ public sealed class ConnectionPageTests : IAsyncLifetime
         await _renderer.ChangeAsync("Display name", "New TV");
         await _renderer.ChangeAsync("IP address", "192.0.2.60");
         await _renderer.ChangeAsync("Define a new menu", true);
+        Assert.DoesNotContain("Signal type", _renderer.Text);
+        Assert.DoesNotContain("Picture mode", _renderer.Text);
+        Assert.DoesNotContain("Input / source", _renderer.Text);
         await _renderer.ChangeAsync("TV model number", "TestModel");
         await _renderer.ChangeAsync("Firmware version", "1234");
         await _renderer.ClickAsync("Save & define menu");
