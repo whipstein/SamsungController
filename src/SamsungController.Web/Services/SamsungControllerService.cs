@@ -3084,6 +3084,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(transitionId);
         await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureNoAutomationRunning("prepare a system timing test");
+        EnsureNoMenuRecording("prepare a system timing test");
         MenuDefinition definition;
         lock (_sync)
         {
@@ -3097,10 +3099,24 @@ public sealed class SamsungControllerService : IAsyncDisposable
             ? candidate
             : throw new KeyNotFoundException(
                 $"Menu transition '{transitionId.Trim()}' was not found.");
-        await PrepareMenuRecordingSourceAsync(
-                transition.FromNodeId,
+        if (!definition.IsApplicableToActiveConfiguration(transition.ConfigurationId))
+        {
+            throw new InvalidOperationException("Select a timing traversal from the active menu configuration.");
+        }
+
+        await RunNavigationAsync(
+                $"Prepare system timing start · {definition.GetPath(transition.FromNodeId)}",
+                (navigator, token) => navigator.PrepareValidationSourceAsync(transition.FromNodeId, token),
+                clearPlanOnSuccess: true,
                 cancellationToken)
             .ConfigureAwait(false);
+        lock (_sync)
+        {
+            _menuAuthoringStatus = $"Start prepared · {definition.GetPath(transition.FromNodeId)}. Check the TV, then run the timing test.";
+            _menuAuthoringError = null;
+        }
+
+        NotifyChanged();
     }
 
     public async Task ConfirmMenuTimingProfileTestAsync(

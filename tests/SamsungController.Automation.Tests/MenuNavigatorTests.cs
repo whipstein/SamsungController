@@ -6,6 +6,74 @@ namespace SamsungController.Automation.Tests;
 public sealed class MenuNavigatorTests
 {
     [Fact]
+    public async Task ExplicitValidationPreparationRunsDraftsWithoutUnlockingNormalNavigation()
+    {
+        var original = CreateDefinition();
+        var definition = new MenuDefinition(original.Id, original.Name, original.Model, original.Context,
+            original.Nodes.Values,
+            original.Transitions.Values.Select(transition => transition with { Verified = false }),
+            original.Anchors.Values.Select(anchor => anchor with { Verified = false }));
+        var tracker = new MenuStateTracker(definition);
+        var target = new RecordingTarget();
+        var navigator = new MenuNavigator(definition, tracker, target, new RecordingDelay());
+
+        await navigator.PrepareValidationSourceAsync("picture");
+
+        Assert.Equal(["KEY_RETURN", "KEY_RETURN", "KEY_MENU", "KEY_ENTER"], target.Keys);
+        Assert.Equal("picture", tracker.Current.NodeId);
+        Assert.Equal(MenuStateConfidence.Probable, tracker.Current.Confidence);
+        Assert.All(definition.Anchors.Values, anchor => Assert.False(anchor.Verified));
+        Assert.All(definition.Transitions.Values, transition => Assert.False(transition.Verified));
+        target.Keys.Clear();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => navigator.ExecuteAnchorAsync("normal"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => navigator.ExecutePlanAsync(
+            new NavigationPlanner().Plan(definition, "normal", "picture", includeDraftTransitions: true)));
+        Assert.Empty(target.Keys);
+    }
+
+    [Theory]
+    [InlineData("settings", false, "KEY_RETURN")]
+    [InlineData("picture", false, "KEY_MENU,KEY_RETURN")]
+    [InlineData("picture", true, "KEY_EXIT")]
+    public async Task ValidationPreparationUsesTheDefinedStateSpecificReturnEvenBeforeVerification(
+        string start, bool useOverride, string expectedKeys)
+    {
+        var definition = CreateStateAwareReturnDefinition(
+            deeperScriptVerified: false, nodeOverrideVerified: useOverride ? false : null);
+        var tracker = new MenuStateTracker(definition);
+        tracker.AssumeNode(start, "Test starting position");
+        var target = new RecordingTarget();
+        var navigator = new MenuNavigator(definition, tracker, target, new RecordingDelay());
+
+        await navigator.PrepareValidationSourceAsync("normal");
+
+        Assert.Equal(expectedKeys.Split(','), target.Keys);
+        Assert.Equal("normal", tracker.Current.NodeId);
+        Assert.Equal(MenuStateConfidence.Probable, tracker.Current.Confidence);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedOrCancelledValidationPreparationMarksPositionUnknown(bool cancelled)
+    {
+        var definition = CreateDefinition();
+        var tracker = new MenuStateTracker(definition);
+        tracker.AssumeNode("settings", "Test starting position");
+        var target = new RecordingTarget
+        {
+            Exception = cancelled ? new OperationCanceledException() : new IOException("send failed")
+        };
+        var navigator = new MenuNavigator(definition, tracker, target, new RecordingDelay());
+
+        var exception = await Record.ExceptionAsync(() => navigator.PrepareValidationSourceAsync("settings"));
+
+        Assert.Same(target.Exception, exception);
+        Assert.Equal(MenuStateConfidence.Unknown, tracker.Current.Confidence);
+        Assert.Null(tracker.Current.NodeId);
+    }
+
+    [Fact]
     public async Task AnchorAndVerifiedPlanUpdatePredictedState()
     {
         var definition = CreateDefinition();

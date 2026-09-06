@@ -341,6 +341,13 @@ specific display combination shown at the top.
 8. Never validate a reset or destructive confirmation merely to satisfy
    coverage; they are excluded from required tests.
 
+For **System-wide command timing**, choose the test traversal and read **START
+AT**. **Prepare start** explicitly sends the defined anchor and the path to that
+source, including draft paths that have not yet been verified. Check the TV and
+correct it manually if necessary before **Run test**. Preparation never counts
+a pass or verifies a route. Success or a missing-path error appears on the timing
+line itself; no preparation commands are added to **Run test**.
+
 Equivalent controls share representative behavior checks. You should not need
 to validate every slider or every dropdown. When all current fingerprints
 match, every group and the persistent header profile badge turn green, and the

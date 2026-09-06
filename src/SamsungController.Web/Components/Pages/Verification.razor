@@ -98,6 +98,8 @@
                                                     <option value="@route.Id">@route.SourcePath → @route.TargetPath · @route.CommandCount commands</option>
                                                 }
                                             </select>
+                                            <small>START AT · @SelectedTimingTestRoute?.SourcePath</small>
+                                            <small>Prepare start sends the defined anchor and source route, even if they still need verification. Check the TV before selecting Run test.</small>
                                         </label>
                                     }
                                     @if (!check.Verified && RequiresEvidenceTest(check) && !check.ExistingEvidenceReady)
@@ -119,6 +121,11 @@
                                     else if (IsGuidedTestError(check))
                                     {
                                         <small class="verification-test-error">@GuidedTestErrorMessage</small>
+                                    }
+                                    @if (EvidenceActionCheckId == check.Id && EvidenceActionMessage is not null)
+                                    {
+                                        <small class="@(EvidenceActionFailed ? "verification-test-error" : "verification-test-result")"
+                                               role="@(EvidenceActionFailed ? "alert" : "status")">@EvidenceActionMessage</small>
                                     }
                                 </div>
                                 <div class="verification-check-actions">
@@ -210,6 +217,11 @@
     private string? GuidedTestErrorCheckId { get; set; }
     private string? GuidedTestErrorMessage { get; set; }
     private string SelectedTimingTestRouteId { get; set; } = string.Empty;
+    private MenuTimingTestRouteSummary? SelectedTimingTestRoute => Authoring.TimingTestRoutes
+        .FirstOrDefault(route => route.Id.Equals(SelectedTimingTestRouteId, StringComparison.OrdinalIgnoreCase));
+    private string? EvidenceActionCheckId { get; set; }
+    private string? EvidenceActionMessage { get; set; }
+    private bool EvidenceActionFailed { get; set; }
     private bool IsBusy { get; set; }
     private string? StatusMessage { get; set; }
     private string? ErrorMessage { get; set; }
@@ -350,7 +362,7 @@
             : $"{check.Label} passed and was recorded. Restored {restoredValues} temporary value{(restoredValues == 1 ? string.Empty : "s")} before returning the TV to {knownState}.";
     });
 
-    private async Task PrepareEvidenceTestAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
+    private async Task PrepareEvidenceTestAsync(MenuDefinitionVerificationCheckSummary check) => await RunEvidenceActionAsync(check, async () =>
     {
         switch (check.Kind)
         {
@@ -381,10 +393,12 @@
                     $"{check.Label} does not have a test start that can be prepared yet.");
         }
 
-        StatusMessage = $"Prepared the displayed start for {check.Label}. Manually correct the TV if needed, then run the test.";
+        StatusMessage = check.Kind == MenuVerificationCheckKind.Timing
+            ? $"Start prepared · {SelectedTimingTestRoute?.SourcePath}. Check the TV, then select Run test. Preparation does not count a pass."
+            : $"Prepared the displayed start for {check.Label}. Manually correct the TV if needed, then run the test.";
     });
 
-    private async Task RunEvidenceTestAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
+    private async Task RunEvidenceTestAsync(MenuDefinitionVerificationCheckSummary check) => await RunEvidenceActionAsync(check, async () =>
     {
         switch (check.Kind)
         {
@@ -418,7 +432,7 @@
 
     private async Task ConfirmEvidenceTestAsync(
         MenuDefinitionVerificationCheckSummary check,
-        bool passed) => await RunAsync(async () =>
+        bool passed) => await RunEvidenceActionAsync(check, async () =>
     {
         switch (check.Kind)
         {
@@ -458,6 +472,16 @@
         await Controller.SendKeyAsync(key);
         StatusMessage = $"Sent {key}.";
     });
+
+    private async Task RunEvidenceActionAsync(MenuDefinitionVerificationCheckSummary check, Func<Task> action)
+    {
+        EvidenceActionCheckId = check.Id;
+        EvidenceActionMessage = "Working…";
+        EvidenceActionFailed = false;
+        await RunAsync(action);
+        EvidenceActionFailed = ErrorMessage is not null;
+        EvidenceActionMessage = ErrorMessage ?? StatusMessage;
+    }
 
     private async Task RunAsync(Func<Task> action)
     {

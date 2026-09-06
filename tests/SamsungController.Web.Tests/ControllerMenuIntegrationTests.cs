@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using SamsungController.Automation.Macros;
 using SamsungController.Automation.Navigation;
 using SamsungController.Core.Connection;
@@ -1781,6 +1782,91 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
                 "open-picture-draft");
 
             Assert.Equal(["KEY_HOME", "KEY_MENU"], GetSentKeys(transport));
+        }
+    }
+
+    [Fact]
+    public async Task TimingPrepareButtonSendsDraftSetupAndShowsResultOnItsOwnLine()
+    {
+        var yaml = ExplicitValidationMenuYaml.Replace("verified: true", "verified: false", StringComparison.Ordinal);
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            await using var services = new ServiceCollection().AddLogging().AddSingleton(controller).BuildServiceProvider();
+            await using var renderer = new VerificationPageTestRenderer(services);
+            await renderer.StartAsync();
+            await renderer.SelectRouteAsync("open-picture-draft");
+            Assert.Contains("START AT · Settings", renderer.TimingText);
+
+            await renderer.ClickAsync("Prepare start");
+
+            Assert.Equal(["KEY_EXIT", "KEY_EXIT", "KEY_MENU"], GetSentKeys(transport));
+            Assert.Contains("Start prepared · Settings", renderer.TimingText);
+            Assert.Contains("Preparation does not count a pass", renderer.TimingText);
+            Assert.Equal(0, controller.GetMenuAuthoringSnapshot().TimingValidationPasses);
+
+            transport.SentMessages.Clear();
+            await renderer.ClickAsync("Run test");
+            Assert.Equal(["KEY_DOWN", "KEY_ENTER"], GetSentKeys(transport));
+            await renderer.ClickAsync("Count pass");
+            Assert.Equal(1, controller.GetMenuAuthoringSnapshot().TimingValidationPasses);
+            Assert.Contains("Pass counted", renderer.TimingText);
+        }
+    }
+
+    [Fact]
+    public async Task TimingPrepareButtonShowsMissingPathErrorOnItsOwnLine()
+    {
+        var yaml = ExplicitValidationMenuYaml.Replace("verified: true", "verified: false", StringComparison.Ordinal);
+        var anchorStart = yaml.IndexOf("anchors:", StringComparison.Ordinal);
+        var transitionStart = yaml.IndexOf("transitions:", StringComparison.Ordinal);
+        yaml = yaml.Remove(anchorStart, transitionStart - anchorStart);
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            await using var services = new ServiceCollection().AddLogging().AddSingleton(controller).BuildServiceProvider();
+            await using var renderer = new VerificationPageTestRenderer(services);
+            await renderer.StartAsync();
+            await renderer.SelectRouteAsync("open-picture-draft");
+
+            await renderer.ClickAsync("Prepare start");
+
+            Assert.Empty(GetSentKeys(transport));
+            Assert.Contains("No defined anchor and route can prepare starting state 'Settings'", renderer.TimingText);
+            Assert.Contains("position the TV manually", renderer.TimingText);
+            Assert.DoesNotContain("Start prepared", renderer.TimingText);
+            Assert.Equal(0, controller.GetMenuAuthoringSnapshot().TimingValidationPasses);
+        }
+    }
+
+    [Fact]
+    public async Task TimingPreparationWorksBeforeAnchorAndSourceRouteAreVerified()
+    {
+        var yaml = ExplicitValidationMenuYaml.Replace("verified: true", "verified: false", StringComparison.Ordinal);
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml);
+        await using (controller)
+        {
+            var path = controller.GetMenuNavigationSnapshot().DefinitionPath;
+            var original = await File.ReadAllTextAsync(path);
+            await controller.PrepareMenuTimingProfileTestSourceAsync("open-picture-draft");
+
+            Assert.Equal(["KEY_EXIT", "KEY_EXIT", "KEY_MENU"], GetSentKeys(transport));
+            Assert.Equal("settings", controller.GetMenuNavigationSnapshot().State.NodeId);
+            Assert.Equal(MenuStateConfidence.Probable, controller.GetSnapshot().MenuConfidence);
+            Assert.Equal(original, await File.ReadAllTextAsync(path));
+            Assert.All(controller.GetMenuNavigationSnapshot().Anchors, anchor => Assert.False(anchor.Verified));
+            Assert.Equal(0, controller.GetMenuAuthoringSnapshot().TimingValidationPasses);
+
+            transport.SentMessages.Clear();
+            await controller.RunMenuTimingProfileTestAsync("open-picture-draft", new MenuTimingProfile(50, 50, 50));
+            Assert.Equal(["KEY_DOWN", "KEY_ENTER"], GetSentKeys(transport));
+            await controller.ConfirmMenuTimingProfileTestAsync(passed: true);
+
+            transport.SentMessages.Clear();
+            await controller.PrepareMenuTimingProfileTestSourceAsync("open-settings");
+            Assert.Equal(["KEY_MENU", "KEY_RETURN"], GetSentKeys(transport));
+            Assert.Equal("normal-video", controller.GetMenuNavigationSnapshot().State.NodeId);
+            Assert.Equal(1, controller.GetMenuAuthoringSnapshot().TimingValidationPasses);
         }
     }
 

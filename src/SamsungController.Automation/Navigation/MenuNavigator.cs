@@ -103,6 +103,46 @@ public sealed class MenuNavigator
         _ = FindUnknownStatePreparation(targetNodeId);
     }
 
+    // Explicit test setup may exercise recorded drafts. Normal navigation still
+    // requires verified anchors and routes; preparation never grants verification.
+    public async Task PrepareValidationSourceAsync(
+        string sourceNodeId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceNodeId);
+        _definition.GetRequiredNode(sourceNodeId);
+        var preparation = FindUnknownStatePreparation(sourceNodeId, includeDrafts: true);
+        var script = ResolveAnchorScript(preparation.Anchor, includeDraftScripts: true);
+        try
+        {
+            await ExecuteOperationsAsync(
+                    $"Prepare test start · {preparation.Anchor.Label} · {script.Label}",
+                    _stateTracker.Current.Path ?? "Unknown",
+                    _definition.GetPath(preparation.Anchor.TargetNodeId),
+                    script.Operations,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            _stateTracker.AssumeNode(preparation.Anchor.TargetNodeId,
+                "Test preparation sent the defined anchor; visually check the TV before testing.");
+            foreach (var transition in preparation.Route.Transitions)
+            {
+                await ExecuteOperationsAsync(
+                        $"Prepare test start · {transition.Id}",
+                        _definition.GetPath(transition.FromNodeId),
+                        _definition.GetPath(transition.ToNodeId),
+                        transition.Operations,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                _stateTracker.ApplyTransition(transition);
+            }
+        }
+        catch
+        {
+            _stateTracker.MarkUnknown("Test preparation did not complete; manually check the TV position.");
+            throw;
+        }
+    }
+
     public NavigationPlan Plan(string targetNodeId, bool includeDraftTransitions = true)
     {
         var state = _stateTracker.Current;
@@ -224,11 +264,11 @@ public sealed class MenuNavigator
         }
     }
 
-    private UnknownStatePreparation FindUnknownStatePreparation(string targetNodeId)
+    private UnknownStatePreparation FindUnknownStatePreparation(string targetNodeId, bool includeDrafts = false)
     {
         var planner = new NavigationPlanner();
         var candidates = new List<UnknownStatePreparation>();
-        foreach (var anchor in _definition.ApplicableAnchors.Where(anchor => anchor.Verified))
+        foreach (var anchor in _definition.ApplicableAnchors.Where(anchor => anchor.Verified || includeDrafts))
         {
             try
             {
@@ -236,26 +276,28 @@ public sealed class MenuNavigator
                     _definition,
                     anchor.TargetNodeId,
                     targetNodeId,
-                    includeDraftTransitions: false);
+                    includeDraftTransitions: includeDrafts);
                 candidates.Add(new UnknownStatePreparation(anchor, route));
             }
             catch (NavigationPlanningException)
             {
-                // This anchor cannot establish the requested state through verified routes.
+                // This anchor cannot establish the requested state through the allowed routes.
             }
         }
 
         return candidates
-            .OrderBy(candidate =>
+            .OrderBy(candidate => !candidate.Anchor.Verified || candidate.Route.UsesDraftTransitions)
+            .ThenBy(candidate =>
                 GetOperationsCost(candidate.Anchor.Operations)
                 + GetPlanCost(candidate.Route))
             .ThenBy(candidate => candidate.Anchor.Label, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault()
-            ?? throw new NavigationPlanningException(
-                $"No verified anchor can prepare starting state '{_definition.GetPath(targetNodeId)}'.");
+            ?? throw new NavigationPlanningException(includeDrafts
+                ? $"No defined anchor and route can prepare starting state '{_definition.GetPath(targetNodeId)}'. Define the missing path in Build & Verify, or position the TV manually and select Run test."
+                : $"No verified anchor can prepare starting state '{_definition.GetPath(targetNodeId)}'.");
     }
 
-    private ResolvedAnchorScript ResolveAnchorScript(MenuAnchor anchor)
+    private ResolvedAnchorScript ResolveAnchorScript(MenuAnchor anchor, bool includeDraftScripts = false)
     {
         var state = _stateTracker.Current;
         if (state.NodeId is null
@@ -266,7 +308,7 @@ public sealed class MenuNavigator
 
         var nodeOverride = anchor.ReturnStrategy?.NodeOverrides?.FirstOrDefault(item =>
             item.NodeId.Equals(state.NodeId, StringComparison.OrdinalIgnoreCase));
-        if (nodeOverride?.Script.Verified == true)
+        if (nodeOverride is not null && (nodeOverride.Script.Verified || includeDraftScripts))
         {
             return new ResolvedAnchorScript(
                 $"{_definition.GetPath(nodeOverride.NodeId)} override",
@@ -277,7 +319,7 @@ public sealed class MenuNavigator
             .Where(transition => transition.ToNodeId.Equals(
                     state.NodeId,
                     StringComparison.OrdinalIgnoreCase)
-                && (transition.Verified
+                && (includeDraftScripts || transition.Verified
                     || state.Confidence == MenuStateConfidence.Synchronized)
                 && transition.ReturnToVideoOperations is { Count: > 0 })
             .OrderBy(transition => transition.ReturnToVideoOperations!.Sum(
@@ -300,13 +342,13 @@ public sealed class MenuNavigator
         }
 
         if (state.NodeId.Equals(strategy.MenuRootNodeId, StringComparison.OrdinalIgnoreCase)
-            && strategy.AtMenuRoot.Verified)
+            && (strategy.AtMenuRoot.Verified || includeDraftScripts))
         {
             return new ResolvedAnchorScript("menu root script", strategy.AtMenuRoot.Operations);
         }
 
         if (_definition.IsDescendantOf(state.NodeId, strategy.MenuRootNodeId)
-            && strategy.BelowMenuRoot.Verified)
+            && (strategy.BelowMenuRoot.Verified || includeDraftScripts))
         {
             return new ResolvedAnchorScript("deeper menu script", strategy.BelowMenuRoot.Operations);
         }
