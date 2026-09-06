@@ -6,31 +6,43 @@ using SamsungController.Web.Components.Pages;
 
 namespace SamsungController.Web.Tests;
 
-// Exercise the actual rendered timing-row buttons without connecting a browser to a TV.
+// Exercise actual verification-row buttons without connecting a browser to a TV.
 #pragma warning disable BL0006
 internal sealed class VerificationPageTestRenderer(IServiceProvider services)
     : Renderer(services, NullLoggerFactory.Instance)
 {
     private int _rootId;
     public override Dispatcher Dispatcher { get; } = Dispatcher.CreateDefault();
-    private RenderTreeFrame[] TimingFrames
+    public string LineLabel { get; set; } = "System-wide command timing";
+    private RenderTreeFrame[] Frames
     {
         get
         {
             var current = GetCurrentRenderTreeFrames(_rootId);
-            var frames = current.Array.Take(current.Count).ToArray();
+            return current.Array.Take(current.Count).ToArray();
+        }
+    }
+    private RenderTreeFrame[] LineFrames
+    {
+        get
+        {
+            var frames = Frames;
             return frames.Select((frame, index) => (frame, index))
                 .Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "article")
                 .Select(item => frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray())
-                .Single(article => FrameText(article).Contains("System-wide command timing", StringComparison.Ordinal));
+                .Single(article => article.Select((frame, index) => (frame, index))
+                    .Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "strong")
+                    .Any(item => FrameText(article.Skip(item.index).Take(item.frame.ElementSubtreeLength)).Trim() == LineLabel));
         }
     }
 
-    public string TimingText => FrameText(TimingFrames);
+    public string TimingText => LineText;
+    public string LineText => FrameText(LineFrames);
+    public string Text => FrameText(Frames);
 
-    public Task StartAsync() => Dispatcher.InvokeAsync(async () =>
+    public Task StartAsync(Type? componentType = null) => Dispatcher.InvokeAsync(async () =>
     {
-        _rootId = AssignRootComponentId(InstantiateComponent(typeof(Verification)));
+        _rootId = AssignRootComponentId(InstantiateComponent(componentType ?? typeof(Verification)));
         await RenderRootComponentAsync(_rootId);
     });
 
@@ -38,14 +50,18 @@ internal sealed class VerificationPageTestRenderer(IServiceProvider services)
         new ChangeEventArgs { Value = routeId });
 
     public Task ClickAsync(string label) => DispatchAsync("button", label, "onclick", new MouseEventArgs());
+    public Task ClickPageButtonAsync(string label) => DispatchAsync("button", label, "onclick", new MouseEventArgs(), wholePage: true);
 
-    private Task DispatchAsync(string tag, string? label, string eventName, EventArgs args) => Dispatcher.InvokeAsync(async () =>
+    public string? LinkDestination => LineFrames.FirstOrDefault(frame => frame.FrameType == RenderTreeFrameType.Attribute
+        && frame.AttributeName == "href").AttributeValue?.ToString();
+
+    private Task DispatchAsync(string tag, string? label, string eventName, EventArgs args, bool wholePage = false) => Dispatcher.InvokeAsync(async () =>
     {
-        var frames = TimingFrames;
+        var frames = wholePage ? Frames : LineFrames;
         var element = frames.Select((frame, index) => (frame, index))
             .Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == tag)
             .Select(item => frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray())
-            .Single(item => label is null || FrameText(item).Trim() == label);
+            .Single(item => label is null || FrameText(item).Trim().StartsWith(label, StringComparison.Ordinal));
         Assert.DoesNotContain(element, frame => frame.FrameType == RenderTreeFrameType.Attribute
             && frame.AttributeName == "disabled" && frame.AttributeValue is true);
         var handler = element.Single(frame => frame.FrameType == RenderTreeFrameType.Attribute

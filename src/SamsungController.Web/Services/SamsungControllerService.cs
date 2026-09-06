@@ -624,7 +624,10 @@ public sealed class SamsungControllerService : IAsyncDisposable
                     validationPasses,
                     MenuValidationSession.RequiredPasses,
                     awaitingValidationConfirmation,
-                    verified ? record!.VerifiedAtUtc : null);
+                    verified ? record!.VerifiedAtUtc : null,
+                    check.Kind == MenuVerificationCheckKind.Anchor && check.SourceItemId is { } anchorId
+                        ? GetRelatedAnchorReturnCheckId(definition.GetRequiredAnchor(anchorId))
+                        : null);
             }).ToArray();
             var currentRecordKeys = plan.Checks
                 .Select(check => $"{check.Id}\u001f{check.Fingerprint}")
@@ -1248,7 +1251,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             var candidates = definition is null
                 ? []
                 : definition.ApplicableAnchors
-                    .Where(anchor => !anchor.Verified && anchor.ReturnStrategy is null)
+                    .Where(anchor => !anchor.Verified && GetRelatedAnchorReturnCheckId(anchor) is null)
                     .Select(anchor => new MenuAuthoringCandidateSummary(
                         MenuAuthoringItemKind.Anchor,
                         anchor.Id,
@@ -6714,6 +6717,8 @@ public sealed class SamsungControllerService : IAsyncDisposable
         MenuDefinitionVerificationCheck check,
         MenuControlVerificationSnapshot controlVerification) => check.Kind switch
         {
+            MenuVerificationCheckKind.Anchor when check.SourceItemId is { } anchorId =>
+                check.ExistingEvidenceReady || HasMatchingReturnEvidence(definition.GetRequiredAnchor(anchorId)),
             MenuVerificationCheckKind.SliderBehavior => controlVerification.SlidersVerified,
             MenuVerificationCheckKind.Selection => check.TargetNodeId is { } nodeId
                 && controlVerification.VerifiedSelectionControlTypes.Contains(
@@ -6721,6 +6726,38 @@ public sealed class SamsungControllerService : IAsyncDisposable
                         definition.GetRequiredNode(nodeId))),
             _ => check.ExistingEvidenceReady
         };
+
+    private static bool HasMatchingReturnEvidence(MenuAnchor anchor) => GetAnchorReturnValidationKind(anchor) switch
+    {
+        MenuReturnScriptKind.AtMenuRoot => anchor.ReturnStrategy!.AtMenuRoot.Verified,
+        MenuReturnScriptKind.BelowMenuRoot => anchor.ReturnStrategy!.BelowMenuRoot.Verified,
+        _ => false
+    };
+
+    private static MenuReturnScriptKind? GetAnchorReturnValidationKind(MenuAnchor anchor)
+    {
+        if (anchor.ReturnStrategy is not { } strategy)
+        {
+            return null;
+        }
+
+        var signature = GetOperationSignature(ExpandOperations(anchor.Operations));
+        if (signature == GetOperationSignature(ExpandOperations(strategy.BelowMenuRoot.Operations)))
+        {
+            return MenuReturnScriptKind.BelowMenuRoot;
+        }
+
+        return signature == GetOperationSignature(ExpandOperations(strategy.AtMenuRoot.Operations))
+            ? MenuReturnScriptKind.AtMenuRoot
+            : null;
+    }
+
+    private static string? GetRelatedAnchorReturnCheckId(MenuAnchor anchor) => GetAnchorReturnValidationKind(anchor) switch
+    {
+        MenuReturnScriptKind.AtMenuRoot => $"return:{(string.IsNullOrWhiteSpace(anchor.ConfigurationId) ? "default" : anchor.ConfigurationId)}:{anchor.Id}:menu-root",
+        MenuReturnScriptKind.BelowMenuRoot => $"return:{(string.IsNullOrWhiteSpace(anchor.ConfigurationId) ? "default" : anchor.ConfigurationId)}:{anchor.Id}:below-root",
+        _ => null
+    };
 
     private static MenuReturnScriptKind? GetVerificationReturnScriptKind(
         MenuDefinitionVerificationCheck check)
@@ -6785,6 +6822,16 @@ public sealed class SamsungControllerService : IAsyncDisposable
         }
 
         var plan = MenuDefinitionVerificationPlanner.Create(definition);
+        var completedIds = checks.Select(check => check.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // An identical return script is also evidence for the anchor fallback.
+        // Record (or invalidate) both in the sidecar, without rewriting either script.
+        checks = checks.Concat(plan.Checks.Where(check =>
+                check.Kind == MenuVerificationCheckKind.Anchor
+                && check.SourceItemId is { } anchorId
+                && GetRelatedAnchorReturnCheckId(definition.GetRequiredAnchor(anchorId)) is { } returnCheckId
+                && completedIds.Contains(returnCheckId)))
+            .DistinctBy(check => check.Id, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
         MenuDefinition updated;
         if (verified)
         {
@@ -7950,8 +7997,7 @@ public sealed class SamsungControllerService : IAsyncDisposable
             .Select(anchor => anchor.Id.Equals(context.Anchor.Id, StringComparison.OrdinalIgnoreCase)
                 ? anchor with
                 {
-                    Operations = strategy.BelowMenuRoot.Operations,
-                    Verified = kind == MenuReturnScriptKind.BelowMenuRoot
+                    Verified = kind == GetAnchorReturnValidationKind(anchor)
                         ? verified
                         : anchor.Verified,
                     ReturnStrategy = strategy

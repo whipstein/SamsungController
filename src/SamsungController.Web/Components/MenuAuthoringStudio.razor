@@ -1647,8 +1647,9 @@
         && !IsBusy && !Authoring.IsRecording && !Navigation.IsRunning && !Snapshot.MacroRunning
         && !Authoring.AwaitingValidationConfirmation && !Authoring.AwaitingTimingValidationConfirmation
         && Authoring.ReturnStrategy.AwaitingValidationConfirmation == false;
-    private bool CanTestAtMenuRootReturn => CanSaveReturnScripts && IsConnected;
-    private bool CanTestBelowMenuRootReturn => CanSaveReturnScripts && IsConnected
+    private bool CanTestAtMenuRootReturn => CanRunValidation && Authoring.ReturnStrategy is not null
+        && !Authoring.AwaitingValidationConfirmation;
+    private bool CanTestBelowMenuRootReturn => CanTestAtMenuRootReturn
         && Authoring.ReturnStrategy!.DeepTestNodes.Any(node =>
             node.Id.Equals(DeepReturnTestNodeId, StringComparison.OrdinalIgnoreCase));
     private bool CanPrepareAnchorReturnSource => AnchorDefinitionComplete && IsConnected
@@ -2935,10 +2936,10 @@
     });
 
     private Task TestAtMenuRootReturnAsync() =>
-        SaveAndTestReturnScriptAsync(MenuReturnScriptKind.AtMenuRoot);
+        RunReturnScriptValidationAsync(MenuReturnScriptKind.AtMenuRoot);
 
     private Task TestBelowMenuRootReturnAsync() =>
-        SaveAndTestReturnScriptAsync(MenuReturnScriptKind.BelowMenuRoot);
+        RunReturnScriptValidationAsync(MenuReturnScriptKind.BelowMenuRoot);
 
     private Task PrepareAnchorReturnSourceAsync(MenuReturnScriptKind kind) =>
         RunBusyAsync(() => Controller.PrepareMenuReturnStrategyTestSourceAsync(
@@ -3024,9 +3025,8 @@
                 : strategy.FallbackScript;
     }
 
-    private Task SaveAndTestReturnScriptAsync(MenuReturnScriptKind kind) => RunBusyAsync(async () =>
+    private Task RunReturnScriptValidationAsync(MenuReturnScriptKind kind) => RunBusyAsync(async () =>
     {
-        await SaveReturnScriptsCoreAsync();
         await Controller.RunMenuReturnStrategyTestAsync(
             kind,
             kind == MenuReturnScriptKind.BelowMenuRoot ? DeepReturnTestNodeId : null);

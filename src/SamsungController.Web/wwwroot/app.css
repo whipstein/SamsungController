@@ -1303,7 +1303,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(var(--cyan-rgb),.
 .verification-group > header span, .verification-group > header small { color: var(--faint); font: 10px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; }
 .verification-group > header strong { font-size: 14px; }
 .verification-checks { display: grid; }
-.verification-check { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 13px 14px; border-bottom: 1px solid var(--line); }
+.verification-check { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 13px 14px; border-bottom: 1px solid var(--line); scroll-margin-top: 132px; }
 .verification-check:last-child { border-bottom: 0; }
 .verification-check.pending { background: rgba(var(--danger-rgb),.075); }
 .verification-check-state { width: 25px; height: 25px; display: grid; place-items: center; border: 1px solid rgba(var(--danger-rgb),.4); border-radius: 50%; color: var(--danger); font-weight: 700; }

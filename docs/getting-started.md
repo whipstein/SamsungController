@@ -348,6 +348,13 @@ correct it manually if necessary before **Run test**. Preparation never counts
 a pass or verifies a route. Success or a missing-path error appears on the timing
 line itself; no preparation commands are added to **Run test**.
 
+An anchor whose fallback commands match a return script links to **Go to
+matching return test** on this same page. Completing that return test also
+records the anchor result. A different fallback has its own test. **Test line
+item** in Build & Verify tests the saved commands without saving editor changes.
+Both workflows work with read-only installation menus: results go only into
+personal `menu-verifications/`, and the referenced menu is not changed or copied.
+
 Equivalent controls share representative behavior checks. You should not need
 to validate every slider or every dropdown. When all current fingerprints
 match, every group and the persistent header profile badge turn green, and the

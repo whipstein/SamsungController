@@ -78,7 +78,7 @@
                     <div class="verification-checks">
                         @foreach (var check in group.Checks)
                         {
-                            <article class="verification-check @(check.Verified ? "verified" : "pending")">
+                            <article id="verification-check-@check.Id" class="verification-check @(check.Verified ? "verified" : "pending")">
                                 <div class="verification-check-state" aria-hidden="true">@(check.Verified ? "✓" : "!")</div>
                                 <div class="verification-check-copy">
                                     <span>@FormatKind(check.Kind)@FormatConfiguration(check)</span>
@@ -173,9 +173,9 @@
                                     }
                                     else if (!check.AwaitingValidationConfirmation && !check.Verified && !check.ExistingEvidenceReady && check.IsForActiveConfiguration && NeedsRelatedReturnCheck(check))
                                     {
-                                        <button class="secondary-action" disabled>Complete its return check below</button>
+                                        <a class="secondary-action" href="verification#verification-check-@check.RelatedReturnCheckId">Go to matching return test</a>
                                     }
-                                    else if (!check.AwaitingValidationConfirmation && !check.Verified && !check.ExistingEvidenceReady && check.IsForActiveConfiguration && RequiresEvidenceTest(check) && !CanRunEvidenceTest(check))
+                                    else if (!check.AwaitingValidationConfirmation && !check.Verified && !check.ExistingEvidenceReady && check.IsForActiveConfiguration && RequiresEvidenceTest(check) && !CanRunEvidenceTest(check) && !NeedsRelatedReturnCheck(check))
                                     {
                                         <a class="secondary-action" href="menu/build#draft-validation">Add missing definition</a>
                                     }
@@ -562,8 +562,7 @@
 
     private bool NeedsRelatedReturnCheck(MenuDefinitionVerificationCheckSummary check) =>
         check.Kind == MenuVerificationCheckKind.Anchor
-        && check.AuthoringItemId is null
-        && Authoring.ReturnStrategy is not null;
+        && check.RelatedReturnCheckId is not null;
 
     private string EvidenceInstruction(MenuDefinitionVerificationCheckSummary check)
     {
@@ -584,7 +583,8 @@
 
         if (NeedsRelatedReturnCheck(check))
         {
-            return "Complete the related return-to-video check on this page; it supplies this anchor evidence.";
+            var related = VerificationState.Checks.FirstOrDefault(item => item.Id == check.RelatedReturnCheckId);
+            return $"This anchor uses the same commands as {related?.Label ?? "the matching return test"}. Complete that test on this page; its third pass also verifies this anchor. No definition is missing.";
         }
 
         return "The menu definition is missing the recorded route needed for this test.";

@@ -3,11 +3,13 @@ using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.JSInterop;
 using SamsungController.Automation.Macros;
 using SamsungController.Automation.Navigation;
 using SamsungController.Core.Connection;
 using SamsungController.Core.Protocol;
 using SamsungController.Web.Services;
+using SamsungController.Web.Components;
 
 namespace SamsungController.Web.Tests;
 
@@ -16,6 +18,7 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     private readonly string _directory = Path.Combine(
         Path.GetTempPath(),
         $"SamsungController.Web.Tests-{Guid.NewGuid():N}");
+    private readonly List<string> _installedTestMenus = [];
 
     [Fact]
     public async Task InitializationLoadsConfiguredMenuDefinitionIntoSnapshot()
@@ -1783,6 +1786,109 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
 
             Assert.Equal(["KEY_HOME", "KEY_MENU"], GetSentKeys(transport));
         }
+    }
+
+    [Fact]
+    public async Task InstalledMenuReturnVerificationStaysOnVerificationPageAndPersistsBothResults()
+    {
+        var yaml = ExplicitValidationMenuYaml.Replace("verified: true", "verified: false", StringComparison.Ordinal)
+            .Replace("- key: KEY_EXIT\n        repeat: 2", "- key: KEY_MENU\n      - key: KEY_RETURN", StringComparison.Ordinal);
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml, installedMenu: true);
+        await using (controller)
+        {
+            var path = controller.GetMenuNavigationSnapshot().DefinitionPath;
+            var original = await File.ReadAllTextAsync(path);
+            await using var services = new ServiceCollection().AddLogging().AddSingleton(controller).BuildServiceProvider();
+            await using var renderer = new VerificationPageTestRenderer(services)
+            {
+                LineLabel = "Anchor · Return to normal video"
+            };
+            await renderer.StartAsync();
+
+            Assert.DoesNotContain("Add missing definition", renderer.LineText);
+            Assert.Contains("Go to matching return test", renderer.LineText);
+            Assert.Equal("verification#verification-check-return:default:normal:below-root", renderer.LinkDestination);
+            renderer.LineLabel = "Return to video · Below menu root";
+            for (var pass = 0; pass < 3; pass++)
+            {
+                transport.SentMessages.Clear();
+                await renderer.ClickAsync("Run test");
+                Assert.Equal(["KEY_MENU", "KEY_RETURN"], GetSentKeys(transport));
+                await renderer.ClickAsync("Count pass");
+            }
+
+            var snapshot = controller.GetMenuDefinitionVerificationSnapshot();
+            Assert.True(snapshot.Checks.Single(check => check.Id == "anchor:default:normal").Verified);
+            Assert.True(snapshot.Checks.Single(check => check.Id == "return:default:normal:below-root").Verified);
+            Assert.Equal(original, await File.ReadAllTextAsync(path));
+            Assert.Equal(path, controller.GetMenuNavigationSnapshot().DefinitionPath);
+            Assert.Single(Directory.GetFiles(Path.Combine(_directory, "menu-verifications"), "*.json"));
+            Assert.False(Directory.Exists(Path.Combine(_directory, "menu-definitions")));
+
+            await controller.ReloadMenuDefinitionAsync();
+            Assert.True(controller.GetMenuDefinitionVerificationSnapshot().Checks.Single(check =>
+                check.Id == "anchor:default:normal").Verified);
+            // Previously saved return evidence can fill the missing anchor result
+            // without asking the user to repeat the visual test.
+            await controller.RemoveMenuDefinitionVerificationCheckAsync("anchor:default:normal");
+            Assert.True(controller.GetMenuDefinitionVerificationSnapshot().Checks.Single(check =>
+                check.Id == "anchor:default:normal").ExistingEvidenceReady);
+            transport.SentMessages.Clear();
+            await controller.ConfirmMenuDefinitionVerificationCheckAsync("anchor:default:normal");
+            Assert.Empty(GetSentKeys(transport));
+            await controller.RunMenuReturnStrategyTestAsync(MenuReturnScriptKind.BelowMenuRoot, "picture");
+            await controller.ConfirmMenuReturnStrategyTestAsync(passed: false);
+            Assert.False(controller.GetMenuDefinitionVerificationSnapshot().Checks.Single(check =>
+                check.Id == "anchor:default:normal").Verified);
+            Assert.Equal(original, await File.ReadAllTextAsync(path));
+        }
+    }
+
+    [Fact]
+    public async Task BuildReturnLineTestsInstalledMenuWithoutSavingScriptsOrChangingFallback()
+    {
+        var yaml = ExplicitValidationMenuYaml.Replace("verified: true", "verified: false", StringComparison.Ordinal);
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml, installedMenu: true);
+        await using (controller)
+        {
+            var path = controller.GetMenuNavigationSnapshot().DefinitionPath;
+            var original = await File.ReadAllTextAsync(path);
+            await using var services = new ServiceCollection().AddLogging().AddSingleton(controller)
+                .AddSingleton<IJSRuntime>(new NoOpJavaScript()).BuildServiceProvider();
+            await using var renderer = new VerificationPageTestRenderer(services)
+            {
+                LineLabel = "Return from Settings"
+            };
+            await renderer.StartAsync(typeof(MenuAuthoringStudio));
+            for (var pass = 0; pass < 3; pass++)
+            {
+                transport.SentMessages.Clear();
+                await renderer.ClickAsync("Test line item");
+                Assert.Equal(["KEY_RETURN"], GetSentKeys(transport));
+                await renderer.ClickAsync("Yes — count pass");
+            }
+
+            Assert.DoesNotContain("read-only", renderer.Text);
+            Assert.Equal(original, await File.ReadAllTextAsync(path));
+            Assert.Equal("KEY_EXIT, KEY_EXIT", controller.GetMenuAuthoringSnapshot().ReturnStrategy!.FallbackScript);
+            var anchorCheck = controller.GetMenuDefinitionVerificationSnapshot().Checks.Single(check =>
+                check.Id == "anchor:default:normal");
+            Assert.Null(anchorCheck.RelatedReturnCheckId);
+            Assert.False(anchorCheck.Verified);
+            Assert.Contains(controller.GetMenuAuthoringSnapshot().DraftCandidates, candidate =>
+                candidate.Kind == MenuAuthoringItemKind.Anchor && candidate.Id == "normal");
+            Assert.Single(Directory.GetFiles(Path.Combine(_directory, "menu-verifications"), "*.json"));
+            await controller.ReloadMenuDefinitionAsync();
+            Assert.True(controller.GetMenuDefinitionVerificationSnapshot().Checks.Single(check =>
+                check.Id == "return:default:normal:menu-root").Verified);
+        }
+    }
+
+    private sealed class NoOpJavaScript : IJSRuntime
+    {
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) => ValueTask.FromResult(default(TValue)!);
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args) =>
+            ValueTask.FromResult(default(TValue)!);
     }
 
     [Fact]
@@ -4580,10 +4686,18 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
     private async Task<(SamsungControllerService Controller, RecordingSamsungTransport Transport)>
         CreateConnectedControllerAsync(
             string? definitionYaml = null,
-            bool clearSentMessages = true)
+            bool clearSentMessages = true,
+            bool installedMenu = false)
     {
         Directory.CreateDirectory(_directory);
-        var definitionPath = Path.Combine(_directory, "explicit-validation-menu.yaml");
+        var definitionPath = installedMenu
+            ? Path.Combine(AppContext.BaseDirectory, "menu-definitions", $"verification-test-{Guid.NewGuid():N}.yaml")
+            : Path.Combine(_directory, "explicit-validation-menu.yaml");
+        if (installedMenu)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(definitionPath)!);
+            _installedTestMenus.Add(definitionPath);
+        }
         await File.WriteAllTextAsync(
             definitionPath,
             definitionYaml ?? ExplicitValidationMenuYaml);
@@ -4666,6 +4780,11 @@ public sealed class ControllerMenuIntegrationTests : IDisposable
 
     public void Dispose()
     {
+        foreach (var path in _installedTestMenus)
+        {
+            File.Delete(path);
+        }
+
         if (Directory.Exists(_directory))
         {
             Directory.Delete(_directory, recursive: true);

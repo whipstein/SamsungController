@@ -248,7 +248,8 @@ public sealed record MenuDefinitionVerificationCheckSummary(
     int ValidationPasses,
     int RequiredValidationPasses,
     bool AwaitingValidationConfirmation,
-    DateTimeOffset? VerifiedAtUtc);
+    DateTimeOffset? VerifiedAtUtc,
+    string? RelatedReturnCheckId = null);
 
 public sealed record MenuDefinitionVerificationSnapshot(
     string? DefinitionName,
