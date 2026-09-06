@@ -51,6 +51,10 @@
         },
         set: function (value) {
             return applyTheme(value, true);
+        },
+        toggle: function () {
+            const current = normalize(root.dataset.theme) ?? "dark";
+            return applyTheme(current === "light" ? "dark" : "light", true);
         }
     };
 })();

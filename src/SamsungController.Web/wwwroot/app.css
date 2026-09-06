@@ -124,7 +124,11 @@ a { color: inherit; }
 .eyebrow { font: 10px ui-monospace, "SFMono-Regular", Consolas, monospace; color: var(--cyan); letter-spacing: .16em; }
 .topbar-connection-control { display: flex; align-items: center; gap: 8px; }
 .theme-toggle { min-height: 32px; display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface-control); color: var(--muted); cursor: pointer; font: 9px ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; letter-spacing: .06em; }
-.theme-toggle span { color: var(--cyan); font-size: 13px; line-height: 1; }
+.theme-toggle-state { display: none; align-items: center; gap: 7px; }
+.theme-toggle-state.dark { display: inline-flex; }
+html[data-theme="light"] .theme-toggle-state.dark { display: none; }
+html[data-theme="light"] .theme-toggle-state.light { display: inline-flex; }
+.theme-toggle-state i { color: var(--cyan); font: normal 13px/1 sans-serif; }
 .theme-toggle:hover:not(:disabled) { border-color: rgba(var(--cyan-rgb),.5); background: var(--cyan-soft); color: var(--ink); }
 .theme-toggle:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .connection-pill { padding: 8px 11px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font: 10px ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; letter-spacing: .07em; }
@@ -164,9 +168,8 @@ a { color: inherit; }
 .persistent-menu-state.unknown { border-color: var(--danger); }
 .persistent-external-state { min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 3px 0 3px 14px; border-left: 3px solid var(--cyan); }
 .persistent-external-state > span { color: var(--faint); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .12em; }
-.persistent-external-state label { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 7px; }
-.persistent-external-state small { overflow: hidden; color: var(--muted); font: 8px ui-monospace, "SFMono-Regular", Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
-.persistent-external-state select { min-width: 94px; max-width: 130px; padding: 4px 20px 4px 7px; border: 1px solid var(--line); border-radius: 4px; background-color: var(--surface-inset); color: var(--ink); font: 9px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.persistent-external-state label { display: block; min-width: 0; }
+.persistent-external-state select { width: 100%; max-width: 210px; padding: 3px 24px 3px 0; border: 0; background-color: transparent; color: var(--ink); font-size: 17px; line-height: 1.1; font-weight: 600; letter-spacing: -.02em; }
 .persistent-external-state select:disabled { cursor: not-allowed; opacity: .5; }
 .persistent-verification-state { min-width: 0; display: flex; flex-direction: column; justify-content: center; padding: 3px 0 3px 17px; border-left: 3px solid var(--danger); color: inherit; text-decoration: none; transition: .16s ease; }
 .persistent-verification-state:hover { background: var(--subtle-highlight); }
@@ -1246,7 +1249,7 @@ input:focus, select:focus, textarea:focus { border-color: rgba(var(--cyan-rgb),.
 .verification-checks { display: grid; }
 .verification-check { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 13px 14px; border-bottom: 1px solid var(--line); }
 .verification-check:last-child { border-bottom: 0; }
-.verification-check.pending { background: rgba(var(--danger-rgb),.018); }
+.verification-check.pending { background: rgba(var(--danger-rgb),.075); }
 .verification-check-state { width: 25px; height: 25px; display: grid; place-items: center; border: 1px solid rgba(var(--danger-rgb),.4); border-radius: 50%; color: var(--danger); font-weight: 700; }
 .verification-check.verified .verification-check-state { border-color: rgba(var(--cyan-rgb),.45); background: var(--cyan-soft); color: var(--cyan); }
 .verification-check-copy > span { color: var(--faint); font: 9px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .09em; }
