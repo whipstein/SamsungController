@@ -141,6 +141,49 @@ public sealed class ProtocolMessageFormatterTests
         Assert.Equal(endpoint, revealed);
     }
 
+    [Theory]
+    [InlineData("1296")]
+    [InlineData("2.0")]
+    [InlineData("1")]
+    [InlineData("3")]
+    [InlineData("0")]
+    [InlineData("16:9")]
+    [InlineData("999.999.999.999")]
+    public void DoesNotTreatDiagnosticNumbersAndVersionsAsIpAddresses(string value)
+    {
+        Assert.Equal(value, ProtocolMessageFormatter.FormatIdentifierText(value, revealDeviceIdentifiers: false));
+    }
+
+    [Fact]
+    public void EmbeddedRepliesPreserveProtocolIdsAndValuesWhileRedactingAddresses()
+    {
+        var original = new JsonObject
+        {
+            ["Firmware"] = "1296",
+            ["ResponseJson"] = """{"jsonrpc":"2.0","id":"3","result":{"brightness":0,"ip":"192.0.2.10","ipv6":"2001:db8::10"}}""",
+            ["array"] = new JsonArray("1296", "2001:db8::10", "192.0.2.10")
+        };
+        var json = ProtocolMessageFormatter.FormatJson(original.ToJsonString(), revealSensitive: false);
+        var report = JsonNode.Parse(json)!;
+        var reply = JsonNode.Parse(report["ResponseJson"]!.GetValue<string>())!;
+        Assert.Equal("1296", report["Firmware"]!.GetValue<string>());
+        Assert.Equal("2.0", reply["jsonrpc"]!.GetValue<string>());
+        Assert.Equal("3", reply["id"]!.GetValue<string>());
+        Assert.Equal(0, reply["result"]!["brightness"]!.GetValue<int>());
+        Assert.Equal("1296", report["array"]![0]!.GetValue<string>());
+        Assert.DoesNotContain("192.0.2.10", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("2001:db8::10", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MacRedactionDoesNotPartiallyRedactColonSeparatedSha256Fingerprints()
+    {
+        var fingerprint = string.Join(":", Enumerable.Repeat("AB", 32));
+        Assert.Equal(fingerprint, ProtocolMessageFormatter.FormatIdentifierText(fingerprint, revealDeviceIdentifiers: false));
+        Assert.Equal($"SHA256: {fingerprint}", ProtocolMessageFormatter.FormatIdentifierText($"SHA256: {fingerprint}", revealDeviceIdentifiers: false));
+        Assert.Equal("[redacted-mac]", ProtocolMessageFormatter.FormatIdentifierText("01:23:45:67:89:ab", revealDeviceIdentifiers: false));
+    }
+
     private static SamsungMessage CreateMessage(string rawJson) => new(
         DateTimeOffset.UtcNow,
         SamsungMessageDirection.Rx,

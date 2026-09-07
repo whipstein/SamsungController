@@ -134,6 +134,45 @@ public sealed class IpRemoteServiceTests : IDisposable
         Assert.Contains("Not tested; writes disabled", report, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public async Task CertificateRedactionIsIndependentAndNeverChangesStoredTrustOrObservations(bool redactIdentifiers, bool redactCertificates)
+    {
+        const string pin = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
+        var profile = Profile with { Connection = Profile.Connection with { CertificateSha256 = pin } };
+        var client = new RecordingClient { ObservedCertificateSha256 = pin };
+        using var service = CreateService(client);
+        await service.SaveProfileAsync(profile);
+        await service.PairAsync();
+        await service.ReadBothAsync("baseline");
+        var before = await File.ReadAllTextAsync(Path.Combine(_directory, "ip-remote", "profiles.json"));
+        var logBefore = await File.ReadAllTextAsync(service.DiagnosticLogPath);
+        var report = service.ExportReport(redactIdentifiers, redactCertificates);
+        var json = JsonNode.Parse(report)!;
+        var expected = redactCertificates ? IpRemoteReportRedactor.CertificateMarker : pin;
+        Assert.Equal(expected, json["CurrentProfile"]!["Connection"]!["CertificateSha256"]!.GetValue<string>());
+        Assert.Equal(expected, json["CurrentProfile"]!["Connection"]!["NormalizedCertificatePin"]!.GetValue<string>());
+        foreach (var observation in json["Observations"]!.AsArray())
+        {
+            Assert.Equal(expected, observation!["UserEnteredContext"]!["Connection"]!["CertificateSha256"]!.GetValue<string>());
+            Assert.Equal(expected, observation["Exchange"]!["ObservedCertificateSha256"]!.GetValue<string>());
+        }
+        foreach (var method in json["Methods"]!.AsArray())
+            Assert.Equal(expected, method!["LastAttempt"]!["ObservedCertificateSha256"]!.GetValue<string>());
+        if (redactCertificates) Assert.DoesNotContain(pin, report, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(redactIdentifiers ? "[redacted-ip]" : "192.0.2.10", json["CurrentProfile"]!["Connection"]!["Host"]!.GetValue<string>());
+        Assert.Equal("1296", json["CurrentProfile"]!["Firmware"]!.GetValue<string>());
+        Assert.DoesNotContain("secret-credential", report, StringComparison.Ordinal);
+        Assert.Equal(pin, service.GetSnapshot().ActiveProfile!.Connection.CertificateSha256);
+        Assert.All(service.GetSnapshot().Observations, item => Assert.Equal(pin, item.Exchange.ObservedCertificateSha256));
+        Assert.Equal(before, await File.ReadAllTextAsync(Path.Combine(_directory, "ip-remote", "profiles.json")));
+        Assert.Equal(logBefore, await File.ReadAllTextAsync(service.DiagnosticLogPath));
+        Assert.DoesNotContain(pin, service.ExportReport(), StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task CancelStopsRequestAndConcurrentPairIsRejectedRatherThanQueued()
     {
@@ -215,6 +254,7 @@ public sealed class IpRemoteServiceTests : IDisposable
         public List<string> Calls { get; } = [];
         public SamsungIpRemoteOutcome FirstOutcome { get; set; } = SamsungIpRemoteOutcome.Success;
         public bool BlockReads { get; init; }
+        public string? ObservedCertificateSha256 { get; init; }
         public TaskCompletionSource ReadStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public JsonObject Result { get; set; } = new()
         {
@@ -246,6 +286,7 @@ public sealed class IpRemoteServiceTests : IDisposable
         private SamsungIpRemoteExchange Exchange(SamsungIpRemoteOptions options, string method, SamsungIpRemoteOutcome outcome) => new(
             DateTimeOffset.UtcNow, Calls.Count, method, options.Endpoint.AbsoluteUri, outcome, outcome.ToString(),
             "{\"params\":{\"AccessToken\":\"[redacted]\"}}", ResponseJson: Result.ToJsonString(),
-            Result: outcome == SamsungIpRemoteOutcome.Success ? (JsonObject)Result.DeepClone() : null);
+            Result: outcome == SamsungIpRemoteOutcome.Success ? (JsonObject)Result.DeepClone() : null,
+            ObservedCertificateSha256: ObservedCertificateSha256);
     }
 }

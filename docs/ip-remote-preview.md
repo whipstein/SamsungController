@@ -63,7 +63,7 @@ For the first test, **do not change any settings**:
 1. Set the observation label to **Baseline — TV on**.
 2. Select **Read both state queries**.
 3. Inspect both cards. The app sends `getTVStates`, then `getVideoStates`, sequentially. If the first method is explicitly unsupported, it still tries the second. Authorization, timeout, transport, certificate, and other failures stop the sequence. Individual method buttons let you retry one query explicitly.
-4. Download the diagnostic report, keeping **Redact IP, MAC, and UUID identifiers** checked unless those details are needed privately.
+4. Download the diagnostic report, keeping **Redact IP, MAC, and UUID identifiers** and **Redact certificate SHA-256 fingerprints** checked unless those details are needed privately. The options are independent and default to on; turning one off never reveals access tokens.
 5. Send the report back for review before we implement writes. Include what the TV did, which port/trust option worked, and whether an approval prompt appeared.
 
 Repeat for the other display using **New display** or the saved profile selector. Do not presume an S95F and an Odyssey support the same methods.
@@ -98,6 +98,8 @@ On Unix systems, the IP Remote directory is restricted to the user (0700) and fi
 
 The page retains the last 100 observations in memory; a restart starts an empty page history but leaves the private log and saved token in place. Reports contain that in-memory history across tested contexts/displays, not the entire log. Token values are always scrubbed, including pairing replies and token echoes; malformed/non-JSON bodies are omitted to avoid leaking credentials. IP/MAC/UUID redaction is on by default for downloaded reports. Review annotations and model names before sharing; these are intentionally readable. This separate log policy does not change the older WebSocket Protocol page's logging behavior.
 
+Certificate SHA-256 fingerprint redaction is also on by default, independently of IP/MAC/UUID redaction. It masks `CertificateSha256`, `NormalizedCertificatePin`, and `ObservedCertificateSha256` throughout the export, including saved-context copies, method summaries, embedded request/response JSON, and matching fingerprint echoes. This is export-only: it never changes the certificate pin used to connect or rewrites the private log. A fingerprint is a certificate identifier, not a private key; it is still useful to redact when sharing display diagnostics. Plain numeric firmware values, JSON-RPC versions, and text request IDs remain visible rather than being interpreted as abbreviated IPv4 addresses.
+
 If a read fails:
 
 - **CertificateError:** review and save endpoint-specific trust settings; do not disable system-wide TLS validation.
@@ -117,7 +119,8 @@ If a read fails:
 - [x] Scoped TLS policy, cancellation, timeouts, bounded response size, response correlation, classified errors.
 - [x] Unknown/raw typed fields, missing-value handling, historical comparisons, redacted logs and reports.
 - [x] Automated fake-response tests, including interactive page event handling and existing regression tests.
-- [ ] Live pairing/readback/token reuse confirmed on S95F with recorded firmware and context.
+- [x] User-supplied S95F report confirms pairing plus successful `getTVStates` and `getVideoStates` replies in one annotated context (2026-09-07).
+- [ ] Confirm S95F token reuse after restart and capture its firmware again with the corrected numeric-value redaction.
 - [ ] Live pairing/readback/token reuse confirmed on Odyssey G9 with recorded firmware and context.
 
 ### Phase B — establish real mappings

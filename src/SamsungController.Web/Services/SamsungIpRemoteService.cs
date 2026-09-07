@@ -181,16 +181,9 @@ public sealed class SamsungIpRemoteService : IDisposable
         }
     }
 
-    public string ExportReport(bool redactIdentifiers = true)
+    public string ExportReport(bool redactIdentifiers = true, bool redactCertificateFingerprints = true)
     {
         var snapshot = GetSnapshot();
-        SamsungIpRemoteExchange? ForExport(SamsungIpRemoteExchange? exchange) => exchange is null || !redactIdentifiers ? exchange : exchange with
-        {
-            // Parse embedded JSON too: an unbracketed IPv6 address in a reply
-            // cannot be reliably masked by a regex over the outer JSON string.
-            RequestJson = ProtocolMessageFormatter.FormatJson(exchange.RequestJson, revealSensitive: false),
-            ResponseJson = exchange.ResponseJson is null ? null : ProtocolMessageFormatter.FormatJson(exchange.ResponseJson, revealSensitive: false)
-        };
         var json = JsonSerializer.Serialize(new
         {
             Format = "SamsungController.IPRemote.Diagnostics.v1",
@@ -199,16 +192,17 @@ public sealed class SamsungIpRemoteService : IDisposable
             Safety = "Pairing and read-only observations; no setting writes, control mappings, subscriptions, or hardware verification claimed.",
             Context = "Model, firmware, input, picture mode, and signal annotations are user-entered, not TV-reported unless also present in the response.",
             CurrentProfile = snapshot.ActiveProfile,
-            Observations = snapshot.Observations.Select(item => item with { Exchange = ForExport(item.Exchange)! }),
+            snapshot.Observations,
             Methods = SamsungIpRemoteClient.ReadMethods.Select(method => new
             {
                 Method = method,
-                LastAttempt = ForExport(snapshot.Observations.LastOrDefault(item => item.UserEnteredContext.ContextKey == snapshot.ActiveProfile?.ContextKey
-                    && item.Exchange.Method == method)?.Exchange),
+                LastAttempt = snapshot.Observations.LastOrDefault(item => item.UserEnteredContext.ContextKey == snapshot.ActiveProfile?.ContextKey
+                    && item.Exchange.Method == method)?.Exchange,
                 WriteCapability = "Not tested; writes disabled"
             }),
             Unresolved = new[] { "Verify readback against manual TV changes", "Confirm brightness/backlight/shadow-detail mapping", "Advanced white balance and custom color capabilities remain unverified" }
         }, JsonOptions);
+        if (redactCertificateFingerprints) json = IpRemoteReportRedactor.RedactCertificateFingerprints(json);
         return ProtocolMessageFormatter.FormatJson(json, revealSensitive: false, revealDeviceIdentifiers: !redactIdentifiers);
     }
 

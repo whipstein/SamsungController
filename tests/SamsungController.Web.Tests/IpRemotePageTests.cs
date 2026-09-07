@@ -22,7 +22,8 @@ public sealed class IpRemotePageTests
         var directory = Directory.CreateTempSubdirectory("SamsungController-IP-ui-").FullName;
         try
         {
-            var client = new IpRemoteServiceTests.RecordingClient();
+            var fingerprint = new string('A', 64);
+            var client = new IpRemoteServiceTests.RecordingClient { ObservedCertificateSha256 = fingerprint };
             using var service = new SamsungIpRemoteService(new ConfigurationBuilder().AddInMemoryCollection(
                 new Dictionary<string, string?> { ["SamsungController:ConfigurationDirectory"] = directory }).Build(), client);
             var javascript = new DownloadJavaScript();
@@ -41,6 +42,15 @@ public sealed class IpRemotePageTests
             await renderer.ClickAsync("Download diagnostic report");
             Assert.Contains("SamsungController.IPRemote.Diagnostics.v1", javascript.Download, StringComparison.Ordinal);
             Assert.DoesNotContain("192.0.2.10", javascript.Download, StringComparison.Ordinal);
+            Assert.DoesNotContain(fingerprint, javascript.Download, StringComparison.Ordinal);
+            Assert.Contains(IpRemoteReportRedactor.CertificateMarker, javascript.Download, StringComparison.Ordinal);
+            await renderer.SetCheckboxAsync("Redact certificate SHA-256 fingerprints", false);
+            await renderer.ClickAsync("Download diagnostic report");
+            Assert.Contains(fingerprint, javascript.Download, StringComparison.Ordinal);
+            Assert.DoesNotContain("192.0.2.10", javascript.Download, StringComparison.Ordinal);
+            await renderer.SetCheckboxAsync("Redact certificate SHA-256 fingerprints", true);
+            await renderer.ClickAsync("Download diagnostic report");
+            Assert.DoesNotContain(fingerprint, javascript.Download, StringComparison.Ordinal);
             await renderer.ChangeAsync("TV IP address or hostname", "192.0.2.11");
             await renderer.AssertDisabledAsync("Read both state queries", true);
             await renderer.ClickAsync("Discard unsaved edits");
@@ -151,6 +161,15 @@ public sealed class IpRemotePageTests
                 .Select(item => frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray())
                 .Single(item => item.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == label));
             await DispatchEventAsync(input.Single(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "oninput").AttributeEventHandlerId,
+                null, new ChangeEventArgs { Value = value });
+        });
+        public Task SetCheckboxAsync(string label, bool value) => Dispatcher.InvokeAsync(async () =>
+        {
+            var frames = Frames;
+            var input = frames.Select((frame, index) => (frame, index)).Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "input")
+                .Select(item => frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray())
+                .Single(item => item.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == label));
+            await DispatchEventAsync(input.Single(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "onchange").AttributeEventHandlerId,
                 null, new ChangeEventArgs { Value = value });
         });
         private static string Text(IEnumerable<RenderTreeFrame> frames) => string.Concat(frames.Select(frame => frame.FrameType switch

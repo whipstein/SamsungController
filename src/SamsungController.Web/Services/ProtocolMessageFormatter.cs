@@ -12,7 +12,7 @@ public static class ProtocolMessageFormatter
         @"(?:uuid:)?\b[0-9a-f]{8}-[0-9a-f]{3,4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex MacAddressPattern = new(
-        @"\b(?:[0-9a-f]{2}:){5}[0-9a-f]{2}\b",
+        @"(?<![0-9a-f:])(?:[0-9a-f]{2}:){5}[0-9a-f]{2}(?![0-9a-f:])",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex Ipv4Pattern = new(
         @"\b(?:\d{1,3}\.){3}\d{1,3}\b",
@@ -66,14 +66,17 @@ public static class ProtocolMessageFormatter
             return value;
         }
 
-        if (IPAddress.TryParse(value.Trim('[', ']'), out _))
+        // IPAddress.TryParse also accepts legacy numeric IPv4 forms such as
+        // "1296", "2.0", and "3". In diagnostics these are firmware versions,
+        // JSON-RPC versions, or request IDs, not evidence of an IP address.
+        if (value.Contains(':') && IPAddress.TryParse(value.Trim('[', ']'), out _))
         {
             return "[redacted-ip]";
         }
 
         var redacted = UuidPattern.Replace(value, "[redacted-uuid]");
         redacted = MacAddressPattern.Replace(redacted, "[redacted-mac]");
-        redacted = Ipv4Pattern.Replace(redacted, "[redacted-ip]");
+        redacted = Ipv4Pattern.Replace(redacted, match => IPAddress.TryParse(match.Value, out _) ? "[redacted-ip]" : match.Value);
         return BracketedIpv6Pattern.Replace(redacted, "[redacted-ip]");
     }
 
@@ -135,6 +138,20 @@ public static class ProtocolMessageFormatter
                     if (property.Value is JsonValue value
                         && value.TryGetValue<string>(out var text))
                     {
+                        // Diagnostic exports embed the original request/reply
+                        // as JSON strings. Inspect those values structurally so
+                        // IPv6 addresses are redacted without changing IDs.
+                        if (property.Key is "RequestJson" or "ResponseJson")
+                        {
+                            try
+                            {
+                                var embedded = JsonNode.Parse(text);
+                                RedactDeviceIdentifiers(embedded);
+                                jsonObject[property.Key] = embedded?.ToJsonString(PrettyJson) ?? text;
+                                continue;
+                            }
+                            catch (JsonException) { /* Core may have omitted a malformed response. */ }
+                        }
                         jsonObject[property.Key] = FormatIdentifierText(
                             text,
                             revealDeviceIdentifiers: false);
@@ -148,9 +165,11 @@ public static class ProtocolMessageFormatter
                 break;
 
             case JsonArray jsonArray:
-                foreach (var child in jsonArray)
+                for (var index = 0; index < jsonArray.Count; index++)
                 {
-                    RedactDeviceIdentifiers(child);
+                    if (jsonArray[index] is JsonValue value && value.TryGetValue<string>(out var text))
+                        jsonArray[index] = FormatIdentifierText(text, revealDeviceIdentifiers: false);
+                    else RedactDeviceIdentifiers(jsonArray[index]);
                 }
 
                 break;

@@ -170,6 +170,8 @@
         <h2>Share the evidence</h2>
         <p>Download the report after testing each display. It includes the last 100 observations across this session, labeled contexts, errors, and redacted request/response JSON. Tokens can never be revealed. Review the file before sharing; model names and free-text annotations remain visible.</p>
         <label class="ip-check"><input type="checkbox" @bind="RedactIdentifiers" /> Redact IP, MAC, and UUID identifiers in the downloaded report</label>
+        <label class="ip-check"><input type="checkbox" aria-label="Redact certificate SHA-256 fingerprints" @bind="RedactCertificateFingerprints" /> Redact certificate SHA-256 fingerprints in the downloaded report</label>
+        <p>Both export redactions default to on. Saved certificate pins and the local diagnostic log are unchanged; tokens are always redacted.</p>
         <button class="toolbar-button" @onclick="ExportAsync" disabled="@(Snapshot.Observations.Count == 0 || Snapshot.IsBusy)">Download diagnostic report</button>
         <details>
             <summary>Request / response history (@Snapshot.Observations.Count)</summary>
@@ -183,7 +185,7 @@
                 </details>
             }
         </details>
-        <p>Session history starts empty after an app restart. The token-redacted append-only log remains in your personal data folder at <code>@IpRemoteController.DiagnosticLogPath</code>. That private log retains device identifiers.</p>
+        <p>Session history starts empty after an app restart. The token-redacted append-only log remains in your personal data folder at <code>@IpRemoteController.DiagnosticLogPath</code>. That private log retains device identifiers and certificate fingerprints.</p>
     </section>
 </div>
 
@@ -193,7 +195,7 @@
     private string Label = "Baseline";
     private string? Error;
     private int Port = 1516, ReadTimeoutSeconds = 10, PairingTimeoutSeconds = 60;
-    private bool AllowUntrustedCertificate, RedactIdentifiers = true;
+    private bool AllowUntrustedCertificate, RedactIdentifiers = true, RedactCertificateFingerprints = true;
     private bool IsSaved => Snapshot.ActiveProfile == Draft;
     private bool CanAct => Snapshot.Initialized && IsSaved && !Snapshot.IsBusy;
     private bool CanRead => ReadDisabledReason is null;
@@ -256,7 +258,7 @@
     private Task ReadBothAsync() => GuardAsync(() => IpRemoteController.ReadBothAsync(Label));
     private Task ReadAsync(string method) => GuardAsync(() => IpRemoteController.ReadAsync(method, Label));
     private Task ExportAsync() => GuardAsync(async () => await JavaScript.InvokeVoidAsync("samsungController.downloadText",
-        $"samsung-ip-remote-{DateTime.Now:yyyyMMdd-HHmmss}.json", IpRemoteController.ExportReport(RedactIdentifiers)));
+        $"samsung-ip-remote-{DateTime.Now:yyyyMMdd-HHmmss}.json", IpRemoteController.ExportReport(RedactIdentifiers, RedactCertificateFingerprints)));
     private static string FieldValue(JsonObject? result, string key) => result is not null && result.TryGetPropertyValue(key, out var value)
         ? value?.ToJsonString() ?? "null" : "Not reported";
     private async Task GuardAsync(Func<Task> action)
