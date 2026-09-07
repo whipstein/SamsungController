@@ -50,8 +50,8 @@ public sealed partial class ControllerMenuIntegrationTests
             await page.ClickAsync("Run guided test");
             await page.ClickAsync("Count pass");
             Assert.True(SignalCheck(controller, checkId).Verified);
-            Assert.True(page.ButtonDisabled("Open on TV"));
-            await page.ConfirmSignalAsync(true);
+            Assert.Empty(SignalCheck(controller, checkId).SignalRequirements!);
+            Assert.DoesNotContain("REQUIRED BEFORE RUNNING", page.LineText);
             Assert.False(page.ButtonDisabled("Open on TV"));
             await page.ClickAsync("Open on TV");
             Assert.False(SignalCheck(controller, checkId).SignalSetupConfirmed);
@@ -104,7 +104,7 @@ public sealed partial class ControllerMenuIntegrationTests
         var (controller, transport) = await CreateConnectedControllerAsync(HdmiBitDepthMenuYaml, installedMenu: true);
         await using (controller)
         {
-            await controller.ConfirmMenuDefinitionVerificationCheckAsync(checkId);
+            await controller.ConfirmMenuDefinitionVerificationCheckAsync("display");
             await MatchSignalRequirementsAsync(controller, checkId);
             await controller.ConfirmMenuVerificationSignalSetupAsync(checkId, true);
             Assert.True(SignalCheck(controller, checkId).SignalSetupConfirmed);
@@ -118,7 +118,7 @@ public sealed partial class ControllerMenuIntegrationTests
             else
                 await controller.ReloadMenuDefinitionAsync();
             Assert.False(SignalCheck(controller, checkId).SignalSetupConfirmed);
-            Assert.True(SignalCheck(controller, checkId).Verified);
+            Assert.True(SignalCheck(controller, "display").Verified);
             transport.SentMessages.Clear();
             await Assert.ThrowsAsync<InvalidOperationException>(() => controller.RunMenuDefinitionVerificationTestAsync(checkId));
             Assert.Empty(GetSentKeys(transport));
@@ -150,5 +150,69 @@ public sealed partial class ControllerMenuIntegrationTests
     {
         foreach (var signal in SignalCheck(controller, checkId).SignalRequirements!)
             await controller.SetMenuExternalStateAsync(signal.StateId, signal.RequiredValue);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PendingMenuControlledCheckRequiresItsSignalPrerequisitesButCompletedChecksDoNot(bool disabledEffect)
+    {
+        var checkId = disabledEffect ? "condition:disabled-behavior" : "condition:hidden-behavior";
+        var yaml = HdmiBitDepthMenuYaml.Replace("label: Settings\n        children:",
+            "label: Settings\n        disabledWhen: [{ externalState: pgen-output-format, equals: YCbCr422 }, { externalState: pgen-output-format, equals: YCbCr444 }]\n        children:", StringComparison.Ordinal);
+        Assert.NotEqual(HdmiBitDepthMenuYaml, yaml);
+        if (disabledEffect)
+        {
+            var changed = yaml.Replace("\n              - setting: gamma-8bit\n                equals: \"2.2\"",
+                "\n            disabledWhen: [{ setting: gamma-8bit, equals: '2.2' }]", StringComparison.Ordinal);
+            Assert.NotEqual(yaml, changed);
+            yaml = changed;
+        }
+        var (controller, transport) = await CreateConnectedControllerAsync(yaml, installedMenu: true);
+        await using (controller)
+        {
+            // Reproduce the user's situation: both explicitly external tests
+            // are complete, but the Gamma-driven conditional test is pending.
+            foreach (var id in new[] { "condition:external-disabled-behavior", "condition:external-hidden-behavior" })
+                await controller.ConfirmMenuDefinitionVerificationCheckAsync(id);
+            await controller.SetMenuExternalStateAsync("hdmi-bit-depth", "10-bit");
+            await controller.SetMenuExternalStateAsync("pgen-output-format", "YCbCr422");
+            await using var services = new ServiceCollection().AddLogging().AddSingleton(controller).BuildServiceProvider();
+            await using var page = new VerificationPageTestRenderer(services);
+            await page.StartAsync();
+            foreach (var id in new[] { "condition:external-disabled-behavior", "condition:external-hidden-behavior" })
+            {
+                page.CheckId = id;
+                Assert.True(SignalCheck(controller, id).Verified);
+                Assert.Empty(SignalCheck(controller, id).SignalRequirements!);
+                Assert.DoesNotContain("REQUIRED BEFORE RUNNING", page.LineText);
+                Assert.False(page.ButtonDisabled("Open on TV"));
+            }
+            page.CheckId = checkId;
+            Assert.Contains("Bit depth: 8-bit", page.BoldLineText);
+            Assert.Contains("Color format: RGB", page.BoldLineText);
+            Assert.True(page.ButtonDisabled("Run guided test"));
+            Assert.True(page.SignalConfirmationDisabled);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => controller.RunMenuDefinitionVerificationTestAsync(checkId));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => controller.ConfirmMenuVerificationSignalSetupAsync(checkId, true));
+            await controller.SetMenuExternalStateAsync("hdmi-bit-depth", "8-bit");
+            Assert.True(page.SignalConfirmationDisabled); // HDMI format still mismatches the parent menu.
+            await controller.SetMenuExternalStateAsync("pgen-output-format", "RGB");
+            Assert.False(page.SignalConfirmationDisabled);
+            Assert.True(page.ButtonDisabled("Run guided test"));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => controller.RunMenuDefinitionVerificationTestAsync(checkId));
+            Assert.Empty(GetSentKeys(transport));
+            await page.ConfirmSignalAsync(true);
+            await page.ClickAsync("Run guided test");
+            Assert.Contains("Set Gamma to 2.2", page.LineText);
+            await page.ClickAsync("Count pass");
+            Assert.True(SignalCheck(controller, checkId).Verified);
+            Assert.Equal("BT.1886", controller.GetMenuNavigationSnapshot().ControlValues["gamma-8bit"]);
+            Assert.Equal("normal-video", controller.GetMenuNavigationSnapshot().State.NodeId);
+            Assert.DoesNotContain("REQUIRED BEFORE RUNNING", page.LineText);
+            await page.ClickAsync("Remove validation");
+            Assert.Contains("Bit depth: 8-bit", page.BoldLineText);
+            Assert.True(page.ButtonDisabled("Run guided test"));
+        }
     }
 }

@@ -6356,31 +6356,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
         var hidden = check.Id.Equals(
             "condition:hidden-behavior",
             StringComparison.OrdinalIgnoreCase);
-        var affectedConditions = definition.Nodes.Values
-            .SelectMany(node => hidden
-                ? (node.HiddenWhen ?? []).Select(condition => (
-                    Node: node,
-                    condition.SourceId,
-                    condition.SourceKind,
-                    condition.EqualsValue))
-                : (node.DisabledWhen ?? []).Select(condition => (
-                    Node: node,
-                    condition.SourceId,
-                    condition.SourceKind,
-                    condition.EqualsValue)))
-            .Where(item => item.SourceKind == MenuConditionSourceKind.MenuSetting
-                && item.SourceId.Equals(
-                check.TargetNodeId,
-                StringComparison.OrdinalIgnoreCase))
-            .OrderBy(item => definition.GetDepth(item.Node.Id))
-            .ThenBy(item => item.Node.Id, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        var affectedCondition = affectedConditions.FirstOrDefault();
-        if (affectedCondition.Node is null)
-        {
-            throw new InvalidOperationException(
-                $"No representative rule controlled by '{check.TargetNodeId}' remains in this verification group.");
-        }
+        var affectedCondition = GetMenuConditionalVerificationRule(definition, check);
 
         var controller = definition.GetRequiredNode(affectedCondition.SourceId);
         if (!effectiveValues.TryGetValue(controller.Id, out var currentValue))
@@ -6429,6 +6405,38 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
             null,
             $"Set {controller.Label} to {expectedValue}. Confirm that {affectedCondition.Node.Label} is {expectedBehavior}; prior values will be restored before the menu exits.",
             CollapseMenuControlUpdates(appliedUpdates));
+    }
+
+    private static (MenuNode Node, string SourceId, string EqualsValue) GetMenuConditionalVerificationRule(
+        MenuDefinition definition, MenuDefinitionVerificationCheck check)
+    {
+        var hidden = check.Id.Equals("condition:hidden-behavior", StringComparison.OrdinalIgnoreCase);
+        var affectedCondition = definition.Nodes.Values
+            .SelectMany(node => hidden
+                ? (node.HiddenWhen ?? []).Select(condition => (
+                    Node: node,
+                    condition.SourceId,
+                    condition.SourceKind,
+                    condition.EqualsValue))
+                : (node.DisabledWhen ?? []).Select(condition => (
+                    Node: node,
+                    condition.SourceId,
+                    condition.SourceKind,
+                    condition.EqualsValue)))
+            .Where(item => item.SourceKind == MenuConditionSourceKind.MenuSetting
+                && item.SourceId.Equals(
+                check.TargetNodeId,
+                StringComparison.OrdinalIgnoreCase))
+            .OrderBy(item => definition.GetDepth(item.Node.Id))
+            .ThenBy(item => item.Node.Id, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+        if (affectedCondition.Node is null)
+        {
+            throw new InvalidOperationException(
+                $"No representative rule controlled by '{check.TargetNodeId}' remains in this verification group.");
+        }
+
+        return (affectedCondition.Node, affectedCondition.SourceId, affectedCondition.EqualsValue);
     }
 
     private async Task<MenuDefinitionVerificationTestResult> InspectExternalHiddenRowAsync(

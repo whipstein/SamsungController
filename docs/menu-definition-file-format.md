@@ -696,13 +696,19 @@ as `disabledWhen=external:pgen-output-format=YCbCr422`. The node editor lists
 external sources alongside TV settings. Display Verification creates one
 representative guided check for external disabled rows and one for external
 hidden rows; it asks you to set both the hardware and header selector first.
-Each signal-dependent line includes a bold **Required HDMI signal setup** box
+Each **unverified** signal-dependent line includes a bold **Required HDMI signal setup** box
 listing the required bit depth, HDMI color format, and any other defined external
 source settings. Set the physical source device and match the app's persistent
 **External HDMI Signal** selectors, then check **I have set the physical HDMI
 source to these values**. Matching app values alone does not unlock the test:
-the app cannot detect whether you changed the physical source. The test (including
-**Open on TV** for a previously verified check) remains disabled until confirmed.
+the app cannot detect whether you changed the physical source. The pending test
+remains disabled until confirmed. This also includes indirect prerequisites:
+for example, testing that Gamma 2.2 hides BT.1886 requires the 8-bit Gamma menu
+and a signal under which the BT.1886 slider can otherwise appear. The requirements
+come from the tested control, affected row, and their parent menus.
+Completed checks do not show the setup box or require another checkbox for
+**Open on TV**. Removing a result (or a relevant definition change invalidating it)
+restores the prerequisite on that now-unverified check.
 Confirmation sends no TV commands and is required again for each run. Signal
 changes, reconnecting, and reloading the menu clear it; saved verification results
 are not removed.

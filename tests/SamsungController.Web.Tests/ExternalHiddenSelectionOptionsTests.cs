@@ -92,7 +92,6 @@ public sealed partial class ControllerMenuIntegrationTests
 
             if (passed)
             {
-                await page.ConfirmSignalAsync(true);
                 await page.ClickAsync("Open on TV");
                 Assert.NotNull(controller.GetOpenVerificationOptionsTest());
                 Assert.Contains("Count pass", page.LineText);

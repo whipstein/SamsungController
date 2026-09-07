@@ -85,7 +85,7 @@
                                     <span>@FormatKind(check.Kind)@FormatConfiguration(check)</span>
                                     <strong>@check.Label</strong>
                                     <p>@check.Description</p>
-                                    @if (check.SignalRequirements is { Count: > 0 } signalRequirements)
+                                    @if (!check.Verified && check.SignalRequirements is { Count: > 0 } signalRequirements)
                                     {
                                         <div class="verification-signal-setup @(check.SignalSetupConfirmed || IsPendingVisualTest(check) ? "confirmed" : "required")" role="group" aria-label="Required HDMI signal setup">
                                             <strong>REQUIRED BEFORE RUNNING: Set the physical HDMI source</strong>
@@ -257,7 +257,7 @@
         || ControllerState.NavigationRunning
         || Authoring.IsRecording;
     private bool VerificationTestDisabled(MenuDefinitionVerificationCheckSummary check) => TvActionsDisabled
-        || (check.SignalRequirements is { Count: > 0 } && !check.SignalSetupConfirmed);
+        || (!check.Verified && check.SignalRequirements is { Count: > 0 } && !check.SignalSetupConfirmed);
     private IReadOnlyList<VerificationGroup> Groups =>
     new[]
     {
