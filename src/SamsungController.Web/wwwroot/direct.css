@@ -31,8 +31,9 @@
 .direct-control h3 { font-size:15px; line-height:1.35; margin:0; font-weight:600; }
 .direct-read-value { font-family:inherit; font-weight:600; font-size:16px; line-height:1.4; color:var(--muted); overflow-wrap:anywhere; text-align:right; }
 .direct-panel .direct-choice, .direct-panel .direct-number-value { font-family:inherit; font-size:18px; font-weight:700; line-height:normal; letter-spacing:-.03em; }
-.direct-control .picture-compact-slider { grid-template-columns:27px minmax(40px,1fr) 27px 60px; }
-.direct-control .picture-compact-value span { font-size:12px; }
+.direct-control .picture-compact-slider { grid-template-columns:27px minmax(100px,1fr) 27px 60px; }
+.direct-bounded-slider { display:grid; grid-template-columns:auto minmax(40px,1fr) auto; align-items:center; gap:6px; min-width:0; }
+.direct-slider-bound { color:var(--ink); font-size:14px; font-weight:650; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .direct-panel .direct-number-value { text-align:center; padding:6px 2px; }
 .direct-control small { display:block; margin-top:8px; color:var(--muted); font-size:12px; }
 .direct-control .direct-pending { color:var(--amber); font-weight:600; }

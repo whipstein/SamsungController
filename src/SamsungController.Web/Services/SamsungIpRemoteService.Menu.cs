@@ -197,9 +197,11 @@ public sealed partial class SamsungIpRemoteService
                 update = MenuStep(update, index, "Applied");
                 RemoveMenuDraft(draft.ControlId);
                 await SaveMenuUpdateAsync(update).ConfigureAwait(false);
-                // A mode/selector can change which values subsequent getters expose. Never carry them into its new context.
+                // Input/picture context changes invalidate everything. A local
+                // mode/selector only invalidates its own section, not unrelated
+                // calibration values we have already read from the same display.
                 if (control.RequiresSeparateApply || control.Method is "gammaModeControl" or "autoMotionPlusControl")
-                    UpdateMenu(menu => ClearMenuGridCache(menu) with { Readings = new Dictionary<string, IpMenuRead>(), SectionsRead = new Dictionary<string, DateTimeOffset>() });
+                    UpdateMenu(menu => InvalidateMenuControlContext(menu, control));
                 await FinishIndexedGroupAsync().ConfigureAwait(false);
             }
             catch (Exception error) when (error is InvalidOperationException or ArgumentException or OperationCanceledException or IOException or UnauthorizedAccessException or JsonException)
@@ -300,6 +302,21 @@ public sealed partial class SamsungIpRemoteService
             Update(state => state with { IsBusy = false });
             _gate.Release();
         }
+    }
+
+    private static IpMenuSnapshot InvalidateMenuControlContext(IpMenuSnapshot menu, IpMenuControl control)
+    {
+        if (control.ChangesContext)
+            return ClearMenuGridCache(menu) with { Readings = new Dictionary<string, IpMenuRead>(), SectionsRead = new Dictionary<string, DateTimeOffset>() };
+
+        var methods = IpMenuCatalog.ForSection(control.Section).Select(item => item.Method).ToHashSet(StringComparer.Ordinal);
+        return ClearMenuGridCache(menu, control.Section) with
+        {
+            // Keep the just-confirmed mode itself visible while its dependent
+            // values reload. Other sections retain their values and timestamps.
+            Readings = menu.Readings.Where(pair => pair.Key == control.Method || !methods.Contains(pair.Key)).ToDictionary(),
+            SectionsRead = menu.SectionsRead.Where(pair => pair.Key != control.Section).ToDictionary()
+        };
     }
 
     private async Task<SamsungIpRemoteExchange> MenuQueryAsync(IpRemoteProfile profile, string method, CancellationToken cancellation)

@@ -446,6 +446,17 @@ public sealed class IpRemotePageTests
             Frames.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "class"
                 && (frame.AttributeValue?.ToString() ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains(name, StringComparer.Ordinal)
                 || frame.FrameType == RenderTreeFrameType.Markup && frame.MarkupContent.Contains($"class=\"{name}\"", StringComparison.Ordinal))));
+        public Task AssertSliderBoundsAsync(string label, string minimum, string maximum) => Dispatcher.InvokeAsync(() =>
+        {
+            var frames = Frames;
+            var group = frames.Select((frame, index) => (frame, index))
+                .Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "div"
+                    && frames[item.index + 1].AttributeName == "class" && frames[item.index + 1].AttributeValue?.ToString() == "direct-bounded-slider")
+                .Select(item => frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray())
+                .Single(item => item.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == label + " slider"));
+            Assert.Equal(new[] { "span", "input", "span" }, group.Skip(1).Where(frame => frame.FrameType == RenderTreeFrameType.Element).Select(frame => frame.ElementName));
+            Assert.Equal(minimum + maximum, string.Concat(Text(group).Where(character => !char.IsWhiteSpace(character))));
+        });
         public Task AssertTargetAsync(string label, int expected) => Dispatcher.InvokeAsync(() =>
         {
             var frames = Frames;

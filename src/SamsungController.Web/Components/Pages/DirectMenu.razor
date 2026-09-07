@@ -99,7 +99,7 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         var key = Snapshot.Menu.SessionId + ":" + Section;
-        if (CanWork && (!Snapshot.Menu.SectionsRead.ContainsKey(Section) || Grid is not null && !Snapshot.Menu.GridsRead.ContainsKey(Section)) && AutoReads.Add(key)) await RefreshAsync();
+        if (CanWork && (!Snapshot.Menu.SectionsRead.ContainsKey(Section) || Grid is not null && GridModeEnabled && !Snapshot.Menu.GridsRead.ContainsKey(Section)) && AutoReads.Add(key)) await RefreshAsync();
     }
     private void Refresh() => _ = InvokeAsync(() =>
     {
@@ -124,10 +124,14 @@
         }
         else if (control.Parameter.Kind == IpRemoteParameterKind.Integer)
         {
-            <div class="picture-compact-value"><strong>@(Target(control).Length > 0 ? Target(control) : "Not reported")</strong><span>@control.Parameter.Minimum – @control.Parameter.Maximum</span></div>
+            <div class="picture-compact-value"><strong>@(Target(control).Length > 0 ? Target(control) : "Not reported")</strong></div>
             <fieldset disabled="@(DisabledReason(control) is not null)"><div class="picture-compact-slider">
                 <button aria-label="@($"Decrease {control.Name}")" @onclick="() => NudgeAsync(control, -1)" disabled="@(Target(control) == "" || Target(control) == control.Parameter.Minimum.ToString(CultureInfo.InvariantCulture))">−</button>
-                <input type="range" aria-label="@($"{control.Name} slider")" min="@control.Parameter.Minimum" max="@control.Parameter.Maximum" step="1" value="@Target(control)" @oninput="args => Preview(control, args)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" />
+                <div class="direct-bounded-slider">
+                    <span class="direct-slider-bound" aria-label="@($"{control.Name} minimum")">@control.Parameter.Minimum</span>
+                    <input type="range" aria-label="@($"{control.Name} slider")" min="@control.Parameter.Minimum" max="@control.Parameter.Maximum" step="1" value="@Target(control)" @oninput="args => Preview(control, args)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" />
+                    <span class="direct-slider-bound" aria-label="@($"{control.Name} maximum")">@control.Parameter.Maximum</span>
+                </div>
                 <button aria-label="@($"Increase {control.Name}")" @onclick="() => NudgeAsync(control, 1)" disabled="@(Target(control) == "" || Target(control) == control.Parameter.Maximum.ToString(CultureInfo.InvariantCulture))">+</button>
                 <input class="picture-compact-number direct-number-value" aria-label="@($"{control.Name} value")" type="number" min="@control.Parameter.Minimum" max="@control.Parameter.Maximum" step="1" value="@Target(control)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" />
             </div></fieldset>

@@ -10,6 +10,96 @@ namespace SamsungController.Web.Tests;
 public sealed class IpMenuGridTests
 {
     [Theory]
+    [InlineData("colorSpaceControl/colorSpace", "Auto", "color")]
+    [InlineData("colorSpace.ColorAdjustmentPointControl/colorSpace.ColorAdjustmentPoint", "75%", "color")]
+    [InlineData("WB20PointModeControl/WB20PointMode", "Off", "white20")]
+    [InlineData("gammaModeControl/gammaMode", "2.2", "expert")]
+    [InlineData("autoMotionPlusControl/autoMotionPlus", "Custom", "expert")]
+    public async Task LocalModesInvalidateOnlyTheirOwnSection(string controlId, string target, string section)
+    {
+        using var fixture = await CreateAsync();
+        await fixture.Service.RefreshMenuSectionAsync("expert");
+        await fixture.Service.RefreshMenuSectionAsync("white2");
+        await fixture.Service.RefreshMenuGridAsync("white20");
+        await fixture.Service.RefreshMenuGridAsync("color");
+        var before = fixture.Service.GetSnapshot().Menu;
+        fixture.Service.StageMenuValue(controlId, target);
+        await fixture.Service.ApplyMenuAsync();
+        var after = fixture.Service.GetSnapshot().Menu;
+        Assert.Equal(target, after.Value(IpMenuCatalog.Get(controlId))!.ToString());
+        Assert.False(after.SectionsRead.ContainsKey(section));
+        foreach (var other in new[] { "expert", "white2", "white20", "color" }.Where(item => item != section))
+        {
+            Assert.Equal(before.SectionsRead[other], after.SectionsRead[other]);
+            foreach (var control in IpMenuCatalog.ForSection(other).Where(control => !control.IsIndexed && control.Command.ReadbackMethod is not ("getTVStates" or "getVideoStates")))
+                Assert.Equal(before.Readings.GetValueOrDefault(control.Method), after.Readings.GetValueOrDefault(control.Method));
+        }
+        foreach (var grid in IpMenuGrids.All)
+        {
+            Assert.Equal(grid.Section != section, after.GridsRead.ContainsKey(grid.Section));
+            foreach (var control in grid.Values.SelectMany(grid.Row))
+            {
+                if (grid.Section == section) Assert.Null(after.Value(control));
+                else
+                {
+                    Assert.Equal(before.IndexedReadings[control.Id], after.IndexedReadings[control.Id]);
+                    Assert.Null(fixture.Service.MenuControlDisabledReason(control));
+                }
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("pictureModeControl/pictureMode", "Movie")]
+    [InlineData("inputSourceControl/inputSource", "HDMI1")]
+    public async Task GlobalContextChangesStillInvalidateBothGrids(string controlId, string target)
+    {
+        using var fixture = await CreateAsync();
+        await fixture.Service.RefreshMenuGridAsync("white20");
+        await fixture.Service.RefreshMenuGridAsync("color");
+        fixture.Service.StageMenuValue(controlId, target);
+        await fixture.Service.ApplyMenuAsync();
+        Assert.Empty(fixture.Service.GetSnapshot().Menu.IndexedReadings);
+        Assert.Empty(fixture.Service.GetSnapshot().Menu.GridsRead);
+        Assert.Empty(fixture.Service.GetSnapshot().Menu.SectionsRead);
+    }
+
+    [Fact]
+    public async Task ChoosingCustomColorKeepsWhiteBalanceKnownAndSwitchingBackDoesNotRescan()
+    {
+        using var fixture = await CreateAsync();
+        fixture.Values["colorSpace"] = "Auto";
+        await fixture.Service.RefreshMenuSectionAsync("expert");
+        await fixture.Service.RefreshMenuSectionAsync("white2");
+        await fixture.Service.RefreshMenuGridAsync("white20");
+        await fixture.Service.RefreshMenuGridAsync("color");
+        await using var services = new ServiceCollection().AddLogging().AddSingleton(fixture.Service)
+            .AddSingleton<IJSRuntime>(new IpRemotePageTests.DownloadJavaScript()).BuildServiceProvider();
+        await using var renderer = new IpRemotePageTests.IpPageRenderer(services, typeof(DirectMenu));
+        await renderer.StartAsync();
+        await renderer.AssertSliderBoundsAsync("Contrast", "0", "50");
+        await renderer.ClickAsync("20-point white balance");
+        var before = fixture.Service.GetSnapshot().Menu;
+        await renderer.AssertSliderBoundsAsync("5% Red", "-50", "50");
+        await renderer.ClickAsync("Color");
+        fixture.Display.Requests.Clear();
+        await renderer.SelectAsync("Color space", "Custom");
+        await renderer.ClickAsync("Apply 1 pending");
+        Assert.True(fixture.Service.GetSnapshot().Menu.GridsRead.ContainsKey("color"));
+        Assert.DoesNotContain(fixture.Display.Methods, method => method.StartsWith("WB", StringComparison.Ordinal));
+        await renderer.AssertSliderBoundsAsync("Red Red", "0", "100");
+        var requests = fixture.Display.Requests.Count;
+        await renderer.ClickAsync("20-point white balance");
+        Assert.Equal(requests, fixture.Display.Requests.Count);
+        await renderer.AssertCheckboxAsync("20-point white balance enabled", true);
+        foreach (var control in IpMenuCatalog.IndexedControls.Where(control => control.Section == "white20"))
+            await renderer.AssertTargetAsync(control.Name + " value", before.Value(control)!.GetValue<int>());
+        await renderer.ClickAsync("2-point white balance");
+        Assert.Equal(requests, fixture.Display.Requests.Count);
+        await renderer.AssertTargetAsync("R Gain value", before.Value(IpMenuCatalog.Get("WB2PointControl/R-Gain"))!.GetValue<int>());
+    }
+
+    [Theory]
     [InlineData("white20", 176)]
     [InlineData("color", 67)]
     public async Task GridReadUsesOneRgbQueryPerCellAndSharesContextChecksBetweenRows(string section, int expectedRequests)
