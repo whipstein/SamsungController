@@ -1,4 +1,4 @@
-@page "/ip-remote"
+@page "/diagnostics/picture-tests"
 @using SamsungController.Web.Components.Shared
 @implements IDisposable
 @using SamsungController.Core.IpRemote
@@ -11,7 +11,7 @@
     <div>
         <span class="eyebrow">v@(SamsungIpRemoteService.Version) · GUARDED DIRECT PICTURE CONTROLS</span>
         <h1>IP Remote diagnostics</h1>
-        <a class="toolbar-button" href="ip-controls">Open direct picture workspace</a>
+        <a class="toolbar-button" href="menu">Open Menu controls</a>
         <a class="toolbar-button" href="ip-commands">Test documented IP commands</a>
         <p>A separate, direct HTTPS connection. Read TV-reported data, verify each picture control, then apply explicit direct adjustments.</p>
     </div>

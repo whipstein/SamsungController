@@ -1,0 +1,39 @@
+@page "/remote"
+@implements IDisposable
+@using SamsungController.Core.IpRemote
+@inject SamsungIpRemoteService Controller
+
+<PageTitle>Remote · SamsungController</PageTitle>
+<section class="page-heading compact-heading"><div><span class="eyebrow">HTTPS IP REMOTE</span><h1>Remote</h1><p>Each button sends one direct IP key. No navigation scripts or predicted menu position.</p></div></section>
+@if (Error is not null) { <div class="notice danger" role="alert">@Error</div> }
+@if (!Snapshot.Menu.Connected) { <div class="notice">Connect to the TV first. <a href="/">Choose display</a></div> }
+<section class="remote-layout">
+    <div class="panel remote-panel"><div class="remote-face">
+        <div class="remote-top-row"><button class="key-button power" @onclick='() => KeyAsync("power")' disabled="@Disabled">⏻<small>Power toggle</small></button><button class="key-button" @onclick='() => KeyAsync("firstScreen")' disabled="@Disabled">⌂<small>Home</small></button><button class="key-button" @onclick='() => KeyAsync("menu")' disabled="@Disabled">☰<small>Menu</small></button></div>
+        <div class="d-pad" aria-label="Directional controls"><button class="up" aria-label="Up" @onclick='() => KeyAsync("cursorUp")' disabled="@Disabled">↑</button><button class="left" aria-label="Left" @onclick='() => KeyAsync("cursorLeft")' disabled="@Disabled">←</button><button class="enter" aria-label="Enter" @onclick='() => KeyAsync("enter")' disabled="@Disabled">OK</button><button class="right" aria-label="Right" @onclick='() => KeyAsync("cursorRight")' disabled="@Disabled">→</button><button class="down" aria-label="Down" @onclick='() => KeyAsync("cursorDn")' disabled="@Disabled">↓</button></div>
+        <div class="remote-bottom-row"><button class="key-button" @onclick='() => KeyAsync("return")' disabled="@Disabled">↩<small>Back</small></button><button class="key-button" @onclick='() => KeyAsync("volumeDn")' disabled="@Disabled">−<small>Volume</small></button><button class="key-button" @onclick='() => KeyAsync("exit")' disabled="@Disabled">×<small>Exit</small></button><button class="key-button" @onclick='() => KeyAsync("volumeUp")' disabled="@Disabled">+<small>Volume</small></button></div>
+    </div></div>
+    <div class="panel direct-panel"><h2>More keys</h2><label>Documented IP key<select aria-label="IP remote key" @bind="Key" disabled="@Disabled">@foreach (var key in SamsungIpRemoteCommands.Get("remoteKeyControl").Parameters[0].Choices) { <option value="@key">@key</option> }</select></label><button class="primary-action" @onclick="() => KeyAsync(Key)" disabled="@Disabled">Send key</button><p role="status">@Snapshot.Menu.Status</p><p>Power toggle may disconnect the TV. Home exits Ambient mode; Exit is not equivalent on all modes.</p></div>
+</section>
+@code {
+    private IpRemoteSnapshot Snapshot = new();
+    private string Key = "play";
+    private string? Error;
+    private bool Disabled => !Snapshot.Menu.Connected || Snapshot.IsBusy || Snapshot.Menu.Update?.NeedsReview == true;
+    protected override async Task OnInitializedAsync()
+    {
+        Controller.Changed += Refresh;
+        try { await Controller.InitializeAsync(); }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException or JsonException) { Error = error.Message; }
+        Snapshot = Controller.GetSnapshot();
+    }
+    private void Refresh() => _ = InvokeAsync(() => { Snapshot = Controller.GetSnapshot(); StateHasChanged(); });
+    private async Task KeyAsync(string key)
+    {
+        Error = null;
+        try { await Controller.SendMenuKeyAsync(key); }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException or JsonException or OperationCanceledException) { Error = error.Message; }
+        finally { Snapshot = Controller.GetSnapshot(); }
+    }
+    public void Dispose() => Controller.Changed -= Refresh;
+}

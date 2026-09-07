@@ -134,7 +134,7 @@ public sealed partial class ControllerMenuIntegrationTests
                 .AddSingleton<NavigationManager>(new BitDepthNavigationManager()).BuildServiceProvider();
             await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
             var html = await renderer.Dispatcher.InvokeAsync(async () =>
-                (await renderer.RenderComponentAsync<MainLayout>()).ToHtmlString());
+                (await renderer.RenderComponentAsync<MenuKeyLayout>()).ToHtmlString());
             Assert.Contains("<span>Color format</span>", html);
             Assert.Contains("<span>Bit depth</span>", html);
             Assert.Contains("aria-label=\"External HDMI Signal: Color format\"", html);

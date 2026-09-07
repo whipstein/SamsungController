@@ -1,0 +1,660 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject SamsungControllerService Controller
+@inject IJSRuntime JavaScript
+
+<div class="app-shell">
+    <aside class="sidebar">
+        <div class="brand-lockup">
+            <div class="brand-mark" aria-hidden="true"><span></span></div>
+            <div>
+                <strong>SamsungController</strong>
+                <span>Calibration workspace</span>
+            </div>
+        </div>
+
+        <nav class="main-nav" aria-label="Primary navigation">
+            <NavLink href="" Match="NavLinkMatch.All"><span class="nav-glyph">01</span>Connection</NavLink>
+            <NavLink href="ip-remote"><span class="nav-glyph">IP</span>IP Remote · Preview</NavLink>
+            <NavLink href="ip-controls"><span class="nav-glyph">IP</span>Direct picture controls</NavLink>
+            <NavLink href="ip-commands"><span class="nav-glyph">IP</span>IP Commands</NavLink>
+            <NavLink href="remote"><span class="nav-glyph">02</span>Remote</NavLink>
+            <NavLink href="menu" Match="NavLinkMatch.All"><span class="nav-glyph">03</span>Menu</NavLink>
+            <NavLink href="macros"><span class="nav-glyph">04</span>Macros</NavLink>
+            <NavLink href="menu/build"><span class="nav-glyph">05</span>Build &amp; Verify</NavLink>
+            <NavLink href="verification"><span class="nav-glyph">06</span>Display Verification</NavLink>
+            <NavLink href="protocol"><span class="nav-glyph">07</span>Protocol</NavLink>
+        </nav>
+
+        <div class="sidebar-foot">
+            <span class="local-dot"></span>
+            Localhost only
+            <small>127.0.0.1:5050</small>
+        </div>
+    </aside>
+
+    <main class="main-stage">
+        <header class="topbar">
+            <div class="topbar-primary">
+                <div class="topbar-context">
+                    <span class="eyebrow">SAMSUNG CONTROL PLANE</span>
+                    <HelpBubble Title="Controls available on every page" Class="topbar-help">
+                        <ul>
+                            <li><strong>Light/Dark</strong> switches the complete interface palette and remembers the choice in this browser.</li>
+                            <li><strong>Connect/Disconnect</strong> uses the TV profile last saved on the Connection page.</li>
+                            <li><strong>Quick access</strong> runs pinned remote keys or behaviorally verified macros. Return to video is pinned by default.</li>
+                            <li><strong>Current menu</strong> is the application's expected location, not a cursor position reported by the TV.</li>
+                            <li><strong>Menu configuration</strong> identifies which settings-dependent list layout is active. Change it before navigation when the TV adds or removes menu rows.</li>
+                            <li><strong>External HDMI Signal</strong> records source settings the TV does not report. Color format (RGB/YCbCr) and bit depth (8-bit/10-bit) are independent. Change the source equipment first, then match both selectors here; these selectors do not send TV commands.</li>
+                            <li><strong>Warming</strong> means authorization succeeded and a requested command is being held until the TV is ready.</li>
+                        </ul>
+                        <p class="help-callout safe">Commands are temporarily disabled while a macro, verified traversal, or live recording owns the TV connection.</p>
+                    </HelpBubble>
+                </div>
+                <div class="topbar-connection-control">
+                    <button type="button"
+                            class="theme-toggle"
+                            title="Switch between light and dark mode"
+                            aria-label="Switch between light and dark mode"
+                            @onclick="ToggleThemeAsync"
+                            disabled="@ThemeControlBusy">
+                        <span class="theme-toggle-state light" aria-hidden="true"><i>☀</i> Light</span>
+                        <span class="theme-toggle-state dark" aria-hidden="true"><i>☾</i> Dark</span>
+                    </button>
+                    <div class="connection-pill @StateClass"><span></span>@Snapshot.ConnectionState</div>
+                    <button type="button"
+                            class="topbar-connection-button @(CanDisconnectFromHeader ? "disconnect" : "connect")"
+                            title="@HeaderConnectionTitle"
+                            @onclick="ToggleConnectionAsync"
+                            disabled="@HeaderConnectionDisabled">
+                        @(ConnectionControlBusy ? "Working…" : CanDisconnectFromHeader ? "Disconnect" : "Connect")
+                    </button>
+                </div>
+            </div>
+
+            <div class="persistent-control-bar @((Navigation.ExternalStates ?? []).Count > 0 ? "has-external-states" : "")">
+                <div class="quick-access-region">
+                    <span class="topbar-label">QUICK ACCESS</span>
+                    <div class="quick-access-actions">
+                        @foreach (var action in QuickActions)
+                        {
+                            <button class="quick-access-button"
+                                    title="@GetQuickActionTitle(action)"
+                                    @onclick="() => RequestQuickActionAsync(action)"
+                                    disabled="@QuickControlsDisabled">
+                                <b>@GetQuickActionGlyph(action)</b>
+                                <span>@action.Label</span>
+                            </button>
+                        }
+                        <button class="quick-access-manage @(ShowQuickEditor ? "active" : "")"
+                                title="Add or remove quick-access actions"
+                                @onclick="ToggleQuickEditorAsync"
+                                disabled="@QuickEditorBusy">
+                            @(ShowQuickEditor ? "Close" : "+ Add")
+                        </button>
+                    </div>
+                </div>
+
+                <div class="persistent-menu-state @MenuConfidenceClass"
+                     title="@MenuStateTitle"
+                     aria-label="@MenuStateTitle">
+                    <span>CURRENT MENU</span>
+                    <strong>@(Snapshot.MenuLabel ?? "Unknown")</strong>
+                    @if (Navigation.Configurations.Count > 1)
+                    {
+                        <select value="@Navigation.ActiveConfigurationId"
+                                @onchange="ChangeHeaderMenuConfigurationAsync"
+                                disabled="@MenuConfigurationControlDisabled"
+                                aria-label="Active menu configuration"
+                                title="Choose the visible menu layout before running menu navigation">
+                            @foreach (var configuration in Navigation.Configurations)
+                            {
+                                <option value="@configuration.Id">@configuration.Name</option>
+                            }
+                        </select>
+                    }
+                    else
+                    {
+                        <small>@ActiveMenuConfigurationLabel</small>
+                    }
+                </div>
+
+                @if ((Navigation.ExternalStates ?? []).Count > 0)
+                {
+                    <div class="persistent-external-state">
+                        <span>EXTERNAL HDMI SIGNAL</span>
+                        <div class="external-signal-fields">
+                            @foreach (var state in Navigation.ExternalStates ?? [])
+                            {
+                                var label = state.Id.Equals("pgen-output-format", StringComparison.OrdinalIgnoreCase)
+                                    ? "Color format"
+                                    : state.Label;
+                                <label title="Set the external equipment first, then choose its matching state here.">
+                                    <span>@label</span>
+                                    <select value="@state.Value"
+                                            @onchange="args => ChangeExternalStateAsync(state.Id, args)"
+                                            disabled="@ExternalStateControlDisabled"
+                                            aria-label="External HDMI Signal: @label">
+                                        @foreach (var option in state.Options)
+                                        {
+                                            <option value="@option">@option</option>
+                                        }
+                                    </select>
+                                </label>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <a href="verification"
+                   class="persistent-verification-state @(Verification.FullyVerified ? "verified" : "required")"
+                   title="@VerificationStatusTitle">
+                    <span>MENU PROFILE</span>
+                    <strong>@VerificationStatusLabel</strong>
+                    <small>@VerificationStatusDetail</small>
+                </a>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(ConnectionControlError))
+            {
+                <div class="topbar-feedback danger" role="alert">@ConnectionControlError</div>
+            }
+            else if (!string.IsNullOrWhiteSpace(MenuConfigurationError))
+            {
+                <div class="topbar-feedback danger" role="alert">@MenuConfigurationError</div>
+            }
+            else if (!string.IsNullOrWhiteSpace(ExternalStateError))
+            {
+                <div class="topbar-feedback danger" role="alert">@ExternalStateError</div>
+            }
+            else if (!string.IsNullOrWhiteSpace(QuickAccessError))
+            {
+                <div class="topbar-feedback danger" role="alert">@QuickAccessError</div>
+            }
+            else if (!string.IsNullOrWhiteSpace(QuickAccessStatus))
+            {
+                <div class="topbar-feedback" role="status">@QuickAccessStatus</div>
+            }
+
+            @if (ShowQuickEditor)
+            {
+                <div class="quick-access-editor">
+                    <div class="quick-editor-heading">
+                        <div>
+                            <span class="topbar-label">CUSTOMIZE QUICK ACCESS</span>
+                            <strong>Pin a remote command or verified macro.</strong>
+                        </div>
+                        <small>@QuickActions.Count / 12 used</small>
+                    </div>
+                    <div class="quick-editor-fields">
+                        <label>
+                            <span>Type</span>
+                            <select @bind="QuickEditorKind" disabled="@QuickEditorBusy">
+                                <option value="@QuickAccessActionKind.RemoteKey">Remote command</option>
+                                <option value="@QuickAccessActionKind.Macro">Macro</option>
+                            </select>
+                        </label>
+                        @if (QuickEditorKind == QuickAccessActionKind.RemoteKey)
+                        {
+                            <label>
+                                <span>Samsung key</span>
+                                <input @bind="QuickKey" placeholder="KEY_HOME" disabled="@QuickEditorBusy" />
+                            </label>
+                            <label>
+                                <span>Action</span>
+                                <select @bind="QuickRemoteAction" disabled="@QuickEditorBusy">
+                                    @foreach (var action in Enum.GetValues<RemoteKeyAction>())
+                                    {
+                                        <option value="@action">@action</option>
+                                    }
+                                </select>
+                            </label>
+                        }
+                        else
+                        {
+                            <label class="quick-macro-field">
+                                <span>Verified macro</span>
+                                <select @bind="QuickMacro" disabled="@(QuickEditorBusy || QuickMacros.Count == 0)">
+                                    @if (QuickMacros.Count == 0)
+                                    {
+                                        <option value="">No macro catalog available</option>
+                                    }
+                                    @foreach (var macro in QuickMacros)
+                                    {
+                                        <option value="@macro.Name">@macro.Name</option>
+                                    }
+                                </select>
+                            </label>
+                        }
+                        <label>
+                            <span>Button label <small>optional</small></span>
+                            <input @bind="QuickLabel" placeholder="Use command or macro name" disabled="@QuickEditorBusy" />
+                        </label>
+                        <button class="primary-action quick-editor-add" @onclick="AddQuickActionAsync" disabled="@(!CanAddQuickAction)">
+                            Add button <span>＋</span>
+                        </button>
+                    </div>
+                    @if (QuickActions.Count > 0)
+                    {
+                        <div class="quick-editor-current">
+                            @foreach (var action in QuickActions)
+                            {
+                                <div>
+                                    <span><b>@action.Label</b><small>@GetQuickActionTitle(action)</small></span>
+                                    <button title="Remove @action.Label" @onclick="() => RemoveQuickActionAsync(action.Id)" disabled="@QuickEditorBusy">Remove</button>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </header>
+        <article class="page-content">
+            @Body
+        </article>
+    </main>
+</div>
+
+@if (PendingQuickMacro is { } pendingQuickMacro)
+{
+    <MacroExecutionConfirmation MacroName="@pendingQuickMacro.Details.Name"
+                                Description="@pendingQuickMacro.Details.Description"
+                                OnConfirm="ConfirmQuickMacroAsync"
+                                OnCancel="CancelQuickMacro" />
+}
+
+@code {
+    private ControllerSnapshot Snapshot { get; set; } = null!;
+    private MenuAuthoringSnapshot Authoring { get; set; } = null!;
+    private MenuNavigationSnapshot Navigation { get; set; } = null!;
+    private MenuDefinitionVerificationSnapshot Verification { get; set; } = null!;
+    private IReadOnlyList<QuickAccessAction> QuickActions { get; set; } = [];
+    private IReadOnlyList<MacroSummary> QuickMacros { get; set; } = [];
+    private QuickAccessActionKind QuickEditorKind { get; set; } = QuickAccessActionKind.RemoteKey;
+    private RemoteKeyAction QuickRemoteAction { get; set; } = RemoteKeyAction.Click;
+    private string QuickKey { get; set; } = "KEY_HOME";
+    private string QuickMacro { get; set; } = string.Empty;
+    private string QuickLabel { get; set; } = string.Empty;
+    private bool ShowQuickEditor { get; set; }
+    private bool QuickEditorBusy { get; set; }
+    private bool QuickActionBusy { get; set; }
+    private bool ConnectionControlBusy { get; set; }
+    private bool ThemeControlBusy { get; set; }
+    private bool MenuConfigurationBusy { get; set; }
+    private bool ExternalStateBusy { get; set; }
+    private string? QuickAccessError { get; set; }
+    private string? QuickAccessStatus { get; set; }
+    private string? ConnectionControlError { get; set; }
+    private string? MenuConfigurationError { get; set; }
+    private string? ExternalStateError { get; set; }
+    private PendingQuickMacroExecution? PendingQuickMacro { get; set; }
+
+    private bool QuickControlsDisabled => Snapshot.ConnectionState != SamsungConnectionState.Connected ||
+        Snapshot.MacroRunning || Snapshot.NavigationRunning || Authoring.IsRecording || QuickActionBusy ||
+        PendingQuickMacro is not null;
+    private bool CanDisconnectFromHeader => ConnectionStatePresentation.CanDisconnect(
+        Snapshot.ConnectionState);
+    private bool HeaderConnectionDisabled => ConnectionControlBusy ||
+        Snapshot.MacroRunning || Snapshot.NavigationRunning || Authoring.IsRecording ||
+        (!CanDisconnectFromHeader && string.IsNullOrWhiteSpace(Snapshot.Host));
+    private bool MenuConfigurationControlDisabled => MenuConfigurationBusy
+        || Snapshot.MacroRunning
+        || Snapshot.NavigationRunning
+        || Authoring.IsRecording;
+    private bool ExternalStateControlDisabled => ExternalStateBusy
+        || Snapshot.MacroRunning
+        || Snapshot.NavigationRunning
+        || Authoring.IsRecording;
+    private string HeaderConnectionTitle => CanDisconnectFromHeader
+        ? "Disconnect from the TV"
+        : string.IsNullOrWhiteSpace(Snapshot.Host)
+            ? "Save a TV IP address on the Connection page first"
+            : $"Connect to {Snapshot.Host}";
+    private bool CanAddQuickAction => !QuickEditorBusy && QuickActions.Count < 12 &&
+        (QuickEditorKind == QuickAccessActionKind.RemoteKey
+            ? !string.IsNullOrWhiteSpace(QuickKey)
+            : !string.IsNullOrWhiteSpace(QuickMacro));
+    private string MenuConfidenceClass => Snapshot.MenuConfidence.ToString().ToLowerInvariant();
+    private string MenuStateTitle => Snapshot.MenuPath is null
+        ? $"Expected menu state is unknown. Active menu configuration: {ActiveMenuConfigurationLabel}. Run a verified anchor to synchronize it."
+        : $"Expected menu path: {Snapshot.MenuPath}. Confidence: {Snapshot.MenuConfidence}. Active menu configuration: {ActiveMenuConfigurationLabel}. This is predicted, not reported by the TV.";
+    private string ActiveMenuConfigurationLabel => Navigation.Configurations
+        .FirstOrDefault(configuration => configuration.IsActive)?.Name
+        ?? "Default menu configuration";
+    private string VerificationStatusLabel => Verification.RequiredCount == 0
+        ? "No verification plan"
+        : Verification.FullyVerified
+            ? "Fully verified"
+            : $"{Verification.RemainingCount} check{(Verification.RemainingCount == 1 ? "" : "s")} needed";
+    private string VerificationStatusDetail => Verification.RequiredCount == 0
+        ? "Load a menu definition"
+        : $"{Verification.VerifiedCount}/{Verification.RequiredCount} · {Verification.CurrentDisplay}";
+    private string VerificationStatusTitle => Verification.FullyVerified
+        ? "The loaded menu definition is fully verified for its recorded display combination. Open the verification workspace."
+        : "The loaded menu definition is not fully verified. Open the verification workspace to review required checks.";
+
+    private string StateClass => Snapshot.ConnectionState switch
+    {
+        SamsungConnectionState.Connected => "connected",
+        SamsungConnectionState.Connecting or SamsungConnectionState.Pairing or SamsungConnectionState.Warming or
+            SamsungConnectionState.Reconnecting or SamsungConnectionState.Disconnecting => "working",
+        SamsungConnectionState.Faulted => "faulted",
+        _ => "disconnected"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        Snapshot = Controller.GetSnapshot();
+        Authoring = Controller.GetMenuAuthoringSnapshot();
+        Navigation = Controller.GetMenuNavigationSnapshot();
+        Verification = Controller.GetMenuDefinitionVerificationSnapshot();
+        QuickActions = Controller.GetQuickAccessActions();
+        Controller.Changed += HandleControllerChanged;
+        await Controller.InitializeAsync();
+        Refresh();
+    }
+
+    private async Task ToggleThemeAsync()
+    {
+        ThemeControlBusy = true;
+        try
+        {
+            await JavaScript.InvokeVoidAsync("samsungTheme.toggle");
+        }
+        catch (JSDisconnectedException)
+        {
+            // A disconnected browser cannot display the requested theme change.
+        }
+        catch (JSException)
+        {
+            // Leave the current theme in place if browser storage or scripting is unavailable.
+        }
+        finally
+        {
+            ThemeControlBusy = false;
+        }
+    }
+
+    private async Task ToggleConnectionAsync()
+    {
+        var disconnect = CanDisconnectFromHeader;
+        ConnectionControlBusy = true;
+        ConnectionControlError = null;
+        try
+        {
+            if (disconnect)
+            {
+                await Controller.DisconnectAsync();
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(Snapshot.Host))
+            {
+                throw new InvalidOperationException(
+                    "Save a TV IP address on the Connection page before connecting.");
+            }
+
+            await Controller.ConnectAsync(new TvConnectionRequest(
+                Snapshot.DisplayName,
+                Snapshot.Host,
+                Snapshot.Secure,
+                Snapshot.Port,
+                Snapshot.AllowUntrustedCertificate,
+                Snapshot.KeepAliveIntervalSeconds,
+                Snapshot.KeepAliveTimeoutSeconds,
+                Snapshot.PostConnectWarmupMilliseconds,
+                Snapshot.ReconnectAfterIdleSeconds));
+        }
+        catch (OperationCanceledException)
+        {
+            // A cancelled connection or disconnection has already updated the shared state.
+        }
+        catch (Exception exception)
+        {
+            ConnectionControlError = exception.Message;
+        }
+        finally
+        {
+            ConnectionControlBusy = false;
+            Refresh();
+        }
+    }
+
+    private async Task ChangeHeaderMenuConfigurationAsync(ChangeEventArgs args)
+    {
+        MenuConfigurationBusy = true;
+        MenuConfigurationError = null;
+        try
+        {
+            var configurationId = args.Value?.ToString()
+                ?? throw new InvalidOperationException("Choose a menu configuration.");
+            await Controller.SetMenuConfigurationAsync(configurationId);
+        }
+        catch (Exception exception)
+        {
+            MenuConfigurationError = exception.Message;
+        }
+        finally
+        {
+            MenuConfigurationBusy = false;
+            Refresh();
+        }
+    }
+
+    private async Task ChangeExternalStateAsync(string stateId, ChangeEventArgs args)
+    {
+        ExternalStateBusy = true;
+        ExternalStateError = null;
+        try
+        {
+            var value = args.Value?.ToString()
+                ?? throw new InvalidOperationException("Choose an external signal value.");
+            await Controller.SetMenuExternalStateAsync(stateId, value);
+        }
+        catch (Exception exception)
+        {
+            ExternalStateError = exception.Message;
+        }
+        finally
+        {
+            ExternalStateBusy = false;
+            Refresh();
+        }
+    }
+
+    private async Task ToggleQuickEditorAsync()
+    {
+        ShowQuickEditor = !ShowQuickEditor;
+        QuickAccessError = null;
+        QuickAccessStatus = null;
+        if (!ShowQuickEditor)
+        {
+            return;
+        }
+
+        QuickEditorBusy = true;
+        try
+        {
+            QuickMacros = (await Controller.LoadMacrosAsync())
+                .Where(macro => macro.Verified)
+                .ToArray();
+            QuickMacro = QuickMacros.Any(macro => macro.Name == QuickMacro)
+                ? QuickMacro
+                : QuickMacros.FirstOrDefault()?.Name ?? string.Empty;
+        }
+        catch (Exception exception)
+        {
+            QuickMacros = [];
+            QuickMacro = string.Empty;
+            QuickAccessError = $"Remote commands can still be added. Macro catalog: {exception.Message}";
+        }
+        finally
+        {
+            QuickEditorBusy = false;
+        }
+    }
+
+    private async Task AddQuickActionAsync()
+    {
+        QuickEditorBusy = true;
+        QuickAccessError = null;
+        QuickAccessStatus = null;
+        try
+        {
+            if (QuickEditorKind == QuickAccessActionKind.RemoteKey)
+            {
+                await Controller.AddQuickAccessRemoteKeyAsync(
+                    QuickLabel,
+                    QuickKey,
+                    QuickRemoteAction);
+            }
+            else
+            {
+                await Controller.AddQuickAccessMacroAsync(QuickMacro, QuickLabel);
+            }
+
+            QuickLabel = string.Empty;
+            QuickAccessStatus = "Quick-access button saved.";
+        }
+        catch (Exception exception)
+        {
+            QuickAccessError = exception.Message;
+        }
+        finally
+        {
+            QuickEditorBusy = false;
+            Refresh();
+        }
+    }
+
+    private async Task RemoveQuickActionAsync(string actionId)
+    {
+        QuickEditorBusy = true;
+        QuickAccessError = null;
+        QuickAccessStatus = null;
+        try
+        {
+            await Controller.RemoveQuickAccessActionAsync(actionId);
+            QuickAccessStatus = "Quick-access button removed.";
+        }
+        catch (Exception exception)
+        {
+            QuickAccessError = exception.Message;
+        }
+        finally
+        {
+            QuickEditorBusy = false;
+            Refresh();
+        }
+    }
+
+    private async Task RequestQuickActionAsync(QuickAccessAction action)
+    {
+        QuickAccessError = null;
+        QuickAccessStatus = null;
+
+        if (action.Kind == QuickAccessActionKind.Macro)
+        {
+            try
+            {
+                var details = await Controller.LoadMacroDetailsAsync(action.Target);
+                if (details.ConfirmBeforeRun)
+                {
+                    PendingQuickMacro = new PendingQuickMacroExecution(action, details);
+                    return;
+                }
+            }
+            catch (Exception exception)
+            {
+                QuickAccessError = exception.Message;
+                return;
+            }
+        }
+
+        await RunQuickActionAsync(action.Id);
+    }
+
+    private async Task ConfirmQuickMacroAsync()
+    {
+        var pending = PendingQuickMacro;
+        PendingQuickMacro = null;
+        if (pending is not null)
+        {
+            await RunQuickActionAsync(pending.Action.Id);
+        }
+    }
+
+    private void CancelQuickMacro()
+    {
+        PendingQuickMacro = null;
+        QuickAccessStatus = "Macro execution cancelled before any commands were sent.";
+    }
+
+    private async Task RunQuickActionAsync(string actionId)
+    {
+        QuickActionBusy = true;
+        QuickAccessError = null;
+        QuickAccessStatus = null;
+        try
+        {
+            await Controller.RunQuickAccessActionAsync(actionId);
+        }
+        catch (OperationCanceledException)
+        {
+            QuickAccessStatus = "Quick-access action cancelled.";
+        }
+        catch (Exception exception)
+        {
+            QuickAccessError = exception.Message;
+        }
+        finally
+        {
+            QuickActionBusy = false;
+            Refresh();
+        }
+    }
+
+    private static string GetQuickActionGlyph(QuickAccessAction action) => action.Kind switch
+    {
+        QuickAccessActionKind.MenuAnchor => "↩",
+        QuickAccessActionKind.Macro => "M",
+        _ => "K"
+    };
+
+    private static string GetQuickActionTitle(QuickAccessAction action) => action.Kind switch
+    {
+        QuickAccessActionKind.MenuAnchor => $"Menu anchor · {action.Target}",
+        QuickAccessActionKind.Macro => $"Macro · {action.Target}",
+        _ => $"{action.Target} · {action.Action}"
+    };
+
+    private void HandleControllerChanged()
+    {
+        Refresh();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void Refresh()
+    {
+        Snapshot = Controller.GetSnapshot();
+        Authoring = Controller.GetMenuAuthoringSnapshot();
+        Navigation = Controller.GetMenuNavigationSnapshot();
+        Verification = Controller.GetMenuDefinitionVerificationSnapshot();
+        QuickActions = Controller.GetQuickAccessActions();
+    }
+
+    public void Dispose()
+    {
+        Controller.Changed -= HandleControllerChanged;
+    }
+
+    private sealed record PendingQuickMacroExecution(
+        QuickAccessAction Action,
+        MacroDetails Details);
+}
+
+<div id="blazor-error-ui" data-nosnippet>
+    The local interface encountered an error.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">×</span>
+</div>

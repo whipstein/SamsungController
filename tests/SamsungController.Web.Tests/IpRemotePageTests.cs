@@ -441,6 +441,7 @@ public sealed class IpRemotePageTests
         public Task AssertDisabledAsync(string label, bool expected) => Dispatcher.InvokeAsync(() => Assert.Equal(expected,
             Button(label).Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "disabled" && frame.AttributeValue is true)));
         public Task AssertTextAsync(string expected) => Dispatcher.InvokeAsync(() => Assert.Contains(expected, Text(Frames), StringComparison.Ordinal));
+        public Task AssertTextAbsentAsync(string text) => Dispatcher.InvokeAsync(() => Assert.DoesNotContain(text, Text(Frames), StringComparison.Ordinal));
         public Task AssertTargetAsync(string label, int expected) => Dispatcher.InvokeAsync(() =>
         {
             var frames = Frames;
@@ -459,13 +460,13 @@ public sealed class IpRemotePageTests
         });
         public Task AssertInputPresentAsync(string label, bool expected) => Dispatcher.InvokeAsync(() => Assert.Equal(expected,
             Frames.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == label)));
-        public Task ChangeAsync(string label, string value) => Dispatcher.InvokeAsync(async () =>
+        public Task ChangeAsync(string label, string value, string eventName = "oninput") => Dispatcher.InvokeAsync(async () =>
         {
             var frames = Frames;
             var input = frames.Select((frame, index) => (frame, index)).Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "input")
                 .Select(item => frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray())
                 .Single(item => item.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == label));
-            await DispatchEventAsync(input.Single(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "oninput").AttributeEventHandlerId,
+            await DispatchEventAsync(input.Single(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == eventName).AttributeEventHandlerId,
                 null, new ChangeEventArgs { Value = value });
         });
         public Task SetCheckboxAsync(string label, bool value) => Dispatcher.InvokeAsync(async () =>

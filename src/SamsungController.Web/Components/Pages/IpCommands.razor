@@ -3,22 +3,21 @@
 @using SamsungController.Core.IpRemote
 @inject SamsungIpRemoteService Controller
 
-<PageTitle>IP Commands · SamsungController</PageTitle>
+<PageTitle>Diagnostics · SamsungController</PageTitle>
 <section class="page-heading compact-heading">
-    <div><span class="eyebrow">IP REMOTE · EXPLICIT COMMAND TESTS</span><h1>IP Commands</h1>
-        <p>The documented command families in one place. Availability depends on the actual display, firmware, input and mode.</p></div>
-    <a class="toolbar-button" href="ip-remote">Pairing &amp; diagnostics</a>
+    <div><span class="eyebrow">IP REMOTE · OPTIONAL DIAGNOSTICS</span><h1>Diagnostics</h1>
+        <p>Inspect every documented command family and run explicit diagnostic tests. These tests are optional: Menu does not require verification.</p></div>
+    <a class="toolbar-button" href="diagnostics/picture-tests">Pairing diagnostics &amp; report export</a>
 </section>
 @if (Error is not null) { <div class="notice danger" role="alert">@Error</div> }
 @if (Snapshot.StorageWarning is not null) { <div class="notice danger" role="alert">@Snapshot.StorageWarning</div> }
 @if (Snapshot.PictureTest?.RequiresRecovery == true)
-{ <p class="notice danger">Resolve the pending picture write before sending another command. <a href="ip-remote#contrast-test">Open recovery</a></p> }
+{ <p class="notice danger">Resolve the pending picture write before sending another command. <a href="diagnostics/picture-tests#contrast-test">Open recovery</a></p> }
 
 <section class="panel command-panel">
     <div class="command-toolbar"><h2>@(Snapshot.ActiveProfile?.Model ?? "Select a paired IP Remote display in setup")</h2>
         <button class="toolbar-button" @onclick="Controller.Cancel" disabled="@(!Snapshot.IsBusy)">Stop request</button></div>
-    <p>Profile: @Snapshot.ActiveProfile?.InputSource · @Snapshot.ActiveProfile?.PictureMode · @Snapshot.ActiveProfile?.Signal.
-        The old WebSocket connection/menu-position indicator is separate and is not updated by these commands.</p>
+    <p>Use <a href="menu">Menu</a> for normal settings. This diagnostic tool prepares one exact command at a time and retains its before/after response for inspection.</p>
     <label>Command<select aria-label="Documented IP command" value="@SelectedMethod" @onchange="SelectCommand" disabled="@(!Interactive || Snapshot.IsBusy || Pending)">
         @foreach (var group in SamsungIpRemoteCommands.All.GroupBy(item => item.Group))
         { <optgroup label="@group.Key">@foreach (var command in group) { <option value="@command.Method">@command.Name</option> }</optgroup> }
@@ -44,7 +43,7 @@
         }
     }
     @if (Definition.ManagedPictureControl is not null)
-    { <p>Already supported by the guarded picture workflow. <a href="ip-controls">Open Direct picture controls</a>. This tester cannot bypass its verification or allowed ranges.</p> }
+    { <p>Available directly on <a href="menu">Menu</a>, with TV-queried values and documented ranges. No diagnostic test is required to use it.</p> }
     else
     {
         @if (!Definition.IsReadOnly)
@@ -124,16 +123,16 @@
 }
 
 <section class="panel command-panel">
-    <h2>Command coverage for this profile</h2>
-    <p>Reported below per exact command parameters and original context in the saved history—not proof of every available value. Unknown methods are never guessed.</p>
+    <h2>Optional diagnostic history for this profile</h2>
+    <p>This history records tests, not an access requirement. Documented Menu controls can be used without testing them here. Unknown methods are never guessed.</p>
     <div class="command-table"><table><thead><tr><th>Command</th><th>Evidence</th></tr></thead><tbody>
         @foreach (var command in SamsungIpRemoteCommands.All)
         {
             var history = Snapshot.CommandHistory.LastOrDefault(item => item.Method == command.Method && item.Profile.ContextKey == Snapshot.ActiveProfile?.ContextKey);
-            <tr><td>@command.Name<br /><code>@command.Method</code></td><td>@(command.IsReadOnly ? "Read-only query" : command.ManagedPictureControl is not null ? "See picture verification" : history?.ReadWriteVerified == true ? "Readback + user confirmed (last tested values)" : history?.VisualConfirmed == true ? "User-confirmed effect only" : history is not null ? "Last test unsuccessful" : "Not tested")</td></tr>
+            <tr><td>@command.Name<br /><code>@command.Method</code></td><td>@(command.IsReadOnly ? "Read-only query" : command.ManagedPictureControl is not null ? "Available on Menu" : history?.ReadWriteVerified == true ? "Readback + user confirmed (last tested values)" : history?.VisualConfirmed == true ? "User-confirmed effect only" : history is not null ? "Last test unsuccessful" : "No optional test recorded")</td></tr>
         }
     </tbody></table></div>
-    <p class="command-warning">Advanced controls are protocol candidates until tested on this display and signal. Dotted parameter names are literal. The catalog covers the 2020 list and the referenced consumer-TV expert methods, not every on-screen menu. Hotel provisioning, service/factory resets, firmware updates, soundbar-only and commercial-wall methods are not included. No fallback menu keys are sent.</p>
+    <p class="command-warning">Availability can vary by display and signal; failures are reported without fallback menu keys. Dotted parameter names are literal. The catalog covers documented consumer-TV methods, not every on-screen menu. Hotel provisioning, service/factory resets, firmware updates, soundbar-only and commercial-wall methods are not included.</p>
 </section>
 
 @code {

@@ -2,7 +2,7 @@
 
 Version: **1.0.0-alpha.1** · Branch: **feature/ip-remote-v1**
 
-This is a staged implementation preview for direct Samsung display communication, not a replacement release. The stable v0.3.0 WebSocket remote and menu controls remain available. `main` must not be merged or replaced until the repository owner explicitly approves.
+This document preserves the **early staged diagnostic workflow**. The working branch now replaces the primary web interface with [direct Menu controls](direct-ip-interface.md), without manual verification gates. The old WebSocket/menu-key pages and macro editor are hidden. The picture test page remains at `/diagnostics/picture-tests`, with its optional three-control workspace at `/diagnostics/picture-workspace`, for experiments and recovery. `main` is unchanged and must not be merged until the owner explicitly approves. Follow the current [README](../README.md) for normal installation and use; the numbered steps below describe the earlier diagnostic screens, not today's primary navigation.
 
 The supplied IP Remote handoff is design background. This repository is C#/.NET, so the Python examples informed the protocol shape, not the implementation language. Pairing, getter names, and transport conventions come from the sources below; support on your actual displays remains unverified until we collect their responses.
 

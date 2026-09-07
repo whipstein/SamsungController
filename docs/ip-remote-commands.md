@@ -1,6 +1,6 @@
 # IP Commands: documented methods and controlled testing
 
-This working-branch feature expands IP Remote beyond the three established picture controls. It implements **69 command families**: the 52 families in the 2020 list plus 17 additional consumer-TV methods from the linked firmware notes. This is not every menu item or a guarantee that all methods work on every Samsung display. Existing Contrast/Color/Sharpness verification remains separate and cannot be bypassed from this page.
+The optional **Diagnostics** page implements **69 command families**: the 52 families in the 2020 list plus 17 additional consumer-TV methods from the linked firmware notes. This is not every menu item or a guarantee that all methods work on every display. Normal settings now live on [Menu](direct-ip-interface.md), which reads current values and uses documented commands without manual verification. The prepare/send/review steps below are optional diagnostic experiments, not an unlock requirement.
 
 The catalog combines [Samsung's 2020 IP command list](https://www.hillresi.com/wp-content/uploads/2022/01/2020_IP_command_list.pdf), [py-samsungtv's client](https://github.com/iloveicedgreentea/py-samsungtv/blob/master/pysamsungtv/client.py) and [enums](https://github.com/iloveicedgreentea/py-samsungtv/blob/master/pysamsungtv/enums.py), and [TheFab21's consumer-TV firmware notes](https://github.com/TheFab21/ha-samsungtv-smart/blob/8c7000522b4045b42ff26d129d8d5fe9daf280cb/notes/QN55LS03FAFXZA/IPCONTROL_DECOMPILED.md). The latter identifies exact case-sensitive method names and parameter fields and includes observations from **QN55LS03FAFXZA / T-PTMFAKUC-0090-1296.8**, not the user's S95F. We also checked that project's [IP-control client](https://github.com/TheFab21/ha-samsungtv-smart/blob/8c7000522b4045b42ff26d129d8d5fe9daf280cb/custom_components/samsungtv_smart/api/ipcontrol.py).
 
@@ -9,11 +9,11 @@ The PDF supplies ranges and menu labels but not a complete wire schema. Firmware
 ## Start here
 
 1. Build and restart the server using the [preview setup guide](ip-remote-preview.md#1-start-the-working-branch).
-2. In **IP Remote · Preview**, select the paired display and enter accurate model, firmware, input, picture mode, and signal annotations. Reuse the existing token; do not pair again just to use this update.
-3. Open **IP Commands** from the navigation or [http://127.0.0.1:5050/ip-commands](http://127.0.0.1:5050/ip-commands). Opening the page or choosing a command sends nothing.
+2. On **Display**, choose and connect the paired display. Reuse the existing token; do not pair again just to use this update. For annotated experiments, profile annotations can be edited on the optional pairing diagnostics page.
+3. Open **Diagnostics** from navigation or [http://127.0.0.1:5050/ip-commands](http://127.0.0.1:5050/ip-commands). Opening this page or choosing a diagnostic command sends nothing.
 4. Select **TV state** or **Video state**, then press **Read/list** to confirm communication. Failed/unsupported methods show their actual outcome; no substitute command is tried.
 
-The existing WebSocket connection indicator, quick-access keys, and predicted menu position are separate. IP Commands does not update that predicted position or invoke the old menu-key workflow automatically. Avoid other controllers or manual changes during a prepared test.
+The header now uses the direct-IP connection state and explicit IP keys. No predicted menu position is maintained. Avoid other controllers or manual changes during a prepared test.
 
 ## Test a command
 
@@ -39,7 +39,7 @@ Evidence includes the exact command parameters, original profile annotations, an
 | Group | Methods | Use/limits |
 | --- | --- | --- |
 | Status | `getTVStates`, `getVideoStates`, `getDeviceInformation` | Explicit read-only snapshots; identity query does not overwrite the saved profile. |
-| Established picture | `contrastControl`, `colorControl`, `sharpnessControl` | Links to the existing verification/range-checked picture workspace; not a second unrestricted writer. |
+| Established picture | `contrastControl`, `colorControl`, `sharpnessControl` | Links to Menu: TV-queried values, documented bounds, and independent Apply readback; no diagnostic verification needed. |
 | Experimental picture fields | `backlightControl`, `brightnessControl`, `tintControl` | Brightness/Shadow Detail/signed Tint; confirm actual mapping. |
 | Picture modes | `pictureModeControl`, `pictureSizeControl` | Documented choices; may change availability or recall other settings. |
 | Sound | `directVolumeControl`, `volumeUpDnControl`, `muteControl`, `soundModeControl`, `speakerSelectControl` | Volume/enum controls; external audio support must be tested. |

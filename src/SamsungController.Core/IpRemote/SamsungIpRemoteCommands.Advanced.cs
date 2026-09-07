@@ -42,7 +42,7 @@ public static partial class SamsungIpRemoteCommands
         foreach (var color in new[] { "Red", "Green", "Blue" })
             yield return Level("WB20P." + color, "20-point " + color, "White balance · 20 point", -50, 50,
                 "Only changes the currently selected interval. The mode and interval are read and checked before/after sending; no interval is selected automatically.");
-        yield return EnumSetting("gammaMode", "Gamma mode", "Gamma / HDR", "BT.1886|ST.2084|HLG|2.20", "Exact protocol candidates; availability depends on signal. 2.20 is the 2020 list spelling, not a measured setter on your display.");
+        yield return EnumSetting("gammaMode", "Gamma mode", "Gamma / HDR", "BT.1886|ST.2084|HLG|2.2|2.20", "Availability depends on signal. Samsung's 2023 list spells 2.2; the 2020 list spells 2.20.");
         yield return Level("gamma.BT1886", "BT.1886 adjustment", "Gamma / HDR", -3, 3, "Requires BT.1886 gamma.");
         yield return Level("gamma.ST2084", "ST.2084 adjustment", "Gamma / HDR", -3, 3, "Requires ST.2084 gamma and an appropriate signal.");
         yield return Level("gamma.HLG", "HLG adjustment", "Gamma / HDR", -3, 3, "Requires HLG gamma and an appropriate signal.");

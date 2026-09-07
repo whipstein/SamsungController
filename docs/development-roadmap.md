@@ -6,7 +6,16 @@ Status was reconciled with the repository on 2026-08-30. A checked box means the
 
 ## v1 IP Remote preview — working branch
 
-Development and real-display verification proceed separately on `feature/ip-remote-v1`, starting at `1.0.0-alpha.1`. See the [implementation and verification checklist](ip-remote-preview.md). No main-branch merge or direct setting writes are implied by these code milestones.
+Development and real-display feedback proceed separately on `feature/ip-remote-v1`, starting at `1.0.0-alpha.1`. The primary interface now uses direct IP controls; see the [current workflow](direct-ip-interface.md). Earlier guarded test milestones below are retained as development history, not current Menu access requirements. No main-branch merge is implied.
+
+- [x] Replace the primary web workflow with Display, direct Menu, direct Remote, and optional Diagnostics; hide the menu builder, verification pages, and macro editor while preserving their files.
+- [x] Populate current controls from base/dedicated TV queries; make documented settings usable without capability/pass-count gates.
+- [x] Group direct settings into Picture/Sound/System and calibration tabs, with two-point gains/offsets grouped separately.
+- [x] Add direct multi-setting Apply, persisted immediate-mode preference, before/after queries, Stop, rejection handling, and private interrupted-write recovery.
+- [x] Investigate range metadata: no documented range query found; use and label 2023 command-table limits, not guessed defaults or boundary probing.
+- [x] Cover the cutover with simulated service and Blazor event tests; update installation/use documentation.
+- [ ] User exercises the replacement interface on real displays, especially advanced calibration and mode-dependent controls.
+- [ ] Design direct-IP macro editing and full calibration presets/snapshots, including explicit interval/color addressing.
 
 - [x] Add an independent HTTPS JSON-RPC client with explicit pairing and a two-getter read-only allowlist.
 - [x] Keep endpoint-scoped credentials, user-entered test context, and redacted observations separate from WebSocket tokens, calibration values, and menu verification.
@@ -20,7 +29,7 @@ Development and real-display verification proceed separately on `feature/ip-remo
 - [x] Add private, context-keyed contrast read/write evidence and a direct contrast editor with explicit Apply/readback and optional Undo. Preserve completed evidence independently of later adjustments; recover interrupted writes without replaying them.
 - [x] User confirms direct Contrast Apply works (2026-09-07); preserve its conditions checkbox during target editing and remove extra Apply/Undo browser prompts.
 - [x] Implement separate guarded Color and Sharpness verification/restoration and capability-gated direct adjustment, including a 0 → 1 → 0 test, field-specific recovery, and persistence of existing Contrast evidence.
-- [x] User confirms Color and Sharpness tests work on the current display (2026-09-07); retain per-context verification requirements for other displays/signals.
+- [x] User confirms Color and Sharpness tests work on the current display (2026-09-07); the subsequent interface cutover removes manual verification gates for documented settings.
 - [x] Add a combined direct-picture workspace: read all supported values with two getters, stage multiple changes, serialize Apply with preflight/readback per setting, Stop, persist originals/progress, and stage previous values explicitly.
 - [x] Add portable JSON picture presets with strict context/format validation; upload stages targets only and never imports TV readings or verification.
 - [x] Test workspace/preset page interactions and batch cancellation, partial failure, stale/context drift, storage failure, and restart recovery using simulated displays.

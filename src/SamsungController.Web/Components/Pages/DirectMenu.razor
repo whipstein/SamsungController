@@ -1,0 +1,143 @@
+@page "/menu"
+@page "/ip-controls"
+@implements IDisposable
+@using SamsungController.Core.IpRemote
+@inject SamsungIpRemoteService Controller
+
+<PageTitle>Menu · SamsungController</PageTitle>
+<section class="page-heading compact-heading"><div><span class="eyebrow">DIRECT SETTINGS</span><h1>Menu</h1><p>Current values are queried from the TV. Documented commands are ready to use—no traversal recording or verification required.</p></div></section>
+@if (Error is not null) { <div class="notice danger" role="alert">@Error</div> }
+@if (!Snapshot.Menu.Connected) { <div class="notice"><strong>Display disconnected</strong><span>Connect to read current settings.</span><a href="/">Choose display →</a></div> }
+@if (Snapshot.PictureTest?.RequiresRecovery == true || Snapshot.CommandTrial?.RequiresReview == true)
+{ <div class="notice danger">An earlier diagnostic write needs attention. <a href="@(Snapshot.CommandTrial?.RequiresReview == true ? "ip-commands" : "diagnostics/picture-tests")">Open its saved recovery details</a>.</div> }
+
+<section class="panel direct-panel">
+    <div class="direct-toolbar">
+        <div><h2>@(Category == "Picture" ? "Calibration controls" : Category + " controls")</h2><p>@(Snapshot.Menu.SectionsRead.TryGetValue(Section, out var readAt) ? "Read from TV " + readAt.ToLocalTime().ToString("HH:mm:ss") : "Select a section to read its current values.")</p></div>
+        <div class="direct-actions"><button class="toolbar-button" @onclick="RefreshAsync" disabled="@(!CanWork)">Refresh TV values</button><button class="primary-action" @onclick="ApplyAsync" disabled="@(!CanApply)">Apply @Snapshot.Menu.Pending.Count pending</button><button class="toolbar-button danger-action" @onclick="Controller.Cancel" disabled="@(!Snapshot.IsBusy)">Stop</button></div>
+    </div>
+    <details class="direct-details compact"><summary>Update behavior · @(Snapshot.Menu.Preferences.ApplyImmediately ? "Apply immediately" : "Wait for Apply")</summary>
+        <label class="direct-check"><input type="checkbox" aria-label="Apply settings immediately" checked="@Snapshot.Menu.Preferences.ApplyImmediately" @onchange="SetImmediateAsync" disabled="@Snapshot.IsBusy" /> Apply immediately when an edit is committed</label>
+        <p>Sliders send when released, not on every drag event. Apply or discard pending changes before turning this on. Direct settings do not open menus, so no return-to-video sequence is needed.</p>
+        <button class="toolbar-button" @onclick="Discard" disabled="@(Snapshot.IsBusy || Snapshot.Menu.Pending.Count == 0)">Discard pending changes</button>
+    </details>
+    <nav class="direct-tabs" aria-label="Top-level settings">
+        @foreach (var category in IpMenuCatalog.Sections.Select(section => section.Category).Distinct())
+        { <button class="@(Category == category ? "active" : "")" @onclick="() => SelectCategory(category)" disabled="@Snapshot.IsBusy">@category</button> }
+    </nav>
+    @if (Category == "Picture")
+    {
+        <nav class="direct-tabs secondary" aria-label="Calibration controls">
+            @foreach (var section in IpMenuCatalog.Sections.Where(section => section.Category == Category))
+            { <button class="@(Section == section.Id ? "active" : "")" @onclick="() => SelectSection(section.Id)" disabled="@Snapshot.IsBusy">@section.Name</button> }
+        </nav>
+    }
+    @if (Section is "white20" or "color")
+    { <p class="direct-hint">Queries read the currently selected @(Section == "white20" ? "interval" : "color"). Changing its selector is an explicit TV setting change; refresh never cycles selectors.</p> }
+    @if (Section == "white2")
+    {
+        <div class="direct-white2">
+            @foreach (var suffix in new[] { "Gain", "Offset" })
+            { <section><h3>RGB @suffix.ToLowerInvariant()s</h3>@foreach (var control in VisibleControls.Where(control => control.Field.EndsWith(suffix, StringComparison.Ordinal))) { @ControlCard(control) }</section> }
+        </div>
+    }
+    else
+    {
+        <div class="direct-control-grid">@foreach (var control in VisibleControls) { @ControlCard(control) }</div>
+    }
+    <p class="direct-hint">Limits are from Samsung's command tables and protocol references—not range metadata returned by queries. Unsupported/unreported controls can be retried with Refresh after changing the display's mode or signal.</p>
+</section>
+
+@if (Snapshot.Menu.Update is { } update)
+{
+    <section class="panel direct-panel" aria-label="Last settings update">
+        <div class="direct-toolbar"><h2>Last update · @update.Status</h2><span>@update.StartedAt.ToLocalTime().ToString("HH:mm:ss")</span></div><p>@update.Endpoint · @update.Input · @update.PictureMode</p><p role="status">@update.Message</p>
+        <div class="direct-update-rows">@foreach (var step in update.Steps)
+        { <div><strong>@IpMenuCatalog.Get(step.ControlId).Name</strong><span>@step.Original → @step.Target</span><span>@step.Status</span></div> }</div>
+        @if (update.NeedsReview)
+        {
+            <p class="direct-error">A delivered command may have changed the TV. Refresh/read the actual values and check the display. Stop does not undo delivered commands.</p>
+            <button class="toolbar-button" @onclick="CloseReviewAsync" disabled="@Snapshot.IsBusy">I checked the TV — close interrupted update</button>
+        }
+    </section>
+}
+
+@code {
+    private IpRemoteSnapshot Snapshot = new();
+    private string Section = "expert", Category = "Picture";
+    private readonly Dictionary<string, string> Edits = new(StringComparer.Ordinal);
+    private readonly HashSet<string> AutoReads = new(StringComparer.Ordinal);
+    private string? Error;
+    private bool CanWork => Snapshot.Menu.Connected && !Snapshot.IsBusy;
+    private bool CanApply => CanWork && Snapshot.Menu.Pending.Count > 0 && Snapshot.Menu.Update?.NeedsReview != true;
+    private IEnumerable<IpMenuControl> VisibleControls => IpMenuCatalog.ForSection(Section).OrderBy(control => control.Method is "WB20PointModeControl" or "colorSpaceControl" ? 0 : control.IsSelector ? 1 : 2);
+    protected override async Task OnInitializedAsync() { Controller.Changed += Refresh; await GuardAsync(Controller.InitializeAsync); }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var key = Snapshot.Menu.SessionId + ":" + Section;
+        if (CanWork && !Snapshot.Menu.SectionsRead.ContainsKey(Section) && AutoReads.Add(key)) await RefreshAsync();
+    }
+    private void Refresh() => _ = InvokeAsync(() =>
+    {
+        var next = Controller.GetSnapshot();
+        if (Snapshot.Menu.SessionId != next.Menu.SessionId) Edits.Clear();
+        Snapshot = next; StateHasChanged();
+    });
+    private void SelectCategory(string category) { Category = category; SelectSection(IpMenuCatalog.Sections.First(section => section.Category == category).Id); }
+    private void SelectSection(string section) { Section = section; Error = null; }
+    private string Target(IpMenuControl control) => Edits.GetValueOrDefault(control.Id) ?? Snapshot.Menu.Pending.GetValueOrDefault(control.Id)?.Target.ToString() ?? Snapshot.Menu.Value(control)?.ToString() ?? "";
+    private bool Dirty(IpMenuControl control) => Snapshot.Menu.Pending.ContainsKey(control.Id);
+    private string? DisabledReason(IpMenuControl control) => Controller.MenuControlDisabledReason(control);
+    private string Fill(IpMenuControl control) => double.TryParse(Target(control), NumberStyles.Number, CultureInfo.InvariantCulture, out var value)
+        ? Math.Clamp((value - control.Parameter.Minimum) * 100 / (control.Parameter.Maximum - control.Parameter.Minimum), 0, 100).ToString(CultureInfo.InvariantCulture) + "%" : "0%";
+    private RenderFragment ControlCard(IpMenuControl control) => @<article class="direct-control @(Dirty(control) ? "pending" : "")">
+        <div class="direct-control-heading"><h3>@control.Name</h3><span class="direct-read-value">@(Snapshot.Menu.Value(control)?.ToString() ?? "Not reported")</span></div>
+        @if (control.IsSwitch)
+        {
+            <label class="direct-switch"><input type="checkbox" aria-label="@control.Name" checked="@Target(control).EndsWith("On", StringComparison.OrdinalIgnoreCase)" @onchange="args => SwitchAsync(control, args)" disabled="@(DisabledReason(control) is not null)" /><span>@(Target(control).EndsWith("On", StringComparison.OrdinalIgnoreCase) ? "On" : "Off")</span></label>
+        }
+        else if (control.Parameter.Kind == IpRemoteParameterKind.Integer)
+        {
+            <fieldset disabled="@(DisabledReason(control) is not null)"><div class="direct-number-row">
+                <button class="toolbar-button" aria-label="@($"Decrease {control.Name}")" @onclick="() => NudgeAsync(control, -1)" disabled="@(Target(control) == "" || Target(control) == control.Parameter.Minimum.ToString(CultureInfo.InvariantCulture))">−</button>
+                <div class="direct-slider" style="@($"--fill: {Fill(control)}")"><span></span><input type="range" aria-label="@($"{control.Name} slider")" min="@control.Parameter.Minimum" max="@control.Parameter.Maximum" step="1" value="@Target(control)" @oninput="args => Preview(control, args)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" /></div>
+                <button class="toolbar-button" aria-label="@($"Increase {control.Name}")" @onclick="() => NudgeAsync(control, 1)" disabled="@(Target(control) == "" || Target(control) == control.Parameter.Maximum.ToString(CultureInfo.InvariantCulture))">+</button>
+                <input class="direct-number-value" aria-label="@($"{control.Name} value")" type="number" min="@control.Parameter.Minimum" max="@control.Parameter.Maximum" step="1" value="@Target(control)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" />
+            </div></fieldset>
+            <small>@control.Parameter.Minimum to @control.Parameter.Maximum · documented range</small>
+        }
+        else
+        {
+            <select class="direct-choice" aria-label="@control.Name" value="@Target(control)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" disabled="@(DisabledReason(control) is not null)">
+                @if (!control.Parameter.Choices.Contains(Target(control), StringComparer.Ordinal)) { <option value="@Target(control)">@(Target(control).Length > 0 ? Target(control) + " (TV reported)" : "Not reported")</option> }
+                @foreach (var choice in control.Parameter.Choices) { <option value="@choice">@choice</option> }
+            </select>
+        }
+        @if (Dirty(control)) { <small class="direct-pending">Pending · not sent</small> }
+        @if (!Snapshot.IsBusy && DisabledReason(control) is { } reason) { <p class="direct-unavailable">@reason</p> }
+        <details class="direct-control-help"><summary>About this setting</summary><p>@(control.Command.ManagedPictureControl is not null ? "Reads the current value, applies your target directly, then queries the result." : control.Command.Notes.Replace("Experimental; display/input/mode support must be tested. ", "", StringComparison.Ordinal))</p><code>@control.Method</code><p>@control.RangeSource</p></details>
+    </article>;
+    private void Preview(IpMenuControl control, ChangeEventArgs args) { Edits[control.Id] = args.Value?.ToString() ?? ""; }
+    private Task CommitAsync(IpMenuControl control, string text) => GuardAsync(async () =>
+    {
+        Edits.Remove(control.Id);
+        Controller.StageMenuValue(control.Id, text);
+        if (Snapshot.Menu.Preferences.ApplyImmediately && Controller.GetSnapshot().Menu.Pending.Count > 0) { await Controller.ApplyMenuAsync(); await RefreshAfterModeAsync(control); }
+    });
+    private Task SwitchAsync(IpMenuControl control, ChangeEventArgs args) => CommitAsync(control, control.Parameter.Choices.Single(choice => choice.EndsWith(args.Value is true ? "On" : "Off", StringComparison.OrdinalIgnoreCase)));
+    private Task NudgeAsync(IpMenuControl control, int amount) => int.TryParse(Target(control), out var value) ? CommitAsync(control, Math.Clamp(value + amount, control.Parameter.Minimum, control.Parameter.Maximum).ToString(CultureInfo.InvariantCulture)) : Task.CompletedTask;
+    private Task RefreshAsync() => GuardAsync(async () => { Edits.Clear(); await Controller.RefreshMenuSectionAsync(Section); });
+    private Task ApplyAsync() => GuardAsync(async () => { await Controller.ApplyMenuAsync(); Edits.Clear(); if (!Controller.GetSnapshot().Menu.SectionsRead.ContainsKey(Section)) await Controller.RefreshMenuSectionAsync(Section); });
+    private Task RefreshAfterModeAsync(IpMenuControl control) => !Controller.GetSnapshot().Menu.SectionsRead.ContainsKey(control.Section) ? Controller.RefreshMenuSectionAsync(control.Section) : Task.CompletedTask;
+    private Task SetImmediateAsync(ChangeEventArgs args) => GuardAsync(() => Controller.SaveMenuPreferencesAsync(args.Value is true));
+    private void Discard() { try { Controller.DiscardMenuChanges(); Edits.Clear(); Error = null; } catch (InvalidOperationException error) { Error = error.Message; } }
+    private Task CloseReviewAsync() => GuardAsync(Controller.CloseMenuUpdateReviewAsync);
+    private async Task GuardAsync(Func<Task> action)
+    {
+        Error = null;
+        try { await action(); }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException or JsonException or OperationCanceledException) { Error = error.Message; }
+        finally { Snapshot = Controller.GetSnapshot(); }
+    }
+    public void Dispose() => Controller.Changed -= Refresh;
+}

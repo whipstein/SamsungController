@@ -1,4 +1,4 @@
-@page "/ip-controls"
+@page "/diagnostics/picture-workspace"
 @using SamsungController.Web.Components.Shared
 @implements IDisposable
 @using SamsungController.Core.IpRemote
@@ -9,7 +9,7 @@
 <section class="page-heading compact-heading">
     <div><span class="eyebrow">IP REMOTE · WORKING BRANCH PREVIEW</span><h1>Direct picture controls</h1>
         <p>Read once, stage your changes, then apply the verified controls together.</p></div>
-    <a class="toolbar-button" href="ip-remote">Setup, verification &amp; diagnostics</a>
+    <a class="toolbar-button" href="diagnostics/picture-tests">Setup, verification &amp; diagnostics</a>
 </section>
 
 @if (Error is not null) { <div class="notice danger" role="alert"><strong>Action stopped</strong><span>@Error</span></div> }
@@ -19,7 +19,7 @@
 {
     <div class="notice danger" role="alert"><strong>@recovery.ControlName may have changed · original @recovery.Original</strong>
         <span>Earlier confirmed changes remain on the TV. Keep the original display/input/mode/signal and resolve this operation before doing more.</span>
-        <a href="ip-remote#contrast-test">Open read-first recovery</a></div>
+        <a href="diagnostics/picture-tests#contrast-test">Open read-first recovery</a></div>
 }
 
 <section class="panel workspace-panel">
@@ -64,7 +64,7 @@
                 </fieldset>
                 <p>Allowed target: @Range(control.Id).Minimum–@Range(control.Id).Maximum</p>
                 @if (original is not null && !verified)
-                { <a href="ip-remote#direct-contrast">Open setup, then select @control.Name to verify</a> }
+                { <a href="diagnostics/picture-tests#direct-contrast">Open setup, then select @control.Name to verify</a> }
                 else if (IsDirty(control.Id)) { <p class="pending-note">Pending · not sent</p> }
             </article>
         }

@@ -1,0 +1,111 @@
+@page "/"
+@page "/display"
+@page "/ip-remote"
+@implements IDisposable
+@using SamsungController.Core.IpRemote
+@inject SamsungIpRemoteService Controller
+@inject NavigationManager Navigation
+
+<PageTitle>Display · SamsungController</PageTitle>
+<section class="page-heading compact-heading"><div><span class="eyebrow">DIRECT IP CONTROL</span><h1>Choose your display.</h1><p>Pair once. Current settings are read from the TV; no menu file or verification setup is required.</p></div></section>
+@if (Error is not null) { <div class="notice danger" role="alert">@Error</div> }
+<section class="panel direct-panel">
+    <div class="direct-toolbar"><h2>Saved displays</h2><button class="toolbar-button" @onclick="NewDisplay" disabled="@Snapshot.IsBusy">Add display</button></div>
+    @if (Snapshot.Profiles.Count > 0)
+    {
+        <label>Display<select aria-label="Saved IP display" value="@Snapshot.ActiveProfile?.Endpoint" @onchange="SelectAsync" disabled="@Snapshot.IsBusy">
+            <option value="" disabled>Select a display…</option>
+            @foreach (var profile in Snapshot.Profiles) { <option value="@profile.Endpoint">@(profile.Model.Length > 0 ? profile.Model : "Samsung display") · @profile.Connection.Host</option> }
+        </select></label>
+        <div class="direct-actions">
+            <button class="primary-action" @onclick="ConnectAsync" disabled="@(!CanConnect)">@(Snapshot.Menu.Connected ? "Open Menu" : "Connect and open Menu")</button>
+            <button class="toolbar-button" @onclick="EditDisplay" disabled="@(Snapshot.IsBusy || Snapshot.ActiveProfile is null)">Edit display</button>
+        </div>
+        @if (Snapshot.ActiveProfile is not null && (!Snapshot.HasToken || Snapshot.AuthorizationRejected)) { <p>Pair with this display below before connecting.</p> }
+    }
+    else { <p>No saved IP displays yet. Enter the TV address below.</p> }
+</section>
+
+@if (ShowEditor)
+{
+    <section class="panel direct-panel">
+        <h2>@(NewEntry ? "Add display" : "Edit display")</h2>
+        <fieldset disabled="@Snapshot.IsBusy" class="direct-fields">
+            <label>Display name / model<input aria-label="Display name" @bind="Name" placeholder="Samsung display" /></label>
+            <label>TV address<input aria-label="TV address" @bind="Host" placeholder="192.168.1.100" autocomplete="off" /></label>
+            <label>HTTPS IP Remote port<input aria-label="IP Remote port" type="number" min="1" max="65535" @bind="Port" /></label>
+            <label>Firmware note (optional)<input @bind="Firmware" /></label>
+        </fieldset>
+        <details class="direct-details"><summary>Certificate trust and timeouts</summary>
+            <p>Samsung TVs commonly use self-signed certificates. Prefer a trusted SHA-256 fingerprint, or explicitly allow an untrusted certificate for this TV on your trusted LAN.</p>
+            <fieldset disabled="@Snapshot.IsBusy" class="direct-fields">
+                <label>Certificate SHA-256<input aria-label="Display certificate SHA-256" @bind="Pin" autocomplete="off" /></label>
+                <label class="direct-check"><input type="checkbox" aria-label="Allow untrusted display certificate" @bind="AllowUntrusted" /> Allow an untrusted certificate for this endpoint only</label>
+                <label>Read timeout (seconds)<input type="number" min="1" max="120" @bind="ReadTimeout" /></label>
+                <label>Pairing timeout (seconds)<input type="number" min="1" max="120" @bind="PairTimeout" /></label>
+            </fieldset>
+        </details>
+        <div class="direct-actions"><button class="primary-action" @onclick="SaveAsync" disabled="@Snapshot.IsBusy">Save display</button><button class="toolbar-button" @onclick="CancelEdit" disabled="@Snapshot.IsBusy">Cancel</button></div>
+        <p>Saving changes the local profile only. Pair and Connect are separate actions.</p>
+    </section>
+}
+
+@if (Snapshot.ActiveProfile is not null && !ShowEditor)
+{
+    <section class="panel direct-panel">
+        <h2>@(Snapshot.HasToken && !Snapshot.AuthorizationRejected ? "Pairing saved" : "Pair with the TV")</h2>
+        <p>Enable <strong>IP Remote</strong> in the TV's network expert settings. Keep the TV on, then accept its approval dialog. Connect reuses your saved token; pairing again requests a new one.</p>
+        <div class="direct-actions"><button class="toolbar-button" @onclick="PairAsync" disabled="@Snapshot.IsBusy">@(Snapshot.HasToken ? "Pair again (TV approval)" : "Pair with TV")</button><button class="toolbar-button" @onclick="Controller.Cancel" disabled="@(!Snapshot.IsBusy)">Cancel request</button></div>
+        <p role="status">@Snapshot.Status</p>
+        @if (Snapshot.Menu.Readings.GetValueOrDefault("getDeviceInformation")?.Values is { } identity)
+        { <p>TV-reported model: <strong>@identity["modelID"]</strong> · firmware <strong>@identity["FWVersion"]</strong></p> }
+    </section>
+}
+
+@code {
+    private IpRemoteSnapshot Snapshot = new();
+    private IpRemoteProfile BaseProfile = new();
+    private string Host = "", Name = "", Firmware = "", Pin = "";
+    private int Port = 1516, ReadTimeout = 10, PairTimeout = 60;
+    private bool AllowUntrusted, ShowEditor, NewEntry;
+    private string? Error;
+    private bool CanConnect => !ShowEditor && !Snapshot.IsBusy && Snapshot.ActiveProfile is not null && Snapshot.HasToken && !Snapshot.AuthorizationRejected;
+    protected override async Task OnInitializedAsync()
+    {
+        Controller.Changed += Refresh; await GuardAsync(Controller.InitializeAsync);
+        if (Snapshot.Profiles.Count == 0) NewDisplay();
+    }
+    private void Refresh() => _ = InvokeAsync(() => { Snapshot = Controller.GetSnapshot(); StateHasChanged(); });
+    private void NewDisplay() { LoadDraft(new()); NewEntry = true; ShowEditor = true; }
+    private void EditDisplay() { if (Snapshot.ActiveProfile is { } profile) { LoadDraft(profile); NewEntry = false; ShowEditor = true; } }
+    private void LoadDraft(IpRemoteProfile profile)
+    {
+        BaseProfile = profile; Host = profile.Connection.Host; Name = profile.Model; Firmware = profile.Firmware; Port = profile.Connection.Port;
+        Pin = profile.Connection.CertificateSha256 ?? ""; AllowUntrusted = profile.Connection.AllowUntrustedCertificate;
+        ReadTimeout = (int)profile.Connection.RequestTimeout.TotalSeconds; PairTimeout = (int)profile.Connection.PairingTimeout.TotalSeconds; Error = null;
+    }
+    private void CancelEdit() { ShowEditor = false; Error = null; }
+    private Task SaveAsync() => GuardAsync(async () =>
+    {
+        await Controller.SaveProfileAsync(BaseProfile with { Model = Name.Trim(), Firmware = Firmware.Trim(), Connection = new()
+        { Host = Host.Trim(), Port = Port, AllowUntrustedCertificate = AllowUntrusted, CertificateSha256 = Pin, RequestTimeout = TimeSpan.FromSeconds(ReadTimeout), PairingTimeout = TimeSpan.FromSeconds(PairTimeout) } });
+        ShowEditor = false;
+    });
+    private Task SelectAsync(ChangeEventArgs args) => GuardAsync(async () => { await Controller.SelectProfileAsync(args.Value?.ToString() ?? ""); ShowEditor = false; });
+    private Task ConnectAsync() => GuardAsync(async () => { if (!Snapshot.Menu.Connected) await Controller.ConnectMenuAsync(); Navigation.NavigateTo("menu"); });
+    private Task PairAsync() => GuardAsync(async () =>
+    {
+        await Controller.PairAsync();
+        var result = Controller.GetSnapshot().Observations.LastOrDefault()?.Exchange;
+        if (result?.IsSuccess != true) throw new InvalidOperationException(result?.Message ?? "Pairing did not complete. Watch for the TV approval dialog.");
+        await Controller.ConnectMenuAsync(); Navigation.NavigateTo("menu");
+    });
+    private async Task GuardAsync(Func<Task> action)
+    {
+        Error = null;
+        try { await action(); }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException or JsonException or OperationCanceledException) { Error = error.Message; }
+        finally { Snapshot = Controller.GetSnapshot(); }
+    }
+    public void Dispose() => Controller.Changed -= Refresh;
+}

@@ -4,7 +4,7 @@ using SamsungController.Core.IpRemote;
 
 namespace SamsungController.Web.Services;
 
-/// <summary>Isolated IP Remote diagnostics and verified controls; no reference to menu/remote/calibration services.</summary>
+/// <summary>Direct IP settings and optional diagnostics; independent of menu-key automation.</summary>
 public sealed partial class SamsungIpRemoteService : IDisposable
 {
     public static string Version { get; } = typeof(SamsungIpRemoteClient).Assembly
@@ -58,6 +58,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             var capabilities = await LoadControlCapabilitiesAsync().ConfigureAwait(false);
             var batch = await LoadPictureBatchAsync(test).ConfigureAwait(false);
             var commands = await LoadCommandTestsAsync().ConfigureAwait(false);
+            var menu = await LoadMenuStateAsync().ConfigureAwait(false);
             Update(state => state with
             {
                 Initialized = true,
@@ -68,7 +69,8 @@ public sealed partial class SamsungIpRemoteService : IDisposable
                 PictureBatch = batch,
                 CommandTrial = commands.Current,
                 CommandHistory = commands.History,
-                ControlCapabilities = capabilities
+                ControlCapabilities = capabilities,
+                Menu = menu
             });
             // Upgrade a locally completed test, never a shared diagnostic report.
             // This only saves private evidence; startup sends no TV requests.
@@ -95,6 +97,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
                 DirectPictureReading = null,
                 WorkspaceReading = null,
                 HasToken = hasToken,
+                Menu = ResetMenu(state.Menu),
                 AuthorizationRejected = state.ActiveProfile?.Endpoint == profile.Endpoint && state.AuthorizationRejected,
                 Status = "Profile saved locally. Pairing and reads require an explicit button press."
             });
@@ -124,6 +127,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
                 DirectPictureReading = null,
                 WorkspaceReading = null,
                 HasToken = hasToken,
+                Menu = ResetMenu(state.Menu),
                 AuthorizationRejected = false,
                 Status = "Profile selected. Displayed responses are historical; read again for current evidence."
             });
@@ -142,6 +146,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             Update(state => state with
             {
                 HasToken = false,
+                Menu = ResetMenu(state.Menu),
                 DirectPictureReading = null,
                 WorkspaceReading = null,
                 AuthorizationRejected = false,
@@ -211,7 +216,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             Format = "SamsungController.IPRemote.Diagnostics.v1",
             Version,
             ExportedAt = DateTimeOffset.UtcNow,
-            Safety = "Explicit pairing, guarded Contrast/Color/Sharpness controls and configured ranges, plus a closed catalog of documented command families. Other commands require a saved baseline, exact-parameter confirmation, one send, and manual review; independent field readback is recorded where available. No automatic retry, rollback, restart resume, polling, or fallback keys. Explicit picture RPC rejections permit read-only unchanged-value checks; ambiguous writes still need recovery.",
+            Safety = "Menu uses queried current values, documented bounds, explicit staging/apply, fresh context checks and independent readback, without manual verification gates. Optional diagnostics retain prepare/send/review workflows. No automatic retry, rollback, restart resume, polling, or fallback keys. Explicit RPC rejections permit read-only unchanged-value checks; ambiguous writes still need review.",
             Context = "Model, firmware, input, picture mode, and signal annotations are user-entered, not TV-reported unless also present in the response.",
             CurrentProfile = snapshot.ActiveProfile,
             snapshot.Observations,
@@ -223,6 +228,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             snapshot.CommandTrial,
             snapshot.CommandHistory,
             snapshot.CatalogQuery,
+            snapshot.Menu,
             CommandCatalog = SamsungIpRemoteCommands.All.Select(command => new { command.Method, command.Name, command.Group, command.Parameters, command.CanQuery, command.ReadbackField, command.ReadbackMethod, command.Requirements, command.Notes }),
             Methods = SamsungIpRemoteClient.ReadMethods.Select(method => new
             {
@@ -231,7 +237,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
                     && item.Exchange.Method == method)?.Exchange,
                 WriteCapability = "See ControlCapabilities for the guarded picture workflows and CommandHistory for parameter/context-specific command tests. Acknowledgment or user confirmation without field readback is not read/write verification."
             }),
-            Unresolved = new[] { "Verify readback against manual TV changes", "Confirm brightness/backlight/shadow-detail mapping", "Advanced white balance and custom color capabilities remain unverified" }
+            Unresolved = new[] { "No documented range-discovery query found; Menu limits are documented, not queried", "Display/mode support varies; optional diagnostic history is not a Menu access requirement", "20-point and custom-color getters address the currently selected interval/color" }
         }, JsonOptions);
         if (redactCertificateFingerprints) json = IpRemoteReportRedactor.RedactCertificateFingerprints(json);
         return ProtocolMessageFormatter.FormatJson(json, revealSensitive: false, revealDeviceIdentifiers: !redactIdentifiers);
@@ -246,7 +252,8 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             Status = exchange.Message,
             HasToken = exchange.Outcome != SamsungIpRemoteOutcome.NotPaired && (pairing && exchange.IsSuccess || current.HasToken),
             AuthorizationRejected = exchange.Outcome == SamsungIpRemoteOutcome.Unauthorized
-                || (!(pairing && exchange.IsSuccess) && current.AuthorizationRejected)
+                || (!(pairing && exchange.IsSuccess) && current.AuthorizationRejected),
+            Menu = IsConnectionFailure(exchange.Outcome) ? current.Menu with { Connected = false, Readings = new Dictionary<string, IpMenuRead>(), SectionsRead = new Dictionary<string, DateTimeOffset>(), Status = exchange.Message } : current.Menu
         });
         try
         {

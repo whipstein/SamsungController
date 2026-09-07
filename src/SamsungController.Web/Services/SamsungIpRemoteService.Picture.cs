@@ -300,6 +300,8 @@ public sealed partial class SamsungIpRemoteService
 
     private void EnsureNoPendingPictureTest()
     {
+        if (GetSnapshot().Menu.Update?.NeedsReview == true)
+            throw new InvalidOperationException("Check the interrupted update on the Menu page before changing display context or sending more commands.");
         if (GetSnapshot().CommandTrial?.RequiresReview == true)
             throw new InvalidOperationException("Review the pending IP command first. Check/handle its effect on the IP Commands page before starting another write or replacing its display context.");
         if (GetSnapshot().PictureTest?.RequiresRecovery == true)
