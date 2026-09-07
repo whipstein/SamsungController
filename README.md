@@ -93,9 +93,9 @@ Releases include `SHA256SUMS.txt`. Optional integrity checks: macOS `shasum -a 2
 5. Expand **Update behavior** to enable **Apply immediately**. Apply or discard pending edits first. Sliders send on release, not every drag event. This preference survives restart.
 6. Use **Stop** during an operation. Delivered commands are not undone. Last update retains originals and per-setting outcomes. For an uncertain write, inspect/refresh the TV and close its review explicitly before more writes.
 
-Input, picture mode, white-balance interval, and custom-color selector changes must be applied separately from other pending settings. The app does not assume a menu topology or external-signal setting bank.
+Apply input/picture-mode and calibration-mode changes separately from other pending settings. The app does not assume a menu topology or external-signal setting bank.
 
-For **20-point white balance**, turn its mode On and Apply, select/apply an interval, then edit RGB. For **Custom color**, select/apply Custom, select/apply the color, then edit RGB. Queries read the selected interval/color; Refresh never cycles selectors. See the [detailed walkthrough](docs/direct-ip-interface.md).
+For **20-point white balance**, turn its mode On and Apply: all percentages from 5% through 100% appear together, each with RGB sliders, −/+, and number inputs. For **Custom color**, select/apply Custom: Red, Green, Blue, Yellow, Cyan, and Magenta each have a fixed RGB row. There is no interval/color dropdown to manage. Loading/refreshing these grids temporarily visits each selector, queries its values, then restores the original selection; it does not change RGB settings or enable modes. Apply automatically addresses each edited row, checks its readback, and restores the selector on success. The first load takes more requests than an ordinary section; progress and Stop remain available. See the [detailed walkthrough](docs/direct-ip-interface.md).
 
 Direct settings do not navigate TV menus, so there is no return-to-video script or “stay on last adjusted item” option. Header Home, Back, and Exit menu buttons are explicit single keys, not a guaranteed video anchor.
 

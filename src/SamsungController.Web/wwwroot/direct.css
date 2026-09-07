@@ -56,4 +56,14 @@
 .direct-white2 .direct-control { margin-bottom:12px; }
 .direct-update-rows > div { display:grid; grid-template-columns:minmax(100px,1fr) 100px minmax(100px,1fr); gap:12px; padding:10px 0; border-bottom:1px solid var(--line); font-size:14px; }
 .direct-panel .direct-error { color:var(--danger); }
+.direct-indexed { margin-top:24px; }
+.direct-indexed-rows { display:grid; gap:10px; }
+.direct-indexed-row { border:1px solid var(--line-strong); border-radius:8px; padding:12px; background:var(--surface); }
+.direct-indexed-row > h3 { margin:0 0 10px; color:var(--cyan); font-size:20px; font-weight:650; }
+.direct-indexed-channels { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.direct-indexed-channels .direct-control { padding:10px; }
+.direct-indexed-channels .direct-control-heading { margin-bottom:8px; }
+.direct-indexed-channels .direct-number-row { grid-template-columns:28px minmax(40px,1fr) 28px 60px; gap:5px; }
+.direct-indexed-channels .direct-unavailable { font-size:11px; }
+@media(max-width:1100px) { .direct-indexed-channels { grid-template-columns:1fr; } }
 @media(max-width:700px) { .direct-white2 { grid-template-columns:1fr; } .direct-header-context { gap:14px; } .direct-header-keys { margin-left:0; } .direct-panel { padding:16px; } .direct-toolbar .direct-actions { width:100%; } }

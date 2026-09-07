@@ -7,7 +7,7 @@ For installation, all platform launchers, first pairing, and updates, start with
 ## Read, edit, apply
 
 1. Choose a saved display and Connect. Initial reads are `getTVStates`, `getVideoStates`, and the optional `getDeviceInformation` identity query. Connect reuses the token; Pair is the explicit approval flow.
-2. Open Menu. The first visit to each section after connecting reads its settings. Getters send the access token without setting values. Missing fields remain **Not reported**; they are not assigned defaults or imported from a saved profile.
+2. Open Menu. The first visit to each section after connecting reads its settings. Getters send the access token without setting values. The 20-point and Custom color grids additionally move their selector to read every row, then restore it. No RGB values or modes change during loading. Missing fields remain **Not reported**; they are not assigned defaults or imported from a saved profile.
 3. Edit a control. In Wait for Apply mode, only a pending target changes locally. The current-value label still shows the TV reading. Applying unchanged values does not send redundant setters.
 4. Apply sends pending settings sequentially. Each has a fresh preflight, a saved original/target, a single setter, and an independent readback. Successful values stay on the TV. There are no verification checkboxes/pass counts, menu keys, auto-return scripts, or automatic rollback.
 5. Apply immediately is a persisted option under the collapsed Update behavior box. Clear/apply pending edits before enabling it. Number/selection/switch edits send when committed; range drags preview locally and send on release.
@@ -32,14 +32,16 @@ RGB gains are in one column and RGB offsets in another. Each edit sends only tha
 
 1. Open the 20-point tab. Its On/Off control is first.
 2. Set On, then Apply (unless using immediate mode).
-3. Select the desired interval and Apply it separately. Readback confirms the selected interval.
-4. Edit Red/Green/Blue and Apply.
+3. The full grid loads automatically: 5%, 10%, …, 100%, all visible together. Use Load all rows / Reload all rows or Refresh TV values to read it again.
+4. Edit Red/Green/Blue in any rows using the slider, −/+, or number input, then Apply. Edits across different rows remain separate. Immediate mode also addresses the exact row automatically.
 
-The RGB getters address the **current interval**, not a full array of every interval. Refresh never silently cycles intervals. Before/after every RGB write, the mode and exact interval are re-read. If either changed since editing, the update stops. The old fixed all-interval grid is not carried over as though those values were queried.
+The RGB getters address the **current interval**, not a full array. The app handles that selector behind the scenes: temporarily select each percentage, query its three values, check context/selection, and restore the initial interval after successful loading. Only queried values are placed into the matching row. This takes more requests than an ordinary refresh; progress and Stop are available throughout. No mode is enabled automatically.
+
+Apply groups pending edits by row, selects and confirms each required interval, reads the original value again, then sends/checks the requested RGB changes. Edits to other intervals are not overwritten. The selector is restored at the end of the group on success, without undoing RGB adjustments. Another controller changing the input, picture mode, calibration mode, or selected row during an operation stops it. Avoid concurrent TV adjustments while a load or Apply is running.
 
 ### Color
 
-Color space mode appears first. Select Custom and Apply, then choose/apply the desired Red/Green/Blue/Yellow/Cyan/Magenta selector. Edit its RGB fields afterward. Before/after each component write, the app checks Custom mode and the exact selected color. This also reads one selected color at a time, not an invented full matrix.
+Color space mode appears first. Select Custom and Apply. Six fixed rows—Red, Green, Blue, Yellow, Cyan, and Magenta—are shown together, each with independent RGB controls. Loading and Apply use the same selector-addressing and successful-completion restoration as the 20-point grid; there is no separate color selector to operate. Changing Color Space mode or Color Adjustment Point is kept separate from pending grid edits and invalidates their cached readings.
 
 ### Gamma and mode-dependent fields
 
@@ -72,6 +74,7 @@ No pass-count gate is used for documented controls. Actual query failures, inval
 ## Stop and failure handling
 
 - Stop cancels pending I/O and prevents later settings from being sent. It cannot retract a delivered command.
+- Stop also prevents any subsequent selector restoration. A stopped load/update reports the original and last-confirmed selector; no selector operation resumes after restart. Reload to obtain fresh values before continuing. Selector-only interruptions do not imply RGB values were changed.
 - A journal saves originals and targets before each setter. Confirmed earlier changes remain; later steps are not automatically resumed after failure or restart.
 - A correlated value rejection can be followed by read-only checks. If the original/context are unchanged, it is marked Rejected unchanged and can be corrected without a false recovery lock.
 - An ambiguous write, readback mismatch, or interrupted delivered request requires checking the TV. Refresh remains read-only. Close the interrupted-update review explicitly after checking; this sends no restoration or verification command.
@@ -80,9 +83,9 @@ No pass-count gate is used for documented controls. Actual query failures, inval
 
 ## Persistence and boundaries
 
-All new state is private under the configured data root's `ip-remote` directory. `menu-preferences.json` stores Apply immediately. `menu-update.json` stores the last update and interrupted-write information. Profiles/tokens and diagnostic history retain their existing files. Runtime query caches and unsent targets are not resumed after restart. Diagnostic exports include the Menu snapshot and update history with the existing redaction options.
+All new state is private under the configured data root's `ip-remote` directory. `menu-preferences.json` stores Apply immediately. `menu-update.json` stores the last update and interrupted-write information, including each row's unique ID and original value. `menu-selector.json` records selector movement before sending, the original/last-confirmed selector, and completion/interruption. Profiles/tokens and diagnostic history retain their existing files. Runtime query caches and unsent targets are not resumed after restart. Diagnostic exports include the Menu snapshot, grid values, and update/selector state with the existing redaction options.
 
-No menu definition or verification file is read/written by the new primary pages. No existing macro/calibration file is deleted or interpreted as a direct-IP script. The older three-control preset workspace remains an optional diagnostic endpoint; full direct-IP preset import/export and all-interval/color snapshots are not implemented here.
+No menu definition or verification file is read/written by the new primary pages. No existing macro/calibration file is deleted or interpreted as a direct-IP script. The older three-control preset workspace remains an optional diagnostic endpoint. The full interval/color grids now have live queried snapshots, but portable direct-IP calibration preset import/export remains future work.
 
 Settings with numeric/enum getters appear in Menu. Apps, discovered devices, channels, and broad power/reboot actions remain explicit in Diagnostics. Remote and header keys send one direct IP key each; they do not predict the on-screen location. A power key clears local connection readiness. Connection status is based on the last request, not a live socket or a heartbeat.
 

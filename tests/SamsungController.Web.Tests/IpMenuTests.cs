@@ -360,6 +360,7 @@ internal sealed class MenuFixture(ContrastFixture inner) : IDisposable
     public SamsungIpRemoteService Service => inner.Service;
     public ContrastDisplay Display => inner.Display;
     public JsonObject Values { get; } = new();
+    public Dictionary<string, JsonObject> GridValues { get; } = new(StringComparer.Ordinal);
     public string JournalPath => Path.Combine(inner.DirectoryPath, "ip-remote", "menu-update.json");
     public Func<JsonObject, CancellationToken, Task<HttpResponseMessage?>>? Override { get; set; }
     public IEnumerable<JsonObject> Writes => Display.Requests.Where(request => request["params"]!.AsObject().Count > 1);
@@ -382,6 +383,13 @@ internal sealed class MenuFixture(ContrastFixture inner) : IDisposable
         if (method == "getTVStates")
             return ContrastDisplay.Reply(request, new JsonObject { ["inputSource"] = Display.Input, ["pictureMode"] = Display.Mode, ["volume"] = 10, ["mute"] = "muteOff", ["pictureSize"] = "16:9", ["soundMode"] = "Standard", ["speakerSelect"] = "Internal" });
         var command = SamsungIpRemoteCommands.Get(method);
+        var grid = IpMenuGrids.All.FirstOrDefault(group => group.Fields.Any(field => field + "Control" == method));
+        if (grid is not null && GridValues.TryGetValue(grid.Section + "/" + Values[grid.SelectorField], out var row))
+        {
+            var field = command.Parameters[0].Name;
+            if (request["params"]!.AsObject().TryGetPropertyValue(field, out var target)) row[field] = target!.DeepClone();
+            return ContrastDisplay.Reply(request, new JsonObject { [field] = row[field]?.DeepClone() });
+        }
         foreach (var pair in request["params"]!.AsObject().Where(pair => pair.Key != "AccessToken")) Values[pair.Key] = pair.Value?.DeepClone();
         if (method == "pictureModeControl" && request["params"]!["pictureMode"] is { } mode) Display.Mode = mode.ToString();
         if (method == "inputSourceControl" && request["params"]!["inputSource"] is { } input) Display.Input = input.ToString();

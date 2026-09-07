@@ -8,7 +8,7 @@ public sealed partial class SamsungIpRemoteService
 {
     private string MenuUpdatePath => Path.Combine(_directory, "menu-update.json");
     private string MenuPreferencesPath => Path.Combine(_directory, "menu-preferences.json");
-    private static IpMenuSnapshot ResetMenu(IpMenuSnapshot previous) => new() { Preferences = previous.Preferences, Update = previous.Update };
+    private static IpMenuSnapshot ResetMenu(IpMenuSnapshot previous) => new() { Preferences = previous.Preferences, Update = previous.Update, SelectorSession = previous.SelectorSession };
     private static bool IsConnectionFailure(SamsungIpRemoteOutcome outcome) => outcome is SamsungIpRemoteOutcome.NotPaired or SamsungIpRemoteOutcome.Unauthorized
         or SamsungIpRemoteOutcome.TransportError or SamsungIpRemoteOutcome.CertificateError or SamsungIpRemoteOutcome.Timeout or SamsungIpRemoteOutcome.HttpError;
     private void UpdateMenu(Func<IpMenuSnapshot, IpMenuSnapshot> change) => Update(state => state with { Menu = change(state.Menu) });
@@ -31,7 +31,9 @@ public sealed partial class SamsungIpRemoteService
         finally { _gate.Release(); }
     }
 
-    public Task RefreshMenuSectionAsync(string section) => RunMenuOperationAsync(async (profile, cancellation) =>
+    public Task RefreshMenuSectionAsync(string section) => RunMenuOperationAsync((profile, cancellation) => RefreshMenuSectionCoreAsync(profile, section, cancellation));
+
+    private async Task RefreshMenuSectionCoreAsync(IpRemoteProfile profile, string section, CancellationToken cancellation)
     {
         if (!IpMenuCatalog.Sections.Any(item => item.Id == section)) throw new ArgumentException("Unknown settings section.");
         var methods = IpMenuCatalog.ForSection(section).Select(control => control.Method).Distinct().ToArray();
@@ -56,7 +58,7 @@ public sealed partial class SamsungIpRemoteService
             SectionsRead = new Dictionary<string, DateTimeOffset>(menu.SectionsRead) { [section] = _timeProvider.GetUtcNow() },
             Status = "TV values refreshed. Unreported or unavailable controls are not filled with defaults."
         });
-    });
+    }
 
     public string? MenuControlDisabledReason(IpMenuControl control)
     {
@@ -64,12 +66,12 @@ public sealed partial class SamsungIpRemoteService
         if (!menu.Connected) return "Connect to the TV first.";
         if (snapshot.IsBusy) return "A TV request is running.";
         if (menu.Update?.NeedsReview == true) return "Review the interrupted update before applying more changes.";
-        if (menu.Value(control) is not { } value) return menu.Readings.GetValueOrDefault(control.Method) is { } reading
+        if (menu.Value(control) is not { } value) return (control.IsIndexed ? menu.IndexedReadings.GetValueOrDefault(control.Id) : menu.Readings.GetValueOrDefault(control.Method)) is { } reading
             ? reading.Outcome == SamsungIpRemoteOutcome.Success ? "Not reported in the TV reply for this display/state." : reading.Message
-            : "Read this section to get the current TV value.";
+            : control.IsIndexed ? "Load all rows to read this value from the TV. Enable the required mode first." : "Read this section to get the current TV value.";
         if (string.IsNullOrWhiteSpace(menu.Input) || string.IsNullOrWhiteSpace(menu.PictureMode)) return "The TV did not report its input/picture mode. Refresh before editing settings.";
         if (!UsableOriginal(control.Parameter, value)) return "The returned value does not match the documented control type/range. Inspect diagnostics; no default was substituted.";
-        try { _ = MenuPrerequisites(menu, control); }
+        try { _ = MenuPrerequisites(menu, control, forEditing: true); }
         catch (InvalidOperationException error) { return error.Message; }
         return null;
     }
@@ -83,11 +85,11 @@ public sealed partial class SamsungIpRemoteService
             if (MenuControlDisabledReason(control) is { } reason) throw new InvalidOperationException(reason);
             var menu = _snapshot.Menu;
             var pending = new Dictionary<string, IpMenuDraft>(menu.Pending);
-            if ((control.ChangesContext || control.IsSelector) && pending.Keys.Any(id => id != controlId)
-                || pending.Values.Any(draft => draft.ControlId != controlId && (IpMenuCatalog.Get(draft.ControlId).ChangesContext || IpMenuCatalog.Get(draft.ControlId).IsSelector)))
+            if (control.RequiresSeparateApply && pending.Keys.Any(id => id != controlId)
+                || pending.Values.Any(draft => draft.ControlId != controlId && IpMenuCatalog.Get(draft.ControlId).RequiresSeparateApply))
                 throw new InvalidOperationException("Apply or discard other pending changes before changing the input, mode, interval or color selector.");
             if (EquivalentCommandValue(menu.Value(control), target)) pending.Remove(controlId);
-            else pending[controlId] = new(controlId, target, menu.Value(control)!.DeepClone(), MenuPrerequisites(menu, control), menu.Input ?? "", menu.PictureMode ?? "");
+            else pending[controlId] = new(controlId, target, menu.Value(control)!.DeepClone(), MenuPrerequisites(menu, control, forEditing: true), menu.Input ?? "", menu.PictureMode ?? "");
             _snapshot = _snapshot with { Menu = menu with { Pending = pending } };
         }
         Changed?.Invoke();
@@ -106,7 +108,10 @@ public sealed partial class SamsungIpRemoteService
     public Task ApplyMenuAsync() => RunMenuOperationAsync(async (profile, cancellation) =>
     {
         EnsureMenuWritesAllowed();
-        var drafts = GetSnapshot().Menu.Pending.Values.ToArray();
+        // Keep ordinary edits in insertion order; group indexed edits by section/row so RGB channels share one selection.
+        var drafts = GetSnapshot().Menu.Pending.Values.OrderBy(draft => IpMenuCatalog.Get(draft.ControlId).IsIndexed ? 1 : 0)
+            .ThenBy(draft => IpMenuCatalog.Get(draft.ControlId).IsIndexed ? IpMenuCatalog.Get(draft.ControlId).Section : "", StringComparer.Ordinal)
+            .ThenBy(draft => IpMenuCatalog.Get(draft.ControlId).IsIndexed ? Array.IndexOf(IpMenuGrids.ForSection(IpMenuCatalog.Get(draft.ControlId).Section)!.Values.ToArray(), IpMenuCatalog.Get(draft.ControlId).IndexValue) : 0).ToArray();
         if (drafts.Length == 0) throw new InvalidOperationException("No pending settings to apply.");
         foreach (var draft in drafts) _ = IpMenuCatalog.ParseTarget(IpMenuCatalog.Get(draft.ControlId), draft.Target.ToString());
         var update = new IpMenuUpdate
@@ -118,6 +123,7 @@ public sealed partial class SamsungIpRemoteService
             Steps = drafts.Select(draft => new IpMenuUpdateStep(draft.ControlId, draft.Original.DeepClone(), draft.Target.DeepClone())).ToArray()
         };
         await SaveMenuUpdateAsync(update).ConfigureAwait(false);
+        IpMenuSelectorSession? selectorSession = null;
         for (var index = 0; index < drafts.Length; index++)
         {
             var draft = drafts[index]; var control = IpMenuCatalog.Get(draft.ControlId);
@@ -125,6 +131,14 @@ public sealed partial class SamsungIpRemoteService
             {
                 cancellation.ThrowIfCancellationRequested();
                 await ReadMenuBaseAsync(profile, cancellation).ConfigureAwait(false);
+                if ((GetSnapshot().Menu.Input ?? "") != draft.Input || (GetSnapshot().Menu.PictureMode ?? "") != draft.PictureMode)
+                    throw new InvalidOperationException("The TV input or picture mode changed since editing. Refresh and enter the target again.");
+                if (control.IsIndexed)
+                {
+                    var grid = IpMenuGrids.ForSection(control.Section)!;
+                    selectorSession ??= await BeginMenuSelectorSessionAsync(profile, grid, cancellation).ConfigureAwait(false);
+                    await MoveMenuSelectorAsync(profile, grid, selectorSession, control.IndexValue!, cancellation).ConfigureAwait(false);
+                }
                 await ReadMenuPrerequisitesAsync(profile, control, cancellation).ConfigureAwait(false);
                 await ReadMenuControlAsync(profile, control, cancellation).ConfigureAwait(false);
                 var before = GetSnapshot().Menu;
@@ -139,6 +153,7 @@ public sealed partial class SamsungIpRemoteService
                     update = MenuStep(update, index, "Already at target");
                     RemoveMenuDraft(draft.ControlId);
                     await SaveMenuUpdateAsync(update).ConfigureAwait(false);
+                    await FinishIndexedGroupAsync().ConfigureAwait(false);
                     continue;
                 }
                 update = MenuStep(update, index, "Sending");
@@ -179,12 +194,14 @@ public sealed partial class SamsungIpRemoteService
                 RemoveMenuDraft(draft.ControlId);
                 await SaveMenuUpdateAsync(update).ConfigureAwait(false);
                 // A mode/selector can change which values subsequent getters expose. Never carry them into its new context.
-                if (control.ChangesContext || control.IsSelector || control.Method is "WB20PointModeControl" or "colorSpaceControl" or "gammaModeControl" or "autoMotionPlusControl")
-                    UpdateMenu(menu => menu with { Readings = new Dictionary<string, IpMenuRead>(), SectionsRead = new Dictionary<string, DateTimeOffset>() });
+                if (control.RequiresSeparateApply || control.Method is "gammaModeControl" or "autoMotionPlusControl")
+                    UpdateMenu(menu => ClearMenuGridCache(menu) with { Readings = new Dictionary<string, IpMenuRead>(), SectionsRead = new Dictionary<string, DateTimeOffset>() });
+                await FinishIndexedGroupAsync().ConfigureAwait(false);
             }
             catch (Exception error) when (error is InvalidOperationException or ArgumentException or OperationCanceledException or IOException or UnauthorizedAccessException or JsonException)
             {
-                update = MenuStep(update, index, update.Steps[index].Status == "Sending" ? "Uncertain" : update.Steps[index].Status == "Rejected unchanged" ? "Rejected unchanged" : "Not sent")
+                if (selectorSession is not null) await StopMenuSelectorSessionAsync(error.Message).ConfigureAwait(false);
+                update = MenuStep(update, index, update.Steps[index].Status == "Sending" ? "Uncertain" : update.Steps[index].Status == "Pending" ? "Not sent" : update.Steps[index].Status)
                     with
                 { Status = "Stopped", Message = error.Message + " No retry or rollback was sent. Earlier confirmed changes remain on the TV." };
                 UpdateMenu(menu => menu with { Update = update, Status = update.Message });
@@ -192,6 +209,12 @@ public sealed partial class SamsungIpRemoteService
                 catch (Exception storageError) when (storageError is IOException or UnauthorizedAccessException)
                 { Update(state => state with { StorageWarning = "Could not save the update result. Keep the originals shown here and check the TV." }); }
                 throw;
+            }
+            async Task FinishIndexedGroupAsync()
+            {
+                if (selectorSession is null || index + 1 < drafts.Length && IpMenuCatalog.Get(drafts[index + 1].ControlId).Section == selectorSession.Section) return;
+                await RestoreMenuSelectorAsync(profile, selectorSession, cancellation).ConfigureAwait(false);
+                selectorSession = null;
             }
         }
         await SaveMenuUpdateAsync(update with { Status = "Completed", Message = "Applied settings and confirmed them by query. No menu navigation or return-to-video keys were needed." }).ConfigureAwait(false);
@@ -217,7 +240,7 @@ public sealed partial class SamsungIpRemoteService
                 Status = "Closed",
                 Message = "User checked the TV. No command, restoration or verification was sent. Refresh before more edits."
             }).ConfigureAwait(false);
-            UpdateMenu(menu => menu with { Readings = new Dictionary<string, IpMenuRead>(), SectionsRead = new Dictionary<string, DateTimeOffset>(), Pending = new Dictionary<string, IpMenuDraft>() });
+            UpdateMenu(menu => ClearMenuGridCache(menu) with { Readings = new Dictionary<string, IpMenuRead>(), SectionsRead = new Dictionary<string, DateTimeOffset>(), Pending = new Dictionary<string, IpMenuDraft>() });
         }
         finally { _gate.Release(); }
     }
@@ -242,7 +265,7 @@ public sealed partial class SamsungIpRemoteService
         SamsungIpRemoteCommands.Get("remoteKeyControl").Validate(new() { ["remoteKey"] = key }, false);
         var exchange = await _client.ExecuteCommandAsync(profile.Connection, "remoteKeyControl", new() { ["remoteKey"] = key }, cancellationToken: cancellation).ConfigureAwait(false);
         await RecordExchangeAsync(profile, "Remote · " + key, exchange).ConfigureAwait(false);
-        UpdateMenu(menu => menu with { Connected = key != "power" && menu.Connected, Readings = new Dictionary<string, IpMenuRead>(), SectionsRead = new Dictionary<string, DateTimeOffset>() });
+        UpdateMenu(menu => ClearMenuGridCache(menu) with { Connected = key != "power" && menu.Connected, Readings = new Dictionary<string, IpMenuRead>(), SectionsRead = new Dictionary<string, DateTimeOffset>() });
         RequireSuccess(exchange);
         UpdateMenu(menu => menu with { Status = "Sent " + key + ". Refresh Menu for current settings." });
     });
@@ -293,7 +316,7 @@ public sealed partial class SamsungIpRemoteService
         var previous = GetSnapshot().Menu;
         var changed = !EquivalentCommandValue(previous.Tv["inputSource"], tv.Result["inputSource"])
             || !EquivalentCommandValue(previous.Tv["pictureMode"], tv.Result["pictureMode"]);
-        UpdateMenu(menu => menu with
+        UpdateMenu(menu => (changed ? ClearMenuGridCache(menu) : menu) with
         {
             Tv = (JsonObject)tv.Result.DeepClone(),
             Video = (JsonObject)video.Result.DeepClone(),
@@ -311,6 +334,9 @@ public sealed partial class SamsungIpRemoteService
     {
         var fields = exchange.IsSuccess ? CommandFields(SamsungIpRemoteCommands.Get(method), exchange.Result) : null;
         var values = fields is null ? null : (JsonObject)fields.DeepClone();
+        var grid = IpMenuGrids.All.FirstOrDefault(item => item.ModeMethod == method);
+        if (grid is not null && !EquivalentCommandValue(GetSnapshot().Menu.Readings.GetValueOrDefault(method)?.Values?[grid.ModeField], values?[grid.ModeField]))
+            UpdateMenu(menu => ClearMenuGridCache(menu, grid.Section));
         foreach (var control in IpMenuCatalog.Controls.Where(control => control.Method == method && control.Parameter.Kind == IpRemoteParameterKind.Integer))
             if (values?[control.Field] is JsonValue scalar && scalar.TryGetValue<string>(out var text)
                 && int.TryParse(text, System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out var number)) values[control.Field] = number;
@@ -326,6 +352,14 @@ public sealed partial class SamsungIpRemoteService
         if (control.Command.ReadbackMethod is "getTVStates" or "getVideoStates") return;
         var exchange = await MenuQueryAsync(profile, control.Method, cancellation).ConfigureAwait(false);
         StoreMenuRead(control.Method, exchange); RequireSuccess(exchange);
+        if (control.IsIndexed)
+        {
+            await ReadMenuPrerequisitesAsync(profile, control, cancellation).ConfigureAwait(false);
+            var prerequisites = MenuPrerequisites(GetSnapshot().Menu, control);
+            if (prerequisites[IpMenuGrids.ForSection(control.Section)!.SelectorField]?.ToString() != control.IndexValue)
+                throw new InvalidOperationException("The interval/color changed while reading. No value was assigned to the wrong row.");
+            CacheMenuGridRead(control, GetSnapshot().Menu.Readings[control.Method]);
+        }
     }
     private async Task ReadMenuPrerequisitesAsync(IpRemoteProfile profile, IpMenuControl control, CancellationToken cancellation)
     {
@@ -335,12 +369,13 @@ public sealed partial class SamsungIpRemoteService
             StoreMenuRead(requirement.Method, exchange); RequireSuccess(exchange);
         }
     }
-    private static JsonObject MenuPrerequisites(IpMenuSnapshot menu, IpMenuControl control)
+    private static JsonObject MenuPrerequisites(IpMenuSnapshot menu, IpMenuControl control, bool forEditing = false)
     {
         var result = new JsonObject();
         foreach (var requirement in control.Command.Requirements)
         {
-            var value = menu.Readings.GetValueOrDefault(requirement.Method)?.Values?[requirement.Field];
+            var value = forEditing && control.IsIndexed && requirement.Field == IpMenuGrids.ForSection(control.Section)!.SelectorField
+                ? JsonValue.Create(control.IndexValue) : menu.Readings.GetValueOrDefault(requirement.Method)?.Values?[requirement.Field];
             if (value is not JsonValue scalar || !scalar.TryGetValue<string>(out var text) || !requirement.AllowedValues.Contains(text, StringComparer.OrdinalIgnoreCase))
                 throw new InvalidOperationException($"Requires {requirement.Field}: {string.Join(" / ", requirement.AllowedValues)}. Change that setting and refresh this section.");
             result[requirement.Field] = value.DeepClone();
@@ -365,15 +400,22 @@ public sealed partial class SamsungIpRemoteService
         var update = File.Exists(MenuUpdatePath) ? JsonSerializer.Deserialize<IpMenuUpdate>(await File.ReadAllTextAsync(MenuUpdatePath).ConfigureAwait(false)) : null;
         if (update is not null)
         {
-            if (update.Steps is null || update.Steps.Count > IpMenuCatalog.Controls.Count) throw new JsonException("Invalid direct menu update journal.");
+            if (update.Steps is null || update.Steps.Count > IpMenuCatalog.AllControls.Count()) throw new JsonException("Invalid direct menu update journal.");
             foreach (var step in update.Steps)
             {
-                if (step is null || !IpMenuCatalog.Controls.Any(control => control.Id == step.ControlId) || step.Target is null || step.Original is null
+                if (step is null || !IpMenuCatalog.AllControls.Any(control => control.Id == step.ControlId) || step.Target is null || step.Original is null
                     || step.Status is not ("Pending" or "Sending" or "Uncertain" or "Applied" or "Already at target" or "Rejected unchanged" or "Not sent" or "Checked manually"))
                     throw new JsonException("Invalid direct menu update step. Preserve the journal and inspect it before continuing.");
             }
             if (update.Status == "Running") update = update with { Status = "Stopped", Message = "The previous update was interrupted. Nothing was resumed. Read/check the TV before applying more changes." };
         }
-        return new() { Preferences = preferences, Update = update };
+        var selector = File.Exists(MenuSelectorPath) ? JsonSerializer.Deserialize<IpMenuSelectorSession>(await File.ReadAllTextAsync(MenuSelectorPath).ConfigureAwait(false)) : null;
+        if (selector is not null)
+        {
+            var grid = IpMenuGrids.ForSection(selector.Section);
+            if (grid is null || !grid.Values.Contains(selector.Original) || selector.Message is null) throw new JsonException("Invalid calibration selector journal.");
+            if (selector.Status is not ("Restored" or "Stopped")) selector = selector with { Status = "Stopped", Message = "The previous selector operation was interrupted. Nothing was resumed. Load the grid again to read its current values." };
+        }
+        return new() { Preferences = preferences, Update = update, SelectorSession = selector };
     }
 }

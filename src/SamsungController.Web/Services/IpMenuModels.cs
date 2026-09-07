@@ -6,6 +6,9 @@ namespace SamsungController.Web.Services;
 public sealed record IpMenuSection(string Id, string Name, string Category);
 public sealed record IpMenuControl(string Id, string Method, string Field, string Name, string Section, IpRemoteParameter Parameter)
 {
+    public string? IndexValue { get; init; }
+    public bool IsIndexed => IndexValue is not null;
+    public bool RequiresSeparateApply => ChangesContext || IsSelector || Method is "WB20PointModeControl" or "colorSpaceControl" or "colorSpace.ColorAdjustmentPointControl";
     public SamsungIpRemoteCommand Command => SamsungIpRemoteCommands.Get(Method);
     public bool ChangesContext => Method is "inputSourceControl" or "pictureModeControl" or "gameModeControl" or "artModeControl" or "pictureCalibrationModeControl";
     public bool IsSelector => Method is "WB20P.IntervalControl" or "colorSpace.ColorControl";
@@ -28,7 +31,15 @@ public static class IpMenuCatalog
     });
 
     public static IReadOnlyList<IpMenuControl> Controls { get; } = Array.AsReadOnly(Build().ToArray());
-    public static IpMenuControl Get(string id) => Controls.FirstOrDefault(control => control.Id == id)
+    public static IReadOnlyList<IpMenuControl> IndexedControls { get; } = Array.AsReadOnly(IpMenuGrids.All.SelectMany(grid => grid.Values.SelectMany(value =>
+        grid.Fields.Select(field => Controls.Single(control => control.Field == field) with
+        {
+            Id = field + "Control/" + field + "/" + value,
+            Name = value + " " + field.Split('.').Last(),
+            IndexValue = value
+        }))).ToArray());
+    public static IEnumerable<IpMenuControl> AllControls => Controls.Concat(IndexedControls);
+    public static IpMenuControl Get(string id) => AllControls.FirstOrDefault(control => control.Id == id)
         ?? throw new ArgumentException("Unknown direct menu control.");
     public static IEnumerable<IpMenuControl> ForSection(string section) => Controls.Where(control => control.Section == section);
     private static IEnumerable<IpMenuControl> Build()
@@ -88,6 +99,9 @@ public sealed record IpMenuSnapshot
     public JsonObject Tv { get; init; } = new();
     public JsonObject Video { get; init; } = new();
     public IReadOnlyDictionary<string, IpMenuRead> Readings { get; init; } = new Dictionary<string, IpMenuRead>();
+    public IReadOnlyDictionary<string, IpMenuRead> IndexedReadings { get; init; } = new Dictionary<string, IpMenuRead>();
+    public IReadOnlyDictionary<string, DateTimeOffset> GridsRead { get; init; } = new Dictionary<string, DateTimeOffset>();
+    public IpMenuSelectorSession? SelectorSession { get; init; }
     public IReadOnlyDictionary<string, DateTimeOffset> SectionsRead { get; init; } = new Dictionary<string, DateTimeOffset>();
     public IReadOnlyDictionary<string, IpMenuDraft> Pending { get; init; } = new Dictionary<string, IpMenuDraft>();
     public IpMenuPreferences Preferences { get; init; } = new();
@@ -95,8 +109,32 @@ public sealed record IpMenuSnapshot
     public string Status { get; init; } = "Connect to read current TV settings.";
     public string? Input => Tv["inputSource"]?.ToString();
     public string? PictureMode => Tv["pictureMode"]?.ToString();
-    public JsonNode? Value(IpMenuControl control) => Readings.GetValueOrDefault(control.Method) is { Outcome: SamsungIpRemoteOutcome.Success, Values: { } values } ? values[control.Field] : null;
+    public JsonNode? Value(IpMenuControl control) => (control.IsIndexed ? IndexedReadings.GetValueOrDefault(control.Id) : Readings.GetValueOrDefault(control.Method))
+        is { Outcome: SamsungIpRemoteOutcome.Success, Values: { } values } ? values[control.Field] : null;
 }
+
+public sealed record IpMenuGrid(string Section, string ModeField, string RequiredMode, string SelectorField, IReadOnlyList<string> Values, IReadOnlyList<string> Fields)
+{
+    public string SelectorMethod => SelectorField + "Control";
+    public string ModeMethod => ModeField + "Control";
+    public IEnumerable<IpMenuControl> Row(string value) => IpMenuCatalog.IndexedControls.Where(control => control.Section == Section && control.IndexValue == value);
+}
+
+public static class IpMenuGrids
+{
+    public static IReadOnlyList<IpMenuGrid> All { get; } = Array.AsReadOnly(new[]
+    {
+        new IpMenuGrid("white20", "WB20PointMode", "On", "WB20P.Interval", SamsungIpRemoteCommands.Get("WB20P.IntervalControl").Parameters[0].Choices,
+            new[] { "WB20P.Red", "WB20P.Green", "WB20P.Blue" }),
+        new IpMenuGrid("color", "colorSpace", "Custom", "colorSpace.Color", SamsungIpRemoteCommands.Get("colorSpace.ColorControl").Parameters[0].Choices,
+            new[] { "colorSpace.Red", "colorSpace.Green", "colorSpace.Blue" })
+    });
+    public static IpMenuGrid? ForSection(string section) => All.FirstOrDefault(grid => grid.Section == section);
+}
+
+// A selector move never changes an RGB value, but is recorded before sending and never resumed at startup.
+public sealed record IpMenuSelectorSession(string Section, string Endpoint, string Input, string PictureMode, string Original,
+    string? Requested = null, string? LastConfirmed = null, string Status = "Ready", string Message = "");
 
 public sealed record IpMenuUpdateStep(string ControlId, JsonNode Original, JsonNode Target, string Status = "Pending");
 public sealed record IpMenuUpdate

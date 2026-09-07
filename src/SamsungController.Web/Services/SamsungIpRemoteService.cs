@@ -237,7 +237,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
                     && item.Exchange.Method == method)?.Exchange,
                 WriteCapability = "See ControlCapabilities for the guarded picture workflows and CommandHistory for parameter/context-specific command tests. Acknowledgment or user confirmation without field readback is not read/write verification."
             }),
-            Unresolved = new[] { "No documented range-discovery query found; Menu limits are documented, not queried", "Display/mode support varies; optional diagnostic history is not a Menu access requirement", "20-point and custom-color getters address the currently selected interval/color" }
+            Unresolved = new[] { "No documented range-discovery query found; Menu limits are documented, not queried", "Display/mode support varies; optional diagnostic history is not a Menu access requirement", "Calibration grids select/query each interval/color and restore selectors on success; Stop never sends late restoration commands" }
         }, JsonOptions);
         if (redactCertificateFingerprints) json = IpRemoteReportRedactor.RedactCertificateFingerprints(json);
         return ProtocolMessageFormatter.FormatJson(json, revealSensitive: false, revealDeviceIdentifiers: !redactIdentifiers);
@@ -253,7 +253,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             HasToken = exchange.Outcome != SamsungIpRemoteOutcome.NotPaired && (pairing && exchange.IsSuccess || current.HasToken),
             AuthorizationRejected = exchange.Outcome == SamsungIpRemoteOutcome.Unauthorized
                 || (!(pairing && exchange.IsSuccess) && current.AuthorizationRejected),
-            Menu = IsConnectionFailure(exchange.Outcome) ? current.Menu with { Connected = false, Readings = new Dictionary<string, IpMenuRead>(), SectionsRead = new Dictionary<string, DateTimeOffset>(), Status = exchange.Message } : current.Menu
+            Menu = IsConnectionFailure(exchange.Outcome) ? ClearMenuGridCache(current.Menu) with { Connected = false, Readings = new Dictionary<string, IpMenuRead>(), SectionsRead = new Dictionary<string, DateTimeOffset>(), Status = exchange.Message } : current.Menu
         });
         try
         {

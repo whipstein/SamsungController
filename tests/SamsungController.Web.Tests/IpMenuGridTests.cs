@@ -1,0 +1,283 @@
+using System.Net;
+using System.Text.Json.Nodes;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.JSInterop;
+using SamsungController.Web.Components.Pages;
+using SamsungController.Web.Services;
+
+namespace SamsungController.Web.Tests;
+
+public sealed class IpMenuGridTests
+{
+    [Theory]
+    [InlineData("white20", 20, "50%")]
+    [InlineData("color", 6, "Blue")]
+    public async Task LoadsEveryIndependentRgbRowWithoutChangingValuesAndRestoresSelector(string section, int count, string original)
+    {
+        using var fixture = await CreateAsync();
+        var before = fixture.GridValues.ToDictionary(pair => pair.Key, pair => pair.Value.ToJsonString());
+        await fixture.Service.RefreshMenuGridAsync(section);
+        var grid = IpMenuGrids.ForSection(section)!;
+        Assert.Equal(count, grid.Values.Count);
+        Assert.Equal(original, fixture.Values[grid.SelectorField]!.ToString());
+        Assert.Equal("Restored", fixture.Service.GetSnapshot().Menu.SelectorSession!.Status);
+        Assert.Equal(count * 3, fixture.Service.GetSnapshot().Menu.IndexedReadings.Count);
+        foreach (var value in grid.Values)
+            foreach (var control in grid.Row(value))
+            {
+                Assert.Equal(fixture.GridValues[section + "/" + value][control.Field]!.ToString(), fixture.Service.GetSnapshot().Menu.Value(control)!.ToString());
+                Assert.Null(fixture.Service.MenuControlDisabledReason(control));
+            }
+        Assert.All(fixture.GridValues, pair => Assert.Equal(before[pair.Key], pair.Value.ToJsonString()));
+        Assert.All(fixture.Writes, request => Assert.Equal(grid.SelectorMethod, request["method"]!.ToString()));
+        Assert.DoesNotContain("remoteKeyControl", fixture.Display.Methods);
+        Assert.True(fixture.Service.GetSnapshot().Menu.GridsRead.ContainsKey(section));
+    }
+
+    [Theory]
+    [InlineData("white20", "Off")]
+    [InlineData("color", "Auto")]
+    public async Task DisabledModeNeverGetsEnabledByLoadingGrid(string section, string mode)
+    {
+        using var fixture = await CreateAsync();
+        var grid = IpMenuGrids.ForSection(section)!;
+        fixture.Values[grid.ModeField] = mode;
+        await fixture.Service.RefreshMenuGridAsync(section);
+        Assert.Empty(fixture.Writes);
+        Assert.Empty(fixture.Service.GetSnapshot().Menu.IndexedReadings);
+        Assert.False(fixture.Service.GetSnapshot().Menu.GridsRead.ContainsKey(section));
+        Assert.All(grid.Values.SelectMany(grid.Row), control => Assert.NotNull(fixture.Service.MenuControlDisabledReason(control)));
+    }
+
+    [Theory]
+    [InlineData("white20", "10%", "90%")]
+    [InlineData("color", "Red", "Magenta")]
+    public async Task BatchTargetsRowsIndependentlyAndSharesSelectorAcrossRgbChannels(string section, string first, string second)
+    {
+        using var fixture = await CreateAsync();
+        var grid = IpMenuGrids.ForSection(section)!;
+        await fixture.Service.RefreshMenuGridAsync(section);
+        fixture.Display.Requests.Clear();
+        var original = fixture.Values[grid.SelectorField]!.ToString();
+        var red = grid.Row(first).First();
+        var green = grid.Row(first).Skip(1).First();
+        var blue = grid.Row(second).Last();
+        var untouched = fixture.GridValues[section + "/" + second][grid.Fields[0]]!.ToString();
+        fixture.Service.StageMenuValue(red.Id, "11");
+        fixture.Service.StageMenuValue(blue.Id, "12"); // Interleaved edits are grouped by row when applied.
+        fixture.Service.StageMenuValue(green.Id, "13");
+        Assert.Empty(fixture.Writes);
+        Assert.Equal(3, fixture.Service.GetSnapshot().Menu.Pending.Count);
+        await fixture.Service.ApplyMenuAsync();
+        Assert.Equal(11, fixture.GridValues[section + "/" + first][red.Field]!.GetValue<int>());
+        Assert.Equal(13, fixture.GridValues[section + "/" + first][green.Field]!.GetValue<int>());
+        Assert.Equal(12, fixture.GridValues[section + "/" + second][blue.Field]!.GetValue<int>());
+        Assert.Equal(untouched, fixture.GridValues[section + "/" + second][red.Field]!.ToString());
+        Assert.Equal(original, fixture.Values[grid.SelectorField]!.ToString());
+        Assert.Equal(new[] { first, second, original }, fixture.Writes.Where(request => request["method"]!.ToString() == grid.SelectorMethod)
+            .Select(request => request["params"]![grid.SelectorField]!.ToString()));
+        Assert.Empty(fixture.Service.GetSnapshot().Menu.Pending);
+        Assert.Equal("Completed", fixture.Service.GetSnapshot().Menu.Update!.Status);
+        Assert.All(fixture.Service.GetSnapshot().Menu.Update!.Steps, step => Assert.Equal("Applied", step.Status));
+        Assert.Equal(11, fixture.Service.GetSnapshot().Menu.Value(red)!.GetValue<int>());
+        var requests = fixture.Display.Requests.Count;
+        await fixture.RestartAsync();
+        Assert.Equal(requests, fixture.Display.Requests.Count);
+        Assert.Equal(3, fixture.Service.GetSnapshot().Menu.Update!.Steps.Count);
+        Assert.Empty(fixture.Service.GetSnapshot().Menu.IndexedReadings);
+    }
+
+    [Fact]
+    public async Task CombinedColorAndWhiteBalanceBatchRestoresBothOriginalSelectors()
+    {
+        using var fixture = await CreateAsync();
+        await fixture.Service.RefreshMenuGridAsync("white20");
+        await fixture.Service.RefreshMenuGridAsync("color");
+        var wb = IpMenuGrids.ForSection("white20")!.Row("5%").First();
+        var color = IpMenuGrids.ForSection("color")!.Row("Yellow").Last();
+        fixture.Service.StageMenuValue(wb.Id, "7");
+        fixture.Service.StageMenuValue(color.Id, "8");
+        await fixture.Service.ApplyMenuAsync();
+        Assert.Equal("50%", fixture.Values["WB20P.Interval"]!.ToString());
+        Assert.Equal("Blue", fixture.Values["colorSpace.Color"]!.ToString());
+        Assert.Equal(7, fixture.GridValues["white20/5%"][wb.Field]!.GetValue<int>());
+        Assert.Equal(8, fixture.GridValues["color/Yellow"][color.Field]!.GetValue<int>());
+    }
+
+    [Theory]
+    [InlineData("selector rejection")]
+    [InlineData("false selector echo")]
+    [InlineData("mode changed")]
+    public async Task FailedRowSelectionNeverSendsAnRgbWrite(string failure)
+    {
+        using var fixture = await CreateAsync();
+        var grid = IpMenuGrids.ForSection("white20")!;
+        await fixture.Service.RefreshMenuGridAsync(grid.Section);
+        fixture.Service.StageMenuValue(grid.Row("10%").First().Id, "11");
+        fixture.Display.Requests.Clear();
+        if (failure == "mode changed") fixture.Values[grid.ModeField] = "Off";
+        else fixture.Override = (request, _) => Task.FromResult(request["method"]!.ToString() == grid.SelectorMethod && request["params"]!.AsObject().Count > 1
+            ? failure == "selector rejection" ? MenuFixture.Reject(request, -32002) : ContrastDisplay.Reply(request, new JsonObject { [grid.SelectorField] = "10%" }) : null);
+        await Assert.ThrowsAsync<InvalidOperationException>(fixture.Service.ApplyMenuAsync);
+        Assert.Empty(RgbWrites(fixture));
+        Assert.False(fixture.Service.GetSnapshot().Menu.Update!.NeedsReview);
+        Assert.Equal("Not sent", fixture.Service.GetSnapshot().Menu.Update!.Steps[0].Status);
+    }
+
+    [Fact]
+    public async Task StaleRowValueIsReadAgainBeforeOverwriteAndDoesNotOverwriteOtherRows()
+    {
+        using var fixture = await CreateAsync();
+        var grid = IpMenuGrids.ForSection("white20")!;
+        await fixture.Service.RefreshMenuGridAsync(grid.Section);
+        var cell = grid.Row("15%").First();
+        fixture.Service.StageMenuValue(cell.Id, "11");
+        fixture.GridValues["white20/15%"][cell.Field] = 6;
+        fixture.Display.Requests.Clear();
+        await Assert.ThrowsAsync<InvalidOperationException>(fixture.Service.ApplyMenuAsync);
+        Assert.Empty(RgbWrites(fixture));
+        Assert.Equal(6, fixture.GridValues["white20/15%"][cell.Field]!.GetValue<int>());
+    }
+
+    [Fact]
+    public async Task CancelDuringScanNeverRestoresOrResumesAutomatically()
+    {
+        using var fixture = await CreateAsync();
+        fixture.Override = (request, cancellation) =>
+        {
+            if (request["method"]!.ToString() == "WB20P.IntervalControl" && request["params"]!.AsObject().Count > 1)
+            {
+                fixture.Service.Cancel();
+                cancellation.ThrowIfCancellationRequested();
+            }
+            return Task.FromResult<HttpResponseMessage?>(null);
+        };
+        await Assert.ThrowsAnyAsync<Exception>(() => fixture.Service.RefreshMenuGridAsync("white20"));
+        Assert.Single(fixture.Writes);
+        Assert.Empty(RgbWrites(fixture));
+        Assert.Equal("Stopped", fixture.Service.GetSnapshot().Menu.SelectorSession!.Status);
+        Assert.Empty(fixture.Service.GetSnapshot().Menu.IndexedReadings);
+        var requests = fixture.Display.Requests.Count;
+        await fixture.RestartAsync();
+        Assert.Equal(requests, fixture.Display.Requests.Count);
+        Assert.Equal("Stopped", fixture.Service.GetSnapshot().Menu.SelectorSession!.Status);
+    }
+
+    [Fact]
+    public async Task StopDuringIndexedWriteStopsLaterRowsAndRetainsBothJournals()
+    {
+        using var fixture = await CreateAsync();
+        var grid = IpMenuGrids.ForSection("color")!;
+        await fixture.Service.RefreshMenuGridAsync(grid.Section);
+        fixture.Service.StageMenuValue(grid.Row("Red").First().Id, "44");
+        fixture.Service.StageMenuValue(grid.Row("Magenta").Last().Id, "42");
+        fixture.Display.Requests.Clear();
+        fixture.Override = (request, cancellation) =>
+        {
+            if (request["method"]!.ToString() == "colorSpace.RedControl" && request["params"]!.AsObject().Count > 1)
+            { fixture.Service.Cancel(); cancellation.ThrowIfCancellationRequested(); }
+            return Task.FromResult<HttpResponseMessage?>(null);
+        };
+        await Assert.ThrowsAnyAsync<Exception>(fixture.Service.ApplyMenuAsync);
+        Assert.Single(RgbWrites(fixture));
+        Assert.Equal(2, fixture.Writes.Count()); // select Red, then its RGB setter. No restore or next row.
+        Assert.True(fixture.Service.GetSnapshot().Menu.Update!.NeedsReview);
+        Assert.Equal("Stopped", fixture.Service.GetSnapshot().Menu.SelectorSession!.Status);
+        var count = fixture.Display.Requests.Count;
+        await fixture.RestartAsync();
+        Assert.Equal(count, fixture.Display.Requests.Count);
+        Assert.True(fixture.Service.GetSnapshot().Menu.Update!.NeedsReview);
+    }
+
+    [Fact]
+    public async Task ExternalSelectorDriftDuringScanNeverMislabelsValues()
+    {
+        using var fixture = await CreateAsync();
+        fixture.Override = (request, _) =>
+        {
+            if (request["method"]!.ToString() == "WB20P.RedControl" && fixture.Values["WB20P.Interval"]!.ToString() == "5%")
+                fixture.Values["WB20P.Interval"] = "10%";
+            return Task.FromResult<HttpResponseMessage?>(null);
+        };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.RefreshMenuGridAsync("white20"));
+        Assert.Empty(fixture.Service.GetSnapshot().Menu.IndexedReadings);
+        Assert.Empty(RgbWrites(fixture));
+    }
+
+    [Fact]
+    public async Task MissingRgbFieldIsNotFilledWithAnotherRowOrDefault()
+    {
+        using var fixture = await CreateAsync();
+        fixture.GridValues["color/Cyan"].Remove("colorSpace.Green");
+        await fixture.Service.RefreshMenuGridAsync("color");
+        var controls = IpMenuGrids.ForSection("color")!.Row("Cyan").ToArray();
+        Assert.NotNull(fixture.Service.GetSnapshot().Menu.Value(controls[0]));
+        Assert.Null(fixture.Service.GetSnapshot().Menu.Value(controls[1]));
+        Assert.NotNull(fixture.Service.MenuControlDisabledReason(controls[1]));
+        Assert.Null(fixture.Service.MenuControlDisabledReason(controls[2]));
+        Assert.Empty(RgbWrites(fixture));
+    }
+
+    [Fact]
+    public async Task PageShowsAllRowsWithoutSelectorsAndSupportsStagedAndImmediateEdits()
+    {
+        using var fixture = await CreateAsync();
+        await fixture.Service.RefreshMenuSectionAsync("expert");
+        await fixture.Service.RefreshMenuGridAsync("white20");
+        await fixture.Service.RefreshMenuGridAsync("color");
+        fixture.Display.Requests.Clear();
+        var javascript = new IpRemotePageTests.DownloadJavaScript();
+        await using var services = new ServiceCollection().AddLogging().AddSingleton(fixture.Service).AddSingleton<IJSRuntime>(javascript).BuildServiceProvider();
+        await using var renderer = new IpRemotePageTests.IpPageRenderer(services, typeof(DirectMenu));
+        await renderer.StartAsync();
+        await renderer.ClickAsync("20-point white balance");
+        await renderer.AssertInputPresentAsync("20-point white balance enabled", true);
+        await renderer.AssertInputPresentAsync("20-point interval", false);
+        foreach (var control in IpMenuCatalog.IndexedControls.Where(control => control.Section == "white20"))
+            await renderer.AssertInputPresentAsync(control.Name + " value", true);
+        await renderer.ChangeAsync("5% Red value", "11", "onchange");
+        await renderer.ChangeAsync("95% Blue value", "12", "onchange");
+        Assert.Empty(fixture.Writes);
+        await renderer.ClickAsync("Apply 2 pending");
+        Assert.Equal(11, fixture.GridValues["white20/5%"]["WB20P.Red"]!.GetValue<int>());
+        Assert.Equal(12, fixture.GridValues["white20/95%"]["WB20P.Blue"]!.GetValue<int>());
+        await renderer.ClickAsync("Color");
+        await renderer.AssertInputPresentAsync("Custom color selector", false);
+        foreach (var control in IpMenuCatalog.IndexedControls.Where(control => control.Section == "color"))
+            await renderer.AssertInputPresentAsync(control.Name + " value", true);
+        await renderer.SetCheckboxAsync("Apply settings immediately", true);
+        await renderer.ChangeAsync("Magenta Green value", "42", "onchange");
+        Assert.Equal(42, fixture.GridValues["color/Magenta"]["colorSpace.Green"]!.GetValue<int>());
+        Assert.Equal("Blue", fixture.Values["colorSpace.Color"]!.ToString());
+        await renderer.ClickAsync("20-point white balance");
+        await renderer.SetCheckboxAsync("20-point white balance enabled", false);
+        Assert.Equal("Off", fixture.Values["WB20PointMode"]!.ToString());
+        await renderer.AssertTextAsync("Turn on 20-point white balance above and Apply");
+        await renderer.SetCheckboxAsync("20-point white balance enabled", true);
+        Assert.Equal("On", fixture.Values["WB20PointMode"]!.ToString());
+        Assert.True(fixture.Service.GetSnapshot().Menu.GridsRead.ContainsKey("white20"));
+        await renderer.AssertTextAbsentAsync("An IP Remote action is already running");
+        await renderer.AssertTargetAsync("5% Red value", 11);
+        Assert.Equal(0, javascript.ConfirmCalls);
+    }
+
+    private static IEnumerable<JsonObject> RgbWrites(MenuFixture fixture) => fixture.Writes.Where(request => IpMenuGrids.All.Any(grid => grid.Fields.Any(field => request["method"]!.ToString() == field + "Control")));
+
+    private static async Task<MenuFixture> CreateAsync()
+    {
+        var fixture = await MenuFixture.CreateAsync();
+        foreach (var grid in IpMenuGrids.All)
+        {
+            fixture.Values[grid.ModeField] = grid.RequiredMode;
+            fixture.Values[grid.SelectorField] = grid.Section == "white20" ? "50%" : "Blue";
+            for (var index = 0; index < grid.Values.Count; index++)
+            {
+                var row = new JsonObject();
+                for (var channel = 0; channel < 3; channel++) row[grid.Fields[channel]] = (grid.Section == "white20" ? -30 : 10) + index * 2 + channel;
+                fixture.GridValues[grid.Section + "/" + grid.Values[index]] = row;
+            }
+        }
+        await fixture.Service.ConnectMenuAsync();
+        return fixture;
+    }
+}

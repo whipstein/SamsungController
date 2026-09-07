@@ -15,7 +15,8 @@ Development and real-display feedback proceed separately on `feature/ip-remote-v
 - [x] Investigate range metadata: no documented range query found; use and label 2023 command-table limits, not guessed defaults or boundary probing.
 - [x] Cover the cutover with simulated service and Blazor event tests; update installation/use documentation.
 - [ ] User exercises the replacement interface on real displays, especially advanced calibration and mode-dependent controls.
-- [ ] Design direct-IP macro editing and full calibration presets/snapshots, including explicit interval/color addressing.
+- [x] Restore simultaneous 20-point and Custom color RGB grids using queried per-row values, explicit selector routing/restoration, staged/immediate updates, and cancellation/restart tests.
+- [ ] Design direct-IP macro editing and portable full calibration preset import/export.
 
 - [x] Add an independent HTTPS JSON-RPC client with explicit pairing and a two-getter read-only allowlist.
 - [x] Keep endpoint-scoped credentials, user-entered test context, and redacted observations separate from WebSocket tokens, calibration values, and menu verification.

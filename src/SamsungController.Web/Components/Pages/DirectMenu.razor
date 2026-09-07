@@ -32,8 +32,6 @@
             { <button class="@(Section == section.Id ? "active" : "")" @onclick="() => SelectSection(section.Id)" disabled="@Snapshot.IsBusy">@section.Name</button> }
         </nav>
     }
-    @if (Section is "white20" or "color")
-    { <p class="direct-hint">Queries read the currently selected @(Section == "white20" ? "interval" : "color"). Changing its selector is an explicit TV setting change; refresh never cycles selectors.</p> }
     @if (Section == "white2")
     {
         <div class="direct-white2">
@@ -44,6 +42,27 @@
     else
     {
         <div class="direct-control-grid">@foreach (var control in VisibleControls) { @ControlCard(control) }</div>
+    }
+    @if (Grid is { } grid)
+    {
+        <section class="direct-indexed" aria-label="@(grid.Section == "white20" ? "All white balance intervals" : "All custom colors")">
+            <div class="direct-toolbar"><div><h2>@(grid.Section == "white20" ? "20-point RGB adjustments" : "Custom color RGB adjustments")</h2>
+                <p>@grid.Values.Count fixed rows · each has its own Red, Green, and Blue values.</p></div>
+                <button class="toolbar-button" @onclick="RefreshAsync" disabled="@(!CanWork || Snapshot.Menu.Update?.NeedsReview == true)">@(Snapshot.Menu.GridsRead.ContainsKey(Section) ? "Reload all rows" : "Load all rows")</button></div>
+            <p class="direct-hint">Loading reads each row by temporarily selecting it, then restores the original selection. Apply addresses the edited rows automatically and restores the selector when finished. No RGB value changes during loading. Stop sends no further commands, including restoration.</p>
+            @if (!Snapshot.Menu.GridsRead.ContainsKey(Section))
+            { <p class="direct-unavailable">@(GridModeEnabled ? "Load all rows to read their current values." : grid.Section == "white20" ? "Turn on 20-point white balance above and Apply to enable these controls." : "Choose Custom in Color space above and Apply to enable these controls.")</p> }
+            @if (Snapshot.Menu.SelectorSession is { } session && session.Section == Section)
+            { <p class="direct-hint" role="status">@(Snapshot.IsBusy ? Snapshot.Menu.Status : session.Message)</p> }
+            <div class="direct-indexed-rows">
+                @foreach (var value in grid.Values)
+                {
+                    <section class="direct-indexed-row" @key="value"><h3>@value</h3>
+                        <div class="direct-indexed-channels">@foreach (var control in grid.Row(value)) { @ControlCard(control) }</div>
+                    </section>
+                }
+            </div>
+        </section>
     }
     <p class="direct-hint">Limits are from Samsung's command tables and protocol references—not range metadata returned by queries. Unsupported/unreported controls can be retried with Refresh after changing the display's mode or signal.</p>
 </section>
@@ -68,14 +87,19 @@
     private readonly Dictionary<string, string> Edits = new(StringComparer.Ordinal);
     private readonly HashSet<string> AutoReads = new(StringComparer.Ordinal);
     private string? Error;
-    private bool CanWork => Snapshot.Menu.Connected && !Snapshot.IsBusy;
+    private bool ActionRunning;
+    private bool CanWork => Snapshot.Menu.Connected && !Snapshot.IsBusy && !ActionRunning;
     private bool CanApply => CanWork && Snapshot.Menu.Pending.Count > 0 && Snapshot.Menu.Update?.NeedsReview != true;
-    private IEnumerable<IpMenuControl> VisibleControls => IpMenuCatalog.ForSection(Section).OrderBy(control => control.Method is "WB20PointModeControl" or "colorSpaceControl" ? 0 : control.IsSelector ? 1 : 2);
+    private IpMenuGrid? Grid => IpMenuGrids.ForSection(Section);
+    private bool GridModeEnabled => Grid is { } grid && Snapshot.Menu.Readings.GetValueOrDefault(grid.ModeMethod)?.Values?[grid.ModeField]?.ToString() == grid.RequiredMode;
+    private IEnumerable<IpMenuControl> VisibleControls => IpMenuCatalog.ForSection(Section)
+        .Where(control => Grid is not { } grid || control.Field != grid.SelectorField && !grid.Fields.Contains(control.Field))
+        .OrderBy(control => control.Method is "WB20PointModeControl" or "colorSpaceControl" ? 0 : 2);
     protected override async Task OnInitializedAsync() { Controller.Changed += Refresh; await GuardAsync(Controller.InitializeAsync); }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         var key = Snapshot.Menu.SessionId + ":" + Section;
-        if (CanWork && !Snapshot.Menu.SectionsRead.ContainsKey(Section) && AutoReads.Add(key)) await RefreshAsync();
+        if (CanWork && (!Snapshot.Menu.SectionsRead.ContainsKey(Section) || Grid is not null && !Snapshot.Menu.GridsRead.ContainsKey(Section)) && AutoReads.Add(key)) await RefreshAsync();
     }
     private void Refresh() => _ = InvokeAsync(() =>
     {
@@ -87,11 +111,11 @@
     private void SelectSection(string section) { Section = section; Error = null; }
     private string Target(IpMenuControl control) => Edits.GetValueOrDefault(control.Id) ?? Snapshot.Menu.Pending.GetValueOrDefault(control.Id)?.Target.ToString() ?? Snapshot.Menu.Value(control)?.ToString() ?? "";
     private bool Dirty(IpMenuControl control) => Snapshot.Menu.Pending.ContainsKey(control.Id);
-    private string? DisabledReason(IpMenuControl control) => Controller.MenuControlDisabledReason(control);
+    private string? DisabledReason(IpMenuControl control) => ActionRunning ? "A TV request is running." : Controller.MenuControlDisabledReason(control);
     private string Fill(IpMenuControl control) => double.TryParse(Target(control), NumberStyles.Number, CultureInfo.InvariantCulture, out var value)
         ? Math.Clamp((value - control.Parameter.Minimum) * 100 / (control.Parameter.Maximum - control.Parameter.Minimum), 0, 100).ToString(CultureInfo.InvariantCulture) + "%" : "0%";
     private RenderFragment ControlCard(IpMenuControl control) => @<article class="direct-control @(Dirty(control) ? "pending" : "")">
-        <div class="direct-control-heading"><h3>@control.Name</h3><span class="direct-read-value">@(Snapshot.Menu.Value(control)?.ToString() ?? "Not reported")</span></div>
+        <div class="direct-control-heading"><h3>@(control.IsIndexed ? control.Field.Split('.').Last() : control.Name)</h3><span class="direct-read-value">@(Snapshot.Menu.Value(control)?.ToString() ?? "Not reported")</span></div>
         @if (control.IsSwitch)
         {
             <label class="direct-switch"><input type="checkbox" aria-label="@control.Name" checked="@Target(control).EndsWith("On", StringComparison.OrdinalIgnoreCase)" @onchange="args => SwitchAsync(control, args)" disabled="@(DisabledReason(control) is not null)" /><span>@(Target(control).EndsWith("On", StringComparison.OrdinalIgnoreCase) ? "On" : "Off")</span></label>
@@ -114,8 +138,9 @@
             </select>
         }
         @if (Dirty(control)) { <small class="direct-pending">Pending · not sent</small> }
-        @if (!Snapshot.IsBusy && DisabledReason(control) is { } reason) { <p class="direct-unavailable">@reason</p> }
-        <details class="direct-control-help"><summary>About this setting</summary><p>@(control.Command.ManagedPictureControl is not null ? "Reads the current value, applies your target directly, then queries the result." : control.Command.Notes.Replace("Experimental; display/input/mode support must be tested. ", "", StringComparison.Ordinal))</p><code>@control.Method</code><p>@control.RangeSource</p></details>
+        @if (!Snapshot.IsBusy && (!control.IsIndexed || GridModeEnabled) && DisabledReason(control) is { } reason) { <p class="direct-unavailable">@reason</p> }
+        @if (!control.IsIndexed)
+        { <details class="direct-control-help"><summary>About this setting</summary><p>@(control.Command.ManagedPictureControl is not null ? "Reads the current value, applies your target directly, then queries the result." : control.Command.Notes.Replace("Experimental; display/input/mode support must be tested. ", "", StringComparison.Ordinal))</p><code>@control.Method</code><p>@control.RangeSource</p></details> }
     </article>;
     private void Preview(IpMenuControl control, ChangeEventArgs args) { Edits[control.Id] = args.Value?.ToString() ?? ""; }
     private Task CommitAsync(IpMenuControl control, string text) => GuardAsync(async () =>
@@ -126,18 +151,23 @@
     });
     private Task SwitchAsync(IpMenuControl control, ChangeEventArgs args) => CommitAsync(control, control.Parameter.Choices.Single(choice => choice.EndsWith(args.Value is true ? "On" : "Off", StringComparison.OrdinalIgnoreCase)));
     private Task NudgeAsync(IpMenuControl control, int amount) => int.TryParse(Target(control), out var value) ? CommitAsync(control, Math.Clamp(value + amount, control.Parameter.Minimum, control.Parameter.Maximum).ToString(CultureInfo.InvariantCulture)) : Task.CompletedTask;
-    private Task RefreshAsync() => GuardAsync(async () => { Edits.Clear(); await Controller.RefreshMenuSectionAsync(Section); });
-    private Task ApplyAsync() => GuardAsync(async () => { await Controller.ApplyMenuAsync(); Edits.Clear(); if (!Controller.GetSnapshot().Menu.SectionsRead.ContainsKey(Section)) await Controller.RefreshMenuSectionAsync(Section); });
-    private Task RefreshAfterModeAsync(IpMenuControl control) => !Controller.GetSnapshot().Menu.SectionsRead.ContainsKey(control.Section) ? Controller.RefreshMenuSectionAsync(control.Section) : Task.CompletedTask;
+    private Task ReadSectionAsync(string section)
+    {
+        AutoReads.Add(Snapshot.Menu.SessionId + ":" + section);
+        return IpMenuGrids.ForSection(section) is null ? Controller.RefreshMenuSectionAsync(section) : Controller.RefreshMenuGridAsync(section);
+    }
+    private Task RefreshAsync() => GuardAsync(async () => { Edits.Clear(); await ReadSectionAsync(Section); });
+    private Task ApplyAsync() => GuardAsync(async () => { await Controller.ApplyMenuAsync(); Edits.Clear(); if (!Controller.GetSnapshot().Menu.SectionsRead.ContainsKey(Section)) await ReadSectionAsync(Section); });
+    private Task RefreshAfterModeAsync(IpMenuControl control) => !Controller.GetSnapshot().Menu.SectionsRead.ContainsKey(control.Section) ? ReadSectionAsync(control.Section) : Task.CompletedTask;
     private Task SetImmediateAsync(ChangeEventArgs args) => GuardAsync(() => Controller.SaveMenuPreferencesAsync(args.Value is true));
     private void Discard() { try { Controller.DiscardMenuChanges(); Edits.Clear(); Error = null; } catch (InvalidOperationException error) { Error = error.Message; } }
     private Task CloseReviewAsync() => GuardAsync(Controller.CloseMenuUpdateReviewAsync);
     private async Task GuardAsync(Func<Task> action)
     {
-        Error = null;
+        Error = null; ActionRunning = true;
         try { await action(); }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException or JsonException or OperationCanceledException) { Error = error.Message; }
-        finally { Snapshot = Controller.GetSnapshot(); }
+        finally { Snapshot = Controller.GetSnapshot(); ActionRunning = false; await InvokeAsync(StateHasChanged); }
     }
     public void Dispose() => Controller.Changed -= Refresh;
 }
