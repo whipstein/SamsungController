@@ -221,6 +221,8 @@ During **Apply**, **Reset to defaults**, or **Reset & apply all**, a red sticky 
 
 Choose **Stay on last adjusted item** to leave the final control visible for inspection, or **Exit to normal video** to run the verified return anchor afterward. The Samsung remote channel does not report setting values, so load or create a matching saved current-TV state after changes made with the physical remote or another application. If behavior later disagrees with the verified profile, use **Remove validation** on the affected check under Display Verification rather than approving individual controls on this page.
 
+Applying a batch reuses the current menu position between settings. Calculated cross-section routes return directly through submenu levels and move across the shared parent, without scrolling back through rows in menus being exited. The planner compares that route with the available verified alternatives; the exit preference applies after the entire batch.
+
 ### Build & Verify
 
 Use **Build & Verify** when the supplied menu definition does not match the TV, or when adding a model and firmware combination. It does not require hand-editing YAML or JSON.

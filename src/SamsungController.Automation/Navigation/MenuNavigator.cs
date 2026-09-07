@@ -619,7 +619,7 @@ public sealed class MenuNavigator
                 operations,
                 usedAncestorReturnRoute
                     ? $"Calculated from verified menu levels via {anchor.Label}; {relativePresses.Count} level returns with {submenuReturnDelay.TotalMilliseconds:0}ms waits."
-                    : $"Calculated by subtracting two verified routes from {anchor.Label}; {commonPressCount} shared commands.",
+                    : $"Calculated from two verified routes from {anchor.Label}; {commonPressCount} shared commands, returning directly through exited submenu levels.",
                 BasedOnVerifiedRoutes: true));
         return true;
     }
@@ -643,6 +643,17 @@ public sealed class MenuNavigator
         out List<MenuOperation> relativePresses)
     {
         relativePresses = [];
+        var firstUnsharedEntry = sourcePresses.Count;
+        for (var index = commonPressCount; index < sourcePresses.Count; index++)
+        {
+            if (sourcePresses[index].Key.Trim().Equals("KEY_ENTER", StringComparison.OrdinalIgnoreCase)
+                && sourcePresses[index].Action == RemoteKeyAction.Click)
+            {
+                firstUnsharedEntry = index;
+                break;
+            }
+        }
+
         for (var index = sourcePresses.Count - 1; index >= commonPressCount; index--)
         {
             if (!TryInvert(
@@ -652,6 +663,15 @@ public sealed class MenuNavigator
             {
                 relativePresses = [];
                 return false;
+            }
+
+            // Return leaves a submenu with its entry row highlighted in the
+            // parent. Rewinding rows inside that submenu first is unnecessary.
+            // Keep every level exit and the directional offset on the shared
+            // level; still reject unsupported/non-click operations above.
+            if (index > firstUnsharedEntry && inverse.Key != "KEY_RETURN")
+            {
+                continue;
             }
 
             AddAndCancelDirectionalOpposites(relativePresses, inverse);

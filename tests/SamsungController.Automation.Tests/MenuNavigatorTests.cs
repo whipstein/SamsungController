@@ -508,6 +508,44 @@ public sealed class MenuNavigatorTests
         Assert.Equal("target", tracker.Current.NodeId);
     }
 
+    [Theory]
+    [InlineData(0, 5)]
+    [InlineData(8, 0)]
+    [InlineData(8, 5)]
+    public async Task CrossBranchRouteExitsSubmenusWithoutRewindingTheirRows(int intermediateRows, int leafRows)
+    {
+        var original = CreateCrossBranchDefinition();
+        var sourceOperations = new List<MenuOperation>
+        {
+            new("KEY_MENU"), new("KEY_ENTER"), new("KEY_DOWN"), new("KEY_ENTER")
+        };
+        if (intermediateRows > 0)
+            sourceOperations.Add(new("KEY_DOWN", Repeat: intermediateRows));
+        sourceOperations.Add(new("KEY_ENTER"));
+        if (leafRows > 0)
+            sourceOperations.Add(new("KEY_DOWN", Repeat: leafRows));
+        var definition = new MenuDefinition(original.Id, original.Name, original.Model, original.Context,
+            original.Nodes.Values,
+            original.Transitions.Values.Select(route => route.Id == "to-color-red"
+                ? route with { Operations = sourceOperations } : route),
+            original.Anchors.Values, original.Timing);
+        var tracker = new MenuStateTracker(definition);
+        tracker.ConfirmNode("color-red", "Previous adjustment completed here.");
+        var target = new RecordingTarget();
+        var delay = new RecordingDelay();
+        var navigator = new MenuNavigator(definition, tracker, target, delay);
+
+        var plan = navigator.Plan("two-point-red", includeDraftTransitions: false);
+
+        Assert.True(plan.UsesCalculatedRoute);
+        Assert.False(plan.UsesAnchor);
+        await navigator.ExecutePlanAsync(plan);
+        Assert.Equal(["KEY_RETURN", "KEY_RETURN", "KEY_UP", "KEY_ENTER", "KEY_ENTER"], target.Keys);
+        Assert.Equal(TimeSpan.FromMilliseconds(800), delay.Delays[0]);
+        Assert.Equal(TimeSpan.FromMilliseconds(800), delay.Delays[1]);
+        Assert.Equal("two-point-red", tracker.Current.NodeId);
+    }
+
     [Fact]
     public async Task ReturnAnchorUsesFallbackWhenPositionIsUnknownOrScriptIsUnverified()
     {
