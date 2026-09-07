@@ -12,6 +12,7 @@ The supplied IP Remote handoff is design background. This repository is C#/.NET,
 - Sends **two explicitly requested read methods**: `getTVStates` and `getVideoStates`.
 - Offers **separate guarded Contrast, Color, and Sharpness experiments**: fresh reads → a one-step change → readback → visual pass/fail → original value → restoration readback. Each lowers by one, except a zero starting value tests 0 → 1 → 0. No arbitrary method editor is provided.
 - Unlocks a **direct picture editor** for each control only after its own experiment passes for the matching display/context. Target edits are local until explicit Apply; successful readback keeps the new value, with an optional checked Undo.
+- Provides a separate **Direct picture controls** workspace with one refresh for all three controls, staged multi-setting Apply, per-setting progress, Stop, saved batch originals, and command-free JSON preset loading.
 - Saves a separate credential per HTTPS host/port. Existing WebSocket tokens are never read or replaced by this client.
 - Shows method outcomes, timestamps, raw JSON fields/types, and differences from the previous successful response in the same annotated context.
 - Preserves unknown fields. Missing fields say **Not reported**, not zero, false, or a previous value. A successful empty result does not prove any control is available.
@@ -137,7 +138,7 @@ Verification evidence and operations are separate: `ControlCapabilities` in the 
 
 Cancellation/timeout/failure after a possible write uses the same private original-value journal and explicit recovery described above. No request is replayed on restart. A successfully kept adjustment is not an unresolved recovery; you may leave it in place or explicitly Undo it later. A failed preflight for Undo leaves the earlier successful adjustment intact and sends no restoring write. Keep input, picture mode, and external signal unchanged during operations; these getter calls are not atomic and cannot identify every signal condition.
 
-## 8. Current checkpoint: Color and Sharpness
+## 8. Verify Color and Sharpness
 
 These are **candidates awaiting your hardware verification**, not capabilities inferred from Contrast. The [reference client](https://github.com/iloveicedgreentea/py-samsungtv/blob/master/pysamsungtv/client.py) defines `colorControl` with `params.color` and `sharpnessControl` with `params.sharpness`. A matching protocol name does not establish this display's actual behavior or range.
 
@@ -153,7 +154,74 @@ A pending write or interrupted test blocks selecting/writing another control unt
 
 **Why is Apply direct disabled?** Reading Color is not verification, and checking a conditions box only confirms the setup. Each control needs its own successful one-step change, independent readback, visual confirmation, and restoration. Until that is complete for the actual display/input/mode/signal context, the page offers **Prepare verification** instead of the direct target editor and conditions checkbox. During verification, use **Apply one-step color test**, not **Apply direct color**. After the test passes, read the control again to reveal its direct editor.
 
-Brightness/backlight/Shadow Detail, Tint, white balance, and custom-color calibration remain disabled for direct writes; their mapping and capabilities need separate investigation. This step does not add polling, bulk apply, menu navigation, resets, or changes to the existing calibration workflow.
+Brightness/backlight/Shadow Detail, Tint, white balance, and custom-color calibration remain disabled for direct writes; their mapping and capabilities need separate investigation. There is no polling, menu navigation, reset, or integration with the existing calibration workflow. The next section combines only the three already supported controls.
+
+## 9. Use the combined direct picture workspace
+
+The Color and Sharpness tests were reported working by the user on 2026-09-07. This is a user-confirmed checkpoint, not a newly reviewed diagnostic capture or proof for other displays or contexts. Existing saved successful tests unlock their matching controls automatically; updating the app does not require repeating them.
+
+Restart the development server after building this update, then choose **Direct picture controls** in the navigation, or open [http://127.0.0.1:5050/ip-controls](http://127.0.0.1:5050/ip-controls). The button at the top returns to **Setup, verification & diagnostics**. Opening either page sends nothing to the TV. The global header's Connect/Disconnect and quick-access buttons still belong to the separate WebSocket remote, not this HTTPS workspace.
+
+### Read and apply several changes
+
+1. Select your paired display and correct model/firmware/source/mode/signal annotations in **IP Remote · Preview**. Complete the one-step verification for each control you want to change, if not already verified in that context.
+2. Open **Direct picture controls** and press **Refresh TV values**. This makes one `getTVStates` request and one `getVideoStates` request, showing actual values, reported input/mode, and a timestamp. Unreported or incorrectly typed values remain unavailable. Nothing is inferred from defaults.
+3. Edit Contrast, Color, and/or Sharpness with the number inputs or −/+ buttons. These are local pending targets; the TV does not change yet. The 0–100 limit is a protocol envelope, **not a measured range for your display**. Use values you know are valid, and start with small adjustments.
+4. Check that the TV/input, picture mode, external signal, and allowed target ranges match; tick the conditions checkbox. Editing a target preserves that checkbox. A new refresh or loading/staging previous values clears it so you can review the new plan.
+5. Press **Apply N pending**. There is no additional browser permission popup. Only changed values are sent, in Contrast → Color → Sharpness order. All changed controls must have matching verification before the first request is allowed.
+6. Follow **Latest batch**. Each row receives fresh input/mode/video preflight reads, one setting write, then independent input/mode/video readback. Every other reported video field must remain unchanged. Successful values stay on the TV. After completion, the last readback populates the workspace and clears the pending count.
+
+A reading must be no more than two minutes old when Apply starts. Press **Refresh TV values** if it has expired. Pending targets survive a refresh in the same context; untouched inputs update to the newly reported values. Switching the display or reported input/picture mode clears the draft. Using the diagnostic page's reads/tests or changing a profile invalidates the workspace reading and requires another refresh. There is no periodic background polling.
+
+### Stop, partial changes, and restoration
+
+**A batch is not atomic.** Press **Stop** to cancel the current operation and prevent later requests. A command already delivered might still take effect. Nothing is retried or rolled back automatically. The first timeout, rejection, readback mismatch, context change, or storage failure stops the rest of the batch. Earlier confirmed changes stay applied.
+
+All original values are saved to the private batch journal before sending a write. The progress table distinguishes confirmed changes, uncertain changes, and rows not sent. If a write is uncertain, use **Open read-first recovery** to check and restore only that control under the original conditions. A pending recovery blocks further editing/writes until resolved. Check the TV rather than assuming a network error means no change occurred.
+
+**Stage previous values** loads the latest batch's originals into the target inputs; it sends nothing. After a successful batch you can use it immediately. After a stop or restart, resolve any recovery and refresh the original display/context first. Review the targets, confirm conditions, then Apply to restore them. This is a new checked batch and can itself be stopped. Ordinary **Undo last direct change** on the diagnostic page affects only the most recent individual setting, not the entire batch.
+
+The latest batch's originals and progress survive restarts. They are historical, not current readings. Interrupted batches never resume automatically. Only the latest batch is retained; save a preset before another batch if you want a longer-lived copy of those settings. Unsaved target edits exist only in the current page and are lost when you leave/reload it.
+
+### Save or load a JSON preset
+
+Expand **JSON presets · save or load desired values** after a refresh:
+
+- **Download TV values** saves the values from the displayed TV reading.
+- **Download staged values** saves the target inputs, including unmodified reported values.
+- **Load preset as pending** imports desired values into the inputs. It does **not** write the TV, replace actual readings, import credentials, or grant verification. Review and Apply explicitly.
+
+These files may be stored anywhere your browser can download/upload them; no special application folder is required. Maximum size is 64 KiB. Model, firmware, annotated source/mode/signal, and TV-reported input/mode must match the current reading. Endpoint addresses and certificate/token data are omitted, so changing a display's network address does not by itself prevent loading. Each changed control must still have local verification for the selected endpoint/context.
+
+This is a separate format from the existing menu-based calibration files. Example values below are illustrative, not recommended settings:
+
+```json
+{
+  "format": "SamsungController.IPRemote.PicturePreset.v1",
+  "name": "Example picture preset",
+  "context": {
+    "model": "Example model",
+    "firmware": "Example firmware",
+    "inputSource": "HDMI source",
+    "pictureMode": "Filmmaker",
+    "signal": "SDR RGB 8-bit",
+    "reportedInput": "HDMI4",
+    "reportedPictureMode": "FilmmakerMode"
+  },
+  "values": { "contrast": 44, "color": 24, "sharpness": 1 }
+}
+```
+
+Use the app's download to obtain your exact context strings. A preset may include one, two, or all three supported fields. Unknown or duplicate properties, missing format/context, non-integer values, and mismatched contexts are rejected without partially staging values. Downloads omit connection identifiers but preserve free-text names/annotations; review those before sharing.
+
+### Next real-TV checkpoint
+
+1. Refresh and download **TV values** as a reference preset.
+2. Make a small valid change to two or three verified controls. Apply once, and compare each displayed readback with the actual TV values.
+3. Use **Stage previous values**, review/confirm, and Apply. Check that all changed controls return to their originals.
+4. Edit a target and download **staged values**, then discard the draft. Load that preset and confirm that only the pending target changes—not the actual TV value. Discard it if you do not want to apply it.
+5. During a small multi-control batch, test **Stop**. It may finish too quickly to interrupt; do not increase adjustment sizes merely to make it last longer. If interrupted, check the recorded outcomes, resolve any pending recovery, then refresh before proceeding. Never assume Stop restored earlier values.
+6. Download the redacted diagnostic report from **IP Remote · Preview**. It now includes the workspace reading and latest batch history. Report any mismatch before expanding to additional controls.
 
 ## Files, privacy, and troubleshooting
 
@@ -166,6 +234,7 @@ Files live in an `ip-remote` subdirectory of the same personal configuration roo
 | `diagnostics.ndjson` | Append-only timestamped, token-redacted observations; device identifiers retained |
 | `contrast-test.json` | Historical filename retained for recovery across preview upgrades; the `Control` field identifies the latest Contrast, Color, or Sharpness verification or direct adjustment: original/target, context, readback/visual outcome, kept/undo state, and restart recovery; no token |
 | `control-capabilities.json` | Independent control- and context-specific read/write evidence, tested value pair, and source test ID; no token |
+| `picture-batch.json` | Latest batch context, every original/target, operation IDs and per-setting progress; no token. The single-operation journal remains authoritative for unresolved-write recovery. |
 
 On Unix systems, the IP Remote directory is restricted to the user (0700) and final files to user read/write (0600). Windows uses the personal configuration folder's user ACL. Credentials are local plaintext files, **not OS-vault encrypted**. Do not commit or share that directory. Its normal repository path is ignored.
 
@@ -221,7 +290,12 @@ If a read fails:
 - [ ] Confirm optional direct Undo on the display separately.
 - [x] Add allowlisted Color and Sharpness test/restore workflows, independent per-control evidence, and gated direct editors; preserve existing Contrast evidence and unresolved recovery.
 - [x] Preserve the conditions checkbox on target edits and remove redundant Apply/Undo permission popups; exercise component events and simulated protocol/recovery paths.
-- [ ] User verifies Color and Sharpness mapping, write/readback, visual result, and restoration on each display/context.
+- [x] User confirms both Color and Sharpness tests work on the current display (2026-09-07); no additional diagnostic capture reviewed at this checkpoint.
+- [ ] Repeat capability verification for other display/context combinations; confirm optional direct Undo separately.
+- [x] Combine verified controls into a read-on-demand workspace with multi-setting Apply, whole-batch serialization, per-write preflight/readback, Stop, durable originals/progress, and explicit staging of previous values.
+- [x] Add bounded, context-checked JSON presets that download current/desired values and import desired targets only, without endpoint credentials or verification.
+- [x] Exercise batch partial failure, cancellation, storage failure, restart recovery, preset parsing, and component interactions with simulated TV responses.
+- [ ] User verifies the combined Apply/previous-values/preset/Stop workflow on the display using the section 9 checkpoint.
 - [ ] Extend additional controls only after their own field mapping and reversible-write verification.
 - [ ] Add bounded state polling only if useful and proven safe; do not assume subscriptions exist.
 - [ ] Investigate advanced white balance and custom-color methods independently, including any special mode/authorization requirements.

@@ -20,7 +20,11 @@ Development and real-display verification proceed separately on `feature/ip-remo
 - [x] Add private, context-keyed contrast read/write evidence and a direct contrast editor with explicit Apply/readback and optional Undo. Preserve completed evidence independently of later adjustments; recover interrupted writes without replaying them.
 - [x] User confirms direct Contrast Apply works (2026-09-07); preserve its conditions checkbox during target editing and remove extra Apply/Undo browser prompts.
 - [x] Implement separate guarded Color and Sharpness verification/restoration and capability-gated direct adjustment, including a 0 → 1 → 0 test, field-specific recovery, and persistence of existing Contrast evidence.
-- [ ] User verifies Color and Sharpness mapping, direct writes, visual values, and restoration in each context; confirm optional direct Undo separately.
+- [x] User confirms Color and Sharpness tests work on the current display (2026-09-07); retain per-context verification requirements for other displays/signals.
+- [x] Add a combined direct-picture workspace: read all supported values with two getters, stage multiple changes, serialize Apply with preflight/readback per setting, Stop, persist originals/progress, and stage previous values explicitly.
+- [x] Add portable JSON picture presets with strict context/format validation; upload stages targets only and never imports TV readings or verification.
+- [x] Test workspace/preset page interactions and batch cancellation, partial failure, stale/context drift, storage failure, and restart recovery using simulated displays.
+- [ ] User verifies combined multi-setting Apply, previous-values restoration, preset staging, and Stop on the real display; confirm optional single-control Undo separately.
 - [ ] Expand proven controls and context-aware polling; investigate advanced white balance/custom color independently.
 - [ ] Merge into `main` only when the owner explicitly approves.
 

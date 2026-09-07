@@ -14,7 +14,7 @@ public sealed partial class SamsungIpRemoteService
     {
         EnsureNoPendingPictureTest();
         var definition = SamsungIpRemotePictureControl.Get(control);
-        Update(state => state with { DirectPictureReading = null });
+        Update(state => state with { DirectPictureReading = null, WorkspaceReading = null });
         if (new[] { profile.Model, profile.Firmware, profile.InputSource, profile.PictureMode, profile.Signal }.Any(string.IsNullOrWhiteSpace))
             throw new InvalidOperationException("Save the model, firmware, input, picture mode, and signal annotations before preparing a write experiment.");
         var (input, mode, video, original) = await ReadPictureCheckpointAsync(profile, control, $"{definition.Name} · prepare (read only)", cancellation).ConfigureAwait(false);
@@ -46,7 +46,7 @@ public sealed partial class SamsungIpRemoteService
         if (before.Value != test.Original)
             throw new InvalidOperationException($"{test.ControlName} changed since preparation. Prepare again; no write was sent.");
 
-        Update(state => state with { DirectPictureReading = null });
+        Update(state => state with { DirectPictureReading = null, WorkspaceReading = null });
         await ApplyPreparedPictureAsync(test, cancellation).ConfigureAwait(false);
     });
 
@@ -92,7 +92,7 @@ public sealed partial class SamsungIpRemoteService
         if (undo && !undoConfirmed) throw new InvalidOperationException("Confirm the original display and conditions before undoing this direct picture adjustment.");
         if (visualConfirmed is not null && test.Stage != IpRemotePictureStage.AwaitingVisualCheck)
             throw new InvalidOperationException("Visual confirmation is available only after a successful changed-value readback.");
-        Update(state => state with { DirectPictureReading = null });
+        Update(state => state with { DirectPictureReading = null, WorkspaceReading = null });
         // A failed preflight for an explicit Undo does not turn a previously
         // successful kept adjustment into an unresolved write.
         test = test with { VisualConfirmed = visualConfirmed ?? test.VisualConfirmed, Stage = IpRemotePictureStage.Restoring };
@@ -204,6 +204,18 @@ public sealed partial class SamsungIpRemoteService
         IpRemoteProfile profile, string control, string label, CancellationToken cancellation)
     {
         var definition = SamsungIpRemotePictureControl.Get(control);
+        var checkpoint = await ReadVideoCheckpointAsync(profile, label, cancellation).ConfigureAwait(false);
+        if (checkpoint.Video[control] is not JsonValue field || !field.TryGetValue<int>(out var value) || value is < 0 or > 100)
+            throw new InvalidOperationException($"The TV did not report an integer {definition.Name} in the protocol envelope range 0–100. No value was inferred or substituted.");
+        Update(state => state.PictureTest is { RequiresRecovery: true } test && test.Profile == profile && test.Control == control
+            ? state with { PictureTest = test with { LastReadback = value } } : state);
+        cancellation.ThrowIfCancellationRequested();
+        return (checkpoint.Input, checkpoint.Mode, checkpoint.Video, value);
+    }
+
+    private async Task<(string Input, string Mode, JsonObject Video)> ReadVideoCheckpointAsync(
+        IpRemoteProfile profile, string label, CancellationToken cancellation)
+    {
         cancellation.ThrowIfCancellationRequested();
         var tv = await _client.ReadAsync(profile.Connection, "getTVStates", cancellation).ConfigureAwait(false);
         await RecordExchangeAsync(profile, label, tv).ConfigureAwait(false);
@@ -214,12 +226,9 @@ public sealed partial class SamsungIpRemoteService
         var video = await _client.ReadAsync(profile.Connection, "getVideoStates", cancellation).ConfigureAwait(false);
         await RecordExchangeAsync(profile, label, video).ConfigureAwait(false);
         RequireSuccess(video);
-        if (video.Result?[control] is not JsonValue field || !field.TryGetValue<int>(out var value) || value is < 0 or > 100)
-            throw new InvalidOperationException($"The TV did not report an integer {definition.Name} in the protocol envelope range 0–100. No value was inferred or substituted.");
-        Update(state => state.PictureTest is { RequiresRecovery: true } test && test.Profile == profile && test.Control == control
-            ? state with { PictureTest = test with { LastReadback = value } } : state);
+        if (video.Result is null) throw new InvalidOperationException("The TV did not return video state. No values were inferred.");
         cancellation.ThrowIfCancellationRequested();
-        return (input, mode, (JsonObject)video.Result.DeepClone(), value);
+        return (input, mode, (JsonObject)video.Result.DeepClone());
     }
 
     private async Task WritePictureOnceAsync(IpRemoteProfile profile, string control, int value, string label, CancellationToken cancellation)

@@ -4,7 +4,7 @@ using SamsungController.Core.IpRemote;
 
 namespace SamsungController.Web.Services;
 
-/// <summary>Isolated diagnostics; deliberately has no reference to menu/remote/calibration services.</summary>
+/// <summary>Isolated IP Remote diagnostics and verified controls; no reference to menu/remote/calibration services.</summary>
 public sealed partial class SamsungIpRemoteService : IDisposable
 {
     public static string Version { get; } = typeof(SamsungIpRemoteClient).Assembly
@@ -55,6 +55,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             var hasToken = active is not null && await _client.HasTokenAsync(active.Connection).ConfigureAwait(false);
             var test = await LoadPictureTestAsync().ConfigureAwait(false);
             var capabilities = await LoadControlCapabilitiesAsync().ConfigureAwait(false);
+            var batch = await LoadPictureBatchAsync(test).ConfigureAwait(false);
             Update(state => state with
             {
                 Initialized = true,
@@ -62,6 +63,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
                 ActiveProfile = active,
                 HasToken = hasToken,
                 PictureTest = test,
+                PictureBatch = batch,
                 ControlCapabilities = capabilities
             });
             // Upgrade a locally completed test, never a shared diagnostic report.
@@ -86,6 +88,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
                 Profiles = profiles,
                 ActiveProfile = profile,
                 DirectPictureReading = null,
+                WorkspaceReading = null,
                 HasToken = hasToken,
                 AuthorizationRejected = state.ActiveProfile?.Endpoint == profile.Endpoint && state.AuthorizationRejected,
                 Status = "Profile saved locally. Pairing and reads require an explicit button press."
@@ -107,6 +110,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             {
                 ActiveProfile = profile,
                 DirectPictureReading = null,
+                WorkspaceReading = null,
                 HasToken = hasToken,
                 AuthorizationRejected = false,
                 Status = "Profile selected. Displayed responses are historical; read again for current evidence."
@@ -127,6 +131,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             {
                 HasToken = false,
                 DirectPictureReading = null,
+                WorkspaceReading = null,
                 AuthorizationRejected = false,
                 Status = "IP Remote token removed locally for this endpoint. The TV and WebSocket token were not changed."
             });
@@ -161,6 +166,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
                 IsBusy = true,
                 StorageWarning = null,
                 DirectPictureReading = null,
+                WorkspaceReading = null,
                 Status = pairing ? "Waiting for IP Remote approval on the TV…" : "Reading a timestamped state snapshot…"
             });
             foreach (var method in pairing ? new[] { "createAccessToken" } : methods)
@@ -193,13 +199,15 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             Format = "SamsungController.IPRemote.Diagnostics.v1",
             Version,
             ExportedAt = DateTimeOffset.UtcNow,
-            Safety = "Explicit pairing, two getters, guarded Contrast/Color/Sharpness verification, and control/context-gated direct adjustments. Setter acknowledgments alone are not verification. No other writes, polling, or fallback keys.",
+            Safety = "Explicit pairing, two getters, guarded Contrast/Color/Sharpness verification, and control/context-gated individual or sequential batch adjustments. Each batch row has preflight and independent readback; failure stops later rows without rollback, retry, or restart resume. Presets stage targets only. Setter acknowledgments alone are not verification. No other writes, polling, or fallback keys.",
             Context = "Model, firmware, input, picture mode, and signal annotations are user-entered, not TV-reported unless also present in the response.",
             CurrentProfile = snapshot.ActiveProfile,
             snapshot.Observations,
             snapshot.PictureTest,
             snapshot.ControlCapabilities,
             snapshot.DirectPictureReading,
+            snapshot.WorkspaceReading,
+            snapshot.PictureBatch,
             Methods = SamsungIpRemoteClient.ReadMethods.Select(method => new
             {
                 Method = method,

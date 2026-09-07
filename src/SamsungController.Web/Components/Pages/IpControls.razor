@@ -1,0 +1,259 @@
+@page "/ip-controls"
+@implements IDisposable
+@using SamsungController.Core.IpRemote
+@inject SamsungIpRemoteService Controller
+@inject IJSRuntime JavaScript
+
+<PageTitle>Direct picture controls · SamsungController</PageTitle>
+<section class="page-heading compact-heading">
+    <div><span class="eyebrow">IP REMOTE · WORKING BRANCH PREVIEW</span><h1>Direct picture controls</h1>
+        <p>Read once, stage your changes, then apply the verified controls together.</p></div>
+    <a class="toolbar-button" href="ip-remote">Setup, verification &amp; diagnostics</a>
+</section>
+
+@if (Error is not null) { <div class="notice danger" role="alert"><strong>Action stopped</strong><span>@Error</span></div> }
+@if (Snapshot.StorageWarning is not null) { <div class="notice danger" role="alert">@Snapshot.StorageWarning</div> }
+@if (Snapshot.PictureTest is { RequiresRecovery: true } recovery)
+{
+    <div class="notice danger" role="alert"><strong>@recovery.ControlName may have changed · original @recovery.Original</strong>
+        <span>Earlier confirmed changes remain on the TV. Keep the original display/input/mode/signal and resolve this operation before doing more.</span>
+        <a href="ip-remote#contrast-test">Open read-first recovery</a></div>
+}
+
+<section class="panel workspace-panel">
+    <div class="workspace-toolbar">
+        <div>
+            <h2>@(Snapshot.ActiveProfile?.Model ?? "No IP Remote display selected")</h2>
+            @if (Snapshot.ActiveProfile is { } profile)
+            {
+                <p>@profile.Connection.Host · firmware @profile.Firmware · @profile.InputSource · @profile.PictureMode · @profile.Signal</p>
+            }
+            <p>The header's Connect/quick-access buttons control the separate WebSocket remote.</p>
+        </div>
+        <div class="workspace-actions">
+            <button class="toolbar-button" @onclick="RefreshAsync" disabled="@(!CanWork)">Refresh TV values</button>
+            <button class="primary-action" @onclick="ApplyAsync" disabled="@(ApplyDisabledReason is not null)" title="@ApplyDisabledReason">Apply @PendingCount pending</button>
+            <button class="toolbar-button stop-action" @onclick="Controller.Cancel" disabled="@(!Snapshot.IsBusy)">Stop</button>
+        </div>
+    </div>
+    @if (DisplayedReading is { } displayed)
+    {
+        <p class="reading-status"><strong>@(IsCurrentReading ? "Last TV read" : "Historical reading — refresh required"):</strong>
+            @displayed.ReadAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz") · @displayed.ReportedInput · @displayed.ReportedPictureMode
+            · @VerifiedCount / 3 controls verified in this context</p>
+    }
+    else { <p>Refresh to retrieve current values and reported input/picture mode. Opening this page sends no TV request.</p> }
+    <div class="picture-grid">
+        @foreach (var control in SamsungIpRemotePictureControl.All)
+        {
+            var original = DisplayedReading?.Value(control.Id);
+            var verified = IsVerified(control.Id);
+            <article class="picture-card @(verified ? "verified" : "unverified")">
+                <div class="card-heading"><h3>@control.Name</h3><span>@(original is null ? "Not reported" : verified ? "Verified" : "Needs verification")</span></div>
+                <p>TV reading <strong class="reading-value">@(original?.ToString() ?? "—")</strong></p>
+                <fieldset disabled="@(!CanEdit(control.Id))">
+                    <label for="@($"workspace-{control.Id}")">Target</label>
+                    <div class="target-editor">
+                        <button class="toolbar-button" aria-label="@($"Decrease {control.Name} target")" @onclick="() => Nudge(control.Id, -1)" disabled="@(Target(control.Id) is null or <= 0)">−</button>
+                        <input id="@($"workspace-{control.Id}")" aria-label="@($"{control.Name} target")" type="number" min="0" max="100" step="1"
+                               value="@Target(control.Id)" @oninput="args => SetTarget(control.Id, args)" />
+                        <button class="toolbar-button" aria-label="@($"Increase {control.Name} target")" @onclick="() => Nudge(control.Id, 1)" disabled="@(Target(control.Id) is null or >= 100)">+</button>
+                    </div>
+                </fieldset>
+                @if (original is not null && !verified)
+                { <a href="ip-remote#direct-contrast">Open setup, then select @control.Name to verify</a> }
+                else if (IsDirty(control.Id)) { <p class="pending-note">Pending · not sent</p> }
+            </article>
+        }
+    </div>
+    <div class="workspace-actions">
+        <label class="conditions"><input type="checkbox" aria-label="Confirm workspace conditions" checked="@ConditionsConfirmed"
+            @onchange="ConfirmConditions" disabled="@(!CanWork || !IsCurrentReading)" />
+            TV/input, picture mode, and external signal are unchanged; every target is valid on this TV.</label>
+        <button class="toolbar-button" @onclick="DiscardDraft" disabled="@(Snapshot.IsBusy || DisplayedReading is null)">Discard pending changes</button>
+    </div>
+    @if (ApplyDisabledReason is { } reason) { <p class="workspace-hint" role="status">@reason</p> }
+    <p class="workspace-note">The 0–100 input limit is a protocol envelope, not a verified TV range. Apply reads before each write and checks readback afterward.
+        Stop prevents subsequent requests; it does not undo delivered changes. No automatic rollback, retry, pairing, polling, or remote-key fallback.</p>
+</section>
+
+@if (Snapshot.PictureBatch is { } batch)
+{
+    <section class="panel workspace-panel" aria-label="Latest batch progress">
+        <div class="workspace-toolbar"><h2>Latest batch · @batch.Stage</h2>
+            <button class="toolbar-button" @onclick="StagePreviousValues" disabled="@(!CanStagePrevious)">Stage previous values</button></div>
+        <p>@batch.Profile.Model · @batch.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz") · @batch.ReportedInput · @batch.ReportedPictureMode</p>
+        <p role="status" aria-live="polite">@batch.Message</p>
+        <div class="table-scroll"><table><thead><tr><th>Control</th><th>Original</th><th>Target</th><th>Outcome</th></tr></thead><tbody>
+            @foreach (var step in batch.Steps)
+            { <tr><th>@SamsungIpRemotePictureControl.Get(step.Control).Name</th><td>@step.Original</td><td>@step.Target</td><td>@StepLabel(step.Stage)</td></tr> }
+        </tbody></table></div>
+        <p class="workspace-note">This saved history survives restarts; it is not a live reading. Refresh first, then Stage previous values to prepare a reversal.
+            Review and Apply it explicitly. Only the latest batch is retained; ordinary diagnostic-page Undo affects only its last individual change.</p>
+    </section>
+}
+
+<section class="panel workspace-panel">
+    <details>
+        <summary>JSON presets · save or load desired values</summary>
+        <p>Presets load as pending targets only. They do not change the TV, claim to be current readings, or carry verification. Existing menu/calibration files are a different format.</p>
+        <fieldset disabled="@(!CanWork || !IsCurrentReading)">
+            <label>Preset name<input aria-label="Picture preset name" @bind="PresetName" @bind:event="oninput" maxlength="80" /></label>
+            <div class="workspace-actions">
+                <button class="toolbar-button" @onclick="() => DownloadPresetAsync(false)">Download TV values</button>
+                <button class="toolbar-button" @onclick="() => DownloadPresetAsync(true)">Download staged values</button>
+                <label>Load preset as pending<InputFile @key="FileInputKey" OnChange="LoadPresetAsync" accept=".json,application/json" aria-label="Load IP Remote picture preset" /></label>
+            </div>
+        </fieldset>
+        @if (PresetStatus is not null) { <p role="status">@PresetStatus</p> }
+        <p class="workspace-note">Maximum 64 KiB. Model, firmware, annotated source/mode/signal and reported input/mode must match. Presets omit endpoint addresses, tokens, certificates, and verification records; review your free-text annotations before sharing.</p>
+    </details>
+</section>
+
+@code {
+    private IpRemoteSnapshot Snapshot = new();
+    private IpRemoteWorkspaceReading? DisplayedReading;
+    private readonly Dictionary<string, int?> Targets = new(StringComparer.Ordinal);
+    private bool ConditionsConfirmed;
+    private bool InteractiveReady;
+    private string? Error, PresetStatus;
+    private string PresetName = "Picture settings";
+    private int FileInputKey;
+    private bool IsCurrentReading => DisplayedReading is not null && Snapshot.WorkspaceReading?.Id == DisplayedReading.Id && DisplayedReading.Profile == Snapshot.ActiveProfile;
+    private bool CanWork => InteractiveReady && Snapshot.Initialized && Snapshot.ActiveProfile is not null && Snapshot.HasToken && !Snapshot.AuthorizationRejected
+        && !Snapshot.IsBusy && Snapshot.PictureTest?.RequiresRecovery != true;
+    private int? Target(string control) => Targets.GetValueOrDefault(control);
+    private bool IsDirty(string control) => DisplayedReading?.Value(control) is { } original && Target(control) != original;
+    private int PendingCount => SamsungIpRemotePictureControl.All.Count(control => IsDirty(control.Id));
+    private bool IsVerified(string control) => DisplayedReading is { } read && Snapshot.ControlCapabilities.Any(item => item.Matches(read.Profile, read.ReportedInput, read.ReportedPictureMode, control));
+    private int VerifiedCount => SamsungIpRemotePictureControl.All.Count(control => IsVerified(control.Id));
+    private bool CanEdit(string control) => CanWork && IsCurrentReading && DisplayedReading?.Value(control) is not null && IsVerified(control);
+    private bool CanStagePrevious => CanWork && IsCurrentReading && Snapshot.PictureBatch is { } batch && DisplayedReading is { } read
+        && batch.Profile.ContextKey == read.Profile.ContextKey && batch.ReportedInput == read.ReportedInput && batch.ReportedPictureMode == read.ReportedPictureMode;
+    private string? ApplyDisabledReason => !InteractiveReady ? "Connecting page controls…"
+        : Snapshot.ActiveProfile is null || !Snapshot.HasToken || Snapshot.AuthorizationRejected ? "Select and pair an IP Remote display in Setup & verification first."
+        : Snapshot.IsBusy ? "An IP Remote operation is running. Stop prevents further requests."
+        : Snapshot.PictureTest?.RequiresRecovery == true ? "Resolve the pending setting recovery before more changes."
+        : !IsCurrentReading ? "Refresh TV values before applying. Pending targets are retained when the context matches."
+        : DateTimeOffset.UtcNow - DisplayedReading!.ReadAt > TimeSpan.FromMinutes(2) ? "The reading is over two minutes old. Refresh and review before applying."
+        : SamsungIpRemotePictureControl.All.Any(control => DisplayedReading!.Value(control.Id) is not null && Target(control.Id) is null or < 0 or > 100) ? "Enter integer targets within the TV's actual range (protocol limit 0–100)."
+        : PendingCount == 0 ? "No pending changes. Editing a target sends nothing."
+        : SamsungIpRemotePictureControl.All.Any(control => IsDirty(control.Id) && !IsVerified(control.Id)) ? "Verify every changed control for this display/context first."
+        : !ConditionsConfirmed ? "Confirm the unchanged display/input/mode/signal conditions before applying."
+        : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Controller.Changed += RefreshSnapshot;
+        await GuardAsync(() => Controller.InitializeAsync());
+    }
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender) return;
+        InteractiveReady = true;
+        StateHasChanged();
+    }
+    private void RefreshSnapshot() => _ = InvokeAsync(() => { Synchronize(); StateHasChanged(); });
+    private void Synchronize()
+    {
+        var next = Controller.GetSnapshot();
+        if (next.ActiveProfile != Snapshot.ActiveProfile)
+        { DisplayedReading = null; Targets.Clear(); ConditionsConfirmed = false; PresetStatus = null; }
+        if (next.WorkspaceReading is { } read && read.Id != DisplayedReading?.Id)
+        {
+            var sameContext = DisplayedReading is { } previous && previous.Profile == read.Profile
+                && previous.ReportedInput == read.ReportedInput && previous.ReportedPictureMode == read.ReportedPictureMode;
+            foreach (var control in SamsungIpRemotePictureControl.All)
+                if (!sameContext || !IsDirty(control.Id)) Targets[control.Id] = read.Value(control.Id);
+            DisplayedReading = read;
+            ConditionsConfirmed = false;
+        }
+        Snapshot = next;
+    }
+    private Task RefreshAsync() => GuardAsync(() => Controller.RefreshWorkspaceAsync());
+    private Task ApplyAsync() => GuardAsync(async () =>
+    {
+        if (ApplyDisabledReason is not null) throw new InvalidOperationException(ApplyDisabledReason);
+        var targets = SamsungIpRemotePictureControl.All.Where(control => IsDirty(control.Id)).ToDictionary(control => control.Id, control => Target(control.Id)!.Value);
+        await Controller.ApplyPictureBatchAsync(DisplayedReading!.Id, targets, ConditionsConfirmed);
+    });
+    private void SetTarget(string control, ChangeEventArgs args)
+    {
+        if (!CanEdit(control)) return;
+        Targets[control] = int.TryParse(args.Value?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : null;
+    }
+    private void Nudge(string control, int delta)
+    {
+        if (CanEdit(control) && Target(control) is { } value) Targets[control] = Math.Clamp(value + delta, 0, 100);
+    }
+    private void ConfirmConditions(ChangeEventArgs args)
+    {
+        if (CanWork && IsCurrentReading) ConditionsConfirmed = args.Value is true;
+    }
+    private void DiscardDraft()
+    {
+        if (Snapshot.IsBusy) return;
+        foreach (var control in SamsungIpRemotePictureControl.All) Targets[control.Id] = DisplayedReading?.Value(control.Id);
+        PresetStatus = null;
+    }
+    private void StageTargets(IReadOnlyDictionary<string, int> values)
+    {
+        if (!CanWork || !IsCurrentReading) throw new InvalidOperationException("Refresh the matching display before staging values.");
+        foreach (var item in values)
+            if (DisplayedReading!.Value(item.Key) is null || item.Value is < 0 or > 100 || (item.Value != DisplayedReading.Value(item.Key) && !IsVerified(item.Key)))
+                throw new InvalidOperationException($"{item.Key} is missing or unverified in this context, or its target is invalid. No values were staged.");
+        foreach (var item in values) Targets[item.Key] = item.Value;
+        ConditionsConfirmed = false;
+    }
+    private Task StagePreviousValues() => GuardAsync(() =>
+    {
+        if (!CanStagePrevious) throw new InvalidOperationException("Refresh the original batch display/context before staging its previous values.");
+        StageTargets(Snapshot.PictureBatch!.Steps.ToDictionary(step => step.Control, step => step.Original));
+        PresetStatus = "Previous batch values staged only. Review and Apply explicitly to restore them.";
+        return Task.CompletedTask;
+    });
+    private Task DownloadPresetAsync(bool staged) => GuardAsync(async () =>
+    {
+        if (!CanWork || !IsCurrentReading) throw new InvalidOperationException("Refresh TV values before saving a preset.");
+        var values = new Dictionary<string, int>();
+        foreach (var control in SamsungIpRemotePictureControl.All)
+        {
+            if (DisplayedReading!.Value(control.Id) is not { } current) continue;
+            values[control.Id] = staged ? Target(control.Id) ?? throw new InvalidOperationException("Correct empty/invalid targets before exporting.") : current;
+        }
+        var json = IpRemotePicturePresets.Export(DisplayedReading!, values, PresetName);
+        await JavaScript.InvokeVoidAsync("samsungController.downloadText", $"ip-picture-{DateTime.Now:yyyyMMdd-HHmmss}.json", json);
+    });
+    private Task LoadPresetAsync(InputFileChangeEventArgs args) => GuardAsync(async () =>
+    {
+        try
+        {
+            if (!CanWork || !IsCurrentReading) throw new InvalidOperationException("Refresh the display before loading a preset.");
+            await using var stream = args.File.OpenReadStream(IpRemotePicturePresets.MaximumFileBytes);
+            using var reader = new StreamReader(stream);
+            var preset = IpRemotePicturePresets.Import(await reader.ReadToEndAsync(), DisplayedReading!);
+            StageTargets(preset.Values);
+            PresetName = preset.Name;
+            PresetStatus = $"{preset.Name}: desired values staged only. Nothing was sent to the TV.";
+        }
+        finally { FileInputKey++; }
+    });
+    private static string StepLabel(IpRemoteBatchStepStage stage) => stage switch
+    {
+        IpRemoteBatchStepStage.Confirmed => "Confirmed by readback · kept on TV",
+        IpRemoteBatchStepStage.Uncertain => "Uncertain · check recovery",
+        IpRemoteBatchStepStage.NotSent => "Not sent", _ => stage.ToString()
+    };
+    private async Task GuardAsync(Func<Task> action)
+    {
+        Error = null;
+        try { await action(); }
+        catch (JsonException error) { Error = $"JSON error at line {(error.LineNumber ?? 0) + 1}, byte {(error.BytePositionInLine ?? 0) + 1}: {error.Message}"; }
+        catch (Exception error) when (error is InvalidOperationException or ArgumentException) { Error = error.Message; }
+        catch (OperationCanceledException) { Error = "Stopped. Earlier delivered changes are not undone."; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        { Error = "Could not read or save the private IP Remote files/preset. Check permissions and recovery before continuing."; }
+        finally { Synchronize(); }
+    }
+    public void Dispose() => Controller.Changed -= RefreshSnapshot;
+}

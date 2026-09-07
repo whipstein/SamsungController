@@ -12,7 +12,7 @@ public sealed partial class SamsungIpRemoteService
     {
         EnsureNoPendingPictureTest();
         var definition = SamsungIpRemotePictureControl.Get(control);
-        Update(state => state with { DirectPictureReading = null });
+        Update(state => state with { DirectPictureReading = null, WorkspaceReading = null });
         var read = await ReadPictureCheckpointAsync(profile, control, $"Direct {definition.Name} · refresh (read only)", cancellation).ConfigureAwait(false);
         SetDirectPictureReading(profile, control, read.Input, read.Mode, read.Value, read.Video);
     });
@@ -30,7 +30,7 @@ public sealed partial class SamsungIpRemoteService
         if (!GetSnapshot().ControlCapabilities.Any(item => item.Matches(profile, read.ReportedInput, read.ReportedPictureMode, read.Control)))
             throw new InvalidOperationException($"Direct {read.Control} is locked: complete its guarded verification for this display, firmware, annotated conditions, and reported input/mode first.");
 
-        Update(state => state with { DirectPictureReading = null });
+        Update(state => state with { DirectPictureReading = null, WorkspaceReading = null });
         var before = await ReadPictureCheckpointAsync(profile, read.Control, $"Direct {read.Control} · recheck before apply", cancellation).ConfigureAwait(false);
         var adjustment = new IpRemotePictureTest
         {

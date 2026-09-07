@@ -33,6 +33,8 @@ public sealed record IpRemoteSnapshot
     public IpRemotePictureTest? PictureTest { get; init; }
     public IReadOnlyList<IpRemoteControlCapability> ControlCapabilities { get; init; } = [];
     public IpRemotePictureReading? DirectPictureReading { get; init; }
+    public IpRemoteWorkspaceReading? WorkspaceReading { get; init; }
+    public IpRemotePictureBatch? PictureBatch { get; init; }
 }
 
 public sealed record IpRemotePictureReading(Guid Id, IpRemoteProfile Profile, DateTimeOffset ReadAt,

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.RenderTree;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.Configuration;
@@ -402,7 +403,7 @@ public sealed class IpRemotePageTests
         }
     }
 
-    private sealed class DownloadJavaScript : IJSRuntime
+    internal sealed class DownloadJavaScript : IJSRuntime
     {
         public string Download { get; private set; } = "";
         public bool Confirm { get; set; } = true;
@@ -418,14 +419,14 @@ public sealed class IpRemotePageTests
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args) => InvokeAsync<TValue>(identifier, args);
     }
 
-    private sealed class IpPageRenderer(IServiceProvider services) : Renderer(services, NullLoggerFactory.Instance)
+    internal sealed class IpPageRenderer(IServiceProvider services, Type? componentType = null) : Renderer(services, NullLoggerFactory.Instance)
     {
         private int _root;
         public override Dispatcher Dispatcher { get; } = Dispatcher.CreateDefault();
         private RenderTreeFrame[] Frames => GetCurrentRenderTreeFrames(_root).Array.Take(GetCurrentRenderTreeFrames(_root).Count).ToArray();
         public Task StartAsync() => Dispatcher.InvokeAsync(async () =>
         {
-            _root = AssignRootComponentId(InstantiateComponent(typeof(IpRemote)));
+            _root = AssignRootComponentId(InstantiateComponent(componentType ?? typeof(IpRemote)));
             await RenderRootComponentAsync(_root, ParameterView.Empty);
         });
         private RenderTreeFrame[] Button(string label) => Frames.Select((frame, index) => (frame, index))
@@ -440,6 +441,22 @@ public sealed class IpRemotePageTests
         public Task AssertDisabledAsync(string label, bool expected) => Dispatcher.InvokeAsync(() => Assert.Equal(expected,
             Button(label).Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "disabled" && frame.AttributeValue is true)));
         public Task AssertTextAsync(string expected) => Dispatcher.InvokeAsync(() => Assert.Contains(expected, Text(Frames), StringComparison.Ordinal));
+        public Task AssertTargetAsync(string label, int expected) => Dispatcher.InvokeAsync(() =>
+        {
+            var frames = Frames;
+            var input = frames.Select((frame, index) => (frame, index)).Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "input")
+                .Select(item => frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray())
+                .Single(item => item.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == label));
+            Assert.Equal(expected.ToString(), input.Single(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "value").AttributeValue?.ToString());
+        });
+        public Task UploadAsync(IBrowserFile file) => Dispatcher.InvokeAsync(async () =>
+        {
+            var frames = Frames;
+            var component = frames.Select((frame, index) => (frame, index)).Single(item => item.frame.FrameType == RenderTreeFrameType.Component && item.frame.ComponentType == typeof(InputFile));
+            var callback = (EventCallback<InputFileChangeEventArgs>)frames.Skip(component.index + 1).Take(component.frame.ComponentSubtreeLength - 1)
+                .Single(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "OnChange").AttributeValue;
+            await callback.InvokeAsync(new InputFileChangeEventArgs([file]));
+        });
         public Task AssertInputPresentAsync(string label, bool expected) => Dispatcher.InvokeAsync(() => Assert.Equal(expected,
             Frames.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == label)));
         public Task ChangeAsync(string label, string value) => Dispatcher.InvokeAsync(async () =>

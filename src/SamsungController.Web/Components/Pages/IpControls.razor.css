@@ -1,0 +1,31 @@
+.workspace-panel { padding: 1.5rem; margin-bottom: 1.25rem; min-width: 0; }
+.workspace-panel h2 { font-size: 1.35rem; margin: 0; }
+.workspace-panel p { line-height: 1.6; }
+.workspace-toolbar, .workspace-actions, .card-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .75rem; }
+.workspace-toolbar { align-items: flex-start; }
+.workspace-actions { justify-content: flex-start; margin: .75rem 0; }
+.workspace-actions .primary-action { width: auto; }
+.stop-action { border-color: var(--danger); color: var(--danger); }
+.picture-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin: 1.25rem 0; }
+.picture-card { border: 1px solid var(--line-strong); border-top: 3px solid var(--amber); border-radius: .65rem; padding: 1rem; background: var(--surface-2); }
+.picture-card.verified { border-top-color: var(--positive); }
+.card-heading h3 { margin: 0; font-size: 1.15rem; }
+.card-heading span { color: var(--amber); font-weight: 700; }
+.verified .card-heading span { color: var(--positive); }
+.reading-value { font-size: 1.35rem; padding-left: .35rem; }
+.target-editor { display: flex; align-items: center; gap: .5rem; }
+.target-editor input { width: 100%; min-width: 0; font: inherit; font-size: 1.7rem; font-weight: 700; text-align: center; }
+.target-editor button { flex: 0 0 2.75rem; min-height: 2.75rem; }
+.workspace-panel fieldset { padding: 0; border: 0; min-width: 0; }
+.workspace-panel label { display: grid; gap: .5rem; margin: .5rem 0; font-weight: 600; }
+.workspace-panel input { font-family: inherit; }
+.workspace-panel .conditions { display: flex; align-items: center; gap: .6rem; flex: 1 1 26rem; }
+.conditions input { width: auto; flex-shrink: 0; }
+.pending-note { color: var(--amber); font-weight: 700; margin-bottom: 0; }
+.workspace-note { color: var(--muted); }
+.workspace-hint { border-left: 3px solid var(--amber); padding-left: .8rem; }
+.table-scroll { overflow-x: auto; }
+.workspace-panel table { width: 100%; border-collapse: collapse; text-align: left; }
+.workspace-panel th, .workspace-panel td { padding: .65rem; border-bottom: 1px solid var(--line); }
+.workspace-panel summary { font-weight: 700; font-size: 1.15rem; cursor: pointer; }
+@media (max-width: 860px) { .picture-grid { grid-template-columns: 1fr; } }
