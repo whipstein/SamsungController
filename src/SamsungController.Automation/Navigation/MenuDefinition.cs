@@ -111,7 +111,8 @@ public sealed record MenuNode(
     decimal? MaximumValue = null,
     IReadOnlyList<MenuNodeHiddenCondition>? HiddenWhen = null,
     bool Disabled = false,
-    IReadOnlyList<MenuNodeDefaultValueRule>? DefaultValueWhen = null);
+    IReadOnlyList<MenuNodeDefaultValueRule>? DefaultValueWhen = null,
+    IReadOnlyList<string>? ValueContext = null);
 
 public sealed record MenuOperation(
     string Key,

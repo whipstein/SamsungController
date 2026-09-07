@@ -81,7 +81,7 @@ public sealed partial class SamsungControllerService
             .Where(item => item.SourceKind == MenuConditionSourceKind.MenuSetting
                 && item.SourceId.Equals(node.Id, StringComparison.OrdinalIgnoreCase))
             .Select(item => item.EqualsValue).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var defaultValue = MenuDefaultValueResolver.Resolve(definition, node, _menuExternalStateValues);
+        var defaultValue = MenuDefaultValueResolver.Resolve(definition, node, _menuExternalStateValues, _menuControlValues);
         string baseline;
         try
         {
@@ -129,6 +129,7 @@ public sealed partial class SamsungControllerService
         EnsureNoAutomationRunning("confirm the verification signal setup");
         EnsureNoMenuRecording("confirm the verification signal setup");
         var recordStartingValue = false;
+        MenuControlProfileValue? confirmedContext = null;
         lock (_sync)
         {
             var definition = _menuDefinition ?? throw new InvalidOperationException("No menu definition is loaded.");
@@ -150,14 +151,21 @@ public sealed partial class SamsungControllerService
                 {
                     // The checkbox explicitly confirms this value on the TV.
                     // Correct only that current-value record; send no keys.
-                    _menuControlValues[starting.NodeId] = starting.RequiredValue;
-                    _explicitMenuControlValues.Add(starting.NodeId);
-                    recordStartingValue = true;
+                    if (IsValueContextSelector(starting.NodeId))
+                        confirmedContext = new(starting.NodeId, starting.RequiredValue);
+                    else
+                    {
+                        _menuControlValues[starting.NodeId] = starting.RequiredValue;
+                        _explicitMenuControlValues.Add(starting.NodeId);
+                        recordStartingValue = true;
+                    }
                 }
                 _verificationSignalConfirmations[check.Id] = VerificationSignalSignature(definition, check, requirements);
             }
         }
-        if (recordStartingValue)
+        if (confirmedContext is not null)
+            await RecordAppliedControlValueAsync(confirmedContext.NodeId, confirmedContext.Value).ConfigureAwait(false);
+        else if (recordStartingValue)
             await PersistActiveConditionAsync(cancellationToken).ConfigureAwait(false);
         NotifyChanged();
     }

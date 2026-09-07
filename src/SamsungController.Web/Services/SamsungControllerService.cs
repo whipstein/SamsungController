@@ -355,7 +355,9 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
                         node.MinimumValue,
                         node.MaximumValue,
                         node.DefaultValueWhen ?? [],
-                        MenuDefaultValueResolver.Resolve(definition, node, _menuExternalStateValues)))
+                        MenuDefaultValueResolver.Resolve(definition, node, _menuExternalStateValues, _menuControlValues),
+                        node.ValueContext,
+                        MenuValueContext.Sources(definition, node)))
                     .ToArray();
             var anchors = definition is null
                 ? []
@@ -1063,7 +1065,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
             effectiveValues[node.Id] = applied.FromValue;
             if (test.DefaultBasedNodeIds?.Contains(node.Id, StringComparer.OrdinalIgnoreCase) == true
                 && applied.FromValue.Equals(NormalizePictureControlValue(definition, node,
-                    MenuDefaultValueResolver.Resolve(definition, node, _menuExternalStateValues)!), StringComparison.OrdinalIgnoreCase))
+                    MenuDefaultValueResolver.Resolve(definition, node, _menuExternalStateValues, _menuControlValues)!), StringComparison.OrdinalIgnoreCase))
             {
                 lock (_sync)
                 {
@@ -1087,7 +1089,8 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
                 CaptureCurrentConditionValues(),
                 ActiveConditionKey(),
                 _conditionProfileRevision,
-                DisplayConditionBanks().Count(bank => bank.CurrentValues.Count > 0 || bank.TargetValues.Count > 0));
+                DisplayConditionBanks().Count(bank => bank.CurrentValues.Count > 0 || bank.TargetValues.Count > 0),
+                GetValueContextConflicts());
         }
     }
 
@@ -1177,6 +1180,9 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
         }
 
         var normalized = NormalizeMenuControlProfileValues(definition, values);
+        if (UsesValueContexts && normalized.Any(value => value.SelectorNodeId is null && IsValueContextSelector(value.NodeId)
+            && !_menuControlValues.GetValueOrDefault(value.NodeId, "").Equals(value.Value, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("Select the TV's actual settings context first, then enter values for that context. This prevents old-mode values being saved under a different Picture Mode.");
         var saved = new SavedMenuControlState(
             existing?.Id ?? Guid.NewGuid().ToString("N"),
             normalizedName,
@@ -2337,7 +2343,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
             model,
             new MenuDefinitionContext(firmware),
             [
-                new MenuNode("tv-interface", "TV interface", Description: "Root for the modeled TV interface."),
+                new MenuNode("tv-interface", "TV interface", Description: "Root for the modeled TV interface.", ValueContext: []),
                 new MenuNode("normal-video", "Normal video", "tv-interface", "No TV menu is expected to be visible.")
             ],
             [],
@@ -2670,7 +2676,8 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
         node = node with
         {
             Id = existing.Id,
-            DefaultValueWhen = request.DefaultValueWhen is null ? existing.DefaultValueWhen : node.DefaultValueWhen
+            DefaultValueWhen = request.DefaultValueWhen is null ? existing.DefaultValueWhen : node.DefaultValueWhen,
+            ValueContext = request.InheritValueContext ? null : request.ValueContext is null ? existing.ValueContext : node.ValueContext
         };
         var parentChanged = !string.Equals(
             existing.ParentId,
@@ -4647,7 +4654,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
 
         var operations = CreateConfirmationOperations(resetNode with
         {
-            DefaultValue = MenuDefaultValueResolver.Resolve(definition, resetNode, _menuExternalStateValues)
+            DefaultValue = MenuDefaultValueResolver.Resolve(definition, resetNode, _menuExternalStateValues, _menuControlValues)
         }, choice);
         await RunNavigationAsync(
                 $"Factory reset · {definition.GetPath(resetNode.Id)}",
@@ -4676,6 +4683,16 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
                     lock (_sync)
                     {
                         ResetMenuControlValues(definition);
+                        if (UsesValueContexts)
+                        {
+                            _explicitMenuControlValues.UnionWith(_menuControlValues.Keys);
+                            foreach (var identity in ScopedValueIdentities().Where(value => value.SelectorNodeId is not null))
+                                _indexedConditionValues[ConditionValueKey(identity)] = identity with
+                                {
+                                    Value = MenuDefaultValueResolver.Resolve(definition, definition.GetRequiredNode(identity.NodeId),
+                                        _menuExternalStateValues, _menuControlValues)!
+                                };
+                        }
                         _conditionProfileRevision++;
                     }
                     await PersistActiveConditionAsync(CancellationToken.None).ConfigureAwait(false);
@@ -4756,6 +4773,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
         }
 
         normalized = OrderPictureControlUpdates(definition, normalized);
+        ValidateMenuValueContextBatch(normalized);
         var effectiveValues = CreateEffectivePictureControlValues(
             definition,
             knownValues,
@@ -4813,12 +4831,9 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
                                     token)
                                 .ConfigureAwait(false);
                             effectiveValues[update.NodeId] = update.ToValue;
-                            lock (_sync)
-                            {
-                                _menuControlValues[update.NodeId] = update.ToValue;
-                                _explicitMenuControlValues.Add(update.NodeId);
-                            }
-                            await PersistActiveConditionAsync(CancellationToken.None).ConfigureAwait(false);
+                            await RecordAppliedControlValueAsync(update.NodeId, update.ToValue).ConfigureAwait(false);
+                            if (IsValueContextSelector(update.NodeId) || IsDefaultConditionSelector(update.NodeId))
+                                foreach (var pair in _menuControlValues) effectiveValues[pair.Key] = pair.Value;
                             tracker.ConfirmNode(
                                 update.NodeId,
                                 $"Menu control '{definition.GetPath(update.NodeId)}' was adjusted to the predicted value '{update.ToValue}'.");
@@ -4893,6 +4908,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
                 definition,
                 update))
             .ToArray();
+        ValidateMenuValueContextBatch([], normalized);
         if (normalized.Select(update =>
                 $"{update.SelectorNodeId}\u001f{update.SelectorValue}\u001f{update.NodeId}")
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -6214,7 +6230,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
 
         var operations = CreateConfirmationOperations(node with
         {
-            DefaultValue = MenuDefaultValueResolver.Resolve(definition, node, _menuExternalStateValues)
+            DefaultValue = MenuDefaultValueResolver.Resolve(definition, node, _menuExternalStateValues, _menuControlValues)
         }, safeChoice);
         await RunNavigationAsync(
                 $"Verify confirmation · {definition.GetPath(node.Id)}",
@@ -7341,7 +7357,8 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
                     condition.SourceKind))
                 .ToArray() ?? [],
             request.Disabled,
-            request.DefaultValueWhen?.Select(rule => rule with { Value = rule.Value.Trim() }).ToArray());
+            request.DefaultValueWhen?.Select(rule => rule with { Value = rule.Value.Trim() }).ToArray(),
+            request.ValueContext?.Select(source => source.Trim()).ToArray());
 
     private static MenuRecordingRequest NormalizeRecordingRequest(MenuRecordingRequest request) =>
         request with
@@ -8592,7 +8609,8 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
         MenuDefinition definition,
         SavedMenuControlState state)
     {
-        ResetMenuControlValues(definition);
+        if (UsesValueContexts) RestoreScopedConditionValues();
+        else ResetMenuControlValues(definition);
         foreach (var value in state.Values.Where(value =>
                      string.IsNullOrWhiteSpace(value.SelectorNodeId)))
         {
@@ -8607,6 +8625,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
         {
             _indexedConditionValues[ConditionValueKey(value)] = value;
         }
+        RefreshMenuDefaultControlValues(definition);
     }
 
     private static IReadOnlyList<MenuNode> GetIndexedSliderNodes(
@@ -8724,7 +8743,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
             values[node.Id] = NormalizePictureControlValue(
                 definition,
                 node,
-                MenuDefaultValueResolver.Resolve(definition, node, externalStateValues)!);
+                MenuDefaultValueResolver.Resolve(definition, node, externalStateValues, knownValues)!);
         }
 
         // Guided tests and restoration can pass an already-expanded value snapshot.
@@ -8770,6 +8789,8 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
             return;
         }
 
+        var explicitValues = _menuControlValues.Where(pair => _explicitMenuControlValues.Contains(pair.Key))
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
         foreach (var node in definition.Nodes.Values.Where(node =>
                      node.ControlType is MenuControlType.Slider
                          or MenuControlType.Switch
@@ -8782,7 +8803,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
             _menuControlValues[node.Id] = NormalizePictureControlValue(
                 definition,
                 node,
-                MenuDefaultValueResolver.Resolve(definition, node, _menuExternalStateValues)!);
+                MenuDefaultValueResolver.Resolve(definition, node, _menuExternalStateValues, explicitValues)!);
         }
     }
 
@@ -9589,7 +9610,8 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
             previousNavigator = _menuNavigator;
             previousState = previousTracker?.Current;
             var previousConditionKey = ActiveConditionKey();
-            var retainedValues = (preserveMenuState || preserveValidationProgress)
+            var retainedValues = !MenuValueContext.IsEnabled(definition) && !UsesValueContexts
+                && (preserveMenuState || preserveValidationProgress)
                 && _menuDefinition?.Id.Equals(definition.Id, StringComparison.OrdinalIgnoreCase) == true
                 ? _menuControlValues.Where(pair => _explicitMenuControlValues.Contains(pair.Key)).ToArray()
                 : [];
@@ -9617,6 +9639,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
                     // old prediction invalid. Keep its newly declared default.
                 }
             }
+            _conditionProfileRevision++;
             _navigationPlan = null;
             _navigationProgress = null;
             _navigationStatus = "Menu definition loaded";

@@ -171,7 +171,9 @@ public sealed record MenuNodeSummary(
     decimal? MinimumValue,
     decimal? MaximumValue,
     IReadOnlyList<MenuNodeDefaultValueRule>? DefaultValueWhen = null,
-    string? EffectiveDefaultValue = null)
+    string? EffectiveDefaultValue = null,
+    IReadOnlyList<string>? ValueContext = null,
+    IReadOnlyList<string>? EffectiveValueContext = null)
 {
     public string? ResolvedDefaultValue => EffectiveDefaultValue ?? DefaultValue;
 }
@@ -205,7 +207,13 @@ public sealed record MenuControlProfileSnapshot(
     IReadOnlyList<MenuControlProfileValue>? CurrentValues = null,
     string? ConditionKey = null,
     int Revision = 0,
-    int SavedConditionCount = 0);
+    int SavedConditionCount = 0,
+    IReadOnlyList<MenuValueContextConflict>? ContextConflicts = null);
+
+public sealed record MenuValueContextConflict(MenuControlProfileValue Value, string Label, bool IsTarget,
+    IReadOnlyList<MenuValueContextCandidate> Candidates);
+
+public sealed record MenuValueContextCandidate(string Value, string PreviousConditions);
 
 public sealed record MenuControlConditionValues(
     IReadOnlyDictionary<string, string> Conditions,
@@ -216,7 +224,9 @@ public sealed record MenuControlConditionBank(
     string DisplayKey,
     IReadOnlyDictionary<string, string> Conditions,
     IReadOnlyList<MenuControlProfileValue> CurrentValues,
-    IReadOnlyList<MenuControlProfileValue> TargetValues);
+    IReadOnlyList<MenuControlProfileValue> TargetValues,
+    bool Scoped = false,
+    IReadOnlyList<string>? ClearedTargetKeys = null);
 
 public sealed record MenuControlTargetProfile(
     int Version,
@@ -416,7 +426,9 @@ public sealed record MenuNodeEditRequest(
     decimal? MaximumValue = null,
     IReadOnlyList<MenuNodeHiddenCondition>? HiddenWhen = null,
     bool Disabled = false,
-    IReadOnlyList<MenuNodeDefaultValueRule>? DefaultValueWhen = null);
+    IReadOnlyList<MenuNodeDefaultValueRule>? DefaultValueWhen = null,
+    IReadOnlyList<string>? ValueContext = null,
+    bool InheritValueContext = false);
 
 public sealed record MenuTopologyOutlineRequest(
     string ParentNodeId,

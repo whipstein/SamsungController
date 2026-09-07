@@ -515,7 +515,8 @@ Every node requires `id` and `label`. These fields are optional:
 | `description` | Notes for users and future development. |
 | `controlType` | Interaction type; defaults to `submenu`. |
 | `defaultValue` | Expected value after reset/startup. Required for value-bearing controls; forbidden for `submenu` and `action`. |
-| `defaultValueWhen` | Ordered external-signal default overrides. Every condition in a rule must match; the first matching rule wins. `defaultValue` remains the fallback. |
+| `defaultValueWhen` | Ordered default overrides using external signals and/or menu-setting values. Every condition in a rule must match; the first matching rule wins. `defaultValue` remains the fallback. |
+| `valueContext` | Conditions that identify separate saved current/target values. Inherited from the closest declaring parent; `[]` explicitly means shared across all conditions. See below. |
 | `minimumValue`, `maximumValue` | Numeric slider boundaries; both are required for sliders only. |
 | `options` | Ordered values for choice controls. |
 | `disabled` | Set to `true` when this row is always visible but permanently gray/unavailable. Descendants inherit this state. |
@@ -524,7 +525,7 @@ Every node requires `id` and `label`. These fields are optional:
 
 ### Defaults that depend on HDMI input or signal
 
-Use **Build & Verify → Define menu tree → edit a control → Signal-dependent
+Use **Build & Verify → Define menu tree → edit a control → Condition-dependent
 defaults** to add rules without editing raw files. For each rule, select the
 color format, bit depth, or other declared external state, then enter the
 default value. **Any** leaves that state unconstrained. Use the up/down buttons
@@ -581,8 +582,12 @@ The equivalent JSON node is:
 }
 ```
 
-Every key in `when` must reference an ID declared in the root `externalStates`
-list, and every condition value must be one of that state's options. This can
+An external key in `when` references an ID declared in the root `externalStates`
+list, either bare (such as `hdmi-bit-depth`) or prefixed (`external:hdmi-bit-depth`).
+Its value must be one of that state's options. A menu-setting key uses
+`setting:<node-id>`, such as `setting:picture-mode: Movie`; its value must be
+valid for that control. Use **Add a menu-setting condition** in the rule editor.
+External conditions can
 include a physical HDMI connector as well as color format. For example, append
 this state to the existing list, using the input names available on your TV:
 
@@ -603,14 +608,14 @@ selections, and confirmation dialogs' initially highlighted choices. They do
 not change slider bounds or selection options. Each override must be legal for
 its control, just like the fallback: within the slider bounds, `on`/`off` for
 a switch, or one of the declared choices. Submenus and actions cannot have
-defaults. Each control supports up to 20 rules, each matching up to 20 external
-states. Empty and duplicate conditions are rejected with the node and rule
+defaults. Each control supports up to 20 rules, each matching up to 20
+conditions. Empty and duplicate conditions are rejected with the node and rule
 number in the error.
 
 Changing the header's signal selections sends **no TV commands**. Default-based
 estimates update for the new context. Saved/entered current values, applied
-values, and staged targets are retained **for their own input combination**;
-switching restores the selected combination, not the previous signal's values.
+values, and staged targets follow the setting's **`valueContext` rules** below;
+switching restores the selected context, not the previous context's values.
 All combinations can be saved and loaded in [one calibration file](calibration-target-files.md).
 Use **Enter current settings** to confirm the actual baseline when switching
 sources. An explicit **Reset to defaults** operation resets the TV
@@ -618,6 +623,105 @@ and uses the matching defaults for the selected signal. Guided verification
 restores the prior value after testing. New or changed rules reopen the related
 control verification, while merely choosing another signal does not rewrite
 the menu file or discard its verification.
+
+### Which conditions keep separate saved settings?
+
+Three independent concepts belong in the menu definition:
+
+- `valueContext`: which conditions select a different stored current value and target.
+- `defaultValueWhen`: what to assume when no current value has been recorded for that context, and what an explicit reset uses.
+- `disabledWhen` / `hiddenWhen`: whether the row is usable or present. These do **not** create separate stored values.
+
+For a TV whose picture values differ by **bit depth and Picture Mode**, but not
+RGB versus YCbCr, put this on its existing Picture submenu:
+
+```json
+"valueContext": ["external:hdmi-bit-depth", "setting:picture-mode"]
+```
+
+Use the actual Picture Mode node ID from your file. Children inherit this rule
+through every submenu. Omit RGB/YCbCr here if it only changes availability.
+For a child that changes only with bit depth, override it with
+`"valueContext": ["external:hdmi-bit-depth"]`. For a setting that is always
+shared, use `"valueContext": []`. Setting `[]` on General & Privacy, for
+example, shares all its descendants unless a child overrides it.
+
+A selector automatically excludes **itself** from its inherited context:
+Picture Mode's own selected value is stored by bit depth, while Brightness is
+stored by bit depth **and** Picture Mode. Cross-setting dependency cycles are
+rejected. Valid menu condition sources are selections, submenu selections,
+switches, and sliders—not actions, resets, or indexed grid selectors.
+
+Here is a nested YAML fragment combining storage rules with defaults. The
+numbers illustrate syntax, not recommended calibration values:
+
+```yaml
+- id: picture
+  label: Picture
+  controlType: submenu
+  valueContext: [external:hdmi-bit-depth, setting:picture-mode]
+  children:
+    - id: picture-mode
+      label: Picture Mode
+      controlType: selection
+      options: [Movie, Filmmaker Mode]
+      defaultValue: Movie
+    - id: brightness
+      label: Brightness
+      controlType: slider
+      minimumValue: 0
+      maximumValue: 50
+      defaultValue: 25
+      defaultValueWhen:
+        - when:
+            external:hdmi-bit-depth: 10-bit
+            setting:picture-mode: Filmmaker Mode
+          value: 50
+        - when:
+            setting:picture-mode: Filmmaker Mode
+          value: 20
+        - when:
+            external:hdmi-bit-depth: 10-bit
+          value: 40
+```
+
+The equivalent Brightness defaults in JSON are:
+
+```json
+"defaultValue": "25",
+"defaultValueWhen": [
+  { "when": { "external:hdmi-bit-depth": "10-bit", "setting:picture-mode": "Filmmaker Mode" }, "value": "50" },
+  { "when": { "setting:picture-mode": "Filmmaker Mode" }, "value": "20" },
+  { "when": { "external:hdmi-bit-depth": "10-bit" }, "value": "40" }
+]
+```
+
+Saved values are **not** placed in this menu file. In the UI:
+
+1. Edit a node under **Build & Verify → Define menu tree → Saved-value conditions**.
+2. Leave **Inherit from parent** checked, or uncheck it and add the desired conditions. No selected conditions means shared.
+3. Set **Condition-dependent defaults** independently, then **Save/Update**.
+4. In **Menu → Enter current settings**, first set **Actual TV context · no commands** to the Picture Mode already on the TV. Choose the actual external signal in the header too.
+5. Enter and save the values for that context. Switch contexts and repeat, then download one file containing the whole collection. [Calibration-file examples](calibration-target-files.md#version-3-per-setting-contexts) show how to edit these values directly.
+
+Switching the local context does not operate the TV. In **Adjust TV**, applying
+Picture Mode actually changes it on the TV and restores the new context's
+local baseline. Apply that selector **separately** before changing its dependent
+settings, including indexed cells; a mixed batch is rejected before sending keys.
+Defaults remain assumptions until you record or establish the actual TV values.
+
+Existing menus with no `valueContext` declaration retain all-external-state
+banking until you add a declaration. Once any node declares it, unspecified
+branches inherit the nearest declaration or are shared if none exists. Newly
+created menus start with an explicit shared root. Review all branches when
+opting an existing menu in. Changing storage rules alone does not invalidate
+physical traversal/control verification.
+
+Old personal records are retained. Values can be reused when all records for a
+new context agree and all required conditions are known. If old RGB/YCbCr banks
+disagree, or omit Picture Mode, **Review saved-value contexts** asks which value
+to use. Confirm it only if it matches the actual TV (for current values) or your
+desired target. Missing/ambiguous values never silently become trusted baselines.
 
 Supported `controlType` values are:
 

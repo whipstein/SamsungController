@@ -13,6 +13,22 @@ namespace SamsungController.Web.Tests;
 public sealed class MenuDefaultValueRulesEditorTests
 {
     [Fact]
+    public async Task EditorCombinesPictureModeWithSignalConditions()
+    {
+        await using var services = new ServiceCollection().AddLogging().BuildServiceProvider();
+        await using var renderer = new RuleRenderer(services);
+        await renderer.StartAsync();
+        await renderer.ClickAsync("+ Add default rule");
+        await renderer.ChangeAsync("Rule 1: add menu condition", "setting:picture-mode");
+        await renderer.ChangeAsync("Rule 1: Picture Mode", "Game");
+        await renderer.ChangeAsync("Rule 1: Bit depth", "10-bit");
+        Assert.Equal("Game", renderer.Rules[0].When["setting:picture-mode"]);
+        Assert.Equal("10-bit", renderer.Rules[0].When["depth"]);
+        await renderer.ChangeAsync("Rule 1: Picture Mode", "");
+        Assert.DoesNotContain("setting:picture-mode", renderer.Rules[0].When.Keys);
+    }
+
+    [Fact]
     public async Task EditorAddsCombinedConditionsReordersAndRemovesRules()
     {
         await using var services = new ServiceCollection().AddLogging().BuildServiceProvider();
@@ -64,7 +80,8 @@ public sealed class MenuDefaultValueRulesEditorTests
             ["States"] = new MenuExternalStateSummary[]
             {
                 new("format", "Color format", "RGB", "RGB", ["RGB", "YCbCr422"]),
-                new("depth", "Bit depth", "8-bit", "8-bit", ["8-bit", "10-bit"])
+                new("depth", "Bit depth", "8-bit", "8-bit", ["8-bit", "10-bit"]),
+                new("setting:picture-mode", "Picture Mode", "Movie", "Movie", ["Movie", "Game"])
             },
             ["FallbackValue"] = "25"
         }));

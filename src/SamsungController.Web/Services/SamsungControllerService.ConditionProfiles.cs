@@ -9,8 +9,14 @@ public sealed partial class SamsungControllerService
 
     private string ConditionDisplayKey => _settings.DisplayDefinitionPath ?? _settings.Host ?? "unassigned-display";
 
-    private Dictionary<string, string> ActiveConditions() => (_menuDefinition?.ExternalStates.Values ?? [])
-        .ToDictionary(state => state.Id, state => _menuExternalStateValues.GetValueOrDefault(state.Id, state.DefaultValue), StringComparer.OrdinalIgnoreCase);
+    private bool UsesValueContexts => _menuDefinition is { } definition && MenuValueContext.IsEnabled(definition);
+
+    private Dictionary<string, string> ActiveConditions() => UsesValueContexts
+        ? _menuDefinition!.Nodes.Values.SelectMany(node => MenuValueContext.Sources(_menuDefinition, node))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToDictionary(source => source,
+                source => MenuValueContext.SourceValue(_menuDefinition, source, _menuExternalStateValues, _menuControlValues)!, StringComparer.OrdinalIgnoreCase)
+        : (_menuDefinition?.ExternalStates.Values ?? []).ToDictionary(state => state.Id,
+            state => _menuExternalStateValues.GetValueOrDefault(state.Id, state.DefaultValue), StringComparer.OrdinalIgnoreCase);
 
     private string ActiveConditionKey() => $"{ConditionDisplayKey}\u001f{_menuDefinition?.Id}\u001f{MenuControlTargetProfileSerializer.ConditionKey(ActiveConditions())}";
 
@@ -18,7 +24,7 @@ public sealed partial class SamsungControllerService
         .Where(bank => bank.DefinitionId.Equals(_menuDefinition?.Id, StringComparison.OrdinalIgnoreCase)
             && bank.DisplayKey.Equals(ConditionDisplayKey, StringComparison.OrdinalIgnoreCase)).ToArray();
 
-    private MenuControlConditionBank? ActiveConditionBank() => DisplayConditionBanks().FirstOrDefault(bank =>
+    private MenuControlConditionBank? ActiveConditionBank() => UsesValueContexts ? ComposeScopedBank() : DisplayConditionBanks().FirstOrDefault(bank => !bank.Scoped &&
         MenuControlTargetProfileSerializer.ConditionKey(bank.Conditions) == MenuControlTargetProfileSerializer.ConditionKey(ActiveConditions()));
 
     // Older unscoped targets are used only until the first bank is saved, then bound
@@ -39,6 +45,8 @@ public sealed partial class SamsungControllerService
         {
             return settings;
         }
+        if (UsesValueContexts)
+            return StoreScopedCondition(settings, targets);
         var conditions = ActiveConditions();
         var bank = new MenuControlConditionBank(_menuDefinition.Id, ConditionDisplayKey, conditions,
             CaptureCurrentConditionValues(), targets ?? ActiveConditionBank()?.TargetValues ?? LegacyTargetValues());
@@ -49,14 +57,15 @@ public sealed partial class SamsungControllerService
     {
         var key = MenuControlTargetProfileSerializer.ConditionKey(bank.Conditions);
         var banks = (settings.MenuControlConditionBanks ?? []).Where(existing =>
-            !existing.DefinitionId.Equals(bank.DefinitionId, StringComparison.OrdinalIgnoreCase)
+            existing.Scoped != bank.Scoped
+            || !existing.DefinitionId.Equals(bank.DefinitionId, StringComparison.OrdinalIgnoreCase)
             || !existing.DisplayKey.Equals(bank.DisplayKey, StringComparison.OrdinalIgnoreCase)
             || MenuControlTargetProfileSerializer.ConditionKey(existing.Conditions) != key).Append(bank).ToArray();
         return settings with
         {
             MenuControlConditionBanks = banks,
-            MenuControlProfileDefinitionId = settings.MenuControlProfileDefinitionId?.Equals(bank.DefinitionId, StringComparison.OrdinalIgnoreCase) == true ? null : settings.MenuControlProfileDefinitionId,
-            MenuControlProfileValues = settings.MenuControlProfileDefinitionId?.Equals(bank.DefinitionId, StringComparison.OrdinalIgnoreCase) == true ? null : settings.MenuControlProfileValues
+            MenuControlProfileDefinitionId = !bank.Scoped && settings.MenuControlProfileDefinitionId?.Equals(bank.DefinitionId, StringComparison.OrdinalIgnoreCase) == true ? null : settings.MenuControlProfileDefinitionId,
+            MenuControlProfileValues = !bank.Scoped && settings.MenuControlProfileDefinitionId?.Equals(bank.DefinitionId, StringComparison.OrdinalIgnoreCase) == true ? null : settings.MenuControlProfileValues
         };
     }
 
@@ -70,6 +79,11 @@ public sealed partial class SamsungControllerService
 
     private void RestoreActiveConditionValues()
     {
+        if (UsesValueContexts)
+        {
+            RestoreScopedConditionValues();
+            return;
+        }
         if (_menuDefinition is not { } definition || ActiveConditionBank() is not { } bank)
         {
             return;
@@ -95,6 +109,7 @@ public sealed partial class SamsungControllerService
                 // turn a stale stored value into a prediction for the new control.
             }
         }
+        RefreshMenuDefaultControlValues(definition);
     }
 
     private static string ConditionValueKey(MenuControlProfileValue value) =>
@@ -112,6 +127,10 @@ public sealed partial class SamsungControllerService
             {
                 throw new InvalidOperationException($"Calibration '{document.Name}' belongs to menu definition '{document.DefinitionId}', not '{definition.Id}'. Load the matching menu first.");
             }
+            if (UsesValueContexts)
+                return ValidateScopedCalibration(document);
+            if (document.Version == 3)
+                throw new InvalidOperationException("This scoped calibration needs valueContext rules in the menu definition first.");
             var sets = document.ConditionValues is { Count: > 0 } specified
                 ? specified : [new MenuControlConditionValues(ActiveConditions(), document.Values)];
             return sets.Select((set, index) =>
@@ -151,6 +170,11 @@ public sealed partial class SamsungControllerService
         EnsureNoAutomationRunning("load calibration values");
         EnsureNoMenuRecording("load calibration values");
         var sets = ValidateCalibrationConditions(document);
+        if (UsesValueContexts)
+        {
+            await ImportScopedCalibrationAsync(sets, asCurrent, cancellationToken).ConfigureAwait(false);
+            return;
+        }
         await UpdateSettingsAsync(settings =>
         {
             var updated = StoreActiveCondition(settings);
@@ -181,6 +205,8 @@ public sealed partial class SamsungControllerService
         lock (_sync)
         {
             var definition = _menuDefinition ?? throw new InvalidOperationException("No menu definition is loaded.");
+            if (UsesValueContexts)
+                return ExportScopedCalibration(name, currentValues);
             var banks = DisplayConditionBanks().ToList();
             var active = ActiveConditionBank();
             if (active is not null)

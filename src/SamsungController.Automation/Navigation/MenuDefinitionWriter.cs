@@ -140,6 +140,11 @@ public sealed class MenuDefinitionWriter
         AppendOptionalScalar(yaml, fieldIndentation, "description", node.Description);
         AppendScalar(yaml, fieldIndentation, "controlType", FormatControlType(node.ControlType));
         AppendOptionalScalar(yaml, fieldIndentation, "defaultValue", node.DefaultValue);
+        if (node.ValueContext is { } valueContext)
+        {
+            yaml.Append(' ', fieldIndentation).Append("valueContext: [")
+                .Append(string.Join(", ", valueContext.Select(Quote))).AppendLine("]");
+        }
         if (node.DefaultValueWhen is { Count: > 0 })
         {
             yaml.Append(' ', fieldIndentation).AppendLine("defaultValueWhen:");

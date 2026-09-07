@@ -7,14 +7,14 @@ public static class MenuDefaultValueResolver
     public static string? Resolve(
         MenuDefinition definition,
         MenuNode node,
-        IReadOnlyDictionary<string, string>? externalStateValues = null)
+        IReadOnlyDictionary<string, string>? externalStateValues = null,
+        IReadOnlyDictionary<string, string>? settingValues = null)
     {
         foreach (var rule in node.DefaultValueWhen ?? [])
         {
             if (rule.When.Count > 0 && rule.When.All(condition =>
-                    definition.ExternalStates.TryGetValue(condition.Key, out var state)
-                    && condition.Value.Equals(
-                        externalStateValues?.GetValueOrDefault(state.Id) ?? state.DefaultValue,
+                    MenuValueContext.NormalizeSourceValue(definition, condition.Key, condition.Value).Equals(
+                        MenuValueContext.SourceValue(definition, condition.Key, externalStateValues, settingValues),
                         StringComparison.OrdinalIgnoreCase)))
             {
                 return rule.Value;

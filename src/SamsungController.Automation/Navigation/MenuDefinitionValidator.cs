@@ -98,9 +98,20 @@ public sealed class MenuDefinitionValidator
 
             ValidateMenuNodeBehavior(definition, node, errors);
             ValidateDefaultValueRules(definition, node, errors);
+            if (node.ValueContext is { } context)
+            {
+                if (context.Count > 20)
+                    errors.Add(new($"node '{node.Id}' valueContext", "At most 20 context sources are allowed."));
+                if (context.Select(MenuValueContext.CanonicalSource).Distinct(StringComparer.OrdinalIgnoreCase).Count() != context.Count)
+                    errors.Add(new($"node '{node.Id}' valueContext", "Context sources must be unique."));
+                foreach (var source in context)
+                    if (MenuValueContext.ValidateSource(definition, source) is { } error)
+                        errors.Add(new($"node '{node.Id}' valueContext", error));
+            }
         }
 
         DetectParentCycles(definition, errors);
+        DetectValueContextCycles(definition, errors);
 
         foreach (var anchor in definition.Anchors.Values)
         {
@@ -217,26 +228,22 @@ public sealed class MenuDefinitionValidator
             var location = $"node '{node.Id}' defaultValueWhen rule {index + 1}";
             if (rule.When.Count == 0)
             {
-                errors.Add(new(location, "'when' must contain at least one external-state condition; use defaultValue for the fallback."));
+                errors.Add(new(location, "'when' must contain at least one condition; use defaultValue for the fallback."));
             }
             if (rule.When.Count > 20)
             {
-                errors.Add(new(location, "A conditional default can match at most 20 external states."));
+                errors.Add(new(location, "A conditional default can match at most 20 conditions."));
             }
             foreach (var condition in rule.When)
             {
-                if (!definition.ExternalStates.TryGetValue(condition.Key, out var state))
-                {
-                    errors.Add(new(location, $"External state '{condition.Key}' does not exist."));
-                }
-                else if (!state.Options.Contains(condition.Value, StringComparer.OrdinalIgnoreCase))
-                {
-                    errors.Add(new(location, $"Value '{condition.Value}' is not an available option for external state '{condition.Key}'."));
-                }
+                if (MenuValueContext.ValidateSource(definition, condition.Key, condition.Value) is { } error)
+                    errors.Add(new(location, error));
             }
 
-            var signature = string.Join("\u001e", rule.When.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
-                .Select(pair => $"{pair.Key}\u001f{pair.Value}"));
+            if (rule.When.Keys.Select(MenuValueContext.CanonicalSource).Distinct(StringComparer.OrdinalIgnoreCase).Count() != rule.When.Count)
+                errors.Add(new(location, "A condition source is duplicated using different prefixes or casing."));
+            var signature = string.Join("\u001e", rule.When.Select(pair => (Key: MenuValueContext.CanonicalSource(pair.Key), pair.Value))
+                .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase).Select(pair => $"{pair.Key}\u001f{pair.Value}"));
             if (!seen.Add(signature))
             {
                 errors.Add(new(location, "These conditions duplicate an earlier default rule and would never be used."));
@@ -249,6 +256,26 @@ public sealed class MenuDefinitionValidator
                 errors.Add(new(location, error.Message));
             }
         }
+    }
+
+    private static void DetectValueContextCycles(MenuDefinition definition, ICollection<MenuDefinitionValidationError> errors)
+    {
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var visiting = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void Visit(MenuNode node)
+        {
+            if (visited.Contains(node.Id)) return;
+            if (!visiting.Add(node.Id))
+            {
+                errors.Add(new($"node '{node.Id}'", "Value-context/default conditions contain a dependency cycle."));
+                return;
+            }
+            foreach (var id in MenuValueContext.SettingDependencies(definition, node))
+                if (definition.Nodes.TryGetValue(id, out var dependency)) Visit(dependency);
+            visiting.Remove(node.Id);
+            visited.Add(node.Id);
+        }
+        foreach (var node in definition.Nodes.Values) Visit(node);
     }
 
     private static void ValidateMenuNodeBehavior(

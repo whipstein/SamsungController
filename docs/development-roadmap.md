@@ -116,6 +116,7 @@ Status was reconciled with the repository on 2026-08-30. A checked box means the
 - [x] Persist a local desired-value profile and reapply it after an explicitly confirmed verified factory-reset command.
 - [x] Import/export portable calibration values as either staged targets or command-free current-TV baselines; provide confirmed reset-to-defaults and reset/reapply workflows; and make long Apply/reset batches cancellable at the remote-key boundary.
 - [x] Store every external-input combination in one portable calibration file; load once, automatically select matching current/target values, and retain separate display-scoped baselines and indexed values across restart.
+- [x] Declare inheritable per-setting saved-value contexts (including Picture Mode), independent of visibility and conditional defaults; share values across irrelevant signals, retain indexed cells, support version-3 multi-context calibration files, and review ambiguous older records without silently choosing values.
 - [x] Derive a compact verification checklist using topology branches, shared control behaviors, and representative disabled/hidden behavior classes instead of per-control line items.
 - [x] Bind verification evidence to the exact display/context combination with per-check fingerprints and reopen only checks affected by a later definition edit.
 - [x] Provide one Display Verification workspace and an always-visible app status that clearly distinguish fully verified from verification-required profiles.

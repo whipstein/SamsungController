@@ -44,6 +44,27 @@ else if (!string.IsNullOrWhiteSpace(LocalStatus))
     <div class="notice" role="status"><strong>Menu</strong><span>@LocalStatus</span></div>
 }
 
+@if (Profile.ContextConflicts is { Count: > 0 } conflicts)
+{
+    <section class="panel notice danger" role="alert">
+        <strong>Review saved-value contexts</strong>
+        <p>Older records disagree, or do not identify every condition now required by the menu. No value was chosen automatically. Confirm the value for the current context below, or enter the TV's actual value in Enter current settings. The original records are retained.</p>
+        @foreach (var conflict in conflicts)
+        {
+            <div>
+                <strong>@conflict.Label · @(conflict.IsTarget ? "target" : "current TV value")</strong>
+                @foreach (var candidate in conflict.Candidates.DistinctBy(candidate => candidate.Value))
+                {
+                    <button class="secondary-action" disabled="@IsBusy" title="@candidate.PreviousConditions"
+                            @onclick="() => ResolveContextConflictAsync(conflict, candidate.Value)">Use @candidate.Value</button>
+                }
+                <small>@string.Join("; ", conflict.Candidates.Select(candidate => $"{candidate.Value}: {candidate.PreviousConditions}"))</small>
+            </div>
+        }
+        <small>Confirming a value updates local records only. It never changes the TV.</small>
+    </section>
+}
+
 @if (!MenuIsAvailable)
 {
     <section class="panel panel-empty picture-controls-empty menu-validation-lock">
@@ -101,12 +122,44 @@ else
 
 <section class="panel condition-profile-summary">
     <strong>Settings for: @ActiveSignalLabel</strong>
-    <p>@Profile.SavedConditionCount saved input combinations · One calibration file holds all saved combinations. Selecting a signal restores its values locally; it does not change the TV signal or apply settings.</p>
+    @foreach (var selector in ContextSelectors)
+    {
+        <strong> · @selector.Label: @(Navigation.ControlValues.GetValueOrDefault(selector.Id) ?? selector.DefaultValue)</strong>
+    }
+    <p>@Profile.SavedConditionCount saved value groups · One calibration file holds all saved conditions. Each setting uses its menu-defined saved-value conditions. Selecting a signal restores its values locally; it does not change the TV signal or apply settings.</p>
     <small>@((Profile.CurrentValues?.Count ?? 0) > 0 ? "Saved or applied current values are loaded for this combination. Any other values use assumed defaults." : "No recorded current values for this combination. Shown defaults are assumptions; confirm the TV values before applying relative adjustments.")</small>
 </section>
 
 @if (WorkspaceMode == MenuWorkspaceMode.CurrentState)
 {
+    @if (ContextSelectors.Count > 0)
+    {
+        <section class="panel">
+            <strong>Actual TV context · no commands</strong>
+            <p>Choose the values already selected on the TV before entering settings. Changing a context loads its saved values or conditional defaults; it does not copy the previous context's values. Local drafts stay with their original context.</p>
+            @foreach (var selector in ContextSelectors)
+            {
+                <label>
+                    <span>@selector.Label</span>
+                    @if (selector.ControlType == MenuControlType.Slider)
+                    {
+                        <input type="number" aria-label="Actual TV context: @selector.Label" value="@Navigation.ControlValues.GetValueOrDefault(selector.Id)" min="@selector.MinimumValue" max="@selector.MaximumValue" step="1" disabled="@IsBusy"
+                               @onchange="args => SetRecordedContextAsync(selector.Id, args.Value?.ToString())" />
+                    }
+                    else
+                    {
+                        <select aria-label="Actual TV context: @selector.Label" value="@Navigation.ControlValues.GetValueOrDefault(selector.Id)" disabled="@IsBusy"
+                                @onchange="args => SetRecordedContextAsync(selector.Id, args.Value?.ToString())">
+                            @foreach (var option in selector.ControlType == MenuControlType.Switch ? new[] { "off", "on" } : selector.SelectionOptions ?? [])
+                            {
+                                <option value="@option">@option</option>
+                            }
+                        </select>
+                    }
+                </label>
+            }
+        </section>
+    }
     <section class="panel current-state-workspace">
         <div class="current-state-safety">
             <div>
@@ -599,6 +652,34 @@ else
     private string? LoadedConditionKey { get; set; }
     private int LoadedProfileRevision { get; set; } = -1;
     private readonly Dictionary<string, Dictionary<string, string>> ConditionDrafts = new(StringComparer.Ordinal);
+    private IReadOnlyList<MenuNodeSummary> ContextSelectors => Navigation.Nodes.Where(node => Controller.IsMenuValueContextSelector(node.Id)).ToArray();
+
+    private async Task SetRecordedContextAsync(string nodeId, string? value)
+    {
+        if (value is null) return;
+        IsBusy = true;
+        LocalError = null;
+        try
+        {
+            await Controller.SetRecordedMenuContextAsync(nodeId, value);
+            LocalStatus = $"Recorded the TV context as {value}. Matching saved values or defaults are now shown. No TV commands were sent.";
+        }
+        catch (Exception exception) { LocalError = exception.Message; }
+        finally { IsBusy = false; }
+    }
+
+    private async Task ResolveContextConflictAsync(MenuValueContextConflict conflict, string value)
+    {
+        IsBusy = true;
+        LocalError = null;
+        try
+        {
+            await Controller.ResolveMenuValueContextConflictAsync(conflict.Value with { Value = value }, conflict.IsTarget);
+            LocalStatus = "Saved the confirmed value for this context. No TV commands were sent.";
+        }
+        catch (Exception exception) { LocalError = exception.Message; }
+        finally { IsBusy = false; }
+    }
     private string ActiveSignalLabel => string.Join(" · ", (Navigation.ExternalStates ?? []).Select(state => $"{state.Label}: {state.Value}")) is { Length: > 0 } label ? label : "Default input";
     private CancellationTokenSource? ActiveUpdateSource { get; set; }
     private string ActiveUpdateLabel { get; set; } = "Applying menu values";
@@ -704,6 +785,11 @@ else
 
         if (WorkspaceMode == MenuWorkspaceMode.CurrentState)
         {
+            if (Controller.IsMenuValueContextSelector(control.Node.Id))
+            {
+                await SetRecordedContextAsync(control.Node.Id, value);
+                return;
+            }
             CurrentStateDraft[ControlDraftKey(control.Node.Id)] = value;
             EnsureSelectedMenuArea();
             LocalError = null;
@@ -837,6 +923,10 @@ else
         IReadOnlyList<IndexedCellChange> indexedChanges,
         CancellationToken cancellationToken)
     {
+        Controller.ValidateMenuValueContextBatch(
+            controls.Select(control => new MenuControlValueUpdate(control.Node.Id, control.AppliedValue, control.DesiredValue)).ToArray(),
+            indexedChanges.Select(change => new MenuIndexedControlValueUpdate(change.Group.Selector.Id, change.Cell.SelectorValue,
+                change.Cell.Slider.Id, change.Cell.AppliedValue, change.Cell.DesiredValue)).ToArray());
         if (controls.Count > 0)
         {
             var knownValues = CreateKnownControlValues();

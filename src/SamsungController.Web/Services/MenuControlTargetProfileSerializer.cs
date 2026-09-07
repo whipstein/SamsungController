@@ -5,6 +5,7 @@ namespace SamsungController.Web.Services;
 public static class MenuControlTargetProfileSerializer
 {
     public const int CurrentVersion = 2;
+    public const int ScopedVersion = 3;
 
     private const int MaximumDocumentLength = 2 * 1024 * 1024;
 
@@ -50,10 +51,10 @@ public static class MenuControlTargetProfileSerializer
     private static void Validate(MenuControlTargetProfile document)
     {
         ArgumentNullException.ThrowIfNull(document);
-        if (document.Version is not (1 or CurrentVersion))
+        if (document.Version is not (1 or 2 or 3))
         {
             throw new InvalidOperationException(
-                $"Calibration-file version {document.Version} is not supported; expected version {CurrentVersion}.");
+                $"Calibration-file version {document.Version} is not supported; expected version 1, 2, or {ScopedVersion}.");
         }
 
         if (string.IsNullOrWhiteSpace(document.Name))
@@ -77,7 +78,7 @@ public static class MenuControlTargetProfileSerializer
         {
             if (document.Version < 2 || document.Values is { Count: > 0 })
             {
-                throw new InvalidOperationException("Use version 2 with conditionValues, without top-level values, for an all-conditions file.");
+                throw new InvalidOperationException("Use version 2 or 3 with conditionValues, without top-level values, for an all-conditions file.");
             }
             if (sets.Count > 128)
             {

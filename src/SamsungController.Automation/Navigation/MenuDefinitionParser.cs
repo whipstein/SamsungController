@@ -24,7 +24,7 @@ public sealed class MenuDefinitionParser
     private static readonly HashSet<string> ExternalStateFields =
         new(["id", "label", "defaultValue", "options"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> NodeFields =
-        new(["id", "label", "children", "description", "controlType", "defaultValue", "defaultValueWhen", "minimumValue", "maximumValue", "options", "disabled", "disabledWhen", "hiddenWhen"], StringComparer.OrdinalIgnoreCase);
+        new(["id", "label", "children", "description", "controlType", "defaultValue", "defaultValueWhen", "valueContext", "minimumValue", "maximumValue", "options", "disabled", "disabledWhen", "hiddenWhen"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> DefaultValueRuleFields =
         new(["when", "value"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ValueConditionFields =
@@ -300,7 +300,10 @@ public sealed class MenuDefinitionParser
                 OptionalBoolean(fields, "disabled", context),
                 fields.TryGetValue("defaultValueWhen", out var defaultRules)
                     ? ParseDefaultValueRules(RequireSequence(defaultRules, $"defaultValueWhen in {context}"), context)
-                    : []));
+                    : [],
+                fields.TryGetValue("valueContext", out var valueContext)
+                    ? ParseSelectionOptions(RequireSequence(valueContext, $"valueContext in {context}"), context)
+                    : null));
 
             if (fields.TryGetValue("children", out var childrenNode))
             {

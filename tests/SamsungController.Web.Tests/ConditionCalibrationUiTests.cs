@@ -81,6 +81,16 @@ public sealed partial class ControllerMenuIntegrationTests
             Assert.DoesNotContain(button, frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "disabled" && frame.AttributeValue is true);
             await DispatchEventAsync(button.Single(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "onclick").AttributeEventHandlerId, null, new MouseEventArgs());
         });
+        public Task ChangeAsync(string label, string value) => Dispatcher.InvokeAsync(async () =>
+        {
+            var frames = Frames;
+            var element = frames.Select((frame, index) => (frame, index))
+                .Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName is "input" or "select")
+                .Select(item => frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray())
+                .Single(item => item.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == label));
+            await DispatchEventAsync(element.Single(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "onchange").AttributeEventHandlerId,
+                null, new ChangeEventArgs { Value = value });
+        });
         private static string Text(IEnumerable<RenderTreeFrame> frames) => string.Concat(frames.Select(frame => frame.FrameType switch
         {
             RenderTreeFrameType.Text => frame.TextContent,

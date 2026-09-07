@@ -172,6 +172,8 @@ public sealed class MenuDefinitionJsonSerializer
         };
         AddOptional(result, "description", node.Description);
         AddOptional(result, "defaultValue", node.DefaultValue);
+        if (node.ValueContext is { } valueContext)
+            result["valueContext"] = new JsonArray(valueContext.Select(source => (JsonNode?)JsonValue.Create(source)).ToArray());
         if (node.DefaultValueWhen is { Count: > 0 })
         {
             result["defaultValueWhen"] = new JsonArray(node.DefaultValueWhen.Select(rule =>

@@ -1,9 +1,10 @@
-# Calibration files for all input conditions
+# Calibration files for all settings contexts
 
 A single `.samsung-calibration.json` file can hold settings for every saved
-input-condition combination. Load it once: selecting **External HDMI Signal**
-color format or bit depth automatically selects the matching saved values.
-Other declared external states, such as a physical HDMI input, participate too.
+settings context. Load it once: the menu's `valueContext` rules determine which
+external signals and menu settings select each saved value. For example, picture
+values can follow bit depth + Picture Mode while RGB/YCbCr only affects which
+controls are available. General settings can remain shared.
 
 The shared YAML/JSON menu definition still describes the topology and
 conditional factory defaults. Personal current settings and calibration targets
@@ -13,6 +14,9 @@ are stored separately from both the menu and its verification.
 
 1. Select the display/menu combination and the correct External HDMI Signal values.
    These selectors describe the signal; they do not change your source equipment.
+   If the menu uses Picture Mode or another menu setting as a context source,
+   select its actual TV value under **Enter current settings → Actual TV context**.
+   This records the context locally without changing the TV.
 2. Under **Menu → Enter current settings**, enter values already on the TV,
    then choose **Save entered values**. Repeat for each input combination you
    want to record. Values and named states are kept separately for each combination.
@@ -38,12 +42,84 @@ asserts that the TV already contains them. Saved collections survive an app
 restart. A combination without saved current values uses its conditional defaults
 as explicitly labeled assumptions, not values from the previously selected input.
 
-Imports replace the selected role's values for combinations included in the file.
-Other combinations and the opposite role are preserved. In a partial combination,
-omitted current values fall back to assumed defaults; omitted targets have no
-staged adjustment. The entire file is validated before any combination is saved.
+Version-3 imports merge the listed values into the selected role: omitted settings,
+other contexts, and the opposite role are preserved. The entire file is validated
+before any values are saved. Version-2 imports instead replace the selected role
+within each full input combination; omitted current values become assumptions
+and omitted targets have no staged adjustment.
+
+## Version 3: per-setting contexts
+
+Use this format when the menu declares `valueContext`. Put the rules in the
+[menu definition](menu-definition-file-format.md#which-conditions-keep-separate-saved-settings),
+and the user's values here. This example assumes Picture inherits
+`[external:hdmi-bit-depth, setting:picture-mode]`, while `eco-switch` uses `[]`:
+
+```json
+{
+  "version": 3,
+  "name": "My settings — all modes",
+  "definitionId": "my-tv-menu",
+  "values": [],
+  "conditionValues": [
+    {
+      "conditions": {},
+      "values": [{ "nodeId": "eco-switch", "value": "off" }]
+    },
+    {
+      "conditions": { "external:hdmi-bit-depth": "8-bit" },
+      "values": [{ "nodeId": "picture-mode", "value": "Movie" }]
+    },
+    {
+      "conditions": { "external:hdmi-bit-depth": "10-bit" },
+      "values": [{ "nodeId": "picture-mode", "value": "Filmmaker Mode" }]
+    },
+    {
+      "conditions": { "external:hdmi-bit-depth": "8-bit", "setting:picture-mode": "Movie" },
+      "values": [{ "nodeId": "brightness", "value": "23" }]
+    },
+    {
+      "conditions": { "external:hdmi-bit-depth": "8-bit", "setting:picture-mode": "Filmmaker Mode" },
+      "values": [{ "nodeId": "brightness", "value": "20" }]
+    },
+    {
+      "conditions": { "external:hdmi-bit-depth": "10-bit", "setting:picture-mode": "Filmmaker Mode" },
+      "values": [
+        { "nodeId": "brightness", "value": "48" },
+        { "nodeId": "white-balance-20-point-red", "value": "2", "selectorNodeId": "white-balance-20-point-interval", "selectorValue": "5%" }
+      ]
+    }
+  ]
+}
+```
+
+Use actual IDs/options from your menu. Each entry's `conditions` must contain
+**exactly** the effective context keys of its listed settings—no extra color
+format key and no missing Picture Mode. Settings with different key sets need
+separate entries. Group settings with identical conditions into the same entry;
+duplicate combinations are rejected. `{}` is the shared group. A Picture Mode
+selector excludes itself, so its own entry uses bit depth alone. Indexed grid
+cells retain `selectorNodeId` and `selectorValue`, with the slider's context rules.
+
+To specify what a user value changes **to**, edit its `value` under the relevant
+`conditions` map. This is an exact stored value, not a priority rule or a delta.
+Load the file as **current** only if those values are already on the TV, or load
+it **to apply** to stage them as targets. Both roles use the same file format and
+remain independent. Neither loading operation sends commands. After changing
+the actual context, review its baseline before choosing Apply.
+
+Downloads for scoped menus use version 3. Version-1/2 files must be converted to
+these explicit per-setting conditions before import into a scoped menu; the app
+will explain the mismatch rather than guess missing modes. Existing in-app
+banks remain archived and can be resolved in **Review saved-value contexts**.
+An export includes saved version-3 groups plus unambiguous current values for
+the active context, not unresolved or unvisited older banks. Review/save each
+older context you need before exporting the migrated collection.
 
 ## Version 2 format
+
+This format is for existing menus that have **no `valueContext` declaration**.
+Every declared external state participates, regardless of availability rules.
 
 ```json
 {
@@ -123,7 +199,7 @@ Use the IDs and options from your menu, not necessarily those in this example.
 
 Older version-1 files containing only top-level `values` can still be loaded.
 Their values are bound to the currently selected input combination; they do not
-apply to every signal condition. New downloads use version 2.
+apply to every signal condition. Downloads from these unscoped menus use version 2.
 
 ## Safe application
 

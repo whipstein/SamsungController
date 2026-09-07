@@ -414,10 +414,43 @@
                             @if (NodeEditorControlType is not MenuControlType.Submenu and not MenuControlType.Action)
                             {
                                 <MenuDefaultValueRulesEditor @bind-Rules="NodeEditorDefaultRules"
-                                                             States="@(Navigation.ExternalStates ?? [])"
+                                                             States="@DefaultRuleSources"
                                                              FallbackValue="@NodeEditorDefaultValue"
                                                              Disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
                             }
+                            <details class="selection-option-editor conditional-default-editor">
+                                <summary>Saved-value conditions</summary>
+                                <p>Choose what creates a separate set of current values and targets. Children inherit this rule; visibility rules remain separate. Picture adjustments can use bit depth + Picture Mode, while shared settings use no conditions.</p>
+                                <label class="timing-override-toggle">
+                                    <input type="checkbox" @bind="NodeEditorInheritValueContext" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
+                                    <span>Inherit from parent</span>
+                                </label>
+                                @if (!NodeEditorInheritValueContext)
+                                {
+                                    @foreach (var source in ValueContextSources.Where(source => NodeEditorValueContext.Contains(source.Id)))
+                                    {
+                                        <label class="timing-override-toggle">
+                                            <input type="checkbox" checked="@NodeEditorValueContext.Contains(source.Id)"
+                                                   @onchange="args => SetValueContextSource(source.Id, args.Value is true)"
+                                                   disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)" />
+                                            <span>@source.Label</span>
+                                        </label>
+                                    }
+                                    <label>
+                                        <span>Add saved-value condition</span>
+                                        <select value="" disabled="@(IsBusy || Authoring.IsRecording || Navigation.IsRunning)"
+                                                @onchange="args => SetValueContextSource(args.Value?.ToString() ?? string.Empty, true)">
+                                            <option value="">Choose a condition…</option>
+                                            @foreach (var source in ValueContextSources.Where(source => !NodeEditorValueContext.Contains(source.Id)))
+                                            {
+                                                <option value="@source.Id">@source.Label</option>
+                                            }
+                                        </select>
+                                    </label>
+                                    <small>No checked sources means one shared value. A selector's own value is automatically excluded from its context to avoid a circular dependency.</small>
+                                }
+                                <small>Defaults are configured separately under Condition-dependent defaults. Save/Update to apply these menu rules. Changing storage rules never sends TV commands; conflicting older values appear for review on Menu.</small>
+                            </details>
                             @if (NodeEditorControlType is MenuControlType.Selection or MenuControlType.SubmenuSelection or MenuControlType.IndexedSelection or MenuControlType.Confirmation)
                             {
                                 <div class="selection-option-editor">
@@ -1203,6 +1236,19 @@
     private decimal? NodeEditorMaximumValue { get; set; }
     private List<SelectionOptionEdit> NodeEditorSelectionOptions { get; } = [];
     private IReadOnlyList<MenuNodeDefaultValueRule> NodeEditorDefaultRules { get; set; } = [];
+    private bool NodeEditorInheritValueContext { get; set; } = true;
+    private HashSet<string> NodeEditorValueContext { get; } = new(StringComparer.OrdinalIgnoreCase);
+    private IReadOnlyList<MenuExternalStateSummary> DefaultRuleSources => (Navigation.ExternalStates ?? []).Concat(Navigation.Nodes
+        .Where(node => node.Id != EditingNodeId && node.ControlType is MenuControlType.Selection or MenuControlType.SubmenuSelection or MenuControlType.Switch or MenuControlType.Slider)
+        .Select(node => new MenuExternalStateSummary("setting:" + node.Id, node.Path, node.DefaultValue ?? "", node.DefaultValue ?? "",
+            node.ControlType == MenuControlType.Switch ? ["off", "on"] : node.SelectionOptions))).ToArray();
+    private IReadOnlyList<MenuExternalStateSummary> ValueContextSources => (Navigation.ExternalStates ?? [])
+        .Select(state => state with { Id = "external:" + state.Id }).Concat(DefaultRuleSources.Where(state => state.Id.StartsWith("setting:", StringComparison.Ordinal))).ToArray();
+    private void SetValueContextSource(string source, bool selected)
+    {
+        if (string.IsNullOrWhiteSpace(source)) return;
+        if (selected) NodeEditorValueContext.Add(source); else NodeEditorValueContext.Remove(source);
+    }
     private List<NodeDisabledConditionEdit> NodeEditorDisabledConditions { get; } = [];
     private List<NodeHiddenConditionEdit> NodeEditorHiddenConditions { get; } = [];
     private bool ConfirmMenuNodeDelete { get; set; }
@@ -2190,6 +2236,8 @@
         NodeEditorControlType = MenuControlType.Submenu;
         NodeEditorDefaultValue = string.Empty;
         NodeEditorDefaultRules = [];
+        NodeEditorInheritValueContext = true;
+        NodeEditorValueContext.Clear();
         NodeEditorDisabled = false;
         NodeEditorMinimumValue = null;
         NodeEditorMaximumValue = null;
@@ -2224,6 +2272,8 @@
             NodeEditorControlType = MenuControlType.Submenu;
             NodeEditorDefaultValue = string.Empty;
             NodeEditorDefaultRules = [];
+            NodeEditorInheritValueContext = true;
+            NodeEditorValueContext.Clear();
             NodeEditorDisabled = false;
             NodeEditorMinimumValue = null;
             NodeEditorMaximumValue = null;
@@ -2246,6 +2296,9 @@
         NodeEditorControlType = node.ControlType;
         NodeEditorDefaultValue = node.DefaultValue ?? string.Empty;
         NodeEditorDefaultRules = node.DefaultValueWhen ?? [];
+        NodeEditorInheritValueContext = node.ValueContext is null;
+        NodeEditorValueContext.Clear();
+        NodeEditorValueContext.UnionWith((node.ValueContext ?? []).Select(MenuValueContext.CanonicalSource));
         NodeEditorDisabled = node.Disabled;
         NodeEditorMinimumValue = node.MinimumValue;
         NodeEditorMaximumValue = node.MaximumValue;
@@ -2551,7 +2604,9 @@
                 NodeEditorMaximumValue,
                 CreateNodeHiddenConditions(),
                 NodeEditorDisabled,
-                NodeEditorDefaultRules);
+                NodeEditorDefaultRules,
+                NodeEditorInheritValueContext ? null : NodeEditorValueContext.ToArray(),
+                InheritValueContext: NodeEditorInheritValueContext);
             await Controller.UpdateMenuNodeAsync(nodeId, request);
 
             Refresh();
@@ -2578,7 +2633,9 @@
             NodeEditorMaximumValue,
             CreateNodeHiddenConditions(),
             NodeEditorDisabled,
-            NodeEditorDefaultRules);
+            NodeEditorDefaultRules,
+            NodeEditorInheritValueContext ? null : NodeEditorValueContext.ToArray(),
+            InheritValueContext: NodeEditorInheritValueContext);
         await Controller.CreateMenuNodeAsync(request);
 
         Refresh();
