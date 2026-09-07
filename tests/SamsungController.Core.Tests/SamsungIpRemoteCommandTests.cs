@@ -12,6 +12,51 @@ public sealed class SamsungIpRemoteCommandTests
     public static TheoryData<string, string> Commands => new()
     {
         { "getTVStates", "{}" }, { "getVideoStates", "{}" },
+        { "getDeviceInformation", "{}" },
+        { "backlightControl", "{\"backlight\":25}" },
+        { "pictureCalibrationModeControl", "{\"pictureCalibrationMode\":\"On\"}" },
+        { "digitalCleanViewControl", "{\"digitalCleanView\":\"Auto\"}" },
+        { "autoMotionPlusControl", "{\"autoMotionPlus\":\"Custom\"}" },
+        { "AMP.blurReductionControl", "{\"AMP.blurReduction\":1}" },
+        { "AMP.judderReductionControl", "{\"AMP.judderReduction\":2}" },
+        { "AMP.LEDClearMotionControl", "{\"AMP.LEDClearMotion\":\"Off\"}" },
+        { "localDimmingControl", "{\"localDimming\":\"Standard\"}" },
+        { "filmModeControl", "{\"filmMode\":\"Auto2\"}" },
+        { "contrastEnhancerControl", "{\"contrastEnhancer\":\"Low\"}" },
+        { "colorToneControl", "{\"colorTone\":\"Warm2\"}" },
+        { "WB2PointControl", "{\"R-Gain\":-1,\"B-Offset\":2}" },
+        { "WB20PointModeControl", "{\"WB20PointMode\":\"On\"}" },
+        { "WB20P.IntervalControl", "{\"WB20P.Interval\":\"35%\"}" },
+        { "WB20P.RedControl", "{\"WB20P.Red\":-50}" },
+        { "WB20P.GreenControl", "{\"WB20P.Green\":50}" },
+        { "WB20P.BlueControl", "{\"WB20P.Blue\":-1}" },
+        { "gammaModeControl", "{\"gammaMode\":\"2.20\"}" },
+        { "gamma.BT1886Control", "{\"gamma.BT1886\":-3}" },
+        { "gamma.ST2084Control", "{\"gamma.ST2084\":3}" },
+        { "gamma.HLGControl", "{\"gamma.HLG\":1}" },
+        { "RGBOnlyModeControl", "{\"RGBOnlyMode\":\"Green\"}" },
+        { "colorSpaceControl", "{\"colorSpace\":\"Custom\"}" },
+        { "colorSpace.ColorControl", "{\"colorSpace.Color\":\"Magenta\"}" },
+        { "colorSpace.ColorAdjustmentPointControl", "{\"colorSpace.ColorAdjustmentPoint\":\"75%\"}" },
+        { "colorSpace.RedControl", "{\"colorSpace.Red\":0}" },
+        { "colorSpace.GreenControl", "{\"colorSpace.Green\":53}" },
+        { "colorSpace.BlueControl", "{\"colorSpace.Blue\":100}" },
+        { "HDRToneMappingControl", "{\"HDRToneMapping\":\"Static\"}" },
+        { "colorSpaceGamutControl", "{\"colorSpaceGamut\":\"DCI-P3\"}" },
+        { "peakBrightnessControl", "{\"peakBrightness\":\"High\"}" },
+        { "colorBoosterControl", "{\"colorBooster\":\"Low\"}" },
+        { "autoHDRRemasteringControl", "{\"autoHDRRemastering\":\"On\"}" },
+        { "brightnessOptimizationControl", "{\"brightnessOptimization\":\"Off\"}" },
+        { "energySavingSolutionControl", "{\"energySavingSolution\":\"Off\"}" },
+        { "gameModeControl", "{\"gameMode\":\"Auto\"}" },
+        { "applyPictureSettingsControl", "{\"applyPictureSettings\":\"CurrentSource\"}" },
+        { "motionLightingControl", "{\"motionLighting\":\"Off\"}" },
+        { "autoPowerSavingControl", "{\"autoPowerSaving\":\"Off\"}" },
+        { "autoPowerOffControl", "{\"autoPowerOff\":\"Off\"}" },
+        { "pixelShiftMenuControl", "{\"pixelShiftMenu\":\"On\"}" },
+        { "displayRotatorControl", "{\"orientation\":\"landscape\"}" },
+        { "firstScreenAppControl", "{\"applicationName\":\"Plex\"}" },
+        { "multiviewControl", "{\"multiviewMode\":\"example-returned-mode\"}" },
         { "contrastControl", "{\"contrast\":45}" }, { "colorControl", "{\"color\":25}" }, { "sharpnessControl", "{\"sharpness\":0}" },
         { "brightnessControl", "{\"brightness\":-1}" }, { "tintControl", "{\"tint\":1}" },
         { "pictureModeControl", "{\"pictureMode\":\"FilmmakerMode\"}" }, { "pictureSizeControl", "{\"pictureSize\":\"16:9\"}" },
@@ -45,10 +90,10 @@ public sealed class SamsungIpRemoteCommandTests
         Assert.DoesNotContain(Token, JsonSerializer.Serialize(exchange), StringComparison.Ordinal);
     }
     [Fact]
-    public void CatalogHasExactlyThe24DocumentedFamiliesAndNoDuplicateMethods()
+    public void CatalogHasEveryIndependentlySpecifiedFamilyAndNoDuplicateMethods()
     {
-        Assert.Equal(24, SamsungIpRemoteCommands.All.Count);
-        Assert.Equal(24, SamsungIpRemoteCommands.All.Select(item => item.Method).Distinct().Count());
+        Assert.Equal(69, SamsungIpRemoteCommands.All.Count);
+        Assert.Equal(69, SamsungIpRemoteCommands.All.Select(item => item.Method).Distinct().Count());
         Assert.Equal(Commands.Select(row => (string)row[0]).Order(), SamsungIpRemoteCommands.All.Select(item => item.Method).Order());
     }
     [Theory]

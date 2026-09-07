@@ -157,12 +157,12 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
                 };
                 return Complete(outcome, $"The TV returned a JSON-RPC error{(code is null ? string.Empty : $" ({code})")}. Support remains context-specific; no retries or fallback keys were sent.", code: code);
             }
-            if (catalogCommand?.DeviceList == true && safeEnvelope["result"] is JsonArray list)
+            if (catalogCommand?.AllowsArrayResult == true && safeEnvelope["result"] is JsonArray list)
             {
-                if (list.Any(item => item is not JsonObject))
+                if (catalogCommand.DeviceList && list.Any(item => item is not JsonObject))
                     return Complete(SamsungIpRemoteOutcome.ProtocolError, "The device list contains invalid entries. No device was selected.");
                 resultPayload = list.DeepClone();
-                return Complete(SamsungIpRemoteOutcome.Success, $"Received {list.Count} device entries. A list or setter response is not verification of selection.");
+                return Complete(SamsungIpRemoteOutcome.Success, $"Received {list.Count} list entries. A list or setter response is not verification of selection.");
             }
             if (envelope["result"] is not JsonObject result || safeEnvelope["result"] is not JsonObject safeResult)
                 return Complete(SamsungIpRemoteOutcome.ProtocolError, "The reply has no object-valued result. Missing or unexpected values were not replaced with defaults.");
@@ -179,7 +179,7 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
             if (catalogCommand is not null) resultPayload = safeResult.DeepClone();
             return Complete(SamsungIpRemoteOutcome.Success,
                 control is not null ? $"{control.Name} command acknowledged. This alone does not confirm a change; independent readback and visual confirmation are required."
-                    : catalogCommand is { IsReadOnly: false } ? $"{catalogCommand.Name} acknowledged. Check independent readback and the actual display; an acknowledgment is not verification."
+                    : catalogCommand is { IsReadOnly: false } && commandParameters?.Count > 0 ? $"{catalogCommand.Name} acknowledged. Check independent readback and the actual display; an acknowledgment is not verification."
                     : $"Received {safeResult.Count} result fields. This is a timestamped response, not a verified control mapping or live subscription.",
                 (JsonObject)safeResult.DeepClone());
         }

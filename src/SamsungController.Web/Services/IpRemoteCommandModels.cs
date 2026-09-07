@@ -18,6 +18,10 @@ public sealed record IpRemoteCommandTrial
     public JsonObject BeforeVideo { get; init; } = new();
     public JsonObject? AfterTv { get; init; }
     public JsonObject? AfterVideo { get; init; }
+    public JsonObject? BeforeCommand { get; init; }
+    public JsonObject? AfterCommand { get; init; }
+    public JsonObject Prerequisites { get; init; } = new();
+    public JsonObject? AfterPrerequisites { get; init; }
     public IpRemoteCommandStage Stage { get; init; }
     public bool WriteAttempted { get; init; }
     public bool Acknowledged { get; init; }

@@ -27,9 +27,10 @@ Development and real-display verification proceed separately on `feature/ip-remo
 - [ ] User verifies combined multi-setting Apply, previous-values restoration, preset staging, and Stop on the real display; confirm optional single-control Undo separately.
 - [x] Reproduce Sharpness 74 / RPC −32002 and handle explicit rejections with read-only unchanged-state checks, preserving recovery for ambiguous/changed results.
 - [x] Expose and persist actual user-defined picture ranges without changing menu definitions or losing existing capability evidence.
-- [x] Implement a closed catalog for the 24 documented IP method families, typed parameters, device-list queries, and an explicit prepare/send/review UI with durable baseline/history and no automatic retry/rollback/resume.
+- [x] Implement a closed catalog for the 69 cataloged IP method families, typed parameters, device-list queries, and an explicit prepare/send/review UI with durable baseline/history and no automatic retry/rollback/resume.
 - [x] Test protocol shapes, invalid values, redaction, command preflight/readback, review persistence, and UI interactions offline.
-- [ ] Verify the expanded catalog on each actual display/context; determine modern Brightness/Tint mapping and acquire evidence for advanced calibration methods.
+- [ ] Verify the expanded catalog on each actual display/context; confirm modern Brightness/Shadow Detail/Tint mapping and advanced calibration read/write behavior.
+- [x] Extend the catalog using the 2020 list and 2025 firmware notes: dedicated calibration getters, partial two-point updates and guarded interval/color/mode prerequisites.
 - [ ] Expand proven controls and context-aware polling; investigate advanced white balance/custom color independently.
 - [ ] Merge into `main` only when the owner explicitly approves.
 

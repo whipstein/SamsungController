@@ -135,6 +135,12 @@ public static class ProtocolMessageFormatter
             case JsonObject jsonObject:
                 foreach (var property in jsonObject.ToArray())
                 {
+                    if (property.Key.Equals("serialNumber", StringComparison.OrdinalIgnoreCase)
+                        || property.Key.Equals("serial_number", StringComparison.OrdinalIgnoreCase))
+                    {
+                        jsonObject[property.Key] = "[redacted-serial]";
+                        continue;
+                    }
                     if (property.Value is JsonValue value
                         && value.TryGetValue<string>(out var text))
                     {

@@ -35,6 +35,9 @@ public sealed record SamsungIpRemoteCommand(string Method, string Name, string G
     bool SkipReadback = false, string Notes = "Display support and available values must be tested.")
 {
     public bool DeviceList => Method is "USBSourceControl" or "RVUSourceControl" or "externalSpeakerControl";
+    public bool AllowsArrayResult => DeviceList || Method is "firstScreenAppControl" or "multiviewControl";
+    public bool HasDedicatedReadback => ReadbackMethod is not null and not ("getTVStates" or "getVideoStates");
+    public IReadOnlyList<IpRemoteCommandRequirement> Requirements => SamsungIpRemoteCommands.RequirementsFor(Method);
     public bool IsReadOnly => Parameters.Count == 0;
     public JsonObject Validate(JsonObject parameters, bool query)
     {
@@ -45,6 +48,7 @@ public sealed record SamsungIpRemoteCommand(string Method, string Name, string G
             return copy;
         }
         if (IsReadOnly) throw new ArgumentException("Use Read/list for this method.");
+        if (copy.Count == 0) throw new ArgumentException("Enter at least one setting to change. Use Read/list to query without changing anything.");
         if (copy.Any(item => !Parameters.Any(field => field.Name == item.Key)))
             throw new ArgumentException("Unknown command parameter. Tokens and arbitrary method parameters cannot be supplied.");
         foreach (var field in Parameters)
@@ -59,14 +63,14 @@ public sealed record SamsungIpRemoteCommand(string Method, string Name, string G
     }
 }
 
-public static class SamsungIpRemoteCommands
+public static partial class SamsungIpRemoteCommands
 {
     private static IpRemoteParameter Choice(string name, string choices) => new(name, IpRemoteParameterKind.Choice, Array.AsReadOnly(choices.Split('|')));
     private static IpRemoteParameter Number(string name, int minimum = 0, int maximum = 100) => new(name, IpRemoteParameterKind.Integer, [], minimum, maximum);
     private static IReadOnlyList<IpRemoteParameter> Fields(params IpRemoteParameter[] fields) => Array.AsReadOnly(fields);
     private static IReadOnlyList<IpRemoteParameter> DeviceFields() => Fields(new("deviceId", IpRemoteParameterKind.DeviceId, []), new("deviceName", IpRemoteParameterKind.Text, []));
     private static SamsungIpRemoteCommand Picture(string control, string name, int minimum = 0, int maximum = 100, bool managed = false) =>
-        new(control + "Control", name, "Picture", Fields(Number(control, minimum, maximum)), ReadbackField: control,
+        new(control + "Control", name, "Picture", Fields(Number(control, minimum, maximum)), CanQuery: true, ReadbackField: control,
             ReadbackMethod: "getVideoStates", ManagedPictureControl: managed ? control : null,
             Notes: managed ? "Use the verified picture workflow, including its range limits and recovery."
                 : "Experimental protocol field. Verify its actual on-screen meaning and range; do not assume modern menu labels match.");
@@ -76,7 +80,7 @@ public static class SamsungIpRemoteCommands
         new SamsungIpRemoteCommand("getTVStates", "TV state", "Status", [], CanQuery: true),
         new SamsungIpRemoteCommand("getVideoStates", "Video state", "Status", [], CanQuery: true),
         Picture("contrast", "Contrast", managed: true), Picture("color", "Color", managed: true), Picture("sharpness", "Sharpness", managed: true),
-        Picture("brightness", "Brightness protocol field (mapping unverified)", -5, 5), Picture("tint", "Tint protocol field (range unverified)"),
+        Picture("brightness", "Shadow Detail (brightness protocol field)", -5, 5), Picture("tint", "Tint (signed)", -15, 15),
         new SamsungIpRemoteCommand("pictureModeControl", "Picture mode", "Picture", Fields(Choice("pictureMode", "Dynamic|Standard|Movie|Natural|HDR+|FilmmakerMode")), ReadbackField: "pictureMode", ReadbackMethod: "getTVStates", Notes: "Changes the picture context and may recall different saved settings. Refresh and update profile annotations afterward."),
         new SamsungIpRemoteCommand("pictureSizeControl", "Picture size", "Picture", Fields(Choice("pictureSize", "16:9|4:3")), ReadbackField: "pictureSize", ReadbackMethod: "getTVStates"),
         new SamsungIpRemoteCommand("directVolumeControl", "Volume", "Sound", Fields(Number("volume")), ReadbackField: "volume", ReadbackMethod: "getTVStates", Notes: "Start with a small change. External audio equipment may not follow the reported volume."),
@@ -94,7 +98,7 @@ public static class SamsungIpRemoteCommands
         new SamsungIpRemoteCommand("directAccessControl", "Open application", "Apps", Fields(Choice("applicationName", "webBrowser|netflix|amazon|pandora|vudu|VUDU|youTube|hulu"), new("url", IpRemoteParameterKind.Url, [], Optional: true)), SkipReadback: true),
         new SamsungIpRemoteCommand("artModeControl", "Art mode", "Art / Power", Fields(Choice("artMode", "artModeOn|artModeOff")), ReadbackField: "artMode", ReadbackMethod: "getTVStates", Notes: "Model-specific (for example, Frame displays). An unsupported reply is not permission to try other methods."),
         new SamsungIpRemoteCommand("powerControl", "Power / reboot", "Art / Power", Fields(Choice("power", "powerOff|powerOn|reboot")), SkipReadback: true, Notes: "Can turn off or restart the display. HTTPS powerOn requires a reachable endpoint; this does not send Wake-on-LAN. No automatic read, retry, or rollback follows.")
-    });
+    }.Concat(Advanced()).Select(WithQuerySupport).ToArray());
     public static SamsungIpRemoteCommand Get(string method) => All.FirstOrDefault(item => item.Method == method)
         ?? throw new ArgumentException("That method is not in the documented IP Remote command catalog.");
 }

@@ -24,29 +24,39 @@
         { <optgroup label="@group.Key">@foreach (var command in group) { <option value="@command.Method">@command.Name</option> }</optgroup> }
     </select></label>
     <p><code>@Definition.Method</code> · @Definition.Notes</p>
+    @if (Definition.CanQuery)
+    {
+        <button class="toolbar-button" @onclick="QueryAsync" disabled="@(!CanRead)">Read/list @Definition.Name</button>
+        @if (Snapshot.CatalogQuery is { } query && query.Profile == Snapshot.ActiveProfile && query.Exchange.Method == SelectedMethod)
+        {
+            <p>@query.Exchange.Outcome · @query.Exchange.Timestamp.ToLocalTime().ToString("HH:mm:ss") · @query.Exchange.Message</p>
+            <pre class="command-json">@((query.Exchange.Payload ?? query.Exchange.Result)?.ToJsonString(PrettyJson) ?? "No result available.")</pre>
+            @if (!Definition.IsReadOnly && Definition.ManagedPictureControl is null && !Definition.DeviceList && query.Exchange.IsSuccess && query.Exchange.Result is not null)
+            { <button class="toolbar-button" @onclick="UseReadValues" disabled="@(!CanPrepare)">Fill fields from this reading (no TV change)</button> }
+            @if (Definition.DeviceList && query.Exchange.Payload is JsonArray devices)
+            {
+                <label>Returned device<select aria-label="Returned IP device" @onchange="ChooseDevice" disabled="@(!CanPrepare)">
+                    <option value="">Choose an actual returned device…</option>
+                    @for (var i = 0; i < devices.Count; i++)
+                    { <option value="@i">@devices[i]?["deviceName"] · @devices[i]?["deviceId"]</option> }
+                </select></label>
+            }
+        }
+    }
     @if (Definition.ManagedPictureControl is not null)
     { <p>Already supported by the guarded picture workflow. <a href="ip-controls">Open Direct picture controls</a>. This tester cannot bypass its verification or allowed ranges.</p> }
     else
     {
-        @if (Definition.CanQuery)
-        {
-            <button class="toolbar-button" @onclick="QueryAsync" disabled="@(!CanRead)">Read/list @Definition.Name</button>
-            @if (Snapshot.CatalogQuery is { } query && query.Profile == Snapshot.ActiveProfile && query.Exchange.Method == SelectedMethod)
-            {
-                <p>@query.Exchange.Outcome · @query.Exchange.Timestamp.ToLocalTime().ToString("HH:mm:ss") · @query.Exchange.Message</p>
-                <pre class="command-json">@((query.Exchange.Payload ?? query.Exchange.Result)?.ToJsonString(PrettyJson) ?? "No result available.")</pre>
-                @if (Definition.DeviceList && query.Exchange.Payload is JsonArray devices)
-                {
-                    <label>Returned device<select aria-label="Returned IP device" @onchange="ChooseDevice" disabled="@(!CanPrepare)">
-                        <option value="">Choose an actual returned device…</option>
-                        @for (var i = 0; i < devices.Count; i++)
-                        { <option value="@i">@devices[i]?["deviceName"] · @devices[i]?["deviceId"]</option> }
-                    </select></label>
-                }
-            }
-        }
         @if (!Definition.IsReadOnly)
         {
+            @if (Definition.Requirements.Count > 0)
+            {
+                <div class="notice warning"><strong>Required TV conditions — set these explicitly before preparing:</strong>
+                    <ul>@foreach (var requirement in Definition.Requirements)
+                    { <li><code>@requirement.Field</code>: @string.Join(" / ", requirement.AllowedValues)</li> }</ul>
+                    The app reads these conditions and refuses to send if they change. It does not select a mode, interval, or color for you.
+                </div>
+            }
             <fieldset disabled="@(!CanPrepare)">
                 <div class="command-fields">
                 @foreach (var field in Definition.Parameters)
@@ -87,6 +97,12 @@
         <p class="@(trial.ReadbackMatches == false || trial.Stage == IpRemoteCommandStage.Uncertain ? "command-warning" : "")" role="status">@trial.Message</p>
         <p>Readback: @(trial.ReadbackMatches is true ? "matched" : trial.ReadbackMatches is false ? "mismatch" : "not confirmed") ·
             @(trial.ReadWriteVerified ? "Read/write + user verified" : trial.VisualConfirmed == true ? "User-confirmed effect only; no read/write verification" : "Not verified")</p>
+        @if (trial.BeforeCommand is not null || trial.Prerequisites.Count > 0)
+        {
+            <h3>Setting and target context captured before sending</h3>
+            <pre class="command-json">@trial.BeforeCommand?.ToJsonString(PrettyJson)
+@trial.Prerequisites.ToJsonString(PrettyJson)</pre>
+        }
         <details><summary>Original state and after-command readback</summary>
             <div class="command-state-grid">
                 <div><h3>Before TV/video</h3><pre class="command-json">@trial.BeforeTv.ToJsonString(PrettyJson)
@@ -94,6 +110,9 @@
                 <div><h3>After TV/video</h3><pre class="command-json">@(trial.AfterTv?.ToJsonString(PrettyJson) ?? "Not read")
 @(trial.AfterVideo?.ToJsonString(PrettyJson) ?? "Not read")</pre></div>
             </div>
+            @if (trial.AfterCommand is not null)
+            { <h3>Dedicated setting readback / target context</h3><pre class="command-json">@trial.AfterCommand.ToJsonString(PrettyJson)
+@trial.AfterPrerequisites?.ToJsonString(PrettyJson)</pre> }
         </details>
         @if (trial.RequiresReview)
         {
@@ -114,7 +133,7 @@
             <tr><td>@command.Name<br /><code>@command.Method</code></td><td>@(command.IsReadOnly ? "Read-only query" : command.ManagedPictureControl is not null ? "See picture verification" : history?.ReadWriteVerified == true ? "Readback + user confirmed (last tested values)" : history?.VisualConfirmed == true ? "User-confirmed effect only" : history is not null ? "Last test unsuccessful" : "Not tested")</td></tr>
         }
     </tbody></table></div>
-    <p class="command-warning">White balance / 20-point, custom color-space calibration, gamma, HDR processing and other advanced menu settings have no confirmed direct method in this catalog. They remain unavailable here; the older menu-key workflow is not invoked automatically.</p>
+    <p class="command-warning">Advanced controls are protocol candidates until tested on this display and signal. Dotted parameter names are literal. The catalog covers the 2020 list and the referenced consumer-TV expert methods, not every on-screen menu. Hotel provisioning, service/factory resets, firmware updates, soundbar-only and commercial-wall methods are not included. No fallback menu keys are sent.</p>
 </section>
 
 @code {
@@ -157,6 +176,24 @@
     { Values = Definition.Parameters.ToDictionary(field => field.Name, field => field.Kind == IpRemoteParameterKind.Choice ? field.Choices[0] : ""); SelectedDeviceId = null; }
     private void ChangeValue(string field, ChangeEventArgs args)
     { if (CanPrepare) { Values[field] = args.Value?.ToString() ?? ""; Confirmed = false; } }
+    private void UseReadValues()
+    {
+        if (!CanPrepare || Snapshot.CatalogQuery is not { } query || query.Profile != Snapshot.ActiveProfile || query.Exchange.Method != SelectedMethod || !query.Exchange.IsSuccess) return;
+        var fields = SamsungIpRemoteService.CommandFields(Definition, query.Exchange.Result);
+        foreach (var parameter in Definition.Parameters)
+        {
+            if (fields?[parameter.Name] is not JsonValue value) continue;
+            var text = value.ToString();
+            if (parameter.Kind == IpRemoteParameterKind.Choice)
+            {
+                var choice = parameter.Choices.FirstOrDefault(option => string.Equals(option, text, StringComparison.OrdinalIgnoreCase));
+                if (choice is null) continue;
+                text = choice;
+            }
+            Values[parameter.Name] = text;
+        }
+        Confirmed = false;
+    }
     private void ConfirmConditions(ChangeEventArgs args) { if (CanPrepare && PlanMatches) Confirmed = args.Value is true; }
     private void ChooseDevice(ChangeEventArgs args)
     {

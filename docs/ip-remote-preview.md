@@ -18,7 +18,7 @@ The supplied IP Remote handoff is design background. This repository is C#/.NET,
 - Preserves unknown fields. Missing fields say **Not reported**, not zero, false, or a previous value. A successful empty result does not prove any control is available.
 - Provides cancellation, finite timeouts, redacted request/response history, and a downloadable report.
 
-The guarded picture workspace still contains only Contrast, Color, and Sharpness; each needs independent verification. A separate **IP Commands** page now offers controlled testing of the [24 documented command families](ip-remote-commands.md), including other picture fields, modes, sound, sources, channels, IP keys, apps and power. The preview does not infer unknown mappings, discover TVs or scan ports, poll in the background, retrieve menu trees/screenshots, issue reset/calibration commands, or automatically fall back to remote keys. It does not alter menu definitions, verification sidecars, saved calibration values, or predicted menu position.
+The guarded picture workspace still contains only Contrast, Color, and Sharpness; each needs independent verification. A separate **IP Commands** page now offers controlled testing of the [69 cataloged command families](ip-remote-commands.md), including advanced calibration fields, modes, sound, sources, channels, IP keys, apps and power. The preview does not infer unknown mappings, discover TVs or scan ports, poll in the background, retrieve menu trees/screenshots, issue reset/Smart Calibration-start commands, or automatically fall back to remote keys. It does not alter menu definitions, verification sidecars, saved calibration values, or predicted menu position.
 
 ## 1. Start the working branch
 
@@ -300,12 +300,14 @@ If a read fails:
 - [x] Exercise batch partial failure, cancellation, storage failure, restart recovery, preset parsing, and component interactions with simulated TV responses.
 - [ ] User verifies the combined Apply/previous-values/preset/Stop workflow on the display using the section 9 checkpoint.
 - [ ] Extend additional controls only after their own field mapping and reversible-write verification.
-- [x] Add a closed, typed catalog for all 24 documented method families and an explicit prepare/send-once/review screen; retain separate established-picture gates.
+- [x] Add a closed, typed catalog for all 69 cataloged method families and an explicit prepare/send-once/review screen; retain separate established-picture gates.
 - [x] Persist command review/evidence, distinguish acknowledgment/user observation/readback verification, and support typed device lists without invented IDs.
 - [x] Handle explicit picture rejection with read-only unchanged-state checks; add persisted user-defined picture ranges and regression tests for the reported Sharpness 74 failure.
 - [ ] Verify the newly exposed command families and experimental Brightness/Tint mapping on the real display; no new hardware compatibility is implied by protocol tests.
 - [ ] Add bounded state polling only if useful and proven safe; do not assume subscriptions exist.
-- [ ] Investigate advanced white balance and custom-color methods independently, including any special mode/authorization requirements.
+- [x] Map the 2020 command list and 2025 consumer-TV protocol notes into 69 typed command families, including white balance, gamma, custom color, motion/HDR/eco controls, display identity, rotation, app lists and Multi View.
+- [x] Add dedicated getters, literal dotted parameters, partial two-point writes, interval/color/mode prerequisite checks, and private before/after evidence with no implicit selector changes.
+- [ ] Verify advanced controls on the actual displays, including valid value strings, getter shapes, conditional support and deliberate restoration.
 - [ ] Revisit integration with existing menu/calibration workflows using evidence, not implicit fallback.
 - [ ] Owner explicitly approves merging the working branch into `main`.
 
@@ -313,6 +315,8 @@ Checked code milestones are **not hardware compatibility claims**. Automated tes
 
 ## Protocol references
 
+- [Samsung 2020 IP command list](https://www.hillresi.com/wp-content/uploads/2022/01/2020_IP_command_list.pdf): 52 command families, calibration ranges, model-era naming changes and deprecations. It does not spell out all JSON-RPC payloads.
+- [TheFab21 consumer-TV firmware protocol notes](https://github.com/TheFab21/ha-samsungtv-smart/blob/8c7000522b4045b42ff26d129d8d5fe9daf280cb/notes/QN55LS03FAFXZA/IPCONTROL_DECOMPILED.md): exact advanced method/parameter spelling and scoped live observations on QN55LS03FAFXZA firmware 1296.8. Candidate values and failed setters are not promoted to hardware support here. See the [expanded command guide](ip-remote-commands.md).
 - [Samsung TV IP command list v1.1 (manufacturer PDF)](https://s7d2.scene7.com/is/content/SamsungUS/samsungbusiness/products/tvs/tvci-8-21-17/resource-center/control-codes/TV_IP_CommandList_v.1.1_1Pager.pdf): historical getter names and command families, not proof of modern model ranges.
 - [RTI Samsung IP Television integration](https://driverstore.rticontrol.com/driver/samsung-ip-television): endpoint/pairing setup and context-sensitive availability guidance.
 - [py-samsungtv client source](https://github.com/iloveicedgreentea/py-samsungtv/blob/master/pysamsungtv/client.py) and [HTTPS transport source](https://github.com/iloveicedgreentea/py-samsungtv/blob/master/pysamsungtv/connection.py): implementation reference for `createAccessToken`, `params.AccessToken`, JSON-RPC envelopes, and root HTTPS POST. This is third-party protocol evidence, not a Samsung guarantee, and its transport security policy was not adopted.

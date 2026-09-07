@@ -223,7 +223,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             snapshot.CommandTrial,
             snapshot.CommandHistory,
             snapshot.CatalogQuery,
-            CommandCatalog = SamsungIpRemoteCommands.All.Select(command => new { command.Method, command.Name, command.CanQuery, command.ReadbackField, command.Notes }),
+            CommandCatalog = SamsungIpRemoteCommands.All.Select(command => new { command.Method, command.Name, command.Group, command.Parameters, command.CanQuery, command.ReadbackField, command.ReadbackMethod, command.Requirements, command.Notes }),
             Methods = SamsungIpRemoteClient.ReadMethods.Select(method => new
             {
                 Method = method,
