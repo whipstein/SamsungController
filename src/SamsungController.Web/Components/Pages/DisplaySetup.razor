@@ -7,7 +7,7 @@
 @inject NavigationManager Navigation
 
 <PageTitle>Display · SamsungController</PageTitle>
-<section class="page-heading compact-heading"><div><span class="eyebrow">DIRECT IP CONTROL</span><h1>Choose your display.</h1><p>Pair once. Current settings are read from the TV; no menu file or verification setup is required.</p></div></section>
+<section class="page-heading compact-heading"><div><span class="eyebrow">DIRECT IP CONTROL</span><h1>Choose your display.</h1><p>Pair once. Connect preloads all Menu sections and available calibration rows for the current input/picture mode. No menu file or verification setup is required.</p></div></section>
 @if (Error is not null) { <div class="notice danger" role="alert">@Error</div> }
 <section class="panel direct-panel">
     <div class="direct-toolbar"><h2>Saved displays</h2><button class="toolbar-button" @onclick="NewDisplay" disabled="@Snapshot.IsBusy">Add display</button></div>
@@ -24,6 +24,13 @@
         @if (Snapshot.ActiveProfile is not null && (!Snapshot.HasToken || Snapshot.AuthorizationRejected)) { <p>Pair with this display below before connecting.</p> }
     }
     else { <p>No saved IP displays yet. Enter the TV address below.</p> }
+    @if (Snapshot.IsBusy) { <p role="status">@Snapshot.Menu.Status</p> }
+    @if (Snapshot.Menu.SettingsLoadedAt is not null)
+    {
+        <p role="status">@Snapshot.Menu.Status</p>
+        @foreach (var warning in Snapshot.Menu.LoadWarnings) { <p class="direct-unavailable">@warning</p> }
+    }
+    <p class="direct-hint">HTTPS keep-alive reuses one connection where supported. The TV may close it; the saved pairing token is reused on the next request. Connection loading can take a while; Stop cancels remaining requests.</p>
 </section>
 
 @if (ShowEditor)

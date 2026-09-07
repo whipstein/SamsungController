@@ -92,6 +92,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             var profiles = GetSnapshot().Profiles.Where(item => item.Endpoint != profile.Endpoint).Append(profile).ToArray();
             await SaveProfilesAsync(profiles, profile.Endpoint).ConfigureAwait(false);
             var hasToken = await _client.HasTokenAsync(profile.Connection).ConfigureAwait(false);
+            _client.CloseConnection();
             Update(state => state with
             {
                 Profiles = profiles,
@@ -123,6 +124,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             var profile = GetSnapshot().Profiles.Single(item => item.Endpoint == endpoint);
             await SaveProfilesAsync(GetSnapshot().Profiles, endpoint).ConfigureAwait(false);
             var hasToken = await _client.HasTokenAsync(profile.Connection).ConfigureAwait(false);
+            _client.CloseConnection();
             Update(state => state with
             {
                 ActiveProfile = profile,
@@ -145,6 +147,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             EnsureNoPendingPictureTest();
             var profile = GetSnapshot().ActiveProfile ?? throw new InvalidOperationException("Save a profile first.");
             await _client.ForgetTokenAsync(profile.Connection).ConfigureAwait(false);
+            _client.CloseConnection();
             Update(state => state with
             {
                 HasToken = false,

@@ -82,11 +82,13 @@ Releases include `SHA256SUMS.txt`. Optional integrity checks: macOS `shasum -a 2
 4. For an already paired endpoint select **Connect and open Menu**. Do not pair again merely to reconnect.
 5. The header shows TV-reported input and picture mode. Connect/Disconnect and Stop remain visible on every page.
 
-“Connected” means the latest HTTPS connection check succeeded, not a continuously monitored connection. Transport/authentication failures clear it. A failed Connect leaves the normal Connect button available.
+Connect preloads every Menu section and the catalog's other documented read/list methods for the current input/picture mode. Already-enabled 20-point and Custom color grids load all rows and restore their selectors. Inactive modes are not automatically enabled: those rows remain unavailable until you enable the mode and load them. Loading progress and Stop are available; Menu's connection-preload details report unavailable values. Unsupported fields are never filled with defaults.
+
+The app requests HTTPS keep-alive and retains one pooled TCP/TLS connection for the selected endpoint, including while idle. Requests reuse your saved token; they do not pair again. The TV can still close its connection, requiring a new TCP/TLS connection on the next request. “Connected” means the latest check succeeded, not continuous TV-state monitoring. The header status tooltip reports whether the last query reused TLS or the TV requested closure. Transport/authentication failures clear Connected; a failed Connect leaves the normal Connect button available.
 
 ## Change settings
 
-1. Open **Menu**. The current section is queried automatically on first visit after connecting. Use **Refresh TV values** after changes made with another controller.
+1. Open **Menu**. Connection-loaded values are ready without another scan when changing tabs. Use **Refresh TV values** after changes made with another controller or an incomplete load. Opening tabs does not restart a stopped connection preload.
 2. Choose Picture, Sound, or System. Picture has separate calibration tabs; 2-point gains and offsets are grouped in two columns.
 3. Adjust a slider, number, switch, or selection. With default **Wait for Apply**, the TV is unchanged; pending targets are distinct from queried current values.
 4. Select **Apply N pending** at the top right. Fresh values/context are checked, settings are sent sequentially, and each result is queried. A mismatch stops later settings.

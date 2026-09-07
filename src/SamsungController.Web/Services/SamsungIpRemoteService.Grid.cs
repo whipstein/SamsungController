@@ -16,13 +16,15 @@ public sealed partial class SamsungIpRemoteService
     };
 
     /// <summary>Read every indexed RGB row. Only selectors are moved, never modes or RGB values.</summary>
-    public Task RefreshMenuGridAsync(string section) => RunMenuOperationAsync(async (profile, cancellation) =>
+    public Task RefreshMenuGridAsync(string section) => RunMenuOperationAsync((profile, cancellation) => RefreshMenuGridCoreAsync(profile, section, cancellation));
+
+    private async Task RefreshMenuGridCoreAsync(IpRemoteProfile profile, string section, CancellationToken cancellation, bool sectionAlreadyRead = false)
     {
         var started = Stopwatch.GetTimestamp();
         EnsureMenuWritesAllowed(); // Reading all rows moves a selector; an unresolved RGB write must be handled first.
         var grid = IpMenuGrids.ForSection(section) ?? throw new ArgumentException("Unknown calibration grid.");
         UpdateMenu(menu => ClearMenuGridCache(menu, section));
-        await RefreshMenuSectionCoreAsync(profile, section, cancellation, loadingGrid: true).ConfigureAwait(false);
+        if (!sectionAlreadyRead) await RefreshMenuSectionCoreAsync(profile, section, cancellation, loadingGrid: true).ConfigureAwait(false);
         if (GetSnapshot().Menu.Readings.GetValueOrDefault(grid.ModeMethod)?.Values?[grid.ModeField]?.ToString() != grid.RequiredMode)
         {
             UpdateMenu(menu => menu with { Status = $"Set {grid.ModeField} to {grid.RequiredMode} and Apply to load all rows. No mode or RGB value was changed." });
@@ -70,7 +72,7 @@ public sealed partial class SamsungIpRemoteService
             if (session is not null) await StopMenuSelectorSessionAsync(error.Message).ConfigureAwait(false);
             throw;
         }
-    });
+    }
 
     private static bool IsMenuGridError(Exception error) => error is InvalidOperationException or ArgumentException or OperationCanceledException or IOException or UnauthorizedAccessException or JsonException;
 

@@ -57,10 +57,13 @@ public sealed record SamsungIpRemoteExchange(
 {
     public bool IsSuccess => Outcome == SamsungIpRemoteOutcome.Success;
     public JsonNode? Payload { get; init; }
+    public bool? NewTlsHandshake { get; init; }
+    public bool? ServerClosesConnection { get; init; }
 }
 
 public interface ISamsungIpRemoteClient
 {
+    void CloseConnection() { }
     Task<bool> HasTokenAsync(SamsungIpRemoteOptions options, CancellationToken cancellationToken = default);
     Task ForgetTokenAsync(SamsungIpRemoteOptions options, CancellationToken cancellationToken = default);
     Task<SamsungIpRemoteExchange> PairAsync(SamsungIpRemoteOptions options, CancellationToken cancellationToken = default);

@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Security;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
@@ -75,11 +76,17 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
         JsonNode? resultPayload = null;
         var accessingCredentials = false;
         OwnedTransport? transport = null;
+        long initialHandshakes = 0;
+        bool? serverClosesConnection = null;
         SamsungIpRemoteExchange Complete(SamsungIpRemoteOutcome outcome, string message, JsonObject? result = null, int? code = null) =>
             new(started, id, method, endpoint.AbsoluteUri, outcome, message,
                 IpRemoteRedactor.Redact(request, token)!.ToJsonString(PrettyJson), responseJson, result,
                 httpStatus, code, timer.ElapsedMilliseconds, transport?.Fingerprint)
-            { Payload = resultPayload?.DeepClone() };
+            {
+                Payload = resultPayload?.DeepClone(),
+                NewTlsHandshake = transport is null ? null : transport.Handshakes != initialHandshakes,
+                ServerClosesConnection = serverClosesConnection
+            };
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(pairing ? options.PairingTimeout : options.RequestTimeout);
         try
@@ -102,15 +109,18 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
             if (client is null)
             {
                 transport = GetTransport(options);
+                initialHandshakes = transport.Handshakes;
                 transport.RejectedCertificate = false;
                 client = transport.Client;
             }
 
             using var message = new HttpRequestMessage(HttpMethod.Post, endpoint);
+            message.Headers.Connection.Add("keep-alive");
             message.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             message.Content = new StringContent(request.ToJsonString(), Encoding.UTF8, "application/json");
             using var response = await client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
             httpStatus = (int)response.StatusCode;
+            serverClosesConnection = response.Headers.ConnectionClose == true;
             var body = await ReadBoundedResponseAsync(response.Content, timeout.Token).ConfigureAwait(false);
             JsonObject? envelope = null;
             JsonObject? safeEnvelope = null;
@@ -235,6 +245,15 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
         }
     }
 
+    public void CloseConnection()
+    {
+        lock (_transportLock)
+        {
+            _transport?.Dispose();
+            _transport = null;
+        }
+    }
+
     private sealed record TransportKey(Uri Endpoint, bool AllowUntrusted, string? Pin);
 
     private sealed class OwnedTransport : IDisposable
@@ -243,15 +262,44 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
         public HttpClient Client { get; }
         public string? Fingerprint { get; private set; }
         public bool RejectedCertificate { get; set; }
+        public long Handshakes { get; private set; }
 
         public OwnedTransport(TransportKey key, SamsungIpRemoteOptions options)
         {
             Key = key;
-            var handler = new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false };
-            handler.ServerCertificateCustomValidationCallback = (message, certificate, _, errors) =>
+            var handler = new SocketsHttpHandler
             {
-                Fingerprint = certificate?.GetCertHashString(HashAlgorithmName.SHA256);
-                var trusted = IsCertificateTrusted(options, message.RequestUri!, certificate, errors);
+                AllowAutoRedirect = false,
+                UseCookies = false,
+                MaxConnectionsPerServer = 1,
+                PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan,
+                PooledConnectionLifetime = Timeout.InfiniteTimeSpan,
+                ConnectCallback = async (context, cancellation) =>
+                {
+                    var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                    try
+                    {
+                        socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+                        try
+                        {
+                            socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveTime, 15);
+                            socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveInterval, 5);
+                        }
+                        catch (Exception error) when (error is SocketException or PlatformNotSupportedException) { /* Use OS keepalive defaults. */ }
+                        await socket.ConnectAsync(context.DnsEndPoint, cancellation).ConfigureAwait(false);
+                        return new NetworkStream(socket, ownsSocket: true);
+                    }
+                    catch { socket.Dispose(); throw; }
+                }
+            };
+            handler.SslOptions.RemoteCertificateValidationCallback = (_, certificate, _, errors) =>
+            {
+                Handshakes++;
+                using var peer = certificate is null ? null : X509CertificateLoader.LoadCertificate(certificate.GetRawCertData());
+                Fingerprint = peer?.GetCertHashString(HashAlgorithmName.SHA256);
+                // This transport serves only its exact endpoint/trust key;
+                // redirects are disabled and callers cannot supply other URLs.
+                var trusted = IsCertificateTrusted(options, key.Endpoint, peer, errors);
                 RejectedCertificate |= !trusted;
                 return trusted;
             };

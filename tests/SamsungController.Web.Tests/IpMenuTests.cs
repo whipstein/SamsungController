@@ -19,7 +19,7 @@ public sealed class IpMenuTests
     {
         using var fixture = await MenuFixture.CreateAsync();
         Assert.Empty(fixture.Display.Requests);
-        await fixture.Service.ConnectMenuAsync();
+        await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
         Assert.Equal(new[] { "getTVStates", "getVideoStates", "getDeviceInformation" }, fixture.Display.Methods);
         Assert.True(fixture.Service.GetSnapshot().Menu.Connected);
         Assert.Equal(45, fixture.Value("contrastControl/contrast")!.GetValue<int>());
@@ -34,7 +34,7 @@ public sealed class IpMenuTests
     public async Task RefreshUsesOnlyGettersAndUnsupportedFieldsHaveNoInventedDefaults()
     {
         using var fixture = await MenuFixture.CreateAsync();
-        await fixture.Service.ConnectMenuAsync();
+        await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
         fixture.Override = (request, _) => Task.FromResult(request["method"]!.ToString() == "backlightControl" ? MenuFixture.Reject(request, -32601) : null);
         await fixture.Service.RefreshMenuSectionAsync("expert");
         Assert.Null(fixture.Value("backlightControl/backlight"));
@@ -52,7 +52,7 @@ public sealed class IpMenuTests
     public async Task DocumentedBatchStagesThenWritesAndReadsBackWithoutRemoteKeysOrPassCounts()
     {
         using var fixture = await MenuFixture.CreateAsync();
-        await fixture.Service.ConnectMenuAsync();
+        await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
         fixture.Service.StageMenuValue("contrastControl/contrast", "44");
         fixture.Service.StageMenuValue("colorControl/color", "27");
         fixture.Service.StageMenuValue("sharpnessControl/sharpness", "3");
@@ -80,7 +80,7 @@ public sealed class IpMenuTests
     public async Task InvalidTargetsFailLocallyAndServiceRemainsUsable(string control, string target)
     {
         using var fixture = await MenuFixture.CreateAsync();
-        await fixture.Service.ConnectMenuAsync();
+        await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
         var count = fixture.Display.Requests.Count;
         Assert.Throws<ArgumentException>(() => fixture.Service.StageMenuValue(control, target));
         Assert.Equal(count, fixture.Display.Requests.Count);
@@ -96,14 +96,14 @@ public sealed class IpMenuTests
     public async Task QueryTransportFailureClearsConnectionRetainsTokenAndConnectCanRetry(bool afterConnection)
     {
         using var fixture = await MenuFixture.CreateAsync();
-        if (afterConnection) await fixture.Service.ConnectMenuAsync();
+        if (afterConnection) await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
         fixture.Override = (_, _) => throw new HttpRequestException("simulated offline TV");
-        await Assert.ThrowsAsync<InvalidOperationException>(() => afterConnection ? fixture.Service.RefreshMenuSectionAsync("expert") : fixture.Service.ConnectMenuAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => afterConnection ? fixture.Service.RefreshMenuSectionAsync("expert") : fixture.Service.ConnectMenuAsync(loadAllSettings: false));
         Assert.False(fixture.Service.GetSnapshot().Menu.Connected);
         Assert.True(fixture.Service.GetSnapshot().HasToken);
         Assert.False(fixture.Service.GetSnapshot().IsBusy);
         fixture.Override = null;
-        await fixture.Service.ConnectMenuAsync();
+        await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
         Assert.True(fixture.Service.GetSnapshot().Menu.Connected);
         Assert.Empty(fixture.Writes);
     }
@@ -115,7 +115,7 @@ public sealed class IpMenuTests
     public async Task ExternalChangesStopBeforeOverwritingStagedSettings(string change)
     {
         using var fixture = await MenuFixture.CreateAsync();
-        await fixture.Service.ConnectMenuAsync();
+        await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
         fixture.Service.StageMenuValue("contrastControl/contrast", "44");
         if (change == "input") fixture.Display.Input = "HDMI1";
         else if (change == "mode") fixture.Display.Mode = "Standard";
@@ -130,7 +130,7 @@ public sealed class IpMenuTests
     public async Task ExplicitRejectionStopsLaterRowsAndCanBeCorrectedWithoutFakeRecovery()
     {
         using var fixture = await MenuFixture.CreateAsync();
-        await fixture.Service.ConnectMenuAsync();
+        await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
         fixture.Service.StageMenuValue("contrastControl/contrast", "44");
         fixture.Service.StageMenuValue("colorControl/color", "27");
         fixture.Service.StageMenuValue("sharpnessControl/sharpness", "3");
@@ -157,7 +157,7 @@ public sealed class IpMenuTests
     public async Task AmbiguousWritesPersistOriginalBeforeSendingStopBatchAndNeverReplay(string failure)
     {
         using var fixture = await MenuFixture.CreateAsync();
-        await fixture.Service.ConnectMenuAsync();
+        await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
         fixture.Service.StageMenuValue("contrastControl/contrast", "44");
         fixture.Service.StageMenuValue("colorControl/color", "27");
         fixture.Override = async (request, cancellation) =>
@@ -188,7 +188,7 @@ public sealed class IpMenuTests
     public async Task WhiteBalanceQueriesDoNotSelectIntervalsAndChangedSelectorStopsWrite()
     {
         using var fixture = await MenuFixture.CreateAsync();
-        await fixture.Service.ConnectMenuAsync();
+        await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
         fixture.Values["WB20PointMode"] = "On";
         fixture.Values["WB20P.Interval"] = "50%";
         fixture.Values["WB20P.Red"] = -4;
@@ -205,7 +205,7 @@ public sealed class IpMenuTests
     public async Task PartialTwoPointUpdatesLeaveOtherChannelsAloneAndNormalizeNumericStrings()
     {
         using var fixture = await MenuFixture.CreateAsync();
-        await fixture.Service.ConnectMenuAsync();
+        await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
         fixture.Values["R-Gain"] = "-5";
         fixture.Values["G-Gain"] = 4;
         await fixture.Service.RefreshMenuSectionAsync("white2");
@@ -221,7 +221,7 @@ public sealed class IpMenuTests
     public async Task ModesAreIsolatedFromBatchesAndPreferencesNeverApplyPendingEdits()
     {
         using var fixture = await MenuFixture.CreateAsync();
-        await fixture.Service.ConnectMenuAsync();
+        await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
         fixture.Service.StageMenuValue("contrastControl/contrast", "44");
         Assert.Throws<InvalidOperationException>(() => fixture.Service.StageMenuValue("pictureModeControl/pictureMode", "Movie"));
         await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.SaveMenuPreferencesAsync(true));
@@ -230,7 +230,7 @@ public sealed class IpMenuTests
         await fixture.RestartAsync();
         Assert.True(fixture.Service.GetSnapshot().Menu.Preferences.ApplyImmediately);
         Assert.Empty(fixture.Writes);
-        await fixture.Service.ConnectMenuAsync();
+        await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
         fixture.Service.StageMenuValue("pictureModeControl/pictureMode", "Movie");
         await fixture.Service.ApplyMenuAsync();
         Assert.Equal("Movie", fixture.Display.Mode);
@@ -242,7 +242,7 @@ public sealed class IpMenuTests
     public async Task RemoteSendsOneExplicitKeyAndInvalidatesStaleReadings()
     {
         using var fixture = await MenuFixture.CreateAsync();
-        await fixture.Service.ConnectMenuAsync();
+        await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
         var count = fixture.Display.Requests.Count;
         await fixture.Service.SendMenuKeyAsync("return");
         Assert.Equal(count + 1, fixture.Display.Requests.Count);
@@ -257,7 +257,7 @@ public sealed class IpMenuTests
     public async Task MenuPageQueriesThenStagesAppliesAndHandlesBadInputWithoutVerificationOrPopup()
     {
         using var fixture = await MenuFixture.CreateAsync();
-        await fixture.Service.ConnectMenuAsync();
+        await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
         await fixture.Service.RefreshMenuSectionAsync("expert");
         await fixture.Service.RefreshMenuSectionAsync("white2");
         var javascript = new IpRemotePageTests.DownloadJavaScript();
@@ -294,7 +294,7 @@ public sealed class IpMenuTests
     public async Task CollateralNumericChangeStopsLaterSettingsEvenWhenTargetMatches()
     {
         using var fixture = await MenuFixture.CreateAsync();
-        await fixture.Service.ConnectMenuAsync();
+        await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
         fixture.Service.StageMenuValue("contrastControl/contrast", "44");
         fixture.Service.StageMenuValue("sharpnessControl/sharpness", "3");
         fixture.Override = (request, _) =>
@@ -330,7 +330,7 @@ public sealed class IpMenuTests
     public async Task PrimaryLayoutUsesDirectConnectionAndDoesNotExposeMacrosOrMenuVerification()
     {
         using var fixture = await MenuFixture.CreateAsync();
-        await fixture.Service.ConnectMenuAsync();
+        await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
         await using var services = new ServiceCollection().AddLogging().AddSingleton(fixture.Service)
             .AddSingleton<IJSRuntime>(new IpRemotePageTests.DownloadJavaScript()).AddSingleton<NavigationManager>(new MenuNavigation()).BuildServiceProvider();
         await using var renderer = new HtmlRenderer(services, services.GetRequiredService<ILoggerFactory>());

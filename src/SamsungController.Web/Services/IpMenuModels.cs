@@ -88,7 +88,10 @@ public static class IpMenuCatalog
     }
 }
 
-public sealed record IpMenuRead(DateTimeOffset ReadAt, JsonObject? Values, SamsungIpRemoteOutcome Outcome, string Message);
+public sealed record IpMenuRead(DateTimeOffset ReadAt, JsonObject? Values, SamsungIpRemoteOutcome Outcome, string Message)
+{
+    public JsonNode? Payload { get; init; }
+}
 public sealed record IpMenuDraft(string ControlId, JsonNode Target, JsonNode Original, JsonObject Prerequisites, string Input, string PictureMode);
 public sealed record IpMenuPreferences(bool ApplyImmediately = false);
 public sealed record IpMenuSnapshot
@@ -96,6 +99,10 @@ public sealed record IpMenuSnapshot
     public bool Connected { get; init; }
     public Guid SessionId { get; init; }
     public DateTimeOffset? LastContact { get; init; }
+    public DateTimeOffset? SettingsLoadedAt { get; init; }
+    public bool ConnectionLoadAttempted { get; init; }
+    public IReadOnlyList<string> LoadWarnings { get; init; } = [];
+    public string TransportStatus { get; init; } = "HTTPS connection not yet checked.";
     public JsonObject Tv { get; init; } = new();
     public JsonObject Video { get; init; } = new();
     public IReadOnlyDictionary<string, IpMenuRead> Readings { get; init; } = new Dictionary<string, IpMenuRead>();

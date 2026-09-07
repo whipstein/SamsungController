@@ -13,37 +13,43 @@ public sealed partial class SamsungIpRemoteService
         or SamsungIpRemoteOutcome.TransportError or SamsungIpRemoteOutcome.CertificateError or SamsungIpRemoteOutcome.Timeout or SamsungIpRemoteOutcome.HttpError;
     private void UpdateMenu(Func<IpMenuSnapshot, IpMenuSnapshot> change) => Update(state => state with { Menu = change(state.Menu) });
 
-    public Task ConnectMenuAsync() => RunMenuOperationAsync(async (profile, cancellation) =>
+    public Task ConnectMenuAsync(bool loadAllSettings = true) => RunMenuOperationAsync(async (profile, cancellation) =>
     {
-        UpdateMenu(menu => ResetMenu(menu) with { Status = "Connecting and reading TV values…" });
+        UpdateMenu(menu => ResetMenu(menu) with { ConnectionLoadAttempted = loadAllSettings, Status = "Connecting and reading TV values…" });
         await ReadMenuBaseAsync(profile, cancellation).ConfigureAwait(false);
         UpdateMenu(menu => menu with { Connected = true, SessionId = Guid.NewGuid(), Status = "Connected. Current values come from TV queries; documented controls need no verification." });
         // Optional identity: failure of a model-specific getter is not a failure of the two base reads.
         var identity = await MenuQueryAsync(profile, "getDeviceInformation", cancellation).ConfigureAwait(false);
         StoreMenuRead("getDeviceInformation", identity);
         if (IsConnectionFailure(identity.Outcome)) RequireSuccess(identity);
+        if (loadAllSettings) await LoadAllMenuSettingsAsync(profile, cancellation).ConfigureAwait(false);
     }, needsConnection: false);
 
     public async Task DisconnectMenuAsync()
     {
         await EnterAsync().ConfigureAwait(false);
-        try { UpdateMenu(menu => ResetMenu(menu) with { Status = "Disconnected locally. The TV and saved token were not changed." }); }
+        try
+        {
+            _client.CloseConnection();
+            UpdateMenu(menu => ResetMenu(menu) with { Status = "Disconnected locally. The TV and saved token were not changed." });
+        }
         finally { _gate.Release(); }
     }
 
     public Task RefreshMenuSectionAsync(string section) => RunMenuOperationAsync((profile, cancellation) => RefreshMenuSectionCoreAsync(profile, section, cancellation));
 
-    private async Task RefreshMenuSectionCoreAsync(IpRemoteProfile profile, string section, CancellationToken cancellation, bool loadingGrid = false)
+    private async Task RefreshMenuSectionCoreAsync(IpRemoteProfile profile, string section, CancellationToken cancellation, bool loadingGrid = false, bool refreshBase = true)
     {
         if (!IpMenuCatalog.Sections.Any(item => item.Id == section)) throw new ArgumentException("Unknown settings section.");
         var methods = IpMenuCatalog.ForSection(section).Select(control => control.Method).Distinct().ToArray();
         UpdateMenu(menu => menu with
         {
-            Readings = menu.Readings.Where(pair => !methods.Contains(pair.Key)).ToDictionary(),
+            Readings = menu.Readings.Where(pair => !methods.Contains(pair.Key)
+                || (!refreshBase && SamsungIpRemoteCommands.Get(pair.Key).ReadbackMethod is ("getTVStates" or "getVideoStates"))).ToDictionary(),
             SectionsRead = menu.SectionsRead.Where(pair => pair.Key != section).ToDictionary(),
             Status = "Reading " + IpMenuCatalog.Sections.Single(item => item.Id == section).Name + "…"
         });
-        await ReadMenuBaseAsync(profile, cancellation).ConfigureAwait(false);
+        if (refreshBase) await ReadMenuBaseAsync(profile, cancellation).ConfigureAwait(false);
         foreach (var method in methods)
         {
             cancellation.ThrowIfCancellationRequested();
@@ -307,7 +313,7 @@ public sealed partial class SamsungIpRemoteService
     private static IpMenuSnapshot InvalidateMenuControlContext(IpMenuSnapshot menu, IpMenuControl control)
     {
         if (control.ChangesContext)
-            return ClearMenuGridCache(menu) with { Readings = new Dictionary<string, IpMenuRead>(), SectionsRead = new Dictionary<string, DateTimeOffset>() };
+            return ClearMenuGridCache(menu) with { Readings = new Dictionary<string, IpMenuRead>(), SectionsRead = new Dictionary<string, DateTimeOffset>(), SettingsLoadedAt = null, LoadWarnings = [] };
 
         var methods = IpMenuCatalog.ForSection(control.Section).Select(item => item.Method).ToHashSet(StringComparer.Ordinal);
         return ClearMenuGridCache(menu, control.Section) with
@@ -325,7 +331,14 @@ public sealed partial class SamsungIpRemoteService
         var exchange = await _client.ExecuteCommandAsync(profile.Connection, method, new(), query: true, cancellationToken: cancellation).ConfigureAwait(false);
         await RecordExchangeAsync(profile, "Menu · query " + method, exchange).ConfigureAwait(false);
         cancellation.ThrowIfCancellationRequested();
-        if (exchange.IsSuccess) UpdateMenu(menu => menu with { LastContact = _timeProvider.GetUtcNow() });
+        if (exchange.IsSuccess) UpdateMenu(menu => menu with
+        {
+            LastContact = _timeProvider.GetUtcNow(),
+            TransportStatus = exchange.ServerClosesConnection == true ? "The TV requested Connection: close; the next request needs a new connection."
+                : exchange.NewTlsHandshake == false ? "Last request reused the existing TLS connection."
+                : exchange.NewTlsHandshake == true ? "Last request established a new TLS connection. Keep-alive is enabled."
+                : "HTTPS keep-alive is enabled; transport reuse was not reported."
+        });
         return exchange;
     }
 
@@ -342,6 +355,8 @@ public sealed partial class SamsungIpRemoteService
         {
             Tv = (JsonObject)tv.Result.DeepClone(),
             Video = video?.Result is { } values ? (JsonObject)values.DeepClone() : changed ? new() : menu.Video,
+            SettingsLoadedAt = changed ? null : menu.SettingsLoadedAt,
+            LoadWarnings = changed ? [] : menu.LoadWarnings,
             Readings = changed ? new Dictionary<string, IpMenuRead>() : menu.Readings,
             SectionsRead = changed ? new Dictionary<string, DateTimeOffset>() : menu.SectionsRead
         });
@@ -366,7 +381,7 @@ public sealed partial class SamsungIpRemoteService
         UpdateMenu(menu => menu with
         {
             Readings = new Dictionary<string, IpMenuRead>(menu.Readings)
-            { [method] = new(_timeProvider.GetUtcNow(), values, exchange.Outcome, exchange.IsSuccess ? "Read from TV" : exchange.Message) }
+            { [method] = new(_timeProvider.GetUtcNow(), values, exchange.Outcome, exchange.IsSuccess ? "Read from TV" : exchange.Message) { Payload = exchange.Payload?.DeepClone() } }
         });
     }
 

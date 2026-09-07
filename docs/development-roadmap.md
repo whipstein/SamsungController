@@ -17,6 +17,9 @@ Development and real-display feedback proceed separately on `feature/ip-remote-v
 - [ ] User exercises the replacement interface on real displays, especially advanced calibration and mode-dependent controls.
 - [x] Restore simultaneous 20-point and Custom color RGB grids using queried per-row values, explicit selector routing/restoration, staged/immediate updates, and cancellation/restart tests.
 - [x] Restore compact native sliders/pill switches; accelerate grid reads with shared context checks and endpoint/trust-scoped HTTPS connection reuse, covered by request-count and loopback TLS tests.
+- [x] Preload all Menu sections, other documented read/list methods, and already-active calibration grids on Connect; report unsupported/missing values and avoid tab-triggered retries after Stop.
+- [x] Request persistent HTTPS connections with no client-side idle expiry, TCP keepalive, explicit disconnect, and handshake/server-close diagnostics; test connection reuse and server closure using loopback TLS.
+- [ ] Enable and restore inactive calibration modes during Connect only with user approval, so off-mode 20-point and non-Custom color banks can also preload; preserve recovery information if interrupted.
 - [x] Preserve unrelated calibration caches across local mode changes, prevent unnecessary rescans when revisiting loaded tabs, and label slider minimum/maximum at the track ends.
 - [ ] Design direct-IP macro editing and portable full calibration preset import/export.
 

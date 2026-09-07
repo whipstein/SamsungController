@@ -25,11 +25,45 @@ public sealed class SamsungIpRemoteConnectionTests
         var second = await client.ReadAsync(tv.Options with { RequestTimeout = TimeSpan.FromSeconds(3) }, "getVideoStates");
         Assert.True(first.IsSuccess, first.Message);
         Assert.True(second.IsSuccess, second.Message);
+        Assert.True(first.NewTlsHandshake);
+        Assert.False(second.NewTlsHandshake);
+        Assert.False(first.ServerClosesConnection);
+        Assert.False(second.ServerClosesConnection);
         Assert.Equal(tv.Pin, first.ObservedCertificateSha256);
         Assert.Equal(tv.Pin, second.ObservedCertificateSha256);
         Assert.Equal(2, tv.Requests.Count);
         Assert.Single(tv.Requests.Select(item => item.Connection).Distinct());
         Assert.Equal("replacement-token", tv.Requests.Last().Request["params"]!["AccessToken"]!.ToString());
+    }
+
+    [Fact]
+    public async Task ExplicitDisconnectReleasesTlsConnectionWithoutRemovingPairing()
+    {
+        await using var tv = new LocalTv();
+        using var client = new SamsungIpRemoteClient(Tokens(tv));
+        Assert.True((await client.ReadAsync(tv.Options, "getTVStates")).IsSuccess);
+        client.CloseConnection();
+        var next = await client.ReadAsync(tv.Options, "getTVStates");
+        Assert.True(next.IsSuccess, next.Message);
+        Assert.True(next.NewTlsHandshake);
+        Assert.Equal(2, tv.Requests.Select(item => item.Connection).Distinct().Count());
+        Assert.All(tv.Requests, item => Assert.Equal("getTVStates", item.Request["method"]!.ToString()));
+    }
+
+    [Fact]
+    public async Task ServerRequestedCloseIsReportedAndNextRequestReconnectsWithoutPairing()
+    {
+        await using var tv = new LocalTv { CloseAfterResponse = true };
+        using var client = new SamsungIpRemoteClient(Tokens(tv));
+        foreach (var method in new[] { "getTVStates", "getVideoStates" })
+        {
+            var reply = await client.ReadAsync(tv.Options, method);
+            Assert.True(reply.IsSuccess, reply.Message);
+            Assert.True(reply.NewTlsHandshake);
+            Assert.True(reply.ServerClosesConnection);
+        }
+        Assert.Equal(2, tv.Requests.Select(item => item.Connection).Distinct().Count());
+        Assert.Equal(new[] { "getTVStates", "getVideoStates" }, tv.Requests.Select(item => item.Request["method"]!.ToString()));
     }
 
     [Fact]
@@ -126,6 +160,7 @@ public sealed class SamsungIpRemoteConnectionTests
         public string Pin => _certificate.GetCertHashString(HashAlgorithmName.SHA256);
         public ConcurrentQueue<(int Connection, JsonObject Request)> Requests { get; } = new();
         public Func<JsonObject, CancellationToken, Task>? BeforeReply { get; set; }
+        public bool CloseAfterResponse { get; init; }
 
         public LocalTv()
         {
@@ -162,8 +197,13 @@ public sealed class SamsungIpRemoteConnectionTests
                 {
                     Assert.StartsWith("POST / HTTP/1.1", start, StringComparison.Ordinal);
                     var length = 0;
+                    var keepAlive = false;
                     while (await reader.ReadLineAsync(_stop.Token) is { Length: > 0 } header)
+                    {
                         if (header.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase)) length = int.Parse(header[15..], CultureInfo.InvariantCulture);
+                        if (header.Equals("Connection: keep-alive", StringComparison.OrdinalIgnoreCase)) keepAlive = true;
+                    }
+                    Assert.True(keepAlive);
                     Assert.InRange(length, 1, 16384);
                     var buffer = new char[length]; // JSON requests use ASCII (non-ASCII is escaped).
                     var read = await reader.ReadBlockAsync(buffer, _stop.Token);
@@ -172,7 +212,9 @@ public sealed class SamsungIpRemoteConnectionTests
                     Requests.Enqueue((connection, request));
                     if (BeforeReply is { } before) await before(request, _stop.Token);
                     var body = new JsonObject { ["jsonrpc"] = "2.0", ["id"] = request["id"]!.DeepClone(), ["result"] = new JsonObject { ["volume"] = 10 } }.ToJsonString();
-                    await stream.WriteAsync(Encoding.UTF8.GetBytes($"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {Encoding.UTF8.GetByteCount(body)}\r\n\r\n{body}"), _stop.Token);
+                    var close = CloseAfterResponse ? "Connection: close\r\n" : "";
+                    await stream.WriteAsync(Encoding.UTF8.GetBytes($"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n{close}Content-Length: {Encoding.UTF8.GetByteCount(body)}\r\n\r\n{body}"), _stop.Token);
+                    if (CloseAfterResponse) return;
                 }
             }
             catch (Exception error) when (error is IOException or AuthenticationException or OperationCanceledException) { }

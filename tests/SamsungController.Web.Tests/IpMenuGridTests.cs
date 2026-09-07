@@ -431,7 +431,7 @@ public sealed class IpMenuGridTests
                 fixture.GridValues[grid.Section + "/" + grid.Values[index]] = row;
             }
         }
-        await fixture.Service.ConnectMenuAsync();
+        await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
         return fixture;
     }
 }
