@@ -275,6 +275,14 @@
 
     private async Task OpenOnTvAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>
     {
+        if (check.Id is "condition:external-disabled-behavior" or "condition:external-hidden-behavior")
+        {
+            // External-condition checks only inspect a row; they do not adjust
+            // controls. Use the same highlight-only path after verification too.
+            var result = await Controller.RunMenuDefinitionVerificationTestAsync(check.Id);
+            StatusMessage = $"{result.ActionDescription} The recorded verification result was not changed.";
+            return;
+        }
         await Controller.NavigateToMenuNodeAsync(check.TargetNodeId!);
         StatusMessage = $"Opened {check.Label} without changing its recorded verification result.";
     });

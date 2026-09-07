@@ -32,7 +32,8 @@ public sealed record MenuDefinitionVerificationCheck(
     string? SourceNodeId = null,
     string? PreparationAnchorId = null,
     string? ExternalStateId = null,
-    string? ExternalStateValue = null);
+    string? ExternalStateValue = null,
+    string? RepresentativeNodeId = null);
 
 public sealed record MenuDefinitionVerificationPlan(
     MenuVerificationDisplay Display,
@@ -513,6 +514,14 @@ public static class MenuDefinitionVerificationPlanner
                 "external-hidden" => ("External-state hidden rows", "disappears and is removed from sibling offsets"),
                 _ => throw new InvalidOperationException($"Unknown conditional behavior class '{group.Key}'.")
             };
+            var highlightExternalRow = group.Key.Equals("external-disabled", StringComparison.OrdinalIgnoreCase)
+                && representative.ControlType != MenuControlType.Submenu;
+            var externalPreparation = highlightExternalRow
+                ? $"highlight {definition.GetPath(representative.Id)} without pressing Enter on that row or changing its value"
+                : $"open {viewPath}";
+            var coverageVersion = external
+                ? $"representative-external-condition-coverage-v4|{representative.Id}"
+                : "representative-condition-coverage-v3";
             Add(
                 checks,
                 display,
@@ -522,12 +531,13 @@ public static class MenuDefinitionVerificationPlanner
                 group.Key.Equals("always-disabled", StringComparison.OrdinalIgnoreCase)
                     ? $"Open {viewPath} and verify the representative {behavior}. This covers {affected}."
                     : external
-                        ? $"Set the external equipment and the app's {controllerLabel} selector to {representativeEntry.EqualsValue}, then open {viewPath} and verify the representative {behavior}. This covers {affected} across {distinctRuleCount} declared conditional rule{(distinctRuleCount == 1 ? string.Empty : "s")}."
+                        ? $"Set the external equipment and the app's {controllerLabel} selector to {representativeEntry.EqualsValue}, then {externalPreparation} and verify the representative {behavior}. This covers {affected} across {distinctRuleCount} declared conditional rule{(distinctRuleCount == 1 ? string.Empty : "s")}."
                         : $"Change {controllerLabel} and verify the representative {behavior}. This covers {affected} across {distinctRuleCount} declared conditional rule{(distinctRuleCount == 1 ? string.Empty : "s")}.",
-                $"representative-condition-coverage-v3|{group.Key}|{string.Join(";", nodes.Select(node => ConditionShape(definition, node)))}",
-                targetNodeId,
+                $"{coverageVersion}|{group.Key}|{string.Join(";", nodes.Select(node => ConditionShape(definition, node)))}",
+                highlightExternalRow ? representative.Id : targetNodeId,
                 externalStateId: external ? representativeEntry.SourceId : null,
-                externalStateValue: external ? representativeEntry.EqualsValue : null);
+                externalStateValue: external ? representativeEntry.EqualsValue : null,
+                representativeNodeId: external ? representative.Id : null);
         }
     }
 
@@ -609,7 +619,8 @@ public static class MenuDefinitionVerificationPlanner
         string? sourceNodeId = null,
         string? preparationAnchorId = null,
         string? externalStateId = null,
-        string? externalStateValue = null)
+        string? externalStateValue = null,
+        string? representativeNodeId = null)
     {
         var fingerprint = Fingerprint($"{FingerprintVersion}|{CanonicalDisplay(display)}|{id}|{content}");
         checks.Add(new MenuDefinitionVerificationCheck(
@@ -625,7 +636,8 @@ public static class MenuDefinitionVerificationPlanner
             sourceNodeId,
             preparationAnchorId,
             externalStateId,
-            externalStateValue));
+            externalStateValue,
+            representativeNodeId));
     }
 
     private static string NormalizeConfiguration(string? value) =>

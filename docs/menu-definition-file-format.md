@@ -695,8 +695,11 @@ In the Build & Verify outline editor, the same external condition can be written
 as `disabledWhen=external:pgen-output-format=YCbCr422`. The node editor lists
 external sources alongside TV settings. Display Verification creates one
 representative guided check for external disabled rows and one for external
-hidden rows; it asks you to set both the hardware and header selector before it
-navigates to the row.
+hidden rows; it asks you to set both the hardware and header selector first.
+For a disabled control, the test highlights the named row without pressing Enter
+on that control or changing its value. Gray siblings still count as cursor stops; hidden siblings
+do not. For hidden rows or disabled submenus, the test opens the containing menu
+for visual inspection rather than attempting to enter an unavailable item.
 
 When a submenu is disabled, every descendant is also unavailable automatically.
 Define `disabledWhen` only on that submenu; repeating the same condition on its

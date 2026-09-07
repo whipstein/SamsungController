@@ -71,7 +71,9 @@ public sealed class MenuDefinitionVerificationPlannerTests
         Assert.Equal(MenuVerificationCheckKind.ConditionalVisibility, check.Kind);
         Assert.Equal("pgen-output-format", check.ExternalStateId);
         Assert.Contains(check.ExternalStateValue, new[] { "YCbCr422", "YCbCr444" });
-        Assert.Equal("settings", check.TargetNodeId);
+        Assert.Equal("hdmi-black-level", check.TargetNodeId);
+        Assert.Equal("hdmi-black-level", check.RepresentativeNodeId);
+        Assert.Contains("without pressing Enter", check.Description);
         Assert.Contains("app's PGen output format selector", check.Description);
     }
 
