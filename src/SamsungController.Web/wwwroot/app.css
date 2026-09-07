@@ -1259,16 +1259,20 @@ input:focus, select:focus, textarea:focus { border-color: rgba(var(--cyan-rgb),.
 .picture-control-card > footer .secondary-action { padding: 5px 7px; white-space: nowrap; font-size: 7px; }
 .picture-disabled-reason { color: var(--faint); line-height: 1.35; }
 .picture-compact-value { display: flex; align-items: baseline; justify-content: space-between; gap: 9px; margin-top: 9px; }
-.picture-compact-value strong { font-size: 18px; letter-spacing: -.03em; }
+.picture-compact-value strong, .picture-selection-control select { font-size: 18px; letter-spacing: -.03em; }
 .picture-compact-value span { color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .picture-compact-slider { display: grid; grid-template-columns: 27px minmax(80px, 1fr) 27px 52px; gap: 6px; align-items: center; margin-top: 5px; }
 .picture-compact-slider button { width: 27px; height: 27px; padding: 0; border: 1px solid var(--line-strong); border-radius: 50%; background: var(--surface-row); color: var(--cyan); cursor: pointer; font-size: 13px; }
 .picture-compact-slider button:hover:not(:disabled) { border-color: rgba(var(--cyan-rgb),.55); background: var(--cyan-soft); }
-.picture-compact-slider input[type="range"] { width: 100%; accent-color: var(--cyan); cursor: pointer; }
+/* Native ranges draw their own synchronized thumb and fill. Text-field padding
+   and borders distort that geometry, most noticeably near the endpoints. */
+.picture-compact-slider input[type="range"] { display: block; width: 100%; min-width: 0; height: 27px; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; accent-color: var(--cyan); cursor: pointer; }
+.picture-compact-slider input[type="range"]:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.picture-compact-slider input[type="range"]:disabled { cursor: not-allowed; }
 .picture-compact-number { width: 52px; padding: 6px; text-align: center; font-size: 8px; }
 .picture-selection-control { display: block; margin-top: 15px; }
 .picture-selection-control > span { display: block; margin-bottom: 5px; color: var(--faint); font: 7px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; }
-.picture-selection-control select { width: 100%; padding: 8px 9px; font-size: 9px; }
+.picture-selection-control select { width: 100%; padding: 8px 9px; }
 .picture-switch-control { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; margin-top: 14px; cursor: pointer; }
 .picture-switch-copy strong, .picture-switch-copy small { display: block; }
 .picture-switch-copy strong { font-size: 14px; }
