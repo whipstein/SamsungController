@@ -736,6 +736,13 @@ Submenus are not entered just to inspect a missing sibling. If only submenus or
 no rows remain visible, the test explicitly asks for manual inspection of the
 containing menu. Disabled submenus also use containing-menu inspection.
 
+The **Shared hidden-row behavior** test uses the same nearby-row inspection after
+changing its controlling setting. For example, after setting Gamma to 2.2 it moves
+down to the next visible control past the missing BT.1886 slider, keeping that area
+in view instead of reopening Expert Settings at Brightness. Hidden rows are skipped;
+visible gray rows still count. It does not activate the highlighted control.
+**Count pass** and **Failed** restore the changed values before returning to video.
+
 When a submenu is disabled, every descendant is also unavailable automatically.
 Define `disabledWhen` only on that submenu; repeating the same condition on its
 children is unnecessary. When the controlling value enables the submenu again,

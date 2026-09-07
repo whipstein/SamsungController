@@ -6331,8 +6331,8 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
             var viewNodeId = affected.ParentId ?? affected.Id;
             if (externalHidden)
             {
-                return await InspectExternalHiddenRowAsync(definition, check, affected, effectiveValues,
-                    $"{state.Label} = {selectedValue}", cancellationToken).ConfigureAwait(false);
+                return await InspectHiddenRowAsync(definition, check, affected, effectiveValues,
+                    $"{state.Label} = {selectedValue}", inspectSelectionVariants: true, cancellationToken).ConfigureAwait(false);
             }
             var highlightRow = affected.ControlType != MenuControlType.Submenu;
             if (highlightRow)
@@ -6389,6 +6389,20 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
                 effectiveValues,
                 cancellationToken)
             .ConfigureAwait(false));
+        if (hidden && !string.IsNullOrWhiteSpace(affectedCondition.Node.ParentId))
+        {
+            // Keep the adjusted control as the starting position. Reopening its
+            // parent would reset the highlight to the first row (Brightness),
+            // away from the disappearance the user needs to see.
+            var inspection = await InspectHiddenRowAsync(definition, check, affectedCondition.Node,
+                effectiveValues, $"{controller.Label} = {expectedValue}", inspectSelectionVariants: false,
+                cancellationToken).ConfigureAwait(false);
+            return inspection with
+            {
+                ActionDescription = $"Set {controller.Label} to {expectedValue}. {inspection.ActionDescription} Prior values will be restored before the menu exits.",
+                AppliedUpdates = CollapseMenuControlUpdates(appliedUpdates)
+            };
+        }
         if (!string.IsNullOrWhiteSpace(affectedCondition.Node.ParentId))
         {
             await NavigateToMenuNodeAsync(
@@ -6439,12 +6453,13 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
         return (affectedCondition.Node, affectedCondition.SourceId, affectedCondition.EqualsValue);
     }
 
-    private async Task<MenuDefinitionVerificationTestResult> InspectExternalHiddenRowAsync(
+    private async Task<MenuDefinitionVerificationTestResult> InspectHiddenRowAsync(
         MenuDefinition definition,
         MenuDefinitionVerificationCheck check,
         MenuNode hiddenNode,
         IReadOnlyDictionary<string, string> effectiveValues,
-        string signalDescription,
+        string conditionDescription,
+        bool inspectSelectionVariants,
         CancellationToken cancellationToken)
     {
         var parent = definition.GetRequiredNode(hiddenNode.ParentId
@@ -6469,7 +6484,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
         // A signal-dependent selection can keep the same on-screen label while
         // replacing its choices. Inspect that counterpart, even if it precedes
         // the hidden definition; a neighboring row cannot prove its options.
-        var selectionVariant = IsSelection(hiddenNode)
+        var selectionVariant = inspectSelectionVariants && IsSelection(hiddenNode)
             ? siblings.FirstOrDefault(node => node.Id != hiddenNode.Id && IsSelection(node)
                 && node.Label.Equals(hiddenNode.Label, StringComparison.OrdinalIgnoreCase)
                 && CanHighlight(node) && !IsMenuNodeOrAncestorDisabled(definition, node, effectiveValues)
@@ -6487,7 +6502,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
                 : string.Empty;
             var result = new MenuDefinitionVerificationTestResult(check.Id, hiddenNode.Id,
                 definition.GetPath(hiddenNode.Id), null,
-                $"Opened {definition.GetPath(selectionVariant.Id)} [{selectionVariant.Id}] with KEY_ENTER to show its options. With {signalDescription}, confirm the list contains only: {options}.{exclusion} No option was selected or value changed. Count pass or Failed will send KEY_RETURN to close the list before returning to video.",
+                $"Opened {definition.GetPath(selectionVariant.Id)} [{selectionVariant.Id}] with KEY_ENTER to show its options. With {conditionDescription}, confirm the list contains only: {options}.{exclusion} No option was selected or value changed. Count pass or Failed will send KEY_RETURN to close the list before returning to video.",
                 [], OpenedOptionsNodeId: selectionVariant.Id, OptionsInspectionId: Guid.NewGuid());
             await RunNavigationAsync($"Inspect options · {selectionVariant.Label}", async (_, token) =>
             {
@@ -6523,7 +6538,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
             preparation = $"Opened {definition.GetPath(parent.Id)} for manual inspection: only submenus or no rows remain visible, so there is no neighboring control to highlight safely. No neighboring submenu was entered.";
         }
         return new MenuDefinitionVerificationTestResult(check.Id, hiddenNode.Id, definition.GetPath(hiddenNode.Id), null,
-            $"{preparation} With {signalDescription}, confirm that {missingLabel} is absent and the surrounding visible rows line up with no cursor stop for it.", []);
+            $"{preparation} With {conditionDescription}, confirm that {missingLabel} is absent and the surrounding visible rows line up with no cursor stop for it.", []);
     }
 
     public MenuDefinitionVerificationTestResult? GetOpenVerificationOptionsTest()
