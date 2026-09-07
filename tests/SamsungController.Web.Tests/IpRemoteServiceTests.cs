@@ -267,6 +267,7 @@ public sealed class IpRemoteServiceTests : IDisposable
             ["uuid"] = "12345678-1234-1234-1234-123456789abc"
         };
         public Task<bool> HasTokenAsync(SamsungIpRemoteOptions options, CancellationToken cancellationToken = default) => Task.FromResult(_paired.Contains(options.Endpoint.AbsoluteUri));
+        public Task<SamsungIpRemoteExchange> WriteContrastAsync(SamsungIpRemoteOptions options, int value, CancellationToken cancellationToken = default) => throw new InvalidOperationException("This read-only fixture must never write.");
         public Task ForgetTokenAsync(SamsungIpRemoteOptions options, CancellationToken cancellationToken = default) { _paired.Remove(options.Endpoint.AbsoluteUri); return Task.CompletedTask; }
         public Task<SamsungIpRemoteExchange> PairAsync(SamsungIpRemoteOptions options, CancellationToken cancellationToken = default)
         {

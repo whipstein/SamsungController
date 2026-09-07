@@ -16,6 +16,62 @@ namespace SamsungController.Web.Tests;
 #pragma warning disable BL0006
 public sealed class IpRemotePageTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task GuidedContrastPageRequiresConditionsAndDialogThenRestoresAfterVisualChoice(bool visualPass)
+    {
+        using var fixture = await ContrastFixture.CreateAsync();
+        var javascript = new DownloadJavaScript();
+        await using var services = new ServiceCollection().AddLogging().AddSingleton(fixture.Service).AddSingleton<IJSRuntime>(javascript).BuildServiceProvider();
+        await using var renderer = new IpPageRenderer(services);
+        await renderer.StartAsync();
+        Assert.Empty(fixture.Display.Requests);
+        await renderer.ClickAsync("Prepare contrast test (read only)");
+        await renderer.AssertDisabledAsync("Apply one-step contrast test…", true);
+        await renderer.SetCheckboxAsync("Confirm contrast test conditions", true);
+        javascript.Confirm = false;
+        await renderer.ClickAsync("Apply one-step contrast test…");
+        Assert.Empty(fixture.Display.Writes);
+        Assert.Equal(2, fixture.Display.Requests.Count);
+        javascript.Confirm = true;
+        await renderer.ClickAsync("Apply one-step contrast test…");
+        await renderer.AssertTextAsync("Contrast restoration pending");
+        await renderer.AssertDisabledAsync("New display", true);
+        await renderer.AssertDisabledAsync("Save IP Remote profile", true);
+        await renderer.AssertTextAsync("Check the actual Contrast number on the TV: is it 44?");
+        Assert.Equal(44, fixture.Display.Contrast);
+        await renderer.ClickAsync(visualPass ? "Matches — restore original" : "Does not match — restore original");
+        Assert.Equal(45, fixture.Display.Contrast);
+        Assert.Equal(new[] { 44, 45 }, fixture.Display.Writes);
+        Assert.Equal(visualPass, fixture.Service.GetSnapshot().ContrastTest!.Verified);
+        await renderer.AssertDisabledAsync("New display", false);
+        await renderer.ClickAsync("Download diagnostic report");
+        Assert.Equal(visualPass, JsonNode.Parse(javascript.Download)!["ContrastTest"]!["Verified"]!.GetValue<bool>());
+        Assert.DoesNotContain(ContrastFixture.Token, javascript.Download, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RestartShowsRecoveryControlsWithoutSendingAndRequiresRecoveryConfirmation()
+    {
+        using var fixture = await ContrastFixture.CreateAsync();
+        await fixture.Service.PrepareContrastTestAsync();
+        await fixture.Service.ApplyContrastTestAsync(fixture.Service.GetSnapshot().ContrastTest!.Id, true);
+        var count = fixture.Display.Requests.Count;
+        await fixture.RestartAsync();
+        var javascript = new DownloadJavaScript { Confirm = false };
+        await using var services = new ServiceCollection().AddLogging().AddSingleton(fixture.Service).AddSingleton<IJSRuntime>(javascript).BuildServiceProvider();
+        await using var renderer = new IpPageRenderer(services);
+        await renderer.StartAsync();
+        await renderer.AssertTextAsync("Unresolved experiment from a previous session");
+        await renderer.ClickAsync("Check and restore original…");
+        Assert.Equal(count, fixture.Display.Requests.Count);
+        javascript.Confirm = true;
+        await renderer.ClickAsync("Check and restore original…");
+        Assert.Equal(45, fixture.Display.Contrast);
+        Assert.False(fixture.Service.GetSnapshot().ContrastTest!.Verified);
+    }
+
     [Fact]
     public async Task PageCanSavePairReadAndDownloadWithoutUsingTheExistingController()
     {
@@ -124,10 +180,11 @@ public sealed class IpRemotePageTests
     private sealed class DownloadJavaScript : IJSRuntime
     {
         public string Download { get; private set; } = "";
+        public bool Confirm { get; set; } = true;
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
         {
             if (identifier == "samsungController.downloadText") Download = (string)args![1]!;
-            return ValueTask.FromResult(identifier == "confirm" ? (TValue)(object)true : default!);
+            return ValueTask.FromResult(identifier == "confirm" ? (TValue)(object)Confirm : default!);
         }
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args) => InvokeAsync<TValue>(identifier, args);
     }

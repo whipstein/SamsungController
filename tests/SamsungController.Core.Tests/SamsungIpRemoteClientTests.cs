@@ -135,6 +135,7 @@ public sealed class SamsungIpRemoteClientTests
     [Theory]
     [InlineData("setVideoStates")]
     [InlineData("brightnessControl")]
+    [InlineData("contrastControl")]
     [InlineData("createAccessToken")]
     [InlineData("getUnknownStates")]
     [InlineData("GETTVSTATES")]
@@ -144,6 +145,44 @@ public sealed class SamsungIpRemoteClientTests
         using var http = new HttpClient(handler);
         var client = new SamsungIpRemoteClient(PairedTokens(), http);
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.ReadAsync(Options, method));
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task ExplicitContrastWriteUsesOnlyContrastAndSeparateTokenAndRedactsEchoes()
+    {
+        var handler = new RpcHandler((request, _) => Task.FromResult(Reply(request,
+            new JsonObject { ["contrast"] = 44, ["echo"] = Token })));
+        using var http = new HttpClient(handler);
+        var exchange = await new SamsungIpRemoteClient(PairedTokens(), http).WriteContrastAsync(Options, 44);
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal("contrastControl", request["method"]!.GetValue<string>());
+        Assert.Equal(2, request["params"]!.AsObject().Count);
+        Assert.Equal(44, request["params"]!["contrast"]!.GetValue<int>());
+        Assert.Equal(Token, request["params"]!["AccessToken"]!.GetValue<string>());
+        Assert.True(exchange.IsSuccess);
+        Assert.Contains("acknowledged", exchange.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(Token, JsonSerializer.Serialize(exchange), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(101)]
+    public async Task ContrastEnvelopeBoundsRejectBeforeNetwork(int value)
+    {
+        var handler = new RpcHandler((request, _) => Task.FromResult(Reply(request, new())));
+        using var http = new HttpClient(handler);
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => new SamsungIpRemoteClient(PairedTokens(), http).WriteContrastAsync(Options, value));
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task ContrastWriteWithoutTokenDoesNotPairOrSend()
+    {
+        var handler = new RpcHandler((request, _) => Task.FromResult(Reply(request, new())));
+        using var http = new HttpClient(handler);
+        var exchange = await new SamsungIpRemoteClient(new MemoryTokens(), http).WriteContrastAsync(Options, 44);
+        Assert.Equal(SamsungIpRemoteOutcome.NotPaired, exchange.Outcome);
         Assert.Empty(handler.Requests);
     }
 

@@ -5,7 +5,7 @@ using SamsungController.Core.IpRemote;
 namespace SamsungController.Web.Services;
 
 /// <summary>Isolated diagnostics; deliberately has no reference to menu/remote/calibration services.</summary>
-public sealed class SamsungIpRemoteService : IDisposable
+public sealed partial class SamsungIpRemoteService : IDisposable
 {
     public static string Version { get; } = typeof(SamsungIpRemoteClient).Assembly
         .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "unknown";
@@ -51,7 +51,8 @@ public sealed class SamsungIpRemoteService : IDisposable
             }
             var active = saved.Profiles.FirstOrDefault(profile => profile.Endpoint == saved.ActiveEndpoint);
             var hasToken = active is not null && await _client.HasTokenAsync(active.Connection).ConfigureAwait(false);
-            Update(state => state with { Initialized = true, Profiles = saved.Profiles, ActiveProfile = active, HasToken = hasToken });
+            var test = await LoadContrastTestAsync().ConfigureAwait(false);
+            Update(state => state with { Initialized = true, Profiles = saved.Profiles, ActiveProfile = active, HasToken = hasToken, ContrastTest = test });
         }
         finally { _gate.Release(); }
     }
@@ -62,6 +63,7 @@ public sealed class SamsungIpRemoteService : IDisposable
         await EnterAsync().ConfigureAwait(false);
         try
         {
+            EnsureNoPendingContrastTest();
             var profiles = GetSnapshot().Profiles.Where(item => item.Endpoint != profile.Endpoint).Append(profile).ToArray();
             await SaveProfilesAsync(profiles, profile.Endpoint).ConfigureAwait(false);
             var hasToken = await _client.HasTokenAsync(profile.Connection).ConfigureAwait(false);
@@ -82,6 +84,7 @@ public sealed class SamsungIpRemoteService : IDisposable
         await EnterAsync().ConfigureAwait(false);
         try
         {
+            EnsureNoPendingContrastTest();
             var profile = GetSnapshot().Profiles.Single(item => item.Endpoint == endpoint);
             await SaveProfilesAsync(GetSnapshot().Profiles, endpoint).ConfigureAwait(false);
             var hasToken = await _client.HasTokenAsync(profile.Connection).ConfigureAwait(false);
@@ -101,6 +104,7 @@ public sealed class SamsungIpRemoteService : IDisposable
         await EnterAsync().ConfigureAwait(false);
         try
         {
+            EnsureNoPendingContrastTest();
             var profile = GetSnapshot().ActiveProfile ?? throw new InvalidOperationException("Save a profile first.");
             await _client.ForgetTokenAsync(profile.Connection).ConfigureAwait(false);
             Update(state => state with
@@ -147,25 +151,7 @@ public sealed class SamsungIpRemoteService : IDisposable
                 var exchange = pairing
                     ? await _client.PairAsync(profile.Connection, cancellation.Token).ConfigureAwait(false)
                     : await _client.ReadAsync(profile.Connection, method, cancellation.Token).ConfigureAwait(false);
-                var observation = new IpRemoteObservation(profile, label.Trim(), exchange);
-                Update(current => current with
-                {
-                    Observations = current.Observations.Append(observation).TakeLast(100).ToArray(),
-                    Status = exchange.Message,
-                    HasToken = exchange.Outcome != SamsungIpRemoteOutcome.NotPaired && (pairing && exchange.IsSuccess || current.HasToken),
-                    AuthorizationRejected = exchange.Outcome == SamsungIpRemoteOutcome.Unauthorized
-                        || (!(pairing && exchange.IsSuccess) && current.AuthorizationRejected)
-                });
-                try
-                {
-                    // Only the sanitized exchange leaves Core. Tokens cannot be revealed by an export toggle.
-                    await File.AppendAllTextAsync(DiagnosticLogPath, JsonSerializer.Serialize(observation) + Environment.NewLine).ConfigureAwait(false);
-                    RestrictFile(DiagnosticLogPath);
-                }
-                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-                {
-                    Update(current => current with { StorageWarning = "The response is visible, but its private diagnostic log could not be saved. Download the report before closing." });
-                }
+                await RecordExchangeAsync(profile, label, exchange, pairing).ConfigureAwait(false);
                 if (!exchange.IsSuccess && exchange.Outcome != SamsungIpRemoteOutcome.Unsupported) break;
             }
         }
@@ -189,21 +175,44 @@ public sealed class SamsungIpRemoteService : IDisposable
             Format = "SamsungController.IPRemote.Diagnostics.v1",
             Version,
             ExportedAt = DateTimeOffset.UtcNow,
-            Safety = "Pairing and read-only observations; no setting writes, control mappings, subscriptions, or hardware verification claimed.",
+            Safety = "Explicit pairing, two getters, and an opt-in contrast-only experiment. Setter acknowledgments alone are not verification. No other writes, polling, or fallback keys.",
             Context = "Model, firmware, input, picture mode, and signal annotations are user-entered, not TV-reported unless also present in the response.",
             CurrentProfile = snapshot.ActiveProfile,
             snapshot.Observations,
+            snapshot.ContrastTest,
             Methods = SamsungIpRemoteClient.ReadMethods.Select(method => new
             {
                 Method = method,
                 LastAttempt = snapshot.Observations.LastOrDefault(item => item.UserEnteredContext.ContextKey == snapshot.ActiveProfile?.ContextKey
                     && item.Exchange.Method == method)?.Exchange,
-                WriteCapability = "Not tested; writes disabled"
+                WriteCapability = "Not tested; writes disabled outside the separate contrast experiment"
             }),
             Unresolved = new[] { "Verify readback against manual TV changes", "Confirm brightness/backlight/shadow-detail mapping", "Advanced white balance and custom color capabilities remain unverified" }
         }, JsonOptions);
         if (redactCertificateFingerprints) json = IpRemoteReportRedactor.RedactCertificateFingerprints(json);
         return ProtocolMessageFormatter.FormatJson(json, revealSensitive: false, revealDeviceIdentifiers: !redactIdentifiers);
+    }
+
+    private async Task RecordExchangeAsync(IpRemoteProfile profile, string label, SamsungIpRemoteExchange exchange, bool pairing = false)
+    {
+        var observation = new IpRemoteObservation(profile, label.Trim(), exchange);
+        Update(current => current with
+        {
+            Observations = current.Observations.Append(observation).TakeLast(100).ToArray(),
+            Status = exchange.Message,
+            HasToken = exchange.Outcome != SamsungIpRemoteOutcome.NotPaired && (pairing && exchange.IsSuccess || current.HasToken),
+            AuthorizationRejected = exchange.Outcome == SamsungIpRemoteOutcome.Unauthorized
+                || (!(pairing && exchange.IsSuccess) && current.AuthorizationRejected)
+        });
+        try
+        {
+            await File.AppendAllTextAsync(DiagnosticLogPath, JsonSerializer.Serialize(observation) + Environment.NewLine).ConfigureAwait(false);
+            RestrictFile(DiagnosticLogPath);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Update(current => current with { StorageWarning = "The response is visible, but its private diagnostic log could not be saved. Download the report before closing." });
+        }
     }
 
     private async Task EnterAsync()

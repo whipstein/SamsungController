@@ -25,4 +25,11 @@
 .ip-pairing-result.failure { color: var(--danger); background: rgba(var(--danger-rgb), .09); }
 .ip-pairing-result.success { color: var(--positive); background: rgba(var(--positive-rgb), .08); }
 .ip-read-blocked { border-left: 3px solid var(--amber); padding-left: 1rem; }
+.ip-contrast-result { border: 1px solid var(--line-strong); border-radius: .65rem; padding: 1rem; margin: 1rem 0; }
+.ip-contrast-result.failure { border-color: var(--danger); background: rgba(var(--danger-rgb), .09); }
+.ip-contrast-result.success { border-color: var(--positive); background: rgba(var(--positive-rgb), .08); }
+.ip-contrast-values { display: flex; flex-wrap: wrap; gap: 1.5rem; }
+.ip-contrast-values span { display: grid; gap: .3rem; }
+.ip-contrast-values strong { font-size: 1.8rem; }
+#contrast-test { scroll-margin-top: 8rem; }
 @media (max-width: 680px) { .ip-fields { grid-template-columns: 1fr; } .ip-step { padding: 1rem; } }

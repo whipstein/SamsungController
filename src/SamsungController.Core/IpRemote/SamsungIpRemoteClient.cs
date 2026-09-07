@@ -12,7 +12,7 @@ using SamsungController.Core.Devices;
 
 namespace SamsungController.Core.IpRemote;
 
-/// <summary>A separate HTTPS client. Phase A permits pairing and two getters only.</summary>
+/// <summary>A separate HTTPS client with two getters and one explicitly invoked contrast experiment.</summary>
 public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpClient? httpClient = null) : ISamsungIpRemoteClient
 {
     public static IReadOnlyList<string> ReadMethods { get; } = Array.AsReadOnly(new[] { "getTVStates", "getVideoStates" });
@@ -37,11 +37,20 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
     public Task<SamsungIpRemoteExchange> ReadAsync(SamsungIpRemoteOptions options, string method, CancellationToken cancellationToken = default)
     {
         if (!ReadMethods.Contains(method, StringComparer.Ordinal))
-            throw new InvalidOperationException("IP Remote diagnostics allow only getTVStates and getVideoStates. Pairing is a separate explicit action; writes and arbitrary methods are disabled.");
+            throw new InvalidOperationException("IP Remote reads allow only getTVStates and getVideoStates. Pairing and the guarded contrast experiment are separate explicit actions; arbitrary methods are disabled.");
         return ExecuteAsync(options, method, pairing: false, cancellationToken);
     }
 
-    private async Task<SamsungIpRemoteExchange> ExecuteAsync(SamsungIpRemoteOptions options, string method, bool pairing, CancellationToken cancellationToken)
+    public Task<SamsungIpRemoteExchange> WriteContrastAsync(SamsungIpRemoteOptions options, int value, CancellationToken cancellationToken = default)
+    {
+        // Historical protocol envelope bounds only, NOT a claim about a modern
+        // display's range. The guided workflow additionally requires a confirmed
+        // baseline and permits only baseline - 1, then the original value.
+        if (value is < 0 or > 100) throw new ArgumentOutOfRangeException(nameof(value), "Contrast must be an integer from 0 to 100; the display's actual range must be checked separately.");
+        return ExecuteAsync(options, "contrastControl", pairing: false, cancellationToken, value);
+    }
+
+    private async Task<SamsungIpRemoteExchange> ExecuteAsync(SamsungIpRemoteOptions options, string method, bool pairing, CancellationToken cancellationToken, int? contrast = null)
     {
         var endpoint = options.Endpoint;
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -72,6 +81,7 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
                 if (string.IsNullOrWhiteSpace(token))
                     return Complete(SamsungIpRemoteOutcome.NotPaired, "No separate IP Remote token is saved for this host and port. Pair explicitly first.");
                 request["params"] = new JsonObject { ["AccessToken"] = token };
+                if (contrast is not null) request["params"]!["contrast"] = contrast.Value;
             }
 
             var client = httpClient;
@@ -148,7 +158,8 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
                 return Complete(SamsungIpRemoteOutcome.Success, "Pairing completed: separate IP Remote token saved. You can now read the current state; the state queries still need to be tested.");
             }
             return Complete(SamsungIpRemoteOutcome.Success,
-                $"Received {safeResult.Count} result fields. This is a timestamped response, not a verified control mapping or live subscription.",
+                contrast is not null ? "Contrast command acknowledged. This alone does not confirm a change; independent readback and visual confirmation are required."
+                    : $"Received {safeResult.Count} result fields. This is a timestamped response, not a verified control mapping or live subscription.",
                 (JsonObject)safeResult.DeepClone());
         }
         catch (OperationCanceledException)

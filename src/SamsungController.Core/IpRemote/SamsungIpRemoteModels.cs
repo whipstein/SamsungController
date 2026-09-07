@@ -64,4 +64,5 @@ public interface ISamsungIpRemoteClient
     Task ForgetTokenAsync(SamsungIpRemoteOptions options, CancellationToken cancellationToken = default);
     Task<SamsungIpRemoteExchange> PairAsync(SamsungIpRemoteOptions options, CancellationToken cancellationToken = default);
     Task<SamsungIpRemoteExchange> ReadAsync(SamsungIpRemoteOptions options, string method, CancellationToken cancellationToken = default);
+    Task<SamsungIpRemoteExchange> WriteContrastAsync(SamsungIpRemoteOptions options, int value, CancellationToken cancellationToken = default);
 }

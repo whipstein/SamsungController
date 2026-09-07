@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Nodes;
 using SamsungController.Core.IpRemote;
 
 namespace SamsungController.Web.Services;
@@ -29,4 +30,33 @@ public sealed record IpRemoteSnapshot
     public string Status { get; init; } = "Save an IP Remote profile to begin. No network request has been sent.";
     public string? StorageWarning { get; init; }
     public IReadOnlyList<IpRemoteObservation> Observations { get; init; } = [];
+    public IpRemoteContrastTest? ContrastTest { get; init; }
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum IpRemoteContrastStage { Prepared, Applying, AwaitingVisualCheck, Restoring, RecoveryRequired, Completed, Stopped, ManuallyClosed }
+
+// Private recovery journal; never part of a shared menu or saved calibration.
+public sealed record IpRemoteContrastTest
+{
+    public Guid Id { get; init; } = Guid.NewGuid();
+    public IpRemoteProfile Profile { get; init; } = new();
+    public DateTimeOffset PreparedAt { get; init; } = DateTimeOffset.UtcNow;
+    public int Original { get; init; }
+    public int Target { get; init; }
+    public string ReportedInput { get; init; } = "";
+    public string ReportedPictureMode { get; init; } = "";
+    public JsonObject VideoBaseline { get; init; } = new();
+    public IpRemoteContrastStage Stage { get; init; } = IpRemoteContrastStage.Prepared;
+    public string Message { get; init; } = "Baseline read. No setting has been changed.";
+    public bool WriteAttempted { get; init; }
+    public bool ChangeReadbackConfirmed { get; init; }
+    public bool? VisualConfirmed { get; init; }
+    public bool RestoreAttempted { get; init; }
+    public bool RestoreAcknowledged { get; init; }
+    public bool RestorationConfirmed { get; init; }
+    public bool ManuallyClosed { get; init; }
+    public int? LastReadback { get; init; }
+    public bool RequiresRecovery => WriteAttempted && !RestorationConfirmed && !ManuallyClosed;
+    public bool Verified => ChangeReadbackConfirmed && VisualConfirmed == true && RestoreAcknowledged && RestorationConfirmed && !ManuallyClosed;
 }

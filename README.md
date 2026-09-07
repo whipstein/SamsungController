@@ -4,7 +4,7 @@ SamsungController is a local, cross-platform controller for modern Samsung/Tizen
 
 The web interface is the recommended way to use the application. A command-line interface (`samsungctl`) is also included for scripting, terminal use, and diagnostics.
 
-**v1 preview branch:** `feature/ip-remote-v1` starts the next major version at `1.0.0-alpha.1`. The new **IP Remote · Preview** page pairs over a separate HTTPS connection and reads two state queries. It does not yet write settings or replace the existing remote/menu controls. Follow the [IP Remote setup and staged verification guide](docs/ip-remote-preview.md). The stable release remains v0.3.0; this branch will not be merged into `main` until explicitly approved.
+**v1 preview branch:** `feature/ip-remote-v1` starts the next major version at `1.0.0-alpha.1`. The **IP Remote · Preview** page pairs over a separate HTTPS connection, reads two state queries, and now offers an explicitly confirmed **one-step contrast test with readback and restoration**. All other direct setting writes remain disabled; existing remote/menu controls are unchanged. Follow the [IP Remote setup and staged verification guide](docs/ip-remote-preview.md), including the cancellation/recovery instructions before testing a write. The stable release remains v0.3.0; this branch will not be merged into `main` until explicitly approved.
 
 ## Features
 

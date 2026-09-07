@@ -12,9 +12,11 @@ Development and real-display verification proceed separately on `feature/ip-remo
 - [x] Keep endpoint-scoped credentials, user-entered test context, and redacted observations separate from WebSocket tokens, calibration values, and menu verification.
 - [x] Provide a guided diagnostic page with cancellation, strict/pinned/explicitly opted-in TLS, field comparisons, and downloadable reports.
 - [x] Test protocol envelopes, errors, redaction, profile isolation, cancellation, and page interactions using simulated replies.
+- [x] Confirm pairing, token reuse after restart, and contrast readback 45 → 44 → 45 on S95F firmware 1301 in the reported HDMI4 / FilmmakerMode / annotated RGB 8-bit context (2026-09-07).
 - [ ] Confirm pairing, token reuse, and actual getter responses on each target display/firmware.
 - [ ] Verify field meaning and context effects against manual TV changes, including Brightness versus Shadow Detail.
-- [ ] Implement and verify one explicitly confirmed reversible write, with readback and restoration.
+- [x] Implement an explicitly confirmed one-step contrast experiment with fresh context checks, visual pass/fail, restoration readback, private crash-recovery journal, and offline safety/page tests.
+- [ ] Verify the contrast write and restoration on the actual display and review the exported report before expanding controls.
 - [ ] Expand proven controls and context-aware polling; investigate advanced white balance/custom color independently.
 - [ ] Merge into `main` only when the owner explicitly approves.
 
