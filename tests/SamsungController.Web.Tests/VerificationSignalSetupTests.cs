@@ -8,7 +8,7 @@ public sealed partial class ControllerMenuIntegrationTests
     [Theory]
     [InlineData("condition:external-disabled-behavior")]
     [InlineData("condition:external-hidden-behavior")]
-    public async Task SignalDependentPageRequiresBoldPhysicalSetupAndMatchingAppValuesForEveryRun(string checkId)
+    public async Task SignalDependentPageKeepsPhysicalSetupConfirmedUntilTheSetupChanges(string checkId)
     {
         var (controller, transport) = await CreateConnectedControllerAsync(HdmiBitDepthMenuYaml, installedMenu: true);
         await using (controller)
@@ -44,9 +44,8 @@ public sealed partial class ControllerMenuIntegrationTests
             Assert.True(page.SignalConfirmationDisabled);
             Assert.Contains("Signal setup confirmed for this run", page.LineText);
             await page.ClickAsync("Failed");
-            Assert.True(page.ButtonDisabled("Run guided test"));
-            Assert.False(page.SignalConfirmationChecked);
-            await page.ConfirmSignalAsync(true);
+            Assert.False(page.ButtonDisabled("Run guided test"));
+            Assert.True(page.SignalConfirmationChecked);
             await page.ClickAsync("Run guided test");
             await page.ClickAsync("Count pass");
             Assert.True(SignalCheck(controller, checkId).Verified);
@@ -88,9 +87,9 @@ public sealed partial class ControllerMenuIntegrationTests
             }
             Assert.Empty(GetSentKeys(transport));
             await controller.RunMenuDefinitionVerificationTestAsync(checkId);
-            Assert.False(SignalCheck(controller, checkId).SignalSetupConfirmed);
+            Assert.True(SignalCheck(controller, checkId).SignalSetupConfirmed);
             transport.SentMessages.Clear();
-            await Assert.ThrowsAsync<InvalidOperationException>(() => controller.RunMenuDefinitionVerificationTestAsync(checkId));
+            await controller.RunMenuDefinitionVerificationTestAsync(checkId);
             Assert.Empty(GetSentKeys(transport));
         }
     }

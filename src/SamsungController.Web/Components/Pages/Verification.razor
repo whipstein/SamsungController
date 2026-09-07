@@ -87,7 +87,7 @@
                                     <p>@check.Description</p>
                                     @if (!check.Verified && check.SignalRequirements is { Count: > 0 } signalRequirements)
                                     {
-                                        <div class="verification-signal-setup @(check.SignalSetupConfirmed || IsPendingVisualTest(check) ? "confirmed" : "required")" role="group" aria-label="Required HDMI signal setup">
+                                        <div class="verification-signal-setup @(check.SignalSetupConfirmed ? "confirmed" : "required")" role="group" aria-label="Required HDMI signal setup">
                                             <strong>REQUIRED BEFORE RUNNING: Set the physical HDMI source</strong>
                                             @foreach (var signal in signalRequirements)
                                             {
@@ -96,14 +96,23 @@
                                                     <span class="@(signal.Matches ? "matches" : "mismatch")">App: @signal.SelectedValue · @(signal.Matches ? "matches" : "does not match — change the header selector")</span>
                                                 </div>
                                             }
-                                            <p>Set your source device to all values above, then match the app's <strong>External HDMI Signal</strong> selectors. Changing the app selectors does not change the source device.</p>
+                                            @if (check.StartingValue is { } starting)
+                                            {
+                                                <div class="verification-signal-value"><strong>TV starting setting: @starting.Label = @starting.RequiredValue</strong></div>
+                                                <p>Check this value on the TV before confirming. Confirmation records this starting value in the app without sending commands.</p>
+                                                @if (!starting.Matches && !IsPendingVisualTest(check) && !IsRunningGuidedTest(check))
+                                                {
+                                                    <p>App currently records @starting.Label = @starting.PredictedValue. If you have corrected the TV manually, uncheck and reconfirm below to update that record.</p>
+                                                }
+                                            }
+                                            <p>Set your source device to the HDMI signal values above, then match the app's <strong>External HDMI Signal</strong> selectors. Changing the app selectors does not change the source device.</p>
                                             <label class="verification-signal-confirmation">
-                                                <input type="checkbox" checked="@(check.SignalSetupConfirmed || IsPendingVisualTest(check))"
+                                                <input type="checkbox" checked="@check.SignalSetupConfirmed"
                                                        disabled="@(TvActionsDisabled || IsPendingVisualTest(check) || signalRequirements.Any(signal => !signal.Matches))"
                                                        @onchange="args => ConfirmSignalSetupAsync(check, args.Value is true)" />
-                                                <strong>I have set the physical HDMI source to these values.</strong>
+                                                <strong>@(check.StartingValue is null ? "I have set the physical HDMI source to these values." : "I have checked the HDMI source and TV starting setting shown above.")</strong>
                                             </label>
-                                            <small>@(IsPendingVisualTest(check) ? "Signal setup confirmed for this run." : check.SignalSetupConfirmed ? "Signal setup confirmed. This test is ready to run." : "Test locked until the app values match and you confirm the physical source. Confirm again for each run.")</small>
+                                            <small>@(IsPendingVisualTest(check) ? "Signal setup confirmed for this run." : check.SignalSetupConfirmed ? "Starting conditions confirmed. This stays checked until the setup changes or you uncheck it." : "Test locked until the app signal values match and you confirm the starting conditions.")</small>
                                         </div>
                                     }
                                     @if (!check.Verified && !check.ExistingEvidenceReady && RequiresEvidenceTest(check))
@@ -257,7 +266,8 @@
         || ControllerState.NavigationRunning
         || Authoring.IsRecording;
     private bool VerificationTestDisabled(MenuDefinitionVerificationCheckSummary check) => TvActionsDisabled
-        || (!check.Verified && check.SignalRequirements is { Count: > 0 } && !check.SignalSetupConfirmed);
+        || (!check.Verified && check.SignalRequirements is { Count: > 0 }
+            && (!check.SignalSetupConfirmed || check.StartingValue is { Matches: false }));
     private IReadOnlyList<VerificationGroup> Groups =>
     new[]
     {
@@ -319,7 +329,7 @@
     {
         await Controller.ConfirmMenuVerificationSignalSetupAsync(check.Id, confirmed);
         StatusMessage = confirmed
-            ? $"Physical HDMI signal setup confirmed for {check.Label}. No TV commands were sent; you can now run this test."
+            ? $"Starting conditions confirmed for {check.Label}. No TV commands were sent; any displayed TV starting value was recorded as current. You can now run this test."
             : $"Signal setup confirmation removed for {check.Label}. The test is locked until confirmed again.";
     });
 

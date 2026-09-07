@@ -6,7 +6,7 @@ namespace SamsungController.Web.Services;
 
 public sealed partial class SamsungControllerService
 {
-    // Physical source setup is a per-run acknowledgement, never saved as menu
+    // Setup stays acknowledged until it changes, but is never saved as menu
     // evidence or inferred merely from a persisted app selector.
     private readonly Dictionary<string, string> _verificationSignalConfirmations = new(StringComparer.OrdinalIgnoreCase);
 
@@ -67,15 +67,58 @@ public sealed partial class SamsungControllerService
         }).ToArray();
     }
 
-    private static string VerificationSignalSignature(MenuDefinitionVerificationCheck check,
-        IReadOnlyList<MenuVerificationSignalRequirement> requirements) =>
-        JsonSerializer.Serialize(new { check.Fingerprint, Requirements = requirements });
+    private MenuVerificationStartingValue? GetVerificationStartingValue(
+        MenuDefinition definition, MenuDefinitionVerificationCheck check)
+    {
+        if (check.Id is not ("condition:hidden-behavior" or "condition:disabled-behavior")
+            || GetVerificationSignalRequirements(definition, check).Count == 0)
+            return null;
+        var rule = GetMenuConditionalVerificationRule(definition, check);
+        var node = definition.GetRequiredNode(rule.SourceId);
+        var blocked = (check.Id == "condition:hidden-behavior"
+                ? (rule.Node.HiddenWhen ?? []).Select(item => (item.SourceId, item.SourceKind, item.EqualsValue))
+                : (rule.Node.DisabledWhen ?? []).Select(item => (item.SourceId, item.SourceKind, item.EqualsValue)))
+            .Where(item => item.SourceKind == MenuConditionSourceKind.MenuSetting
+                && item.SourceId.Equals(node.Id, StringComparison.OrdinalIgnoreCase))
+            .Select(item => item.EqualsValue).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var defaultValue = MenuDefaultValueResolver.Resolve(definition, node, _menuExternalStateValues);
+        string baseline;
+        try
+        {
+            baseline = defaultValue is not null && !blocked.Contains(defaultValue)
+                ? defaultValue
+                : SelectMenuControlValueOutside(node, rule.EqualsValue, blocked);
+        }
+        catch (InvalidOperationException)
+        {
+            // The existing guided-test validation reports controls with no
+            // alternate value; don't prevent the rest of the page from loading.
+            return null;
+        }
+        baseline = NormalizePictureControlValue(definition, node, baseline);
+        return new(node.Id, node.Label, baseline, _menuControlValues.GetValueOrDefault(node.Id, defaultValue ?? baseline));
+    }
+
+    private string VerificationSignalSignature(MenuDefinition definition, MenuDefinitionVerificationCheck check,
+        IReadOnlyList<MenuVerificationSignalRequirement> requirements)
+    {
+        var starting = GetVerificationStartingValue(definition, check);
+        // The test changes the predicted value itself. That must not clear the
+        // user's confirmation of its starting value while commands are running.
+        return JsonSerializer.Serialize(new
+        {
+            check.Fingerprint,
+            Requirements = requirements,
+            StartingNode = starting?.NodeId,
+            StartingValue = starting?.RequiredValue
+        });
+    }
 
     private bool IsVerificationSignalSetupConfirmed(MenuDefinition definition, MenuDefinitionVerificationCheck check)
     {
         var requirements = GetVerificationSignalRequirements(definition, check);
         return requirements.Count > 0 && requirements.All(item => item.Matches)
-            && _verificationSignalConfirmations.GetValueOrDefault(check.Id) == VerificationSignalSignature(check, requirements);
+            && _verificationSignalConfirmations.GetValueOrDefault(check.Id) == VerificationSignalSignature(definition, check, requirements);
     }
 
     public async Task ConfirmMenuVerificationSignalSetupAsync(string checkId, bool confirmed,
@@ -85,6 +128,7 @@ public sealed partial class SamsungControllerService
         await InitializeAsync(cancellationToken).ConfigureAwait(false);
         EnsureNoAutomationRunning("confirm the verification signal setup");
         EnsureNoMenuRecording("confirm the verification signal setup");
+        var recordStartingValue = false;
         lock (_sync)
         {
             var definition = _menuDefinition ?? throw new InvalidOperationException("No menu definition is loaded.");
@@ -102,9 +146,19 @@ public sealed partial class SamsungControllerService
                 if (requirements.Count == 0)
                     throw new InvalidOperationException("This check does not require external signal setup.");
                 EnsureVerificationSignalMatches(requirements);
-                _verificationSignalConfirmations[check.Id] = VerificationSignalSignature(check, requirements);
+                if (GetVerificationStartingValue(definition, check) is { } starting)
+                {
+                    // The checkbox explicitly confirms this value on the TV.
+                    // Correct only that current-value record; send no keys.
+                    _menuControlValues[starting.NodeId] = starting.RequiredValue;
+                    _explicitMenuControlValues.Add(starting.NodeId);
+                    recordStartingValue = true;
+                }
+                _verificationSignalConfirmations[check.Id] = VerificationSignalSignature(definition, check, requirements);
             }
         }
+        if (recordStartingValue)
+            await PersistActiveConditionAsync(cancellationToken).ConfigureAwait(false);
         NotifyChanged();
     }
 
@@ -116,7 +170,8 @@ public sealed partial class SamsungControllerService
         EnsureVerificationSignalMatches(requirements);
         if (!IsVerificationSignalSetupConfirmed(definition, check))
             throw new InvalidOperationException("Set the physical HDMI source to the required signal values, match the app's External HDMI Signal selectors, and confirm the signal-setup checkbox on this verification line before running the test.");
-        _verificationSignalConfirmations.Remove(check.Id);
+        if (GetVerificationStartingValue(definition, check) is { Matches: false } starting)
+            throw new InvalidOperationException($"This test starts with {starting.Label} = {starting.RequiredValue}, but the app currently records {starting.PredictedValue}. Finish the previous test to restore its value, or set the TV to {starting.RequiredValue} and uncheck/reconfirm the starting conditions. No preliminary reset commands were sent.");
     }
 
     private static void EnsureVerificationSignalMatches(IReadOnlyList<MenuVerificationSignalRequirement> requirements)

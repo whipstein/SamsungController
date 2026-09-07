@@ -274,7 +274,13 @@ public sealed record MenuDefinitionVerificationCheckSummary(
     DateTimeOffset? VerifiedAtUtc,
     string? RelatedReturnCheckId = null,
     IReadOnlyList<MenuVerificationSignalRequirement>? SignalRequirements = null,
-    bool SignalSetupConfirmed = false);
+    bool SignalSetupConfirmed = false,
+    MenuVerificationStartingValue? StartingValue = null);
+
+public sealed record MenuVerificationStartingValue(string NodeId, string Label, string RequiredValue, string PredictedValue)
+{
+    public bool Matches => RequiredValue.Equals(PredictedValue, StringComparison.OrdinalIgnoreCase);
+}
 
 public sealed record MenuVerificationSignalRequirement(
     string StateId,

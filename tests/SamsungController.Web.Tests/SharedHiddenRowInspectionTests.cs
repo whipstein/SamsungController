@@ -4,6 +4,55 @@ namespace SamsungController.Web.Tests;
 
 public sealed partial class ControllerMenuIntegrationTests
 {
+    [Fact]
+    public async Task ConfirmingGammaStartCorrectsStalePredictionAndCheckboxStaysCheckedThroughoutTest()
+    {
+        const string checkId = "condition:hidden-behavior";
+        var (controller, transport) = await CreateConnectedControllerAsync(SharedHiddenGammaYaml, installedMenu: true);
+        await using (controller)
+        {
+            // A previous test left the app's persisted current value at 2.2.
+            // The user has since put the TV back to BT.1886 outside the app.
+            await controller.ApplyMenuControlValuesAsync([new("gamma", "BT.1886", "2.2")],
+                controller.GetMenuNavigationSnapshot().ControlValues, returnToNormalVideo: false);
+            await controller.ReloadMenuDefinitionAsync();
+            Assert.Equal("2.2", controller.GetMenuNavigationSnapshot().ControlValues["gamma"]);
+            transport.SentMessages.Clear();
+            await using var services = new ServiceCollection().AddLogging().AddSingleton(controller).BuildServiceProvider();
+            await using var page = new VerificationPageTestRenderer(services) { CheckId = checkId };
+            await page.StartAsync();
+            Assert.Contains("TV starting setting: Gamma = BT.1886", page.BoldLineText);
+            Assert.Contains("App currently records Gamma = 2.2", page.LineText);
+            Assert.True(page.ButtonDisabled("Run guided test"));
+            await page.ConfirmSignalAsync(true);
+            Assert.Empty(GetSentKeys(transport));
+            Assert.Equal("BT.1886", controller.GetMenuNavigationSnapshot().ControlValues["gamma"]);
+
+            var renderedChecks = new List<bool>();
+            page.OnRendered = () => renderedChecks.Add(page.SignalConfirmationChecked);
+            await page.ClickAsync("Run guided test");
+            page.OnRendered = null;
+            Assert.NotEmpty(renderedChecks);
+            Assert.All(renderedChecks, value => Assert.True(value));
+            Assert.Equal(["KEY_ENTER", "KEY_DOWN", "KEY_ENTER", "KEY_DOWN"], GetSentKeys(transport));
+            Assert.True(page.SignalConfirmationChecked);
+            Assert.True(SignalCheck(controller, checkId).SignalSetupConfirmed);
+
+            transport.SentMessages.Clear();
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() => controller.RunMenuDefinitionVerificationTestAsync(checkId));
+            Assert.Contains("Finish the previous test", error.Message);
+            Assert.Empty(GetSentKeys(transport)); // No hidden Up/reset from the temporary 2.2 value.
+            Assert.True(page.SignalConfirmationChecked);
+            await page.ClickAsync("Failed");
+            Assert.Equal("BT.1886", controller.GetMenuNavigationSnapshot().ControlValues["gamma"]);
+            Assert.True(page.SignalConfirmationChecked);
+            Assert.False(page.ButtonDisabled("Run guided test"));
+            await controller.ReloadMenuDefinitionAsync();
+            Assert.Equal("BT.1886", controller.GetMenuNavigationSnapshot().ControlValues["gamma"]);
+            Assert.False(page.SignalConfirmationChecked); // A reload still requires a fresh physical check.
+        }
+    }
+
     [Theory]
     [InlineData("BT.1886")]
     [InlineData("2.2")]
@@ -17,9 +66,9 @@ public sealed partial class ControllerMenuIntegrationTests
             transport.SentMessages.Clear();
             await controller.ConfirmMenuVerificationSignalSetupAsync("condition:hidden-behavior", true);
             var result = await controller.RunMenuDefinitionVerificationTestAsync("condition:hidden-behavior");
-            var expected = initialValue == "BT.1886"
-                ? new[] { "KEY_ENTER", "KEY_DOWN", "KEY_ENTER", "KEY_DOWN" }
-                : new[] { "KEY_ENTER", "KEY_UP", "KEY_ENTER", "KEY_ENTER", "KEY_DOWN", "KEY_ENTER", "KEY_DOWN" };
+            // Confirmation establishes BT.1886 even when the saved prediction
+            // was 2.2; there must be no preliminary Up/reset round trip.
+            var expected = new[] { "KEY_ENTER", "KEY_DOWN", "KEY_ENTER", "KEY_DOWN" };
             Assert.Equal(expected, GetSentKeys(transport));
             Assert.Equal("shadow-detail", controller.GetMenuNavigationSnapshot().State.NodeId);
             Assert.Equal("2.2", controller.GetMenuNavigationSnapshot().ControlValues["gamma"]);
@@ -29,9 +78,9 @@ public sealed partial class ControllerMenuIntegrationTests
             Assert.Contains("Shadow Detail, the next visible control", result.ActionDescription);
             Assert.Contains("BT.1886 is absent", result.ActionDescription);
             Assert.Null(result.OptionsInspectionId);
-            Assert.Equal(initialValue == "BT.1886" ? 1 : 0, result.AppliedUpdates.Count);
+            Assert.Single(result.AppliedUpdates);
             await controller.RestoreMenuDefinitionVerificationTestAsync(result);
-            Assert.Equal(initialValue, controller.GetMenuNavigationSnapshot().ControlValues["gamma"]);
+            Assert.Equal("BT.1886", controller.GetMenuNavigationSnapshot().ControlValues["gamma"]);
         }
     }
 

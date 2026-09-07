@@ -646,7 +646,8 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
                         ? GetRelatedAnchorReturnCheckId(definition.GetRequiredAnchor(anchorId))
                         : null,
                     GetVerificationSignalRequirements(definition, check),
-                    IsVerificationSignalSetupConfirmed(definition, check));
+                    IsVerificationSignalSetupConfirmed(definition, check),
+                    GetVerificationStartingValue(definition, check));
             }).ToArray();
             var currentRecordKeys = plan.Checks
                 .Select(check => $"{check.Id}\u001f{check.Fingerprint}")

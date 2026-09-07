@@ -15,6 +15,7 @@ internal sealed class VerificationPageTestRenderer(IServiceProvider services)
     public override Dispatcher Dispatcher { get; } = Dispatcher.CreateDefault();
     public string LineLabel { get; set; } = "System-wide command timing";
     public string? CheckId { get; set; }
+    public Action? OnRendered { get; set; }
     private RenderTreeFrame[] Frames
     {
         get
@@ -98,6 +99,10 @@ internal sealed class VerificationPageTestRenderer(IServiceProvider services)
 
     protected override void HandleException(Exception exception) =>
         throw new InvalidOperationException("Verification page render failed.", exception);
-    protected override Task UpdateDisplayAsync(in RenderBatch renderBatch) => Task.CompletedTask;
+    protected override Task UpdateDisplayAsync(in RenderBatch renderBatch)
+    {
+        OnRendered?.Invoke();
+        return Task.CompletedTask;
+    }
 }
 #pragma warning restore BL0006

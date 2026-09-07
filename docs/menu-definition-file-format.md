@@ -709,9 +709,17 @@ come from the tested control, affected row, and their parent menus.
 Completed checks do not show the setup box or require another checkbox for
 **Open on TV**. Removing a result (or a relevant definition change invalidating it)
 restores the prerequisite on that now-unverified check.
-Confirmation sends no TV commands and is required again for each run. Signal
-changes, reconnecting, and reloading the menu clear it; saved verification results
-are not removed.
+Confirmation sends no TV commands and stays checked while the setup is unchanged,
+including during a test and after its temporary adjustments are restored. Signal
+changes, reconnecting, reloading the menu, or unchecking it clear the confirmation;
+saved verification results are not removed.
+For menu-controlled tests, the box also specifies the TV's **starting setting**
+(for example, Gamma = BT.1886). Check that value on the TV before confirming.
+Confirmation records that one current value in the app, correcting any stale
+prediction without sending keys. The Gamma test then moves **Down** from BT.1886
+to 2.2, and restores BT.1886 on pass or fail. It does not issue a preliminary Up
+reset based on an old 2.2 prediction. If a previous test is unfinished, finish it
+or correct the TV manually and uncheck/reconfirm before rerunning.
 For a disabled control, the test highlights the named row without pressing Enter
 on that control or changing its value. Gray siblings still count as cursor stops;
 hidden siblings do not. For an external-state hidden row, the test highlights the
