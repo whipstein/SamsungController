@@ -18,7 +18,9 @@ Development and real-display verification proceed separately on `feature/ip-remo
 - [x] Implement an explicitly confirmed one-step contrast experiment with fresh context checks, visual pass/fail, restoration readback, private crash-recovery journal, and offline safety/page tests.
 - [x] Verify the contrast write and restoration on S95F firmware 1301: direct 45 → 44 → 45, independent readbacks, visual pass, stable HDMI4/FilmmakerMode and other reported fields (2026-09-07).
 - [x] Add private, context-keyed contrast read/write evidence and a direct contrast editor with explicit Apply/readback and optional Undo. Preserve completed evidence independently of later adjustments; recover interrupted writes without replaying them.
-- [ ] User verifies the new direct-control Apply/keep/Undo workflow; extend additional controls only after their own mapping and write evidence.
+- [x] User confirms direct Contrast Apply works (2026-09-07); preserve its conditions checkbox during target editing and remove extra Apply/Undo browser prompts.
+- [x] Implement separate guarded Color and Sharpness verification/restoration and capability-gated direct adjustment, including a 0 → 1 → 0 test, field-specific recovery, and persistence of existing Contrast evidence.
+- [ ] User verifies Color and Sharpness mapping, direct writes, visual values, and restoration in each context; confirm optional direct Undo separately.
 - [ ] Expand proven controls and context-aware polling; investigate advanced white balance/custom color independently.
 - [ ] Merge into `main` only when the owner explicitly approves.
 

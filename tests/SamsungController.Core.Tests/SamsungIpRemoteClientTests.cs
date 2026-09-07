@@ -148,17 +148,20 @@ public sealed class SamsungIpRemoteClientTests
         Assert.Empty(handler.Requests);
     }
 
-    [Fact]
-    public async Task ExplicitContrastWriteUsesOnlyContrastAndSeparateTokenAndRedactsEchoes()
+    [Theory]
+    [InlineData("contrast", "contrastControl")]
+    [InlineData("color", "colorControl")]
+    [InlineData("sharpness", "sharpnessControl")]
+    public async Task ExplicitPictureWriteUsesOnlySelectedFieldAndSeparateTokenAndRedactsEchoes(string control, string method)
     {
         var handler = new RpcHandler((request, _) => Task.FromResult(Reply(request,
-            new JsonObject { ["contrast"] = 44, ["echo"] = Token })));
+            new JsonObject { [control] = 44, ["echo"] = Token })));
         using var http = new HttpClient(handler);
-        var exchange = await new SamsungIpRemoteClient(PairedTokens(), http).WriteContrastAsync(Options, 44);
+        var exchange = await new SamsungIpRemoteClient(PairedTokens(), http).WritePictureControlAsync(Options, control, 44);
         var request = Assert.Single(handler.Requests);
-        Assert.Equal("contrastControl", request["method"]!.GetValue<string>());
+        Assert.Equal(method, request["method"]!.GetValue<string>());
         Assert.Equal(2, request["params"]!.AsObject().Count);
-        Assert.Equal(44, request["params"]!["contrast"]!.GetValue<int>());
+        Assert.Equal(44, request["params"]![control]!.GetValue<int>());
         Assert.Equal(Token, request["params"]!["AccessToken"]!.GetValue<string>());
         Assert.True(exchange.IsSuccess);
         Assert.Contains("acknowledged", exchange.Message, StringComparison.Ordinal);
@@ -172,7 +175,8 @@ public sealed class SamsungIpRemoteClientTests
     {
         var handler = new RpcHandler((request, _) => Task.FromResult(Reply(request, new())));
         using var http = new HttpClient(handler);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => new SamsungIpRemoteClient(PairedTokens(), http).WriteContrastAsync(Options, value));
+        foreach (var control in SamsungIpRemotePictureControl.All)
+            await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => new SamsungIpRemoteClient(PairedTokens(), http).WritePictureControlAsync(Options, control.Id, value));
         Assert.Empty(handler.Requests);
     }
 
@@ -181,8 +185,25 @@ public sealed class SamsungIpRemoteClientTests
     {
         var handler = new RpcHandler((request, _) => Task.FromResult(Reply(request, new())));
         using var http = new HttpClient(handler);
-        var exchange = await new SamsungIpRemoteClient(new MemoryTokens(), http).WriteContrastAsync(Options, 44);
-        Assert.Equal(SamsungIpRemoteOutcome.NotPaired, exchange.Outcome);
+        foreach (var control in SamsungIpRemotePictureControl.All)
+        {
+            var exchange = await new SamsungIpRemoteClient(new MemoryTokens(), http).WritePictureControlAsync(Options, control.Id, 44);
+            Assert.Equal(SamsungIpRemoteOutcome.NotPaired, exchange.Outcome);
+        }
+        Assert.Empty(handler.Requests);
+    }
+
+    [Theory]
+    [InlineData("brightness")]
+    [InlineData("tint")]
+    [InlineData("pictureMode")]
+    [InlineData("AccessToken")]
+    [InlineData("contrastControl")]
+    public async Task UnapprovedPictureFieldCannotSendAnyRequest(string control)
+    {
+        var handler = new RpcHandler((request, _) => Task.FromResult(Reply(request, new())));
+        using var http = new HttpClient(handler);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new SamsungIpRemoteClient(PairedTokens(), http).WritePictureControlAsync(Options, control, 44));
         Assert.Empty(handler.Requests);
     }
 

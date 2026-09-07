@@ -5,7 +5,7 @@ using SamsungController.Web.Services;
 
 namespace SamsungController.Web.Tests;
 
-public sealed class IpRemoteDirectContrastTests
+public sealed class IpRemoteDirectPictureTests
 {
     [Fact]
     public async Task DirectApplyKeepsNewValueAndExplicitUndoRestoresWithoutOverwritingVerification()
@@ -14,26 +14,26 @@ public sealed class IpRemoteDirectContrastTests
         await fixture.VerifyAsync();
         var evidence = Assert.Single(fixture.Service.GetSnapshot().ControlCapabilities);
         fixture.Display.Requests.Clear();
-        await fixture.Service.ReadDirectContrastAsync();
-        await fixture.Service.ApplyDirectContrastAsync(fixture.Service.GetSnapshot().DirectContrastReading!.Id, 40, true);
+        await fixture.Service.ReadDirectPictureAsync();
+        await fixture.Service.ApplyDirectPictureAsync(fixture.Service.GetSnapshot().DirectPictureReading!.Id, 40, true);
         Assert.Equal(new[] { 40 }, fixture.Display.Writes);
         Assert.Equal(40, fixture.Display.Contrast);
-        var operation = fixture.Service.GetSnapshot().ContrastTest!;
+        var operation = fixture.Service.GetSnapshot().PictureTest!;
         Assert.True(operation.DirectChangeKept);
         Assert.False(operation.RequiresRecovery);
         Assert.False(operation.Verified);
-        Assert.Equal(IpRemoteContrastPurpose.DirectAdjustment, operation.Purpose);
+        Assert.Equal(IpRemotePicturePurpose.DirectAdjustment, operation.Purpose);
         Assert.Equal(evidence, Assert.Single(fixture.Service.GetSnapshot().ControlCapabilities));
-        Assert.Equal(40, fixture.Service.GetSnapshot().DirectContrastReading!.Value);
+        Assert.Equal(40, fixture.Service.GetSnapshot().DirectPictureReading!.Value);
         Assert.Equal(new[] { "getTVStates", "getVideoStates", "getTVStates", "getVideoStates", "contrastControl", "getTVStates", "getVideoStates" }, fixture.Display.Methods);
-        await fixture.Service.UndoDirectContrastAsync(operation.Id, true);
+        await fixture.Service.UndoDirectPictureAsync(operation.Id, true);
         Assert.Equal(new[] { 40, 45 }, fixture.Display.Writes);
         Assert.Equal(45, fixture.Display.Contrast);
-        Assert.True(fixture.Service.GetSnapshot().ContrastTest!.RestorationConfirmed);
-        Assert.False(fixture.Service.GetSnapshot().ContrastTest!.DirectChangeKept);
-        Assert.False(fixture.Service.GetSnapshot().ContrastTest!.Verified);
+        Assert.True(fixture.Service.GetSnapshot().PictureTest!.RestorationConfirmed);
+        Assert.False(fixture.Service.GetSnapshot().PictureTest!.DirectChangeKept);
+        Assert.False(fixture.Service.GetSnapshot().PictureTest!.Verified);
         Assert.Equal(evidence, Assert.Single(fixture.Service.GetSnapshot().ControlCapabilities));
-        Assert.Equal(45, fixture.Service.GetSnapshot().DirectContrastReading!.Value);
+        Assert.Equal(45, fixture.Service.GetSnapshot().DirectPictureReading!.Value);
         var report = fixture.Service.ExportReport();
         Assert.DoesNotContain(ContrastFixture.Token, report, StringComparison.Ordinal);
         Assert.DoesNotContain(ContrastFixture.Profile.Connection.Host, report, StringComparison.Ordinal);
@@ -42,7 +42,7 @@ public sealed class IpRemoteDirectContrastTests
         await fixture.RestartAsync();
         Assert.Equal(count, fixture.Display.Requests.Count);
         Assert.Equal(evidence, Assert.Single(fixture.Service.GetSnapshot().ControlCapabilities));
-        Assert.Null(fixture.Service.GetSnapshot().DirectContrastReading);
+        Assert.Null(fixture.Service.GetSnapshot().DirectPictureReading);
     }
 
     [Fact]
@@ -50,15 +50,15 @@ public sealed class IpRemoteDirectContrastTests
     {
         using var fixture = await ContrastFixture.CreateAsync();
         await fixture.VerifyAsync();
-        await fixture.Service.ReadDirectContrastAsync();
-        await fixture.Service.ApplyDirectContrastAsync(fixture.Service.GetSnapshot().DirectContrastReading!.Id, 42, true);
-        var id = fixture.Service.GetSnapshot().ContrastTest!.Id;
+        await fixture.Service.ReadDirectPictureAsync();
+        await fixture.Service.ApplyDirectPictureAsync(fixture.Service.GetSnapshot().DirectPictureReading!.Id, 42, true);
+        var id = fixture.Service.GetSnapshot().PictureTest!.Id;
         var count = fixture.Display.Requests.Count;
         await fixture.RestartAsync();
         Assert.Equal(count, fixture.Display.Requests.Count);
-        Assert.True(fixture.Service.GetSnapshot().ContrastTest!.DirectChangeKept);
-        Assert.False(fixture.Service.GetSnapshot().ContrastTest!.RequiresRecovery);
-        await fixture.Service.UndoDirectContrastAsync(id, true);
+        Assert.True(fixture.Service.GetSnapshot().PictureTest!.DirectChangeKept);
+        Assert.False(fixture.Service.GetSnapshot().PictureTest!.RequiresRecovery);
+        await fixture.Service.UndoDirectPictureAsync(id, true);
         Assert.Equal(45, fixture.Display.Contrast);
     }
 
@@ -68,8 +68,8 @@ public sealed class IpRemoteDirectContrastTests
         using var fixture = await ContrastFixture.CreateAsync();
         await fixture.VerifyAsync(false);
         Assert.Empty(fixture.Service.GetSnapshot().ControlCapabilities);
-        await fixture.Service.ReadDirectContrastAsync();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.ApplyDirectContrastAsync(fixture.Service.GetSnapshot().DirectContrastReading!.Id, 44, true));
+        await fixture.Service.ReadDirectPictureAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.ApplyDirectPictureAsync(fixture.Service.GetSnapshot().DirectPictureReading!.Id, 44, true));
         await fixture.VerifyAsync();
         var oldTest = JsonNode.Parse(await File.ReadAllTextAsync(fixture.JournalPath))!.AsObject();
         oldTest.Remove("Purpose"); oldTest.Remove("DirectChangeKept");
@@ -111,9 +111,9 @@ public sealed class IpRemoteDirectContrastTests
         if (change == "reported-input") fixture.Display.Input = "HDMI1";
         await new PrivateIpRemoteTokenStore(Path.Combine(fixture.DirectoryPath, "ip-remote")).SaveAsync(profile.Endpoint, ContrastFixture.Token);
         await fixture.Service.SaveProfileAsync(profile);
-        await fixture.Service.ReadDirectContrastAsync();
+        await fixture.Service.ReadDirectPictureAsync();
         fixture.Display.Requests.Clear();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.ApplyDirectContrastAsync(fixture.Service.GetSnapshot().DirectContrastReading!.Id, 44, true));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.ApplyDirectPictureAsync(fixture.Service.GetSnapshot().DirectPictureReading!.Id, 44, true));
         Assert.Empty(fixture.Display.Requests);
         Assert.Single(fixture.Service.GetSnapshot().ControlCapabilities);
     }
@@ -130,8 +130,8 @@ public sealed class IpRemoteDirectContrastTests
         await fixture.RestartAsync();
         Assert.Contains(first, fixture.Service.GetSnapshot().ControlCapabilities);
         await fixture.Service.SaveProfileAsync(ContrastFixture.Profile);
-        await fixture.Service.ReadDirectContrastAsync();
-        await fixture.Service.ApplyDirectContrastAsync(fixture.Service.GetSnapshot().DirectContrastReading!.Id, 44, true);
+        await fixture.Service.ReadDirectPictureAsync();
+        await fixture.Service.ApplyDirectPictureAsync(fixture.Service.GetSnapshot().DirectPictureReading!.Id, 44, true);
         Assert.Equal(44, fixture.Display.Contrast);
     }
 
@@ -144,8 +144,8 @@ public sealed class IpRemoteDirectContrastTests
     {
         using var fixture = await ContrastFixture.CreateAsync();
         await fixture.VerifyAsync();
-        await fixture.Service.ReadDirectContrastAsync();
-        var id = fixture.Service.GetSnapshot().DirectContrastReading!.Id;
+        await fixture.Service.ReadDirectPictureAsync();
+        var id = fixture.Service.GetSnapshot().DirectPictureReading!.Id;
         switch (change)
         {
             case "input": fixture.Display.Input = "HDMI1"; break;
@@ -154,9 +154,9 @@ public sealed class IpRemoteDirectContrastTests
             default: fixture.Display.Color = 26; break;
         }
         fixture.Display.Requests.Clear();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.ApplyDirectContrastAsync(id, 40, true));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.ApplyDirectPictureAsync(id, 40, true));
         Assert.Empty(fixture.Display.Writes);
-        Assert.Null(fixture.Service.GetSnapshot().DirectContrastReading);
+        Assert.Null(fixture.Service.GetSnapshot().DirectPictureReading);
         Assert.Single(fixture.Service.GetSnapshot().ControlCapabilities);
     }
 
@@ -169,9 +169,9 @@ public sealed class IpRemoteDirectContrastTests
     {
         using var fixture = await ContrastFixture.CreateAsync();
         await fixture.VerifyAsync();
-        await fixture.Service.ReadDirectContrastAsync();
+        await fixture.Service.ReadDirectPictureAsync();
         fixture.Display.Requests.Clear();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.ApplyDirectContrastAsync(fixture.Service.GetSnapshot().DirectContrastReading!.Id, target, confirmed));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.ApplyDirectPictureAsync(fixture.Service.GetSnapshot().DirectPictureReading!.Id, target, confirmed));
         Assert.Empty(fixture.Display.Requests);
     }
 
@@ -181,15 +181,15 @@ public sealed class IpRemoteDirectContrastTests
         var clock = new TestClock();
         using var fixture = await ContrastFixture.CreateAsync(clock);
         await fixture.VerifyAsync();
-        await fixture.Service.ReadDirectContrastAsync();
-        var id = fixture.Service.GetSnapshot().DirectContrastReading!.Id;
+        await fixture.Service.ReadDirectPictureAsync();
+        var id = fixture.Service.GetSnapshot().DirectPictureReading!.Id;
         clock.Now += TimeSpan.FromMinutes(3);
         fixture.Display.Requests.Clear();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.ApplyDirectContrastAsync(id, 44, true));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.ApplyDirectPictureAsync(id, 44, true));
         Assert.Empty(fixture.Display.Requests);
-        await fixture.Service.ReadDirectContrastAsync();
+        await fixture.Service.ReadDirectPictureAsync();
         fixture.Display.Requests.Clear();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.ApplyDirectContrastAsync(id, 44, true));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.ApplyDirectPictureAsync(id, 44, true));
         Assert.Empty(fixture.Display.Requests);
     }
 
@@ -198,10 +198,10 @@ public sealed class IpRemoteDirectContrastTests
     {
         using var fixture = await ContrastFixture.CreateAsync();
         await fixture.VerifyAsync();
-        await fixture.Service.ReadDirectContrastAsync();
+        await fixture.Service.ReadDirectPictureAsync();
         fixture.Display.VideoOverride = new JsonObject();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.ReadDirectContrastAsync());
-        Assert.Null(fixture.Service.GetSnapshot().DirectContrastReading);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.ReadDirectPictureAsync());
+        Assert.Null(fixture.Service.GetSnapshot().DirectPictureReading);
         Assert.Single(fixture.Service.GetSnapshot().ControlCapabilities);
     }
 
@@ -211,7 +211,7 @@ public sealed class IpRemoteDirectContrastTests
         using var fixture = await ContrastFixture.CreateAsync();
         await fixture.VerifyAsync();
         var evidence = Assert.Single(fixture.Service.GetSnapshot().ControlCapabilities);
-        await fixture.Service.ReadDirectContrastAsync();
+        await fixture.Service.ReadDirectPictureAsync();
         var sent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         fixture.Display.Requests.Clear();
         fixture.Display.Override = async (request, cancellation) =>
@@ -225,19 +225,19 @@ public sealed class IpRemoteDirectContrastTests
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellation);
             return null;
         };
-        var applying = fixture.Service.ApplyDirectContrastAsync(fixture.Service.GetSnapshot().DirectContrastReading!.Id, 40, true);
+        var applying = fixture.Service.ApplyDirectPictureAsync(fixture.Service.GetSnapshot().DirectPictureReading!.Id, 40, true);
         await sent.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.ReadDirectContrastAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.ReadDirectPictureAsync());
         fixture.Service.Cancel();
         await Assert.ThrowsAsync<InvalidOperationException>(() => applying);
         Assert.Equal(new[] { 40 }, fixture.Display.Writes);
         Assert.Equal(3, fixture.Display.Requests.Count);
-        Assert.Null(fixture.Service.GetSnapshot().DirectContrastReading);
+        Assert.Null(fixture.Service.GetSnapshot().DirectPictureReading);
         fixture.Display.Override = null;
         await fixture.RestartAsync();
         Assert.Equal(3, fixture.Display.Requests.Count);
-        Assert.True(fixture.Service.GetSnapshot().ContrastTest!.RequiresRecovery);
-        await fixture.Service.RestoreContrastTestAsync(fixture.Service.GetSnapshot().ContrastTest!.Id);
+        Assert.True(fixture.Service.GetSnapshot().PictureTest!.RequiresRecovery);
+        await fixture.Service.RestorePictureTestAsync(fixture.Service.GetSnapshot().PictureTest!.Id);
         Assert.Equal(new[] { 40, 45 }, fixture.Display.Writes);
         Assert.Equal(evidence, Assert.Single(fixture.Service.GetSnapshot().ControlCapabilities));
     }
@@ -247,18 +247,18 @@ public sealed class IpRemoteDirectContrastTests
     {
         using var fixture = await ContrastFixture.CreateAsync();
         await fixture.VerifyAsync();
-        await fixture.Service.ReadDirectContrastAsync();
-        await fixture.Service.ApplyDirectContrastAsync(fixture.Service.GetSnapshot().DirectContrastReading!.Id, 40, true);
-        var id = fixture.Service.GetSnapshot().ContrastTest!.Id;
+        await fixture.Service.ReadDirectPictureAsync();
+        await fixture.Service.ApplyDirectPictureAsync(fixture.Service.GetSnapshot().DirectPictureReading!.Id, 40, true);
+        var id = fixture.Service.GetSnapshot().PictureTest!.Id;
         fixture.Display.Requests.Clear();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.UndoDirectContrastAsync(id, false));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.UndoDirectPictureAsync(id, false));
         Assert.Empty(fixture.Display.Requests);
         fixture.Display.Contrast = 39;
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.UndoDirectContrastAsync(id, true));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.UndoDirectPictureAsync(id, true));
         Assert.Empty(fixture.Display.Writes);
         Assert.Equal(39, fixture.Display.Contrast);
-        Assert.False(fixture.Service.GetSnapshot().ContrastTest!.RequiresRecovery);
-        Assert.True(fixture.Service.GetSnapshot().ContrastTest!.DirectChangeKept);
+        Assert.False(fixture.Service.GetSnapshot().PictureTest!.RequiresRecovery);
+        Assert.True(fixture.Service.GetSnapshot().PictureTest!.DirectChangeKept);
     }
 
     [Fact]
@@ -279,13 +279,13 @@ public sealed class IpRemoteDirectContrastTests
     public async Task DirectUndoCannotActOnAnUnrelatedPendingVerification(bool confirmed)
     {
         using var fixture = await ContrastFixture.CreateAsync();
-        await fixture.Service.PrepareContrastTestAsync();
-        var id = fixture.Service.GetSnapshot().ContrastTest!.Id;
-        await fixture.Service.ApplyContrastTestAsync(id, true);
+        await fixture.Service.PreparePictureTestAsync();
+        var id = fixture.Service.GetSnapshot().PictureTest!.Id;
+        await fixture.Service.ApplyPictureTestAsync(id, true);
         fixture.Display.Requests.Clear();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.UndoDirectContrastAsync(id, confirmed));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.UndoDirectPictureAsync(id, confirmed));
         Assert.Empty(fixture.Display.Requests);
-        Assert.True(fixture.Service.GetSnapshot().ContrastTest!.RequiresRecovery);
+        Assert.True(fixture.Service.GetSnapshot().PictureTest!.RequiresRecovery);
     }
 
     [Fact]
@@ -298,14 +298,14 @@ public sealed class IpRemoteDirectContrastTests
             Connection = ContrastFixture.Profile.Connection with { CertificateSha256 = pin }
         });
         await fixture.VerifyAsync();
-        await fixture.Service.ReadDirectContrastAsync();
-        await fixture.Service.ApplyDirectContrastAsync(fixture.Service.GetSnapshot().DirectContrastReading!.Id, 44, true);
+        await fixture.Service.ReadDirectPictureAsync();
+        await fixture.Service.ApplyDirectPictureAsync(fixture.Service.GetSnapshot().DirectPictureReading!.Id, 44, true);
         var report = fixture.Service.ExportReport();
         Assert.DoesNotContain(pin, report, StringComparison.Ordinal);
         Assert.DoesNotContain(ContrastFixture.Token, report, StringComparison.Ordinal);
         var json = JsonNode.Parse(report)!;
         Assert.Equal(IpRemoteReportRedactor.CertificateMarker, json["ControlCapabilities"]![0]!["Profile"]!["Connection"]!["CertificateSha256"]!.GetValue<string>());
-        Assert.Equal(IpRemoteReportRedactor.CertificateMarker, json["DirectContrastReading"]!["Profile"]!["Connection"]!["CertificateSha256"]!.GetValue<string>());
+        Assert.Equal(IpRemoteReportRedactor.CertificateMarker, json["DirectPictureReading"]!["Profile"]!["Connection"]!["CertificateSha256"]!.GetValue<string>());
         Assert.Contains(pin, fixture.Service.ExportReport(redactCertificateFingerprints: false), StringComparison.Ordinal);
         Assert.Equal(pin, fixture.Service.GetSnapshot().ControlCapabilities.Single().Profile.Connection.CertificateSha256);
         if (!OperatingSystem.IsWindows())

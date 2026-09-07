@@ -131,7 +131,7 @@ public sealed class IpRemoteServiceTests : IDisposable
         Assert.Equal(10, result["unknownNumber"]!.GetValue<int>());
         Assert.Null(result["nullable"]);
         Assert.False(result["switch"]!.GetValue<bool>());
-        Assert.Contains("Not tested; writes disabled", report, StringComparison.Ordinal);
+        Assert.Contains("All other direct writes are disabled", report, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -267,7 +267,7 @@ public sealed class IpRemoteServiceTests : IDisposable
             ["uuid"] = "12345678-1234-1234-1234-123456789abc"
         };
         public Task<bool> HasTokenAsync(SamsungIpRemoteOptions options, CancellationToken cancellationToken = default) => Task.FromResult(_paired.Contains(options.Endpoint.AbsoluteUri));
-        public Task<SamsungIpRemoteExchange> WriteContrastAsync(SamsungIpRemoteOptions options, int value, CancellationToken cancellationToken = default) => throw new InvalidOperationException("This read-only fixture must never write.");
+        public Task<SamsungIpRemoteExchange> WritePictureControlAsync(SamsungIpRemoteOptions options, string control, int value, CancellationToken cancellationToken = default) => throw new InvalidOperationException("This read-only fixture must never write.");
         public Task ForgetTokenAsync(SamsungIpRemoteOptions options, CancellationToken cancellationToken = default) { _paired.Remove(options.Endpoint.AbsoluteUri); return Task.CompletedTask; }
         public Task<SamsungIpRemoteExchange> PairAsync(SamsungIpRemoteOptions options, CancellationToken cancellationToken = default)
         {

@@ -17,7 +17,7 @@ namespace SamsungController.Web.Tests;
 public sealed class IpRemotePageTests
 {
     [Fact]
-    public async Task VerifiedDirectControlStagesEditsRequiresConfirmationAndKeepsOrUndoesValue()
+    public async Task VerifiedDirectControlStagesEditsWithoutPopupAndKeepsOrUndoesValue()
     {
         using var fixture = await ContrastFixture.CreateAsync();
         await fixture.VerifyAsync();
@@ -27,35 +27,33 @@ public sealed class IpRemotePageTests
         await using var renderer = new IpPageRenderer(services);
         await renderer.StartAsync();
         await renderer.AssertTextAsync("Contrast read/write verification saved");
-        await renderer.AssertDisabledAsync("Apply direct contrast…", true);
+        await renderer.AssertDisabledAsync("Apply direct contrast", true);
         Assert.Empty(fixture.Display.Requests);
         await renderer.ClickAsync("Read direct contrast");
         await renderer.ChangeAsync("Target contrast", "40");
         Assert.Empty(fixture.Display.Writes);
-        await renderer.AssertDisabledAsync("Apply direct contrast…", true);
-        await renderer.SetCheckboxAsync("Confirm direct contrast conditions", true);
-        await renderer.AssertDisabledAsync("Apply direct contrast…", false);
+        await renderer.AssertDisabledAsync("Apply direct contrast", true);
+        await renderer.SetCheckboxAsync("Confirm direct picture conditions", true);
+        await renderer.AssertDisabledAsync("Apply direct contrast", false);
         javascript.Confirm = false;
-        await renderer.ClickAsync("Apply direct contrast…");
-        Assert.Empty(fixture.Display.Writes);
-        javascript.Confirm = true;
-        await renderer.ClickAsync("Apply direct contrast…");
+        await renderer.ClickAsync("Apply direct contrast");
         Assert.Equal(40, fixture.Display.Contrast);
         await renderer.AssertTextAsync("New value kept on TV");
         await renderer.AssertTextAsync("Contrast read/write verification saved");
         await renderer.AssertDisabledAsync("New display", false);
-        await renderer.AssertDisabledAsync("Apply direct contrast…", true);
-        await renderer.ClickAsync("Undo last direct change…");
+        await renderer.AssertDisabledAsync("Apply direct contrast", true);
+        await renderer.ClickAsync("Undo last direct change");
         Assert.Equal(45, fixture.Display.Contrast);
         await renderer.AssertTextAsync("Original restored");
         Assert.Equal(new[] { 40, 45 }, fixture.Display.Writes);
+        Assert.Equal(0, javascript.ConfirmCalls);
         await renderer.ClickAsync("Download diagnostic report");
         Assert.Contains("ControlCapabilities", javascript.Download, StringComparison.Ordinal);
         Assert.DoesNotContain(ContrastFixture.Token, javascript.Download, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task UnverifiedContextCanReadButCannotApplyAndStagingNewTargetClearsConsent()
+    public async Task UnverifiedContextStaysLockedButVerifiedTargetEditsPreserveConditions()
     {
         using var fixture = await ContrastFixture.CreateAsync();
         var javascript = new DownloadJavaScript();
@@ -64,25 +62,29 @@ public sealed class IpRemotePageTests
         await renderer.StartAsync();
         await renderer.ClickAsync("Read direct contrast");
         await renderer.ChangeAsync("Target contrast", "44");
-        await renderer.SetCheckboxAsync("Confirm direct contrast conditions", true);
-        await renderer.AssertDisabledAsync("Apply direct contrast…", true);
+        await renderer.SetCheckboxAsync("Confirm direct picture conditions", true);
+        await renderer.AssertDisabledAsync("Apply direct contrast", true);
         Assert.Empty(fixture.Display.Writes);
         await fixture.VerifyAsync();
         await renderer.ClickAsync("Read direct contrast");
         await renderer.ChangeAsync("Target contrast", "44");
-        await renderer.SetCheckboxAsync("Confirm direct contrast conditions", true);
-        await renderer.AssertDisabledAsync("Apply direct contrast…", false);
+        await renderer.SetCheckboxAsync("Confirm direct picture conditions", true);
+        await renderer.AssertDisabledAsync("Apply direct contrast", false);
         await renderer.ChangeAsync("Target contrast", "43");
-        await renderer.AssertDisabledAsync("Apply direct contrast…", true);
-        await renderer.SetCheckboxAsync("Confirm direct contrast conditions", true);
+        await renderer.AssertDisabledAsync("Apply direct contrast", false);
+        await renderer.AssertCheckboxAsync("Confirm direct picture conditions", true);
+        await renderer.ClickAsync("+");
+        await renderer.ClickAsync("−");
+        await renderer.AssertDisabledAsync("Apply direct contrast", false);
+        await renderer.AssertCheckboxAsync("Confirm direct picture conditions", true);
         await renderer.ChangeAsync("TV IP address or hostname", "192.0.2.11");
-        await renderer.AssertDisabledAsync("Apply direct contrast…", true);
+        await renderer.AssertDisabledAsync("Apply direct contrast", true);
     }
 
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task GuidedContrastPageRequiresConditionsAndDialogThenRestoresAfterVisualChoice(bool visualPass)
+    public async Task GuidedContrastPageRequiresConditionsWithoutPopupThenRestoresAfterVisualChoice(bool visualPass)
     {
         using var fixture = await ContrastFixture.CreateAsync();
         var javascript = new DownloadJavaScript();
@@ -91,14 +93,11 @@ public sealed class IpRemotePageTests
         await renderer.StartAsync();
         Assert.Empty(fixture.Display.Requests);
         await renderer.ClickAsync("Prepare contrast test (read only)");
-        await renderer.AssertDisabledAsync("Apply one-step contrast test…", true);
-        await renderer.SetCheckboxAsync("Confirm contrast test conditions", true);
+        await renderer.AssertDisabledAsync("Apply one-step contrast test", true);
+        await renderer.SetCheckboxAsync("Confirm picture test conditions", true);
         javascript.Confirm = false;
-        await renderer.ClickAsync("Apply one-step contrast test…");
-        Assert.Empty(fixture.Display.Writes);
-        Assert.Equal(2, fixture.Display.Requests.Count);
-        javascript.Confirm = true;
-        await renderer.ClickAsync("Apply one-step contrast test…");
+        await renderer.ClickAsync("Apply one-step contrast test");
+        Assert.Equal(0, javascript.ConfirmCalls);
         await renderer.AssertTextAsync("Contrast restoration pending");
         await renderer.AssertDisabledAsync("New display", true);
         await renderer.AssertDisabledAsync("Save IP Remote profile", true);
@@ -107,19 +106,57 @@ public sealed class IpRemotePageTests
         await renderer.ClickAsync(visualPass ? "Matches — restore original" : "Does not match — restore original");
         Assert.Equal(45, fixture.Display.Contrast);
         Assert.Equal(new[] { 44, 45 }, fixture.Display.Writes);
-        Assert.Equal(visualPass, fixture.Service.GetSnapshot().ContrastTest!.Verified);
+        Assert.Equal(visualPass, fixture.Service.GetSnapshot().PictureTest!.Verified);
         await renderer.AssertDisabledAsync("New display", false);
         await renderer.ClickAsync("Download diagnostic report");
-        Assert.Equal(visualPass, JsonNode.Parse(javascript.Download)!["ContrastTest"]!["Verified"]!.GetValue<bool>());
+        Assert.Equal(visualPass, JsonNode.Parse(javascript.Download)!["PictureTest"]!["Verified"]!.GetValue<bool>());
         Assert.DoesNotContain(ContrastFixture.Token, javascript.Download, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("color", "Color", 25, 24)]
+    [InlineData("sharpness", "Sharpness", 0, 1)]
+    public async Task ControlSelectorUsesIndependentGuidedTestAndDirectEditor(string control, string name, int original, int target)
+    {
+        using var fixture = await ContrastFixture.CreateAsync();
+        await fixture.VerifyAsync();
+        fixture.Display.Requests.Clear();
+        var javascript = new DownloadJavaScript { Confirm = false };
+        await using var services = new ServiceCollection().AddLogging().AddSingleton(fixture.Service).AddSingleton<IJSRuntime>(javascript).BuildServiceProvider();
+        await using var renderer = new IpPageRenderer(services);
+        await renderer.StartAsync();
+        await renderer.SelectControlAsync(control);
+        Assert.Empty(fixture.Display.Requests);
+        await renderer.AssertTextAsync($"No completed {name} verification");
+        await renderer.ClickAsync($"Prepare {control} test (read only)");
+        await renderer.SetCheckboxAsync("Confirm picture test conditions", true);
+        await renderer.ClickAsync($"Apply one-step {control} test");
+        await renderer.AssertTextAsync($"Check the actual {name} number on the TV: is it {target}?");
+        await renderer.ClickAsync("Matches — restore original");
+        await renderer.AssertTextAsync($"{name} read/write verification saved");
+        Assert.Equal(new[] { target, original }, fixture.Display.WritesFor(control));
+        await renderer.ClickAsync($"Read direct {control}");
+        await renderer.SetCheckboxAsync("Confirm direct picture conditions", true);
+        await renderer.ChangeAsync($"Target {control}", target.ToString());
+        await renderer.AssertCheckboxAsync("Confirm direct picture conditions", true);
+        await renderer.ClickAsync($"Apply direct {control}");
+        await renderer.ClickAsync("Undo last direct change");
+        Assert.Equal(new[] { target, original, target, original }, fixture.Display.WritesFor(control));
+        Assert.Equal(0, javascript.ConfirmCalls);
+        await renderer.SelectControlAsync("contrast");
+        await renderer.AssertTextAsync("Contrast read/write verification saved");
+        await renderer.AssertDisabledAsync("Apply direct contrast", true);
+        await renderer.ClickAsync("Read direct contrast");
+        await renderer.AssertCheckboxAsync("Confirm direct picture conditions", false);
+        Assert.Equal(2, fixture.Service.GetSnapshot().ControlCapabilities.Count);
     }
 
     [Fact]
     public async Task RestartShowsRecoveryControlsWithoutSendingAndRequiresRecoveryConfirmation()
     {
         using var fixture = await ContrastFixture.CreateAsync();
-        await fixture.Service.PrepareContrastTestAsync();
-        await fixture.Service.ApplyContrastTestAsync(fixture.Service.GetSnapshot().ContrastTest!.Id, true);
+        await fixture.Service.PreparePictureTestAsync();
+        await fixture.Service.ApplyPictureTestAsync(fixture.Service.GetSnapshot().PictureTest!.Id, true);
         var count = fixture.Display.Requests.Count;
         await fixture.RestartAsync();
         var javascript = new DownloadJavaScript { Confirm = false };
@@ -132,7 +169,7 @@ public sealed class IpRemotePageTests
         javascript.Confirm = true;
         await renderer.ClickAsync("Check and restore original…");
         Assert.Equal(45, fixture.Display.Contrast);
-        Assert.False(fixture.Service.GetSnapshot().ContrastTest!.Verified);
+        Assert.False(fixture.Service.GetSnapshot().PictureTest!.Verified);
     }
 
     [Fact]
@@ -244,8 +281,10 @@ public sealed class IpRemotePageTests
     {
         public string Download { get; private set; } = "";
         public bool Confirm { get; set; } = true;
+        public int ConfirmCalls { get; private set; }
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
         {
+            if (identifier == "confirm") ConfirmCalls++;
             if (identifier == "samsungController.downloadText") Download = (string)args![1]!;
             return ValueTask.FromResult(identifier == "confirm" ? (TValue)(object)Confirm : default!);
         }
@@ -290,6 +329,24 @@ public sealed class IpRemotePageTests
                 .Select(item => frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray())
                 .Single(item => item.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == label));
             await DispatchEventAsync(input.Single(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "onchange").AttributeEventHandlerId,
+                null, new ChangeEventArgs { Value = value });
+        });
+        public Task AssertCheckboxAsync(string label, bool expected) => Dispatcher.InvokeAsync(() =>
+        {
+            var frames = Frames;
+            var input = frames.Select((frame, index) => (frame, index)).Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "input")
+                .Select(item => frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray())
+                .Single(item => item.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == label));
+            Assert.Equal(expected, input.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "checked" && frame.AttributeValue is true));
+        });
+        public Task SelectControlAsync(string value) => Dispatcher.InvokeAsync(async () =>
+        {
+            var frames = Frames;
+            var select = frames.Select((frame, index) => (frame, index)).Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "select")
+                .Select(item => frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray())
+                .Single(item => item.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == "IP Remote picture control"));
+            Assert.DoesNotContain(select, frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "disabled" && frame.AttributeValue is true);
+            await DispatchEventAsync(select.Single(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "onchange").AttributeEventHandlerId,
                 null, new ChangeEventArgs { Value = value });
         });
         private static string Text(IEnumerable<RenderTreeFrame> frames) => string.Concat(frames.Select(frame => frame.FrameType switch

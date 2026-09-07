@@ -30,13 +30,16 @@ public sealed record IpRemoteSnapshot
     public string Status { get; init; } = "Save an IP Remote profile to begin. No network request has been sent.";
     public string? StorageWarning { get; init; }
     public IReadOnlyList<IpRemoteObservation> Observations { get; init; } = [];
-    public IpRemoteContrastTest? ContrastTest { get; init; }
+    public IpRemotePictureTest? PictureTest { get; init; }
     public IReadOnlyList<IpRemoteControlCapability> ControlCapabilities { get; init; } = [];
-    public IpRemoteContrastReading? DirectContrastReading { get; init; }
+    public IpRemotePictureReading? DirectPictureReading { get; init; }
 }
 
-public sealed record IpRemoteContrastReading(Guid Id, IpRemoteProfile Profile, DateTimeOffset ReadAt,
-    string ReportedInput, string ReportedPictureMode, int Value, JsonObject VideoBaseline);
+public sealed record IpRemotePictureReading(Guid Id, IpRemoteProfile Profile, DateTimeOffset ReadAt,
+    string ReportedInput, string ReportedPictureMode, int Value, JsonObject VideoBaseline)
+{
+    public string Control { get; init; } = "contrast";
+}
 
 // Evidence is independent of the latest operation/recovery journal. It is
 // endpoint/context-specific, not a model-wide promise or a slider range.
@@ -53,21 +56,24 @@ public sealed record IpRemoteControlCapability
     public bool ReadVerified { get; init; }
     public bool WriteVerified { get; init; }
     [JsonIgnore] public string Key => JsonSerializer.Serialize(new[] { Control, Profile.ContextKey, ReportedInput, ReportedPictureMode });
-    public bool Matches(IpRemoteProfile profile, string input, string mode) => Control == "contrast"
+    public bool Matches(IpRemoteProfile profile, string input, string mode, string control = "contrast") => Control == control
         && ReadVerified && WriteVerified && Profile.ContextKey == profile.ContextKey
         && ReportedInput == input && ReportedPictureMode == mode;
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
-public enum IpRemoteContrastPurpose { Verification, DirectAdjustment }
+public enum IpRemotePicturePurpose { Verification, DirectAdjustment }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
-public enum IpRemoteContrastStage { Prepared, Applying, AwaitingVisualCheck, Restoring, RecoveryRequired, Completed, Stopped, ManuallyClosed }
+public enum IpRemotePictureStage { Prepared, Applying, AwaitingVisualCheck, Restoring, RecoveryRequired, Completed, Stopped, ManuallyClosed }
 
 // Private recovery journal; never part of a shared menu or saved calibration.
-public sealed record IpRemoteContrastTest
+public sealed record IpRemotePictureTest
 {
-    public IpRemoteContrastPurpose Purpose { get; init; } = IpRemoteContrastPurpose.Verification;
+    // Missing on older private contrast journals: retain their evidence and recovery.
+    public string Control { get; init; } = "contrast";
+    [JsonIgnore] public string ControlName => SamsungIpRemotePictureControl.Get(Control).Name;
+    public IpRemotePicturePurpose Purpose { get; init; } = IpRemotePicturePurpose.Verification;
     public Guid Id { get; init; } = Guid.NewGuid();
     public IpRemoteProfile Profile { get; init; } = new();
     public DateTimeOffset PreparedAt { get; init; } = DateTimeOffset.UtcNow;
@@ -76,7 +82,7 @@ public sealed record IpRemoteContrastTest
     public string ReportedInput { get; init; } = "";
     public string ReportedPictureMode { get; init; } = "";
     public JsonObject VideoBaseline { get; init; } = new();
-    public IpRemoteContrastStage Stage { get; init; } = IpRemoteContrastStage.Prepared;
+    public IpRemotePictureStage Stage { get; init; } = IpRemotePictureStage.Prepared;
     public string Message { get; init; } = "Baseline read. No setting has been changed.";
     public bool WriteAttempted { get; init; }
     public bool ChangeReadbackConfirmed { get; init; }
@@ -88,6 +94,6 @@ public sealed record IpRemoteContrastTest
     public bool DirectChangeKept { get; init; }
     public int? LastReadback { get; init; }
     public bool RequiresRecovery => WriteAttempted && !RestorationConfirmed && !ManuallyClosed && !DirectChangeKept;
-    public bool Verified => Purpose == IpRemoteContrastPurpose.Verification && ChangeReadbackConfirmed
+    public bool Verified => Purpose == IpRemotePicturePurpose.Verification && ChangeReadbackConfirmed
         && VisualConfirmed == true && RestoreAcknowledged && RestorationConfirmed && !ManuallyClosed;
 }

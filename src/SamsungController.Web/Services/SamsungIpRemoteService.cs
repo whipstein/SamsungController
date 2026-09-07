@@ -53,7 +53,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             }
             var active = saved.Profiles.FirstOrDefault(profile => profile.Endpoint == saved.ActiveEndpoint);
             var hasToken = active is not null && await _client.HasTokenAsync(active.Connection).ConfigureAwait(false);
-            var test = await LoadContrastTestAsync().ConfigureAwait(false);
+            var test = await LoadPictureTestAsync().ConfigureAwait(false);
             var capabilities = await LoadControlCapabilitiesAsync().ConfigureAwait(false);
             Update(state => state with
             {
@@ -61,12 +61,12 @@ public sealed partial class SamsungIpRemoteService : IDisposable
                 Profiles = saved.Profiles,
                 ActiveProfile = active,
                 HasToken = hasToken,
-                ContrastTest = test,
+                PictureTest = test,
                 ControlCapabilities = capabilities
             });
             // Upgrade a locally completed test, never a shared diagnostic report.
             // This only saves private evidence; startup sends no TV requests.
-            if (test?.Verified == true) await RememberContrastCapabilityAsync(test).ConfigureAwait(false);
+            if (test?.Verified == true) await RememberPictureCapabilityAsync(test).ConfigureAwait(false);
         }
         finally { _gate.Release(); }
     }
@@ -77,7 +77,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
         await EnterAsync().ConfigureAwait(false);
         try
         {
-            EnsureNoPendingContrastTest();
+            EnsureNoPendingPictureTest();
             var profiles = GetSnapshot().Profiles.Where(item => item.Endpoint != profile.Endpoint).Append(profile).ToArray();
             await SaveProfilesAsync(profiles, profile.Endpoint).ConfigureAwait(false);
             var hasToken = await _client.HasTokenAsync(profile.Connection).ConfigureAwait(false);
@@ -85,7 +85,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             {
                 Profiles = profiles,
                 ActiveProfile = profile,
-                DirectContrastReading = null,
+                DirectPictureReading = null,
                 HasToken = hasToken,
                 AuthorizationRejected = state.ActiveProfile?.Endpoint == profile.Endpoint && state.AuthorizationRejected,
                 Status = "Profile saved locally. Pairing and reads require an explicit button press."
@@ -99,14 +99,14 @@ public sealed partial class SamsungIpRemoteService : IDisposable
         await EnterAsync().ConfigureAwait(false);
         try
         {
-            EnsureNoPendingContrastTest();
+            EnsureNoPendingPictureTest();
             var profile = GetSnapshot().Profiles.Single(item => item.Endpoint == endpoint);
             await SaveProfilesAsync(GetSnapshot().Profiles, endpoint).ConfigureAwait(false);
             var hasToken = await _client.HasTokenAsync(profile.Connection).ConfigureAwait(false);
             Update(state => state with
             {
                 ActiveProfile = profile,
-                DirectContrastReading = null,
+                DirectPictureReading = null,
                 HasToken = hasToken,
                 AuthorizationRejected = false,
                 Status = "Profile selected. Displayed responses are historical; read again for current evidence."
@@ -120,13 +120,13 @@ public sealed partial class SamsungIpRemoteService : IDisposable
         await EnterAsync().ConfigureAwait(false);
         try
         {
-            EnsureNoPendingContrastTest();
+            EnsureNoPendingPictureTest();
             var profile = GetSnapshot().ActiveProfile ?? throw new InvalidOperationException("Save a profile first.");
             await _client.ForgetTokenAsync(profile.Connection).ConfigureAwait(false);
             Update(state => state with
             {
                 HasToken = false,
-                DirectContrastReading = null,
+                DirectPictureReading = null,
                 AuthorizationRejected = false,
                 Status = "IP Remote token removed locally for this endpoint. The TV and WebSocket token were not changed."
             });
@@ -160,7 +160,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             {
                 IsBusy = true,
                 StorageWarning = null,
-                DirectContrastReading = null,
+                DirectPictureReading = null,
                 Status = pairing ? "Waiting for IP Remote approval on the TV…" : "Reading a timestamped state snapshot…"
             });
             foreach (var method in pairing ? new[] { "createAccessToken" } : methods)
@@ -193,19 +193,19 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             Format = "SamsungController.IPRemote.Diagnostics.v1",
             Version,
             ExportedAt = DateTimeOffset.UtcNow,
-            Safety = "Explicit pairing, two getters, guarded contrast verification, and context-gated direct contrast adjustments. Setter acknowledgments alone are not verification. No other writes, polling, or fallback keys.",
+            Safety = "Explicit pairing, two getters, guarded Contrast/Color/Sharpness verification, and control/context-gated direct adjustments. Setter acknowledgments alone are not verification. No other writes, polling, or fallback keys.",
             Context = "Model, firmware, input, picture mode, and signal annotations are user-entered, not TV-reported unless also present in the response.",
             CurrentProfile = snapshot.ActiveProfile,
             snapshot.Observations,
-            snapshot.ContrastTest,
+            snapshot.PictureTest,
             snapshot.ControlCapabilities,
-            snapshot.DirectContrastReading,
+            snapshot.DirectPictureReading,
             Methods = SamsungIpRemoteClient.ReadMethods.Select(method => new
             {
                 Method = method,
                 LastAttempt = snapshot.Observations.LastOrDefault(item => item.UserEnteredContext.ContextKey == snapshot.ActiveProfile?.ContextKey
                     && item.Exchange.Method == method)?.Exchange,
-                WriteCapability = "Not tested; writes disabled for other controls. See ControlCapabilities for context-specific contrast evidence."
+                WriteCapability = "See ControlCapabilities for separately verified Contrast, Color, and Sharpness evidence per context. All other direct writes are disabled."
             }),
             Unresolved = new[] { "Verify readback against manual TV changes", "Confirm brightness/backlight/shadow-detail mapping", "Advanced white balance and custom color capabilities remain unverified" }
         }, JsonOptions);
