@@ -1,0 +1,24 @@
+.ip-remote-workspace { display: grid; gap: 1.25rem; }
+.ip-step { padding: 1.5rem; min-width: 0; }
+.ip-step h2 { font-size: 1.35rem; margin: 0 0 .75rem; }
+.ip-step p { line-height: 1.6; }
+.ip-step label { display: grid; gap: .45rem; margin: .75rem 0; font-weight: 600; }
+.ip-step input, .ip-step select { width: 100%; min-width: 0; font: inherit; }
+.ip-step fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.ip-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1.25rem; }
+.ip-wide { grid-column: 1 / -1; }
+.ip-step .ip-check { display: flex; align-items: center; gap: .65rem; }
+.ip-check input { width: auto; }
+.ip-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; margin: 1rem 0; }
+.ip-actions button { min-height: 2.75rem; }
+.ip-actions .primary-action { width: auto; }
+.ip-security, .ip-result, .ip-exchange { border: 1px solid var(--line-strong); border-radius: .65rem; padding: 1rem; margin: 1rem 0; }
+.ip-step summary { cursor: pointer; font-weight: 600; line-height: 1.5; }
+.ip-results { display: grid; gap: .5rem; }
+.ip-result h3 { margin-top: 0; }
+.ip-table-scroll { overflow-x: auto; }
+.ip-step table { width: 100%; border-collapse: collapse; text-align: left; }
+.ip-step th, .ip-step td { padding: .65rem; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+.ip-step pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 26rem; overflow: auto; padding: 1rem; border: 1px solid var(--line); }
+.ip-fingerprint, .ip-step code { overflow-wrap: anywhere; }
+@media (max-width: 680px) { .ip-fields { grid-template-columns: 1fr; } .ip-step { padding: 1rem; } }

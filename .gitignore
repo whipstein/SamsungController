@@ -24,3 +24,6 @@ appsettings.json
 
 # Personal TV definitions, macros, notes, and exports kept beside the repository
 /user-data/
+
+# Separate IP Remote credentials, profiles, and diagnostic observations
+ip-remote/

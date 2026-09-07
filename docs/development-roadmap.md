@@ -4,6 +4,20 @@ This document preserves the implementation plan and research direction that are 
 
 Status was reconciled with the repository on 2026-08-30. A checked box means the capability is present in the code and covered by automated tests where practical; it does not imply that every Samsung model or firmware has been tested.
 
+## v1 IP Remote preview — working branch
+
+Development and real-display verification proceed separately on `feature/ip-remote-v1`, starting at `1.0.0-alpha.1`. See the [implementation and verification checklist](ip-remote-preview.md). No main-branch merge or direct setting writes are implied by these code milestones.
+
+- [x] Add an independent HTTPS JSON-RPC client with explicit pairing and a two-getter read-only allowlist.
+- [x] Keep endpoint-scoped credentials, user-entered test context, and redacted observations separate from WebSocket tokens, calibration values, and menu verification.
+- [x] Provide a guided diagnostic page with cancellation, strict/pinned/explicitly opted-in TLS, field comparisons, and downloadable reports.
+- [x] Test protocol envelopes, errors, redaction, profile isolation, cancellation, and page interactions using simulated replies.
+- [ ] Confirm pairing, token reuse, and actual getter responses on each target display/firmware.
+- [ ] Verify field meaning and context effects against manual TV changes, including Brightness versus Shadow Detail.
+- [ ] Implement and verify one explicitly confirmed reversible write, with readback and restoration.
+- [ ] Expand proven controls and context-aware polling; investigate advanced white balance/custom color independently.
+- [ ] Merge into `main` only when the owner explicitly approves.
+
 ## Completed foundation
 
 ### Repository and platform baseline

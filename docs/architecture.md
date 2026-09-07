@@ -1,6 +1,6 @@
-# SamsungController 0.1 architecture
+# SamsungController architecture
 
-This document records the design before the first transport implementation. The
+This document began with the design before the first transport implementation. The
 repository is an independent implementation. ColorControl is used only as a
 behavioral reference; no ColorControl source is copied.
 
@@ -62,6 +62,34 @@ Loading a definition creates a clean topology, applies matching sidecar
 fingerprints to an in-memory runtime copy, then reconciles generated routes.
 Counting or removing a pass writes only the sidecar and never rewrites the
 referenced menu file.
+
+## Separate v1 IP Remote preview
+
+The `/ip-remote` page uses a separate singleton `SamsungIpRemoteService` and
+`ISamsungIpRemoteClient` / `SamsungIpRemoteClient`. It never calls the existing
+controller or automation services. The new client's complete network surface is
+an explicit `createAccessToken` pairing operation and an exact allowlist of
+`getTVStates` and `getVideoStates`, posted as JSON-RPC 2.0 to an HTTPS root URL.
+No direct setting writes, background polling, retries, arbitrary method sender,
+or WebSocket fallback are exposed.
+
+Credentials are keyed by normalized host/port endpoint, in a dedicated
+`ip-remote/tokens.json` below the existing personal configuration root. The
+private directory protects temporary token writes as well as the final file.
+TLS uses system validation by default, or a matching SHA-256 certificate pin.
+An explicit untrusted-certificate opt-in is limited to the exact endpoint;
+redirects and cookies are disabled. Pairing text and access tokens are scrubbed
+before any observation reaches Web. Unparseable response bodies are omitted.
+
+`profiles.json` stores endpoint options and user annotations; `diagnostics.ndjson`
+contains token-redacted observations. Core preserves unknown fields and JSON
+types, validates reply IDs, limits responses to 1 MiB, and distinguishes failures.
+Web serializes actions, rejects overlapping operations, and offers cancellation.
+Read-both stops on failures except an unsupported method, which permits trying
+the other getter. Results remain timestamped evidence scoped to the saved
+endpoint and context, never inferred menu state or verified calibration values.
+No values from a prior response fill gaps in a later one. See the
+[v1 preview guide](ip-remote-preview.md) for the live-verification gates.
 
 ## Predicted menu navigation
 

@@ -6,6 +6,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddSingleton<SamsungControllerService>();
+builder.Services.AddSingleton<SamsungIpRemoteService>();
 
 var app = builder.Build();
 

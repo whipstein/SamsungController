@@ -1,0 +1,203 @@
+using System.Diagnostics;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Security;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using SamsungController.Core.Devices;
+
+namespace SamsungController.Core.IpRemote;
+
+/// <summary>A separate HTTPS client. Phase A permits pairing and two getters only.</summary>
+public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpClient? httpClient = null) : ISamsungIpRemoteClient
+{
+    public static IReadOnlyList<string> ReadMethods { get; } = Array.AsReadOnly(new[] { "getTVStates", "getVideoStates" });
+    private const int MaximumResponseBytes = 1024 * 1024;
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private long _requestId;
+    private static readonly JsonSerializerOptions PrettyJson = new() { WriteIndented = true };
+
+    public async Task<bool> HasTokenAsync(SamsungIpRemoteOptions options, CancellationToken cancellationToken = default) =>
+        !string.IsNullOrWhiteSpace(await tokenStore.LoadAsync(options.Endpoint.AbsoluteUri, cancellationToken).ConfigureAwait(false));
+
+    public async Task ForgetTokenAsync(SamsungIpRemoteOptions options, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try { await tokenStore.RemoveAsync(options.Endpoint.AbsoluteUri, cancellationToken).ConfigureAwait(false); }
+        finally { _gate.Release(); }
+    }
+
+    public Task<SamsungIpRemoteExchange> PairAsync(SamsungIpRemoteOptions options, CancellationToken cancellationToken = default) =>
+        ExecuteAsync(options, "createAccessToken", pairing: true, cancellationToken);
+
+    public Task<SamsungIpRemoteExchange> ReadAsync(SamsungIpRemoteOptions options, string method, CancellationToken cancellationToken = default)
+    {
+        if (!ReadMethods.Contains(method, StringComparer.Ordinal))
+            throw new InvalidOperationException("IP Remote diagnostics allow only getTVStates and getVideoStates. Pairing is a separate explicit action; writes and arbitrary methods are disabled.");
+        return ExecuteAsync(options, method, pairing: false, cancellationToken);
+    }
+
+    private async Task<SamsungIpRemoteExchange> ExecuteAsync(SamsungIpRemoteOptions options, string method, bool pairing, CancellationToken cancellationToken)
+    {
+        var endpoint = options.Endpoint;
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var id = Interlocked.Increment(ref _requestId);
+        var started = DateTimeOffset.UtcNow;
+        var timer = Stopwatch.StartNew();
+        var request = new JsonObject { ["jsonrpc"] = "2.0", ["id"] = id, ["method"] = method };
+        string? responseJson = null;
+        string? fingerprint = null;
+        int? httpStatus = null;
+        var rejectedCertificate = false;
+        string? token = null;
+        var accessingCredentials = false;
+        HttpClient? ownedClient = null;
+        SamsungIpRemoteExchange Complete(SamsungIpRemoteOutcome outcome, string message, JsonObject? result = null, int? code = null) =>
+            new(started, id, method, endpoint.AbsoluteUri, outcome, message,
+                IpRemoteRedactor.Redact(request, token)!.ToJsonString(PrettyJson), responseJson, result,
+                httpStatus, code, timer.ElapsedMilliseconds, fingerprint);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(pairing ? options.PairingTimeout : options.RequestTimeout);
+        try
+        {
+            if (!pairing)
+            {
+                accessingCredentials = true;
+                token = await tokenStore.LoadAsync(endpoint.AbsoluteUri, timeout.Token).ConfigureAwait(false);
+                accessingCredentials = false;
+                if (string.IsNullOrWhiteSpace(token))
+                    return Complete(SamsungIpRemoteOutcome.NotPaired, "No separate IP Remote token is saved for this host and port. Pair explicitly first.");
+                request["params"] = new JsonObject { ["AccessToken"] = token };
+            }
+
+            var client = httpClient;
+            if (client is null)
+            {
+                var handler = new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false };
+                handler.ServerCertificateCustomValidationCallback = (message, certificate, _, errors) =>
+                {
+                    fingerprint = certificate?.GetCertHashString(HashAlgorithmName.SHA256);
+                    var trusted = IsCertificateTrusted(options, message.RequestUri!, certificate, errors);
+                    rejectedCertificate |= !trusted;
+                    return trusted;
+                };
+                ownedClient = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
+                client = ownedClient;
+            }
+
+            using var message = new HttpRequestMessage(HttpMethod.Post, endpoint);
+            message.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            message.Content = new StringContent(request.ToJsonString(), Encoding.UTF8, "application/json");
+            using var response = await client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
+            httpStatus = (int)response.StatusCode;
+            var body = await ReadBoundedResponseAsync(response.Content, timeout.Token).ConfigureAwait(false);
+            JsonObject? envelope = null;
+            JsonObject? safeEnvelope = null;
+            try
+            {
+                envelope = JsonNode.Parse(body) as JsonObject;
+                // Pairing text is always masked, even an unexpected reply, so a
+                // newly issued credential cannot escape via an error/echo field.
+                safeEnvelope = IpRemoteRedactor.Redact(envelope, token, pairing) as JsonObject;
+                responseJson = safeEnvelope?.ToJsonString(PrettyJson) ?? "[Response is not a JSON object; content omitted for credential safety.]";
+            }
+            catch (Exception exception) when (exception is JsonException or ArgumentException or InvalidOperationException)
+            {
+                responseJson = "[Malformed response omitted for credential safety.]";
+            }
+            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+                return Complete(SamsungIpRemoteOutcome.Unauthorized, "The TV rejected IP Remote authorization. No automatic re-pairing or retries were attempted.");
+            if (!response.IsSuccessStatusCode)
+                return Complete(SamsungIpRemoteOutcome.HttpError, $"The TV returned HTTP {httpStatus}. Redirects are not followed.");
+            if (envelope is null || safeEnvelope is null
+                || envelope["jsonrpc"] is not JsonValue version || !version.TryGetValue<string>(out var protocol) || protocol != "2.0"
+                || envelope["id"] is not JsonValue requestId || !requestId.TryGetValue<long>(out var returnedId) || returnedId != id)
+                return Complete(SamsungIpRemoteOutcome.ProtocolError, "The response was not a matching JSON-RPC 2.0 reply. No values or credentials were accepted.");
+            if (envelope.ContainsKey("error"))
+            {
+                if (envelope.ContainsKey("result"))
+                    return Complete(SamsungIpRemoteOutcome.ProtocolError, "The reply contains both result and error; it cannot confirm success.");
+                var code = envelope["error"] is JsonObject error && error["code"] is JsonValue number && number.TryGetValue<int>(out var errorCode)
+                    ? (int?)errorCode : null;
+                var outcome = code switch
+                {
+                    -32010 => SamsungIpRemoteOutcome.Unauthorized,
+                    -32001 or -32601 => SamsungIpRemoteOutcome.Unsupported,
+                    _ => SamsungIpRemoteOutcome.RpcError
+                };
+                return Complete(outcome, $"The TV returned a JSON-RPC error{(code is null ? string.Empty : $" ({code})")}. Support remains context-specific; no retries or fallback keys were sent.", code: code);
+            }
+            if (envelope["result"] is not JsonObject result || safeEnvelope["result"] is not JsonObject safeResult)
+                return Complete(SamsungIpRemoteOutcome.ProtocolError, "The reply has no object-valued result. Missing or unexpected values were not replaced with defaults.");
+            if (pairing)
+            {
+                if (result["AccessToken"] is not JsonValue value || !value.TryGetValue<string>(out var accessToken)
+                    || string.IsNullOrWhiteSpace(accessToken) || accessToken.Length > 16384)
+                    return Complete(SamsungIpRemoteOutcome.ProtocolError, "Pairing did not return a usable AccessToken. No credential was saved.");
+                accessingCredentials = true;
+                await tokenStore.SaveAsync(endpoint.AbsoluteUri, accessToken, timeout.Token).ConfigureAwait(false);
+                accessingCredentials = false;
+                return Complete(SamsungIpRemoteOutcome.Success, "Separate IP Remote token saved. State queries still need to be tested.");
+            }
+            return Complete(SamsungIpRemoteOutcome.Success,
+                $"Received {safeResult.Count} result fields. This is a timestamped response, not a verified control mapping or live subscription.",
+                (JsonObject)safeResult.DeepClone());
+        }
+        catch (OperationCanceledException)
+        {
+            return Complete(cancellationToken.IsCancellationRequested ? SamsungIpRemoteOutcome.Canceled : SamsungIpRemoteOutcome.Timeout,
+                cancellationToken.IsCancellationRequested ? "Request canceled. No follow-up request was sent."
+                    : "The TV did not complete the request before the timeout. Check IP Remote, the TV approval dialog, and LAN/VPN access; retry only when ready.");
+        }
+        catch (HttpRequestException)
+        {
+            return Complete(rejectedCertificate ? SamsungIpRemoteOutcome.CertificateError : SamsungIpRemoteOutcome.TransportError,
+                rejectedCertificate ? "The TV certificate was not trusted. Verify its SHA-256 fingerprint and pin it, or explicitly allow an untrusted certificate for this endpoint only."
+                    : "The HTTPS request failed. Check the IP Remote port, whether the TV is on, and local-network/VPN access.");
+        }
+        catch (ResponseTooLargeException)
+        {
+            return Complete(SamsungIpRemoteOutcome.ProtocolError, "The TV response exceeded the 1 MiB diagnostic limit; content was not retained.");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return Complete(accessingCredentials ? SamsungIpRemoteOutcome.StorageError : SamsungIpRemoteOutcome.TransportError,
+                accessingCredentials ? "Could not read or save the private IP Remote credential file. No automatic retry was attempted."
+                    : "The HTTPS response stream ended unexpectedly. No automatic retry was attempted.");
+        }
+        finally
+        {
+            ownedClient?.Dispose();
+            _gate.Release();
+        }
+    }
+
+    public static bool IsCertificateTrusted(SamsungIpRemoteOptions options, Uri requestEndpoint, X509Certificate2? certificate, SslPolicyErrors errors)
+    {
+        if (certificate is null || requestEndpoint.Scheme != Uri.UriSchemeHttps
+            || !requestEndpoint.Authority.Equals(options.Endpoint.Authority, StringComparison.OrdinalIgnoreCase)) return false;
+        if (options.NormalizedCertificatePin is { } pin)
+            return CryptographicOperations.FixedTimeEquals(Convert.FromHexString(pin), certificate.GetCertHash(HashAlgorithmName.SHA256));
+        return errors == SslPolicyErrors.None || options.AllowUntrustedCertificate;
+    }
+
+    private static async Task<string> ReadBoundedResponseAsync(HttpContent content, CancellationToken cancellationToken)
+    {
+        if (content.Headers.ContentLength > MaximumResponseBytes) throw new ResponseTooLargeException();
+        await using var input = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var output = new MemoryStream();
+        var buffer = new byte[8192];
+        int count;
+        while ((count = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) != 0)
+        {
+            if (output.Length + count > MaximumResponseBytes) throw new ResponseTooLargeException();
+            output.Write(buffer, 0, count);
+        }
+        return Encoding.UTF8.GetString(output.ToArray());
+    }
+
+    private sealed class ResponseTooLargeException : Exception;
+}

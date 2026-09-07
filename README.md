@@ -4,6 +4,8 @@ SamsungController is a local, cross-platform controller for modern Samsung/Tizen
 
 The web interface is the recommended way to use the application. A command-line interface (`samsungctl`) is also included for scripting, terminal use, and diagnostics.
 
+**v1 preview branch:** `feature/ip-remote-v1` starts the next major version at `1.0.0-alpha.1`. The new **IP Remote · Preview** page pairs over a separate HTTPS connection and reads two state queries. It does not yet write settings or replace the existing remote/menu controls. Follow the [IP Remote setup and staged verification guide](docs/ip-remote-preview.md). The stable release remains v0.3.0; this branch will not be merged into `main` until explicitly approved.
+
 ## Features
 
 - Secure (`wss://`, normally port 8002) and non-secure (`ws://`, normally port 8001) Samsung connections

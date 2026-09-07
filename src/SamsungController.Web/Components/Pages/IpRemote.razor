@@ -1,0 +1,255 @@
+@page "/ip-remote"
+@implements IDisposable
+@using SamsungController.Core.IpRemote
+@inject SamsungIpRemoteService IpRemoteController
+@inject IJSRuntime JavaScript
+
+<PageTitle>IP Remote Preview · SamsungController</PageTitle>
+
+<section class="page-heading compact-heading">
+    <div>
+        <span class="eyebrow">v@(SamsungIpRemoteService.Version) · PHASE A</span>
+        <h1>IP Remote diagnostics</h1>
+        <p>A separate, direct HTTPS connection. Pair and inspect TV-reported data before we implement setting writes.</p>
+    </div>
+</section>
+
+<div class="notice">
+    <strong>Read-only preview</strong>
+    <span>The Connect status and quick-access buttons above belong to the existing WebSocket remote. This page does not use them. Pairing saves a separate credential; it does not establish a persistent connection. No setting writes, polling, fallback keys, or calibration imports occur here.</span>
+</div>
+@if (Error is not null)
+{
+    <div class="notice danger" role="alert"><strong>IP Remote action failed</strong><span>@Error</span></div>
+}
+@if (Snapshot.StorageWarning is not null)
+{
+    <div class="notice danger" role="alert">@Snapshot.StorageWarning</div>
+}
+
+<div class="ip-remote-workspace">
+    <section class="panel ip-step">
+        <h2>1. Choose a display and context</h2>
+        <p>Enable <strong>IP Remote</strong> on the TV first. These annotations describe the test conditions; they are not automatically detected or applied to the TV.</p>
+        @if (Snapshot.Profiles.Count > 0)
+        {
+            <label>Saved IP Remote profiles
+                <select aria-label="Saved IP Remote profiles" value="@(Snapshot.ActiveProfile?.Endpoint ?? "")" @onchange="SelectProfileAsync" disabled="@Snapshot.IsBusy">
+                    @if (Snapshot.ActiveProfile is null) { <option value="" disabled>Choose a saved profile…</option> }
+                    @foreach (var profile in Snapshot.Profiles)
+                    {
+                        <option value="@profile.Endpoint">@(string.IsNullOrWhiteSpace(profile.Model) ? "Display" : profile.Model) · @profile.Endpoint</option>
+                    }
+                </select>
+            </label>
+        }
+        <fieldset disabled="@Snapshot.IsBusy">
+            <div class="ip-fields">
+                <label>TV IP address or hostname<input aria-label="TV IP address or hostname" @bind="Host" @bind:event="oninput" placeholder="192.168.1.100" autocomplete="off" /></label>
+                <label>HTTPS port<input type="number" min="1" max="65535" aria-label="HTTPS port" @bind="Port" /></label>
+                <label>Model<input aria-label="Model" @bind="Model" @bind:event="oninput" placeholder="S95F / Odyssey G9…" /></label>
+                <label>Firmware<input aria-label="Firmware" @bind="Firmware" @bind:event="oninput" /></label>
+                <label>Input source<input aria-label="Input source" @bind="InputSource" @bind:event="oninput" placeholder="HDMI 1 / app…" /></label>
+                <label>Picture mode<input aria-label="Picture mode" @bind="PictureMode" @bind:event="oninput" /></label>
+                <label class="ip-wide">Signal / other conditions<input aria-label="Signal / other conditions" @bind="Signal" @bind:event="oninput" placeholder="SDR, RGB, 8-bit; record what is actually being sent" /></label>
+            </div>
+            <details class="ip-security">
+                <summary>Certificate trust and timeouts</summary>
+                <p>System certificate validation is the default. A verified SHA-256 pin takes precedence over the opt-in below, and applies only to this saved host and port. A fingerprint shown after a failed handshake identifies the responding server, not proof that it is your TV.</p>
+                <label>Trusted certificate SHA-256 fingerprint<input aria-label="Certificate SHA-256 fingerprint" @bind="CertificatePin" @bind:event="oninput" placeholder="Optional · 64 hex digits" autocomplete="off" /></label>
+                <label class="ip-check"><input type="checkbox" @bind="AllowUntrustedCertificate" /> Allow an untrusted certificate for this endpoint only</label>
+                <p>This opt-in weakens server identity checking. Use it only on a trusted local network; it never disables TLS validation globally.</p>
+                <div class="ip-fields">
+                    <label>Read timeout (seconds)<input type="number" min="1" max="120" @bind="ReadTimeoutSeconds" /></label>
+                    <label>Pairing timeout (seconds)<input type="number" min="1" max="120" @bind="PairingTimeoutSeconds" /></label>
+                </div>
+            </details>
+        </fieldset>
+        <div class="ip-actions">
+            <button class="primary-action" @onclick="SaveAsync" disabled="@(Snapshot.IsBusy || !Snapshot.Initialized)">Save IP Remote profile</button>
+            <button class="toolbar-button" @onclick="NewProfile" disabled="@Snapshot.IsBusy">New display</button>
+            @if (Snapshot.ActiveProfile is not null)
+            {
+                <button class="toolbar-button" @onclick="LoadActiveProfile" disabled="@Snapshot.IsBusy">Discard unsaved edits</button>
+            }
+            @if (!Snapshot.Initialized)
+            {
+                <button class="toolbar-button" @onclick="InitializeAsync">Retry loading profiles</button>
+            }
+        </div>
+        <p>@(IsSaved ? $"Saved endpoint: {Snapshot.ActiveProfile!.Endpoint}" : "Save the profile or discard edits before pairing or reading. This prevents querying an old address or labeling a response with unsaved conditions.")</p>
+    </section>
+
+    <section class="panel ip-step">
+        <h2>2. Pair explicitly</h2>
+        <p>Keep the TV on and watch for its approval dialog. Press Pair once, then accept on the TV. Port 1516 is the initial default; try 1515 only if appropriate for your display. Neither port is scanned automatically.</p>
+        <p class="ip-status"><strong>@TokenStatus</strong></p>
+        <div class="ip-actions">
+            <button class="primary-action" @onclick="PairAsync" disabled="@(!CanAct)">@(Snapshot.HasToken ? "Pair again…" : "Pair with TV")</button>
+            <button class="toolbar-button" @onclick="ForgetAsync" disabled="@(!CanAct || !Snapshot.HasToken)">Forget local IP Remote token…</button>
+            <button class="toolbar-button" @onclick="IpRemoteController.Cancel" disabled="@(!Snapshot.IsBusy)">Cancel request</button>
+        </div>
+        <p role="status" aria-live="polite">@Snapshot.Status</p>
+        @if (LatestCertificate is { } fingerprint)
+        {
+            <p>Last observed server certificate SHA-256:</p>
+            <code class="ip-fingerprint">@fingerprint</code>
+        }
+        <p>Credentials are stored only in the separate per-user <code>ip-remote/tokens.json</code> file. Requests, replies, and this page's diagnostic logs always redact tokens.</p>
+    </section>
+
+    <section class="panel ip-step">
+        <h2>3. Read and compare</h2>
+        <p>Start with a baseline. Later, manually change one TV setting, label the change, and read again in the same saved context. These are historical observations, not live values or verified slider mappings.</p>
+        @if (Snapshot.ActiveProfile is { } savedContext)
+        {
+            <p><strong>Saved comparison context:</strong> @savedContext.Model · @savedContext.Firmware · @savedContext.InputSource · @savedContext.PictureMode · @savedContext.Signal</p>
+        }
+        <label>Observation label<input aria-label="Observation label" @bind="Label" @bind:event="oninput" placeholder="Baseline / manually changed TV Brightness +1 / restored" disabled="@Snapshot.IsBusy" /></label>
+        <div class="ip-actions">
+            <button class="primary-action" @onclick="ReadBothAsync" disabled="@(!CanRead)">Read both state queries</button>
+            @foreach (var method in SamsungIpRemoteClient.ReadMethods)
+            {
+                <button class="toolbar-button" @onclick="() => ReadAsync(method)" disabled="@(!CanRead)">@method</button>
+            }
+        </div>
+        <p><strong>Do not map fields by name yet.</strong> A reported “brightness” field may not represent the modern TV Brightness slider. Backlight/Brightness and Shadow Detail must be checked against actual manual changes. Advanced white balance and custom color support are still unknown.</p>
+        <div class="ip-results">
+            @foreach (var method in SamsungIpRemoteClient.ReadMethods)
+            {
+                var attempts = ContextObservations.Where(item => item.Exchange.Method == method).ToArray();
+                var latest = attempts.LastOrDefault();
+                var previous = attempts.SkipLast(1).LastOrDefault(item => item.Exchange.IsSuccess);
+                <article class="ip-result">
+                    <h3>@method</h3>
+                    <p><strong>@(latest is null ? "Not tested in this session and saved context" : latest.Exchange.Outcome.ToString())</strong> · Writes: disabled / not tested</p>
+                    @if (latest is not null)
+                    {
+                        <p>@latest.Exchange.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz") · @latest.Label · @latest.Exchange.DurationMilliseconds ms</p>
+                        <p>@latest.Exchange.Message</p>
+                        @if (latest.Exchange.IsSuccess && latest.Exchange.Result is { } result)
+                        {
+                            @if (result.Count == 0) { <p>No fields returned. This does not establish any setting's availability.</p> }
+                            <div class="ip-table-scroll">
+                                <table>
+                                    <thead><tr><th>Reported field</th><th>This response (raw JSON)</th><th>Previous successful response</th></tr></thead>
+                                    <tbody>
+                                        @foreach (var key in result.Select(pair => pair.Key).Union(previous?.Exchange.Result?.Select(pair => pair.Key) ?? []).Order(StringComparer.Ordinal))
+                                        {
+                                            var currentValue = FieldValue(result, key);
+                                            var previousValue = FieldValue(previous?.Exchange.Result, key);
+                                            <tr><th>@key</th><td>@currentValue @if (previous is not null && currentValue != previousValue) { <strong> · changed</strong> }</td><td>@previousValue</td></tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            @if (previous is not null) { <p>Compared with @previous.Label at @previous.Exchange.Timestamp.ToLocalTime().ToString("HH:mm:ss"). Missing fields are not carried forward.</p> }
+                        }
+                        else if (previous is not null)
+                        {
+                            <p>Prior success at @previous.Exchange.Timestamp.ToLocalTime().ToString("HH:mm:ss") is stale. No current values are available from this attempt.</p>
+                        }
+                    }
+                </article>
+            }
+        </div>
+    </section>
+
+    <section class="panel ip-step">
+        <h2>Share the evidence</h2>
+        <p>Download the report after testing each display. It includes the last 100 observations across this session, labeled contexts, errors, and redacted request/response JSON. Tokens can never be revealed. Review the file before sharing; model names and free-text annotations remain visible.</p>
+        <label class="ip-check"><input type="checkbox" @bind="RedactIdentifiers" /> Redact IP, MAC, and UUID identifiers in the downloaded report</label>
+        <button class="toolbar-button" @onclick="ExportAsync" disabled="@(Snapshot.Observations.Count == 0 || Snapshot.IsBusy)">Download diagnostic report</button>
+        <details>
+            <summary>Request / response history (@Snapshot.Observations.Count)</summary>
+            @foreach (var observation in Snapshot.Observations.Reverse())
+            {
+                <details class="ip-exchange">
+                    <summary>@observation.Exchange.Timestamp.ToLocalTime().ToString("HH:mm:ss") · @observation.UserEnteredContext.Model · @observation.Label · @observation.Exchange.Method · @observation.Exchange.Outcome</summary>
+                    <p>@observation.Exchange.Endpoint · HTTP @(observation.Exchange.HttpStatus?.ToString() ?? "no reply") · RPC @(observation.Exchange.RpcErrorCode?.ToString() ?? "no error code")</p>
+                    <pre>@observation.Exchange.RequestJson</pre>
+                    <pre>@(observation.Exchange.ResponseJson ?? "No response body received.")</pre>
+                </details>
+            }
+        </details>
+        <p>Session history starts empty after an app restart. The token-redacted append-only log remains in your personal data folder at <code>@IpRemoteController.DiagnosticLogPath</code>. That private log retains device identifiers.</p>
+    </section>
+</div>
+
+@code {
+    private IpRemoteSnapshot Snapshot = new();
+    private string Host = "", Model = "", Firmware = "", InputSource = "", PictureMode = "", Signal = "", CertificatePin = "";
+    private string Label = "Baseline";
+    private string? Error;
+    private int Port = 1516, ReadTimeoutSeconds = 10, PairingTimeoutSeconds = 60;
+    private bool AllowUntrustedCertificate, RedactIdentifiers = true;
+    private bool IsSaved => Snapshot.ActiveProfile == Draft;
+    private bool CanAct => Snapshot.Initialized && IsSaved && !Snapshot.IsBusy;
+    private bool CanRead => CanAct && Snapshot.HasToken && !Snapshot.AuthorizationRejected;
+    private string TokenStatus => Snapshot.AuthorizationRejected ? "Authorization rejected — pair again explicitly when ready"
+        : Snapshot.HasToken ? "Separate IP Remote token saved — reachability not continuously monitored" : "No IP Remote token saved for this endpoint";
+    private IEnumerable<IpRemoteObservation> ContextObservations => Snapshot.Observations.Where(item => item.UserEnteredContext.ContextKey == Snapshot.ActiveProfile?.ContextKey);
+    private string? LatestCertificate => Snapshot.Observations.LastOrDefault(item => item.UserEnteredContext.Endpoint == Snapshot.ActiveProfile?.Endpoint
+        && item.Exchange.ObservedCertificateSha256 is not null)?.Exchange.ObservedCertificateSha256;
+    private IpRemoteProfile Draft => new()
+    {
+        Connection = new SamsungIpRemoteOptions { Host = Host.Trim(), Port = Port, AllowUntrustedCertificate = AllowUntrustedCertificate,
+            CertificateSha256 = string.IsNullOrWhiteSpace(CertificatePin) ? null : CertificatePin.Trim(),
+            RequestTimeout = TimeSpan.FromSeconds(ReadTimeoutSeconds), PairingTimeout = TimeSpan.FromSeconds(PairingTimeoutSeconds) },
+        Model = Model.Trim(), Firmware = Firmware.Trim(), InputSource = InputSource.Trim(), PictureMode = PictureMode.Trim(), Signal = Signal.Trim()
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        IpRemoteController.Changed += Refresh;
+        await InitializeAsync();
+    }
+    private Task InitializeAsync() => GuardAsync(async () => { await IpRemoteController.InitializeAsync(); LoadActiveProfile(); });
+    private void Refresh() => _ = InvokeAsync(() => { Snapshot = IpRemoteController.GetSnapshot(); StateHasChanged(); });
+    private void LoadActiveProfile()
+    {
+        Snapshot = IpRemoteController.GetSnapshot();
+        SetDraft(Snapshot.ActiveProfile ?? new());
+    }
+    private void NewProfile() { Error = null; SetDraft(new()); }
+    private void SetDraft(IpRemoteProfile profile)
+    {
+        Host = profile.Connection.Host; Port = profile.Connection.Port;
+        AllowUntrustedCertificate = profile.Connection.AllowUntrustedCertificate;
+        CertificatePin = profile.Connection.CertificateSha256 ?? "";
+        ReadTimeoutSeconds = (int)profile.Connection.RequestTimeout.TotalSeconds;
+        PairingTimeoutSeconds = (int)profile.Connection.PairingTimeout.TotalSeconds;
+        Model = profile.Model; Firmware = profile.Firmware; InputSource = profile.InputSource; PictureMode = profile.PictureMode; Signal = profile.Signal;
+    }
+    private Task SelectProfileAsync(ChangeEventArgs args) => GuardAsync(async () =>
+    { await IpRemoteController.SelectProfileAsync(args.Value?.ToString() ?? ""); LoadActiveProfile(); });
+    private Task SaveAsync() => GuardAsync(async () => { await IpRemoteController.SaveProfileAsync(Draft); LoadActiveProfile(); });
+    private Task PairAsync() => GuardAsync(async () =>
+    {
+        if (!Snapshot.HasToken || await JavaScript.InvokeAsync<bool>("confirm", "Request a new IP Remote token? Watch for the TV approval prompt. The existing token will be kept unless a new one is successfully saved."))
+            await IpRemoteController.PairAsync();
+    });
+    private Task ForgetAsync() => GuardAsync(async () =>
+    {
+        if (await JavaScript.InvokeAsync<bool>("confirm", "Forget only this endpoint's local IP Remote token? This does not revoke it on the TV or change the WebSocket remote token."))
+            await IpRemoteController.ForgetTokenAsync();
+    });
+    private Task ReadBothAsync() => GuardAsync(() => IpRemoteController.ReadBothAsync(Label));
+    private Task ReadAsync(string method) => GuardAsync(() => IpRemoteController.ReadAsync(method, Label));
+    private Task ExportAsync() => GuardAsync(async () => await JavaScript.InvokeVoidAsync("samsungController.downloadText",
+        $"samsung-ip-remote-{DateTime.Now:yyyyMMdd-HHmmss}.json", IpRemoteController.ExportReport(RedactIdentifiers)));
+    private static string FieldValue(JsonObject? result, string key) => result is not null && result.TryGetPropertyValue(key, out var value)
+        ? value?.ToJsonString() ?? "null" : "Not reported";
+    private async Task GuardAsync(Func<Task> action)
+    {
+        Error = null;
+        try { await action(); }
+        catch (ArgumentException exception) { Error = exception.Message; }
+        catch (InvalidOperationException exception) { Error = exception.Message; }
+        catch (OperationCanceledException) { Error = "Request canceled. No automatic retry was attempted."; }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        { Error = "Could not read or save the separate IP Remote files. Check the personal data folder permissions and profiles.json formatting. Existing remote files were not changed."; }
+        finally { Snapshot = IpRemoteController.GetSnapshot(); }
+    }
+    public void Dispose() => IpRemoteController.Changed -= Refresh;
+}
