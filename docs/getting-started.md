@@ -341,6 +341,11 @@ specific display combination shown at the top.
 8. Never validate a reset or destructive confirmation merely to satisfy
    coverage; they are excluded from required tests.
 
+Accepting the final required check automatically opens **Menu** after the test
+finishes restoring temporary settings and returning the TV to its known state.
+Failed or incomplete checks stay here. You can revisit Display Verification
+after completion to review results or remove an accidental validation.
+
 For **System-wide command timing**, choose the test traversal and read **START
 AT**. **Prepare start** explicitly sends the defined anchor and the path to that
 source, including draft paths that have not yet been verified. Check the TV and

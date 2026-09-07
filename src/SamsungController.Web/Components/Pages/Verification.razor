@@ -1,6 +1,7 @@
 @page "/verification"
 @implements IDisposable
 @inject SamsungControllerService Controller
+@inject NavigationManager PageNavigation
 @using SamsungController.Automation.Navigation
 @using SamsungController.Core.Connection
 
@@ -21,6 +22,7 @@
                 <li>Use <strong>Run guided test</strong> for each remaining representative control behavior. The app opens the right menu and makes a safe, visible adjustment for you.</li>
                 <li>For signal-dependent tests, first set the <strong>physical HDMI source</strong> and the app's <strong>External HDMI Signal</strong> selectors to the bold values on the test line. Confirm the checkbox to unlock that run; the app cannot detect the physical source settings.</li>
                 <li>Count or fail the result on that same line. Use the remote only if the TV needs a manual correction.</li>
+                <li>Accepting the final required check opens <strong>Menu</strong> automatically after any temporary adjustments are restored and the TV returns to its known state.</li>
                 <li>If a result was accepted accidentally, select <strong>Remove validation</strong> on that completed line. Only that local display result is removed.</li>
             </ol>
             <p class="help-callout safe">Equivalent controls and conditional effects are covered by representative behavior classes. Each class is fingerprinted in a local display-verification sidecar, so YAML and JSON structure files remain portable. A relevant structure edit reopens only the affected class.</p>
@@ -539,12 +541,15 @@
 
     private async Task RunAsync(Func<Task> action)
     {
+        var wasFullyVerified = VerificationState.FullyVerified;
+        var actionCompleted = false;
         IsBusy = true;
         ErrorMessage = null;
         StatusMessage = null;
         try
         {
             await action();
+            actionCompleted = true;
         }
         catch (OperationCanceledException)
         {
@@ -558,6 +563,14 @@
         {
             IsBusy = false;
             Refresh();
+        }
+
+        // Wait for the whole action, including restoration/return-to-video,
+        // rather than navigating on an intermediate Controller.Changed event.
+        // A completed profile can still be revisited to inspect/remove results.
+        if (actionCompleted && !wasFullyVerified && VerificationState.FullyVerified)
+        {
+            PageNavigation.NavigateTo("menu");
         }
     }
 

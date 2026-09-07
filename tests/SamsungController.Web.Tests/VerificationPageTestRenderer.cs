@@ -8,9 +8,15 @@ namespace SamsungController.Web.Tests;
 
 // Exercise actual verification-row buttons without connecting a browser to a TV.
 #pragma warning disable BL0006
-internal sealed class VerificationPageTestRenderer(IServiceProvider services)
-    : Renderer(services, NullLoggerFactory.Instance)
+internal sealed class VerificationPageTestRenderer : Renderer
 {
+    public VerificationPageTestRenderer(IServiceProvider services)
+        : this(services, new VerificationNavigationManager()) { }
+
+    private VerificationPageTestRenderer(IServiceProvider services, VerificationNavigationManager navigation)
+        : base(new NavigationServices(services, navigation), NullLoggerFactory.Instance) => Navigation = navigation;
+
+    public VerificationNavigationManager Navigation { get; }
     private int _rootId;
     public override Dispatcher Dispatcher { get; } = Dispatcher.CreateDefault();
     public string LineLabel { get; set; } = "System-wide command timing";
@@ -103,6 +109,28 @@ internal sealed class VerificationPageTestRenderer(IServiceProvider services)
     {
         OnRendered?.Invoke();
         return Task.CompletedTask;
+    }
+
+    private sealed class NavigationServices(IServiceProvider services, NavigationManager navigation) : IServiceProvider
+    {
+        public object? GetService(Type serviceType) => serviceType == typeof(NavigationManager)
+            ? navigation : services.GetService(serviceType);
+    }
+}
+
+internal sealed class VerificationNavigationManager : NavigationManager
+{
+    public VerificationNavigationManager() => Initialize("http://localhost/controller/", "http://localhost/controller/verification");
+    public List<string> Destinations { get; } = [];
+    public Action? OnNavigate { get; set; }
+
+    protected override void NavigateToCore(string uri, bool forceLoad)
+    {
+        Assert.False(forceLoad);
+        OnNavigate?.Invoke();
+        Destinations.Add(uri);
+        Uri = ToAbsoluteUri(uri).AbsoluteUri;
+        NotifyLocationChanged(false);
     }
 }
 #pragma warning restore BL0006
