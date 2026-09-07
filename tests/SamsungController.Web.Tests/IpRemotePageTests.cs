@@ -61,8 +61,9 @@ public sealed class IpRemotePageTests
         await using var renderer = new IpPageRenderer(services);
         await renderer.StartAsync();
         await renderer.ClickAsync("Read direct contrast");
-        await renderer.ChangeAsync("Target contrast", "44");
-        await renderer.SetCheckboxAsync("Confirm direct picture conditions", true);
+        await renderer.AssertInputPresentAsync("Target contrast", false);
+        await renderer.AssertInputPresentAsync("Confirm direct picture conditions", false);
+        await renderer.AssertDisabledAsync("Prepare contrast verification (read only)", false);
         await renderer.AssertDisabledAsync("Apply direct contrast", true);
         Assert.Empty(fixture.Display.Writes);
         await fixture.VerifyAsync();
@@ -149,6 +150,61 @@ public sealed class IpRemotePageTests
         await renderer.ClickAsync("Read direct contrast");
         await renderer.AssertCheckboxAsync("Confirm direct picture conditions", false);
         Assert.Equal(2, fixture.Service.GetSnapshot().ControlCapabilities.Count);
+    }
+
+    [Theory]
+    [InlineData("color", "Color")]
+    [InlineData("sharpness", "Sharpness")]
+    public async Task UnverifiedDirectControlOffersReadOnlyPreparationAndItsOwnWorkingTest(string control, string name)
+    {
+        using var fixture = await ContrastFixture.CreateAsync();
+        await fixture.VerifyAsync();
+        fixture.Display.Requests.Clear();
+        var javascript = new DownloadJavaScript { Confirm = false };
+        await using var services = new ServiceCollection().AddLogging().AddSingleton(fixture.Service)
+            .AddSingleton<IJSRuntime>(javascript).BuildServiceProvider();
+        await using var renderer = new IpPageRenderer(services);
+        await renderer.StartAsync();
+        await renderer.SelectControlAsync(control);
+        await renderer.ClickAsync($"Read direct {control}");
+        await renderer.AssertDisabledAsync($"Apply direct {control}", true);
+        await renderer.AssertInputPresentAsync("Confirm direct picture conditions", false);
+        await renderer.AssertInputPresentAsync($"Target {control}", false);
+        await renderer.AssertTextAsync($"{name} needs its own one-step test");
+        await renderer.ClickAsync($"Prepare {control} verification (read only)");
+        Assert.Equal(1, javascript.ScrollCalls);
+        Assert.All(fixture.Display.Methods, method => Assert.StartsWith("get", method));
+        Assert.Equal(control, fixture.Service.GetSnapshot().PictureTest!.Control);
+        await renderer.AssertDisabledAsync($"Apply one-step {control} test", true);
+        await renderer.SetCheckboxAsync("Confirm picture test conditions", true);
+        await renderer.AssertDisabledAsync($"Apply one-step {control} test", false);
+        await renderer.AssertDisabledAsync($"Apply direct {control}", true);
+        await renderer.ClickAsync($"Apply one-step {control} test");
+        await renderer.ClickAsync("Matches — restore original");
+        await renderer.ClickAsync($"Read direct {control}");
+        await renderer.AssertInputPresentAsync("Confirm direct picture conditions", true);
+        await renderer.AssertInputPresentAsync($"Target {control}", true);
+        await renderer.SetCheckboxAsync("Confirm direct picture conditions", true);
+        await renderer.ChangeAsync($"Target {control}", (fixture.Service.GetSnapshot().DirectPictureReading!.Value + 1).ToString());
+        await renderer.AssertDisabledAsync($"Apply direct {control}", false);
+        Assert.Equal(0, javascript.ConfirmCalls);
+    }
+
+    [Fact]
+    public async Task EvidenceFromAnotherReportedModeStillOffersVerificationInsteadOfDirectConsent()
+    {
+        using var fixture = await ContrastFixture.CreateAsync();
+        await fixture.VerifyAsync();
+        fixture.Display.Mode = "Standard";
+        await using var services = new ServiceCollection().AddLogging().AddSingleton(fixture.Service)
+            .AddSingleton<IJSRuntime>(new DownloadJavaScript()).BuildServiceProvider();
+        await using var renderer = new IpPageRenderer(services);
+        await renderer.StartAsync();
+        await renderer.ClickAsync("Read direct contrast");
+        await renderer.AssertInputPresentAsync("Confirm direct picture conditions", false);
+        await renderer.AssertDisabledAsync("Apply direct contrast", true);
+        await renderer.AssertDisabledAsync("Prepare contrast verification (read only)", false);
+        await renderer.AssertTextAsync("Direct Contrast is locked because its one-step verification is not complete");
     }
 
     [Fact]
@@ -351,9 +407,11 @@ public sealed class IpRemotePageTests
         public string Download { get; private set; } = "";
         public bool Confirm { get; set; } = true;
         public int ConfirmCalls { get; private set; }
+        public int ScrollCalls { get; private set; }
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
         {
             if (identifier == "confirm") ConfirmCalls++;
+            if (identifier == "samsungController.scrollToElement") ScrollCalls++;
             if (identifier == "samsungController.downloadText") Download = (string)args![1]!;
             return ValueTask.FromResult(identifier == "confirm" ? (TValue)(object)Confirm : default!);
         }
@@ -382,6 +440,8 @@ public sealed class IpRemotePageTests
         public Task AssertDisabledAsync(string label, bool expected) => Dispatcher.InvokeAsync(() => Assert.Equal(expected,
             Button(label).Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "disabled" && frame.AttributeValue is true)));
         public Task AssertTextAsync(string expected) => Dispatcher.InvokeAsync(() => Assert.Contains(expected, Text(Frames), StringComparison.Ordinal));
+        public Task AssertInputPresentAsync(string label, bool expected) => Dispatcher.InvokeAsync(() => Assert.Equal(expected,
+            Frames.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == label)));
         public Task ChangeAsync(string label, string value) => Dispatcher.InvokeAsync(async () =>
         {
             var frames = Frames;

@@ -206,21 +206,34 @@
         {
             <div class="ip-contrast-values"><span>Last TV read <strong>@reading.Value</strong></span></div>
             <p>@reading.ReadAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz") · @reading.ReportedInput · @reading.ReportedPictureMode. This is a timestamped reading, not continuous monitoring.</p>
-            <fieldset disabled="@(!CanRead || PendingPicture)">
-                <label>Target @ControlName
-                    <span class="ip-direct-input">
-                        <button class="toolbar-button" aria-label="@($"Lower staged {SelectedControl}")" @onclick="() => NudgeDirectTarget(-1)" disabled="@(DirectTarget is null or <= 0)">−</button>
-                        <input type="number" min="0" max="100" step="1" aria-label="@($"Target {SelectedControl}")" @bind="DirectTarget" @bind:event="oninput" />
-                        <button class="toolbar-button" aria-label="@($"Raise staged {SelectedControl}")" @onclick="() => NudgeDirectTarget(1)" disabled="@(DirectTarget is null or >= 100)">+</button>
-                    </span>
-                </label>
-                <label class="ip-check"><input type="checkbox" aria-label="Confirm direct picture conditions" @bind="DirectConditionsConfirmed" />
-                    I am using the verified display/input, picture mode, and external signal conditions, and will choose targets within this TV's actual range.</label>
-            </fieldset>
-            <p>The protocol permits integers 0–100; this is <strong>not</strong> a claim about the TV's actual maximum. Use only values available on the TV. Read again after two minutes or after changing conditions.</p>
+            @if (HasVerifiedDirectReading)
+            {
+                <fieldset disabled="@(!CanRead || PendingPicture)">
+                    <label>Target @ControlName
+                        <span class="ip-direct-input">
+                            <button class="toolbar-button" aria-label="@($"Lower staged {SelectedControl}")" @onclick="() => NudgeDirectTarget(-1)" disabled="@(DirectTarget is null or <= 0)">−</button>
+                            <input type="number" min="0" max="100" step="1" aria-label="@($"Target {SelectedControl}")" @bind="DirectTarget" @bind:event="oninput" />
+                            <button class="toolbar-button" aria-label="@($"Raise staged {SelectedControl}")" @onclick="() => NudgeDirectTarget(1)" disabled="@(DirectTarget is null or >= 100)">+</button>
+                        </span>
+                    </label>
+                    <label class="ip-check"><input type="checkbox" aria-label="Confirm direct picture conditions" @bind="DirectConditionsConfirmed" />
+                        I am using the verified display/input, picture mode, and external signal conditions, and will choose targets within this TV's actual range.</label>
+                </fieldset>
+                <p>The protocol permits integers 0–100; this is <strong>not</strong> a claim about the TV's actual maximum. Use only values available on the TV. Read again after two minutes or after changing conditions.</p>
+            }
         }
-        <button class="primary-action" @onclick="ApplyDirectAsync" disabled="@(DirectApplyDisabledReason is not null)">Apply direct @SelectedControl</button>
+        <div class="ip-actions">
+            <button class="primary-action" @onclick="ApplyDirectAsync" disabled="@(DirectApplyDisabledReason is not null)" title="@DirectApplyDisabledReason">Apply direct @SelectedControl</button>
+            @if (NeedsDirectVerification)
+            {
+                <button class="primary-action" @onclick="PrepareDirectVerificationAsync" disabled="@(!CanRead || PendingPicture)">Prepare @SelectedControl verification (read only)</button>
+            }
+        </div>
         @if (DirectApplyDisabledReason is { } directReason) { <p class="ip-read-blocked">@directReason</p> }
+        @if (NeedsDirectVerification)
+        {
+            <p><strong>@ControlName needs its own one-step test before direct adjustment.</strong> A conditions checkbox confirms the test setup; it does not mark the control verified. Prepare verification, confirm the starting value in the guided test below, then use <strong>Apply one-step @SelectedControl test</strong>. Check the TV value and restore the original to finish. Preparing verification does not change any setting.</p>
+        }
         @if (Snapshot.PictureTest is { Purpose: IpRemotePicturePurpose.DirectAdjustment } adjustment)
         {
             <div class="ip-contrast-result @(adjustment.RequiresRecovery ? "failure" : "")" role="status" aria-live="polite">
@@ -236,7 +249,7 @@
         <p>Apply and Undo send immediately when selected, without an extra browser confirmation. Undo is optional and explicit. It checks the original context and current value before restoring; it never overwrites an unrelated newer value. Only the latest direct operation is undoable. Stop does not undo a delivered write; unresolved operations use the recovery controls below. No changes are copied into the existing Menu/calibration workflow.</p>
     </section>
 
-    <section class="panel ip-step" id="contrast-test">
+    <section class="panel ip-step" id="contrast-test" @ref="GuidedTestSection">
         <h2>5. Guided @ControlName test and recovery</h2>
         <p>Read the current @ControlName value, lower it by <strong>1</strong> (or raise 0 to 1), check its actual value on the TV, then restore the original. Support must be verified on each display. No other setting or navigation key is sent.</p>
         <p><strong>Keep the TV/input, picture mode, and external signal unchanged until restoration is confirmed.</strong> The app checks reported input/mode and other returned video fields; it cannot detect every signal condition or prevent changes made with another remote.</p>
@@ -319,17 +332,22 @@
     private bool PictureConditionsConfirmed;
     private bool DirectConditionsConfirmed;
     private bool InteractiveReady;
+    private ElementReference GuidedTestSection;
     private int? DirectTarget;
     private string SelectedControl = "contrast";
     private string ControlName => SamsungIpRemotePictureControl.Get(SelectedControl).Name;
     private IpRemotePictureReading? DirectReading => Snapshot.DirectPictureReading is { } reading && reading.Profile == Snapshot.ActiveProfile && reading.Control == SelectedControl ? reading : null;
     private IReadOnlyList<IpRemoteControlCapability> ContextCapabilities => Snapshot.ControlCapabilities
         .Where(item => item.Control == SelectedControl && item.Profile.ContextKey == Snapshot.ActiveProfile?.ContextKey && item.ReadVerified && item.WriteVerified).ToArray();
+    private bool HasVerifiedDirectReading => DirectReading is { } reading && Snapshot.ControlCapabilities
+        .Any(item => item.Matches(reading.Profile, reading.ReportedInput, reading.ReportedPictureMode, reading.Control));
+    private bool NeedsDirectVerification => Snapshot.ActiveProfile is not null
+        && (DirectReading is not null ? !HasVerifiedDirectReading : ContextCapabilities.Count == 0);
     private string? DirectApplyDisabledReason => !CanRead ? ReadDisabledReason
         : PendingPicture ? "Finish or recover the pending picture operation first."
+        : NeedsDirectVerification ? $"Direct {ControlName} is locked because its one-step verification is not complete for this display/input/mode/signal. Use Prepare {SelectedControl} verification next to Apply."
         : DirectReading is not { } reading ? $"Read direct {SelectedControl} to get a fresh starting value."
         : DateTimeOffset.UtcNow - reading.ReadAt > TimeSpan.FromMinutes(2) ? $"This reading is over two minutes old. Read direct {SelectedControl} again."
-        : !Snapshot.ControlCapabilities.Any(item => item.Matches(reading.Profile, reading.ReportedInput, reading.ReportedPictureMode, reading.Control)) ? "Direct writes are locked for this reported input/mode and saved context. Complete its guided verification first."
         : DirectTarget is null or < 0 or > 100 ? "Enter an integer target within the protocol envelope and the TV's actual range."
         : DirectTarget == reading.Value ? "Choose a different target. Editing it sends no command."
         : !DirectConditionsConfirmed ? "Confirm the target and unchanged TV/input/mode/signal conditions before applying."
@@ -445,10 +463,13 @@
         if (CanRead && adjustment.Profile == Snapshot.ActiveProfile)
             await IpRemoteController.UndoDirectPictureAsync(adjustment.Id, true);
     });
-    private Task PreparePictureAsync() => GuardAsync(async () =>
+    private Task PreparePictureAsync() => PreparePictureAsync(scrollToTest: false);
+    private Task PrepareDirectVerificationAsync() => PreparePictureAsync(scrollToTest: true);
+    private Task PreparePictureAsync(bool scrollToTest) => GuardAsync(async () =>
     {
         PictureConditionsConfirmed = false;
         await IpRemoteController.PreparePictureTestAsync(SelectedControl);
+        if (scrollToTest) await JavaScript.InvokeVoidAsync("samsungController.scrollToElement", GuidedTestSection);
     });
     private Task ApplyPictureAsync(IpRemotePictureTest test) => GuardAsync(async () =>
     {

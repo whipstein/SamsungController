@@ -142,7 +142,7 @@ Cancellation/timeout/failure after a possible write uses the same private origin
 These are **candidates awaiting your hardware verification**, not capabilities inferred from Contrast. The [reference client](https://github.com/iloveicedgreentea/py-samsungtv/blob/master/pysamsungtv/client.py) defines `colorControl` with `params.color` and `sharpnessControl` with `params.sharpness`. A matching protocol name does not establish this display's actual behavior or range.
 
 1. Keep the same saved TV profile, input, picture mode, and signal. In **4. Direct picture controls**, choose **Color** from **Picture control**. This selection sends nothing.
-2. In **5. Guided Color test and recovery**, select **Prepare color test (read only)**.
+2. Next to the locked **Apply direct color** button, select **Prepare color verification (read only)**. This reads the baseline and scrolls to **5. Guided Color test and recovery**, without changing a setting. You can also use **Prepare color test (read only)** directly in that section.
 3. Check the original Color number on the TV and the proposed one-step target. If it reads 25, the test proposes 24. Check the inline conditions box only if both values are valid and the original matches.
 4. Select **Apply one-step color test**. It rechecks, sends one Color change, and reads back. The app stops for you to inspect the actual Color number.
 5. Select **Matches — restore original**, or **Does not match — restore original** if it is incorrect. Wait for restoration readback before continuing. A successful test unlocks Color only for the matching context.
@@ -150,6 +150,8 @@ These are **candidates awaiting your hardware verification**, not capabilities i
 7. Download the diagnostic report after both tests. Existing Contrast verification stays saved throughout. Each verified control can then be selected, read, adjusted, and optionally undone using section 7.
 
 A pending write or interrupted test blocks selecting/writing another control until recovery is resolved. Readback checks exclude only the control being tested: changes to Contrast while testing Color, for example, stop the operation. Both the recovery journal and capability evidence record the exact control. Old local journals without a `Control` field retain their original Contrast meaning.
+
+**Why is Apply direct disabled?** Reading Color is not verification, and checking a conditions box only confirms the setup. Each control needs its own successful one-step change, independent readback, visual confirmation, and restoration. Until that is complete for the actual display/input/mode/signal context, the page offers **Prepare verification** instead of the direct target editor and conditions checkbox. During verification, use **Apply one-step color test**, not **Apply direct color**. After the test passes, read the control again to reveal its direct editor.
 
 Brightness/backlight/Shadow Detail, Tint, white balance, and custom-color calibration remain disabled for direct writes; their mapping and capabilities need separate investigation. This step does not add polling, bulk apply, menu navigation, resets, or changes to the existing calibration workflow.
 
