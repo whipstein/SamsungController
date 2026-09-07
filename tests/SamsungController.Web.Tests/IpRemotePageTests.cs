@@ -502,6 +502,16 @@ public sealed class IpRemotePageTests
             await DispatchEventAsync(select.Single(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == eventName).AttributeEventHandlerId,
                 new EventFieldInfo { ComponentId = _root, FieldValue = value }, new ChangeEventArgs { Value = value });
         });
+        public Task SelectAsync(string label, string value) => Dispatcher.InvokeAsync(async () =>
+        {
+            var frames = Frames;
+            var select = frames.Select((frame, index) => (frame, index)).Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "select")
+                .Select(item => frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray())
+                .Single(item => item.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == label));
+            Assert.DoesNotContain(select, frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "disabled" && frame.AttributeValue is true);
+            await DispatchEventAsync(select.Single(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "onchange").AttributeEventHandlerId,
+                new EventFieldInfo { ComponentId = _root, FieldValue = value }, new ChangeEventArgs { Value = value });
+        });
         private static string Text(IEnumerable<RenderTreeFrame> frames) => string.Concat(frames.Select(frame => frame.FrameType switch
         { RenderTreeFrameType.Text => frame.TextContent, RenderTreeFrameType.Markup => frame.MarkupContent, _ => "" }));
         protected override void HandleException(Exception exception) => throw exception;

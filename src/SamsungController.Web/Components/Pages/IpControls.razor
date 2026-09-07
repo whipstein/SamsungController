@@ -1,4 +1,5 @@
 @page "/ip-controls"
+@using SamsungController.Web.Components.Shared
 @implements IDisposable
 @using SamsungController.Core.IpRemote
 @inject SamsungIpRemoteService Controller
@@ -13,6 +14,7 @@
 
 @if (Error is not null) { <div class="notice danger" role="alert"><strong>Action stopped</strong><span>@Error</span></div> }
 @if (Snapshot.StorageWarning is not null) { <div class="notice danger" role="alert">@Snapshot.StorageWarning</div> }
+@if (Snapshot.CommandTrial?.RequiresReview == true) { <p class="notice danger">A command needs review before more writes. <a href="ip-commands">Open IP Commands</a>.</p> }
 @if (Snapshot.PictureTest is { RequiresRecovery: true } recovery)
 {
     <div class="notice danger" role="alert"><strong>@recovery.ControlName may have changed · original @recovery.Original</strong>
@@ -54,12 +56,13 @@
                 <fieldset disabled="@(!CanEdit(control.Id))">
                     <label for="@($"workspace-{control.Id}")">Target</label>
                     <div class="target-editor">
-                        <button class="toolbar-button" aria-label="@($"Decrease {control.Name} target")" @onclick="() => Nudge(control.Id, -1)" disabled="@(Target(control.Id) is null or <= 0)">−</button>
-                        <input id="@($"workspace-{control.Id}")" aria-label="@($"{control.Name} target")" type="number" min="0" max="100" step="1"
+                        <button class="toolbar-button" aria-label="@($"Decrease {control.Name} target")" @onclick="() => Nudge(control.Id, -1)" disabled="@(Target(control.Id) is null || Target(control.Id) <= Range(control.Id).Minimum)">−</button>
+                        <input id="@($"workspace-{control.Id}")" aria-label="@($"{control.Name} target")" type="number" min="@Range(control.Id).Minimum" max="@Range(control.Id).Maximum" step="1"
                                value="@Target(control.Id)" @oninput="args => SetTarget(control.Id, args)" />
-                        <button class="toolbar-button" aria-label="@($"Increase {control.Name} target")" @onclick="() => Nudge(control.Id, 1)" disabled="@(Target(control.Id) is null or >= 100)">+</button>
+                        <button class="toolbar-button" aria-label="@($"Increase {control.Name} target")" @onclick="() => Nudge(control.Id, 1)" disabled="@(Target(control.Id) is null || Target(control.Id) >= Range(control.Id).Maximum)">+</button>
                     </div>
                 </fieldset>
+                <p>Allowed target: @Range(control.Id).Minimum–@Range(control.Id).Maximum</p>
                 @if (original is not null && !verified)
                 { <a href="ip-remote#direct-contrast">Open setup, then select @control.Name to verify</a> }
                 else if (IsDirty(control.Id)) { <p class="pending-note">Pending · not sent</p> }
@@ -76,6 +79,8 @@
     <p class="workspace-note">The 0–100 input limit is a protocol envelope, not a verified TV range. Apply reads before each write and checks readback afterward.
         Stop prevents subsequent requests; it does not undo delivered changes. No automatic rollback, retry, pairing, polling, or remote-key fallback.</p>
 </section>
+
+<IpRemoteRanges Snapshot="Snapshot" />
 
 @if (Snapshot.PictureBatch is { } batch)
 {
@@ -121,8 +126,9 @@
     private int FileInputKey;
     private bool IsCurrentReading => DisplayedReading is not null && Snapshot.WorkspaceReading?.Id == DisplayedReading.Id && DisplayedReading.Profile == Snapshot.ActiveProfile;
     private bool CanWork => InteractiveReady && Snapshot.Initialized && Snapshot.ActiveProfile is not null && Snapshot.HasToken && !Snapshot.AuthorizationRejected
-        && !Snapshot.IsBusy && Snapshot.PictureTest?.RequiresRecovery != true;
+        && !Snapshot.IsBusy && Snapshot.PictureTest?.RequiresRecovery != true && Snapshot.CommandTrial?.RequiresReview != true;
     private int? Target(string control) => Targets.GetValueOrDefault(control);
+    private IpRemoteValueRange Range(string control) => Snapshot.ActiveProfile?.RangeFor(control) ?? new(0, 100);
     private bool IsDirty(string control) => DisplayedReading?.Value(control) is { } original && Target(control) != original;
     private int PendingCount => SamsungIpRemotePictureControl.All.Count(control => IsDirty(control.Id));
     private bool IsVerified(string control) => DisplayedReading is { } read && Snapshot.ControlCapabilities.Any(item => item.Matches(read.Profile, read.ReportedInput, read.ReportedPictureMode, control));
@@ -134,9 +140,10 @@
         : Snapshot.ActiveProfile is null || !Snapshot.HasToken || Snapshot.AuthorizationRejected ? "Select and pair an IP Remote display in Setup & verification first."
         : Snapshot.IsBusy ? "An IP Remote operation is running. Stop prevents further requests."
         : Snapshot.PictureTest?.RequiresRecovery == true ? "Resolve the pending setting recovery before more changes."
+        : Snapshot.CommandTrial?.RequiresReview == true ? "Review the pending command on IP Commands before more writes."
         : !IsCurrentReading ? "Refresh TV values before applying. Pending targets are retained when the context matches."
         : DateTimeOffset.UtcNow - DisplayedReading!.ReadAt > TimeSpan.FromMinutes(2) ? "The reading is over two minutes old. Refresh and review before applying."
-        : SamsungIpRemotePictureControl.All.Any(control => DisplayedReading!.Value(control.Id) is not null && Target(control.Id) is null or < 0 or > 100) ? "Enter integer targets within the TV's actual range (protocol limit 0–100)."
+        : SamsungIpRemotePictureControl.All.Any(control => IsDirty(control.Id) && !Range(control.Id).Contains(Target(control.Id))) ? "Enter targets within the configured display ranges. Edit Allowed picture ranges to match the limits on your TV."
         : PendingCount == 0 ? "No pending changes. Editing a target sends nothing."
         : SamsungIpRemotePictureControl.All.Any(control => IsDirty(control.Id) && !IsVerified(control.Id)) ? "Verify every changed control for this display/context first."
         : !ConditionsConfirmed ? "Confirm the unchanged display/input/mode/signal conditions before applying."
@@ -184,7 +191,7 @@
     }
     private void Nudge(string control, int delta)
     {
-        if (CanEdit(control) && Target(control) is { } value) Targets[control] = Math.Clamp(value + delta, 0, 100);
+        if (CanEdit(control) && Target(control) is { } value) Targets[control] = Math.Clamp(value + delta, Range(control).Minimum, Range(control).Maximum);
     }
     private void ConfirmConditions(ChangeEventArgs args)
     {
@@ -200,7 +207,7 @@
     {
         if (!CanWork || !IsCurrentReading) throw new InvalidOperationException("Refresh the matching display before staging values.");
         foreach (var item in values)
-            if (DisplayedReading!.Value(item.Key) is null || item.Value is < 0 or > 100 || (item.Value != DisplayedReading.Value(item.Key) && !IsVerified(item.Key)))
+            if (DisplayedReading!.Value(item.Key) is null || !Range(item.Key).Contains(item.Value) || (item.Value != DisplayedReading.Value(item.Key) && !IsVerified(item.Key)))
                 throw new InvalidOperationException($"{item.Key} is missing or unverified in this context, or its target is invalid. No values were staged.");
         foreach (var item in values) Targets[item.Key] = item.Value;
         ConditionsConfirmed = false;
@@ -242,6 +249,7 @@
     {
         IpRemoteBatchStepStage.Confirmed => "Confirmed by readback · kept on TV",
         IpRemoteBatchStepStage.Uncertain => "Uncertain · check recovery",
+        IpRemoteBatchStepStage.RejectedUnchanged => "Rejected · original confirmed unchanged",
         IpRemoteBatchStepStage.NotSent => "Not sent", _ => stage.ToString()
     };
     private async Task GuardAsync(Func<Task> action)

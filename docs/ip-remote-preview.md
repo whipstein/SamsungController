@@ -18,7 +18,7 @@ The supplied IP Remote handoff is design background. This repository is C#/.NET,
 - Preserves unknown fields. Missing fields say **Not reported**, not zero, false, or a previous value. A successful empty result does not prove any control is available.
 - Provides cancellation, finite timeouts, redacted request/response history, and a downloadable report.
 
-Only the guarded Contrast, Color, and Sharpness workflows can write settings; a Contrast pass does not authorize Color or Sharpness direct adjustments. The preview does not infer other control mappings, discover TVs, scan ports, poll in the background, subscribe to picture changes, retrieve menu trees or screenshots, issue reset/calibration commands, or automatically fall back to remote keys. It does not alter menu definitions, verification sidecars, saved calibration values, or predicted menu position.
+The guarded picture workspace still contains only Contrast, Color, and Sharpness; each needs independent verification. A separate **IP Commands** page now offers controlled testing of the [24 documented command families](ip-remote-commands.md), including other picture fields, modes, sound, sources, channels, IP keys, apps and power. The preview does not infer unknown mappings, discover TVs or scan ports, poll in the background, retrieve menu trees/screenshots, issue reset/calibration commands, or automatically fall back to remote keys. It does not alter menu definitions, verification sidecars, saved calibration values, or predicted menu position.
 
 ## 1. Start the working branch
 
@@ -154,7 +154,7 @@ A pending write or interrupted test blocks selecting/writing another control unt
 
 **Why is Apply direct disabled?** Reading Color is not verification, and checking a conditions box only confirms the setup. Each control needs its own successful one-step change, independent readback, visual confirmation, and restoration. Until that is complete for the actual display/input/mode/signal context, the page offers **Prepare verification** instead of the direct target editor and conditions checkbox. During verification, use **Apply one-step color test**, not **Apply direct color**. After the test passes, read the control again to reveal its direct editor.
 
-Brightness/backlight/Shadow Detail, Tint, white balance, and custom-color calibration remain disabled for direct writes; their mapping and capabilities need separate investigation. There is no polling, menu navigation, reset, or integration with the existing calibration workflow. The next section combines only the three already supported controls.
+The next section combines only the three established picture controls. **IP Commands** now exposes controlled tests for the documented Brightness/Tint protocol fields, but does not map them to modern menu labels or enable advanced calibration. White balance/custom color remain unimplemented without protocol evidence. See the [command-testing guide](ip-remote-commands.md) for the wider catalog and its safety boundaries.
 
 ## 9. Use the combined direct picture workspace
 
@@ -225,12 +225,15 @@ Use the app's download to obtain your exact context strings. A preset may includ
 
 ## Files, privacy, and troubleshooting
 
+For configurable picture limits, the corrected Sharpness rejection behavior, and the new command-testing workflow, see [IP Commands and out-of-range values](ip-remote-commands.md).
+
 Files live in an `ip-remote` subdirectory of the same personal configuration root used by the web app, honoring `SamsungController:ConfigurationDirectory` if configured:
 
 | File | Contents |
 | --- | --- |
 | `tokens.json` | IP Remote credentials, keyed by HTTPS endpoint; private, never share |
 | `profiles.json` | Saved endpoint/trust options and user-entered context; no tokens |
+| `command-tests.json` | Current prepared command/review and latest 100 reviewed trials, with exact parameters and before/after state; no token. Startup never resumes an action. |
 | `diagnostics.ndjson` | Append-only timestamped, token-redacted observations; device identifiers retained |
 | `contrast-test.json` | Historical filename retained for recovery across preview upgrades; the `Control` field identifies the latest Contrast, Color, or Sharpness verification or direct adjustment: original/target, context, readback/visual outcome, kept/undo state, and restart recovery; no token |
 | `control-capabilities.json` | Independent control- and context-specific read/write evidence, tested value pair, and source test ID; no token |
@@ -297,6 +300,10 @@ If a read fails:
 - [x] Exercise batch partial failure, cancellation, storage failure, restart recovery, preset parsing, and component interactions with simulated TV responses.
 - [ ] User verifies the combined Apply/previous-values/preset/Stop workflow on the display using the section 9 checkpoint.
 - [ ] Extend additional controls only after their own field mapping and reversible-write verification.
+- [x] Add a closed, typed catalog for all 24 documented method families and an explicit prepare/send-once/review screen; retain separate established-picture gates.
+- [x] Persist command review/evidence, distinguish acknowledgment/user observation/readback verification, and support typed device lists without invented IDs.
+- [x] Handle explicit picture rejection with read-only unchanged-state checks; add persisted user-defined picture ranges and regression tests for the reported Sharpness 74 failure.
+- [ ] Verify the newly exposed command families and experimental Brightness/Tint mapping on the real display; no new hardware compatibility is implied by protocol tests.
 - [ ] Add bounded state polling only if useful and proven safe; do not assume subscriptions exist.
 - [ ] Investigate advanced white balance and custom-color methods independently, including any special mode/authorization requirements.
 - [ ] Revisit integration with existing menu/calibration workflows using evidence, not implicit fallback.

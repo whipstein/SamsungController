@@ -1,0 +1,16 @@
+.command-panel { padding: 1.5rem; margin-bottom: 1.25rem; min-width: 0; }
+.command-panel p { line-height: 1.6; }
+.command-panel h2 { font-size: 1.35rem; }
+.command-panel label { display: grid; gap: .5rem; margin: .75rem 0; font-weight: 600; }
+.command-panel input, .command-panel select { font: inherit; max-width: 100%; }
+.command-panel fieldset { border: 0; padding: 0; min-width: 0; }
+.command-toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .75rem; }
+.command-fields, .command-state-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: 1rem; }
+.command-json { background: var(--surface-2); padding: 1rem; border-radius: .6rem; max-height: 24rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.command-warning { color: var(--amber); font-weight: 700; }
+.command-panel .command-consent { display: flex; align-items: center; gap: .75rem; }
+.command-consent input { width: auto; flex-shrink: 0; }
+.command-table { overflow-x: auto; }
+.command-panel table { width: 100%; border-collapse: collapse; text-align: left; }
+.command-panel th, .command-panel td { padding: .6rem; border-bottom: 1px solid var(--line); }
+.command-panel summary { font-size: 1.1rem; font-weight: 600; cursor: pointer; }

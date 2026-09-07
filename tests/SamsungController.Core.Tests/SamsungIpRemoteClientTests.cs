@@ -406,7 +406,7 @@ public sealed class SamsungIpRemoteClientTests
         tokens.Values[Options.Endpoint.AbsoluteUri] = Token;
         return tokens;
     }
-    private sealed class MemoryTokens : ISamsungTokenStore
+    internal sealed class MemoryTokens : ISamsungTokenStore
     {
         public Dictionary<string, string> Values { get; } = [];
         public bool FailSave { get; init; }
@@ -419,7 +419,7 @@ public sealed class SamsungIpRemoteClientTests
         }
         public Task RemoveAsync(string host, CancellationToken cancellationToken = default) { Values.Remove(host); return Task.CompletedTask; }
     }
-    private sealed class RpcHandler(Func<JsonObject, CancellationToken, Task<HttpResponseMessage>> respond) : HttpMessageHandler
+    internal sealed class RpcHandler(Func<JsonObject, CancellationToken, Task<HttpResponseMessage>> respond) : HttpMessageHandler
     {
         public List<JsonObject> Requests { get; } = [];
         public List<Uri> Endpoints { get; } = [];

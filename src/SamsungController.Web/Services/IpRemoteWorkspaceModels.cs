@@ -15,7 +15,7 @@ public sealed record IpRemoteWorkspaceReading(Guid Id, IpRemoteProfile Profile, 
 public enum IpRemoteBatchStage { Running, Completed, Stopped }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
-public enum IpRemoteBatchStepStage { Pending, Checking, Applying, Confirmed, NotSent, Uncertain }
+public enum IpRemoteBatchStepStage { Pending, Checking, Applying, Confirmed, NotSent, Uncertain, RejectedUnchanged }
 
 public sealed record IpRemoteBatchStep(string Control, int Original, int Target, Guid OperationId,
     IpRemoteBatchStepStage Stage = IpRemoteBatchStepStage.Pending);

@@ -13,8 +13,22 @@ public sealed record IpRemoteProfile
     public string InputSource { get; init; } = "";
     public string PictureMode { get; init; } = "";
     public string Signal { get; init; } = "";
+    public IpRemoteRangeSettings ControlRanges { get; init; } = new();
+    public IpRemoteValueRange RangeFor(string control) => ControlRanges.For(control);
     [JsonIgnore] public string Endpoint => Connection.Endpoint.AbsoluteUri;
     [JsonIgnore] public string ContextKey => JsonSerializer.Serialize(new[] { Endpoint, Model, Firmware, InputSource, PictureMode, Signal });
+}
+
+public sealed record IpRemoteValueRange(int Minimum, int Maximum)
+{
+    public bool Contains(int? value) => value is not null && value >= Minimum && value <= Maximum;
+}
+
+public sealed record IpRemoteRangeSettings(IpRemoteValueRange? Contrast = null, IpRemoteValueRange? Color = null, IpRemoteValueRange? Sharpness = null)
+{
+    public IpRemoteValueRange For(string control) => (control switch { "contrast" => Contrast, "color" => Color, "sharpness" => Sharpness, _ => null }) ?? new(0, 100);
+    public IpRemoteRangeSettings With(string control, IpRemoteValueRange range) => control switch
+    { "contrast" => this with { Contrast = range }, "color" => this with { Color = range }, "sharpness" => this with { Sharpness = range }, _ => throw new ArgumentException("Unknown picture control.") };
 }
 
 public sealed record IpRemoteObservation(IpRemoteProfile UserEnteredContext, string Label, SamsungIpRemoteExchange Exchange);
@@ -35,6 +49,9 @@ public sealed record IpRemoteSnapshot
     public IpRemotePictureReading? DirectPictureReading { get; init; }
     public IpRemoteWorkspaceReading? WorkspaceReading { get; init; }
     public IpRemotePictureBatch? PictureBatch { get; init; }
+    public IpRemoteCommandTrial? CommandTrial { get; init; }
+    public IReadOnlyList<IpRemoteCommandTrial> CommandHistory { get; init; } = [];
+    public IpRemoteCatalogQuery? CatalogQuery { get; init; }
 }
 
 public sealed record IpRemotePictureReading(Guid Id, IpRemoteProfile Profile, DateTimeOffset ReadAt,
@@ -94,8 +111,9 @@ public sealed record IpRemotePictureTest
     public bool RestorationConfirmed { get; init; }
     public bool ManuallyClosed { get; init; }
     public bool DirectChangeKept { get; init; }
+    public bool RejectedUnchanged { get; init; }
     public int? LastReadback { get; init; }
-    public bool RequiresRecovery => WriteAttempted && !RestorationConfirmed && !ManuallyClosed && !DirectChangeKept;
+    public bool RequiresRecovery => WriteAttempted && !RestorationConfirmed && !ManuallyClosed && !DirectChangeKept && !RejectedUnchanged;
     public bool Verified => Purpose == IpRemotePicturePurpose.Verification && ChangeReadbackConfirmed
         && VisualConfirmed == true && RestoreAcknowledged && RestorationConfirmed && !ManuallyClosed;
 }

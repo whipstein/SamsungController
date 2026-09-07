@@ -1,0 +1,204 @@
+@page "/ip-commands"
+@implements IDisposable
+@using SamsungController.Core.IpRemote
+@inject SamsungIpRemoteService Controller
+
+<PageTitle>IP Commands · SamsungController</PageTitle>
+<section class="page-heading compact-heading">
+    <div><span class="eyebrow">IP REMOTE · EXPLICIT COMMAND TESTS</span><h1>IP Commands</h1>
+        <p>The documented command families in one place. Availability depends on the actual display, firmware, input and mode.</p></div>
+    <a class="toolbar-button" href="ip-remote">Pairing &amp; diagnostics</a>
+</section>
+@if (Error is not null) { <div class="notice danger" role="alert">@Error</div> }
+@if (Snapshot.StorageWarning is not null) { <div class="notice danger" role="alert">@Snapshot.StorageWarning</div> }
+@if (Snapshot.PictureTest?.RequiresRecovery == true)
+{ <p class="notice danger">Resolve the pending picture write before sending another command. <a href="ip-remote#contrast-test">Open recovery</a></p> }
+
+<section class="panel command-panel">
+    <div class="command-toolbar"><h2>@(Snapshot.ActiveProfile?.Model ?? "Select a paired IP Remote display in setup")</h2>
+        <button class="toolbar-button" @onclick="Controller.Cancel" disabled="@(!Snapshot.IsBusy)">Stop request</button></div>
+    <p>Profile: @Snapshot.ActiveProfile?.InputSource · @Snapshot.ActiveProfile?.PictureMode · @Snapshot.ActiveProfile?.Signal.
+        The old WebSocket connection/menu-position indicator is separate and is not updated by these commands.</p>
+    <label>Command<select aria-label="Documented IP command" value="@SelectedMethod" @onchange="SelectCommand" disabled="@(!Interactive || Snapshot.IsBusy || Pending)">
+        @foreach (var group in SamsungIpRemoteCommands.All.GroupBy(item => item.Group))
+        { <optgroup label="@group.Key">@foreach (var command in group) { <option value="@command.Method">@command.Name</option> }</optgroup> }
+    </select></label>
+    <p><code>@Definition.Method</code> · @Definition.Notes</p>
+    @if (Definition.ManagedPictureControl is not null)
+    { <p>Already supported by the guarded picture workflow. <a href="ip-controls">Open Direct picture controls</a>. This tester cannot bypass its verification or allowed ranges.</p> }
+    else
+    {
+        @if (Definition.CanQuery)
+        {
+            <button class="toolbar-button" @onclick="QueryAsync" disabled="@(!CanRead)">Read/list @Definition.Name</button>
+            @if (Snapshot.CatalogQuery is { } query && query.Profile == Snapshot.ActiveProfile && query.Exchange.Method == SelectedMethod)
+            {
+                <p>@query.Exchange.Outcome · @query.Exchange.Timestamp.ToLocalTime().ToString("HH:mm:ss") · @query.Exchange.Message</p>
+                <pre class="command-json">@((query.Exchange.Payload ?? query.Exchange.Result)?.ToJsonString(PrettyJson) ?? "No result available.")</pre>
+                @if (Definition.DeviceList && query.Exchange.Payload is JsonArray devices)
+                {
+                    <label>Returned device<select aria-label="Returned IP device" @onchange="ChooseDevice" disabled="@(!CanPrepare)">
+                        <option value="">Choose an actual returned device…</option>
+                        @for (var i = 0; i < devices.Count; i++)
+                        { <option value="@i">@devices[i]?["deviceName"] · @devices[i]?["deviceId"]</option> }
+                    </select></label>
+                }
+            }
+        }
+        @if (!Definition.IsReadOnly)
+        {
+            <fieldset disabled="@(!CanPrepare)">
+                <div class="command-fields">
+                @foreach (var field in Definition.Parameters)
+                {
+                    <label>@field.Name @(field.Optional ? "(optional)" : "")
+                    @if (field.Kind == IpRemoteParameterKind.Choice)
+                    {
+                        <select aria-label="@($"Command {field.Name}")" value="@Values.GetValueOrDefault(field.Name)" @onchange="args => ChangeValue(field.Name, args)">
+                            @foreach (var choice in field.Choices) { <option value="@choice">@choice</option> }
+                        </select>
+                    }
+                    else
+                    {
+                        <input aria-label="@($"Command {field.Name}")" type="@(field.Kind is IpRemoteParameterKind.Integer or IpRemoteParameterKind.Channel ? "number" : "text")"
+                            min="@field.Minimum" max="@(field.Kind == IpRemoteParameterKind.Channel ? 999 : field.Maximum)" step="1"
+                            readonly="@Definition.DeviceList" value="@Values.GetValueOrDefault(field.Name)" @oninput="args => ChangeValue(field.Name, args)" />
+                    }
+                    </label>
+                }
+                </div>
+                @if (ParameterError is not null) { <p class="command-warning">@ParameterError</p> }
+                <button class="toolbar-button" @onclick="PrepareAsync" disabled="@(ParameterError is not null)">Prepare command (read only)</button>
+            </fieldset>
+            <label class="command-consent"><input type="checkbox" aria-label="Confirm documented command" checked="@Confirmed" @onchange="ConfirmConditions" disabled="@(!CanPrepare || !PlanMatches)" />
+                I checked the exact parameters and TV conditions. This command may change settings, switch input/mode, open an app, or turn off/restart the display. I can check and handle its effect manually.</label>
+            <button class="primary-action" @onclick="ExecuteAsync" disabled="@(!CanPrepare || !PlanMatches || !Confirmed)">Send prepared command once</button>
+            <p>No automatic retries, rollback, resets, method probing or fallback remote keys. Changing any parameter requires preparing again. Opening this page sends nothing.</p>
+        }
+    }
+</section>
+
+@if (Snapshot.CommandTrial is { } trial)
+{
+    <section class="panel command-panel" aria-label="Current IP command review">
+        <h2>@SamsungIpRemoteCommands.Get(trial.Method).Name · @trial.Stage</h2>
+        <p>@trial.Profile.Model · @trial.PreparedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</p>
+        <pre class="command-json">@trial.Parameters.ToJsonString(PrettyJson)</pre>
+        <p class="@(trial.ReadbackMatches == false || trial.Stage == IpRemoteCommandStage.Uncertain ? "command-warning" : "")" role="status">@trial.Message</p>
+        <p>Readback: @(trial.ReadbackMatches is true ? "matched" : trial.ReadbackMatches is false ? "mismatch" : "not confirmed") ·
+            @(trial.ReadWriteVerified ? "Read/write + user verified" : trial.VisualConfirmed == true ? "User-confirmed effect only; no read/write verification" : "Not verified")</p>
+        <details><summary>Original state and after-command readback</summary>
+            <div class="command-state-grid">
+                <div><h3>Before TV/video</h3><pre class="command-json">@trial.BeforeTv.ToJsonString(PrettyJson)
+@trial.BeforeVideo.ToJsonString(PrettyJson)</pre></div>
+                <div><h3>After TV/video</h3><pre class="command-json">@(trial.AfterTv?.ToJsonString(PrettyJson) ?? "Not read")
+@(trial.AfterVideo?.ToJsonString(PrettyJson) ?? "Not read")</pre></div>
+            </div>
+        </details>
+        @if (trial.RequiresReview)
+        {
+            <p>Check the actual TV. Successful commands keep their result; this does not restore the original. If a change was unwanted, restore it with your physical remote before closing as handled. Closing a review sends nothing.</p>
+            <button class="primary-action" @onclick="() => ReviewAsync(true)" disabled="@(Snapshot.IsBusy || !trial.Acknowledged || trial.ReadbackMatches == false)">Observed expected effect — keep</button>
+            <button class="toolbar-button" @onclick="() => ReviewAsync(false)" disabled="@Snapshot.IsBusy">Checked / handled manually — close without verification</button>
+        }
+    </section>
+}
+
+<section class="panel command-panel">
+    <h2>Command coverage for this profile</h2>
+    <p>Reported below per exact command parameters and original context in the saved history—not proof of every available value. Unknown methods are never guessed.</p>
+    <div class="command-table"><table><thead><tr><th>Command</th><th>Evidence</th></tr></thead><tbody>
+        @foreach (var command in SamsungIpRemoteCommands.All)
+        {
+            var history = Snapshot.CommandHistory.LastOrDefault(item => item.Method == command.Method && item.Profile.ContextKey == Snapshot.ActiveProfile?.ContextKey);
+            <tr><td>@command.Name<br /><code>@command.Method</code></td><td>@(command.IsReadOnly ? "Read-only query" : command.ManagedPictureControl is not null ? "See picture verification" : history?.ReadWriteVerified == true ? "Readback + user confirmed (last tested values)" : history?.VisualConfirmed == true ? "User-confirmed effect only" : history is not null ? "Last test unsuccessful" : "Not tested")</td></tr>
+        }
+    </tbody></table></div>
+    <p class="command-warning">White balance / 20-point, custom color-space calibration, gamma, HDR processing and other advanced menu settings have no confirmed direct method in this catalog. They remain unavailable here; the older menu-key workflow is not invoked automatically.</p>
+</section>
+
+@code {
+    private static readonly JsonSerializerOptions PrettyJson = new() { WriteIndented = true };
+    private IpRemoteSnapshot Snapshot = new();
+    private string SelectedMethod = "getTVStates";
+    private Dictionary<string, string> Values = new(StringComparer.Ordinal);
+    private JsonNode? SelectedDeviceId;
+    private bool Interactive, Confirmed;
+    private string? Error;
+    private SamsungIpRemoteCommand Definition => SamsungIpRemoteCommands.Get(SelectedMethod);
+    private bool Pending => Snapshot.CommandTrial?.RequiresReview == true || Snapshot.PictureTest?.RequiresRecovery == true;
+    private bool CanRead => Interactive && Snapshot.Initialized && Snapshot.ActiveProfile is not null && Snapshot.HasToken && !Snapshot.AuthorizationRejected && !Snapshot.IsBusy;
+    private bool CanPrepare => CanRead && !Pending;
+    private string? ParameterError
+    {
+        get { try { _ = Parameters(); return null; } catch (ArgumentException error) { return error.Message; } }
+    }
+    private bool PlanMatches => ParameterError is null && Snapshot.CommandTrial is { Stage: IpRemoteCommandStage.Prepared } trial
+        && trial.Method == SelectedMethod && trial.Profile == Snapshot.ActiveProfile && JsonNode.DeepEquals(trial.Parameters, Parameters())
+        && DateTimeOffset.UtcNow - trial.PreparedAt <= TimeSpan.FromMinutes(2);
+    protected override async Task OnInitializedAsync()
+    { Controller.Changed += Refresh; await GuardAsync(() => Controller.InitializeAsync()); LoadFields(); }
+    protected override void OnAfterRender(bool firstRender)
+    { if (firstRender) { Interactive = true; StateHasChanged(); } }
+    private void Refresh() => _ = InvokeAsync(() =>
+    {
+        var next = Controller.GetSnapshot();
+        if (next.CommandTrial?.Id != Snapshot.CommandTrial?.Id || next.ActiveProfile != Snapshot.ActiveProfile) Confirmed = false;
+        Snapshot = next; StateHasChanged();
+    });
+    private void SelectCommand(ChangeEventArgs args)
+    {
+        if (!Interactive || Snapshot.IsBusy || Pending) return;
+        var method = args.Value?.ToString();
+        if (!SamsungIpRemoteCommands.All.Any(item => item.Method == method)) return;
+        SelectedMethod = method!; Confirmed = false; Error = null; LoadFields();
+    }
+    private void LoadFields()
+    { Values = Definition.Parameters.ToDictionary(field => field.Name, field => field.Kind == IpRemoteParameterKind.Choice ? field.Choices[0] : ""); SelectedDeviceId = null; }
+    private void ChangeValue(string field, ChangeEventArgs args)
+    { if (CanPrepare) { Values[field] = args.Value?.ToString() ?? ""; Confirmed = false; } }
+    private void ConfirmConditions(ChangeEventArgs args) { if (CanPrepare && PlanMatches) Confirmed = args.Value is true; }
+    private void ChooseDevice(ChangeEventArgs args)
+    {
+        if (!CanPrepare || Snapshot.CatalogQuery?.Exchange.Payload is not JsonArray devices || !int.TryParse(args.Value?.ToString(), out var index) || index < 0 || index >= devices.Count) return;
+        SelectedDeviceId = devices[index]?["deviceId"]?.DeepClone();
+        Values["deviceId"] = SelectedDeviceId?.ToString() ?? "";
+        Values["deviceName"] = devices[index]?["deviceName"]?.ToString() ?? "";
+        Confirmed = false;
+    }
+    private JsonObject Parameters()
+    {
+        var parameters = new JsonObject();
+        foreach (var field in Definition.Parameters)
+        {
+            var text = Values.GetValueOrDefault(field.Name, "");
+            if (field.Optional && string.IsNullOrWhiteSpace(text)) continue;
+            if (field.Kind == IpRemoteParameterKind.Integer)
+            {
+                if (!int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number)) throw new ArgumentException($"Enter an integer {field.Name}.");
+                parameters[field.Name] = number;
+            }
+            else if (field.Kind == IpRemoteParameterKind.DeviceId) parameters[field.Name] = SelectedDeviceId?.DeepClone();
+            else parameters[field.Name] = text;
+        }
+        return Definition.Validate(parameters, query: Definition.IsReadOnly);
+    }
+    private Task QueryAsync() => GuardAsync(() => Controller.QueryCatalogAsync(SelectedMethod));
+    private Task PrepareAsync() => GuardAsync(async () => { Confirmed = false; await Controller.PrepareCatalogCommandAsync(SelectedMethod, Parameters()); });
+    private Task ExecuteAsync() => GuardAsync(async () =>
+    {
+        if (!CanPrepare || !Confirmed || !PlanMatches) throw new InvalidOperationException("Prepare and confirm the exact current command first.");
+        await Controller.ExecutePreparedCatalogCommandAsync(Snapshot.CommandTrial!.Id, Confirmed);
+    });
+    private Task ReviewAsync(bool passed) => GuardAsync(() => Controller.ConfirmCatalogCommandAsync(Snapshot.CommandTrial!.Id, passed));
+    private async Task GuardAsync(Func<Task> action)
+    {
+        Error = null;
+        try { await action(); }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or NotSupportedException) { Error = error.Message; }
+        catch (OperationCanceledException) { Error = "Stopped. No automatic retry or restoration was sent."; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { Error = "Could not read/save the private command tests. Check file access and the actual TV; do not discard pending review data."; }
+        finally { Snapshot = Controller.GetSnapshot(); }
+    }
+    public void Dispose() => Controller.Changed -= Refresh;
+}

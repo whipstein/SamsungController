@@ -25,8 +25,9 @@ public sealed partial class SamsungIpRemoteService
             throw new InvalidOperationException("Read the direct control again before applying: the reading is missing, stale, or belongs to a different profile.");
         if (!conditionsConfirmed)
             throw new InvalidOperationException("Confirm that the target is valid on this TV and that input, picture mode, and signal conditions are unchanged.");
-        if (target is < 0 or > 100 || target == read.Value)
-            throw new InvalidOperationException("Choose a different integer within the protocol envelope 0–100 and this TV's actual range. No write was sent.");
+        var range = profile.RangeFor(read.Control);
+        if (!range.Contains(target) || target == read.Value)
+            throw new InvalidOperationException($"Choose a different {read.Control} value within the configured range {range.Minimum}–{range.Maximum}. No write was sent.");
         if (!GetSnapshot().ControlCapabilities.Any(item => item.Matches(profile, read.ReportedInput, read.ReportedPictureMode, read.Control)))
             throw new InvalidOperationException($"Direct {read.Control} is locked: complete its guarded verification for this display, firmware, annotated conditions, and reported input/mode first.");
 

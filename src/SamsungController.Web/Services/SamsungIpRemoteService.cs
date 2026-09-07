@@ -50,12 +50,14 @@ public sealed partial class SamsungIpRemoteService : IDisposable
                     || profile.InputSource is null || profile.PictureMode is null || profile.Signal is null)
                     throw new JsonException("An IP Remote profile has invalid fields.");
                 _ = profile.Connection.Endpoint;
+                ValidateControlRanges(profile);
             }
             var active = saved.Profiles.FirstOrDefault(profile => profile.Endpoint == saved.ActiveEndpoint);
             var hasToken = active is not null && await _client.HasTokenAsync(active.Connection).ConfigureAwait(false);
             var test = await LoadPictureTestAsync().ConfigureAwait(false);
             var capabilities = await LoadControlCapabilitiesAsync().ConfigureAwait(false);
             var batch = await LoadPictureBatchAsync(test).ConfigureAwait(false);
+            var commands = await LoadCommandTestsAsync().ConfigureAwait(false);
             Update(state => state with
             {
                 Initialized = true,
@@ -64,6 +66,8 @@ public sealed partial class SamsungIpRemoteService : IDisposable
                 HasToken = hasToken,
                 PictureTest = test,
                 PictureBatch = batch,
+                CommandTrial = commands.Current,
+                CommandHistory = commands.History,
                 ControlCapabilities = capabilities
             });
             // Upgrade a locally completed test, never a shared diagnostic report.
@@ -76,6 +80,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
     public async Task SaveProfileAsync(IpRemoteProfile profile)
     {
         _ = profile.Endpoint;
+        ValidateControlRanges(profile);
         await EnterAsync().ConfigureAwait(false);
         try
         {
@@ -95,6 +100,13 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             });
         }
         finally { _gate.Release(); }
+    }
+
+    private static void ValidateControlRanges(IpRemoteProfile profile)
+    {
+        if (profile.ControlRanges is null || SamsungIpRemotePictureControl.All.Select(item => profile.RangeFor(item.Id))
+            .Any(range => range.Minimum < 0 || range.Maximum > 100 || range.Minimum >= range.Maximum))
+            throw new ArgumentException("Picture ranges must name supported controls and have a minimum below the maximum, within 0–100.");
     }
 
     public async Task SelectProfileAsync(string endpoint)
@@ -199,7 +211,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             Format = "SamsungController.IPRemote.Diagnostics.v1",
             Version,
             ExportedAt = DateTimeOffset.UtcNow,
-            Safety = "Explicit pairing, two getters, guarded Contrast/Color/Sharpness verification, and control/context-gated individual or sequential batch adjustments. Each batch row has preflight and independent readback; failure stops later rows without rollback, retry, or restart resume. Presets stage targets only. Setter acknowledgments alone are not verification. No other writes, polling, or fallback keys.",
+            Safety = "Explicit pairing, guarded Contrast/Color/Sharpness controls and configured ranges, plus a closed catalog of documented command families. Other commands require a saved baseline, exact-parameter confirmation, one send, and manual review; independent field readback is recorded where available. No automatic retry, rollback, restart resume, polling, or fallback keys. Explicit picture RPC rejections permit read-only unchanged-value checks; ambiguous writes still need recovery.",
             Context = "Model, firmware, input, picture mode, and signal annotations are user-entered, not TV-reported unless also present in the response.",
             CurrentProfile = snapshot.ActiveProfile,
             snapshot.Observations,
@@ -208,12 +220,16 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             snapshot.DirectPictureReading,
             snapshot.WorkspaceReading,
             snapshot.PictureBatch,
+            snapshot.CommandTrial,
+            snapshot.CommandHistory,
+            snapshot.CatalogQuery,
+            CommandCatalog = SamsungIpRemoteCommands.All.Select(command => new { command.Method, command.Name, command.CanQuery, command.ReadbackField, command.Notes }),
             Methods = SamsungIpRemoteClient.ReadMethods.Select(method => new
             {
                 Method = method,
                 LastAttempt = snapshot.Observations.LastOrDefault(item => item.UserEnteredContext.ContextKey == snapshot.ActiveProfile?.ContextKey
                     && item.Exchange.Method == method)?.Exchange,
-                WriteCapability = "See ControlCapabilities for separately verified Contrast, Color, and Sharpness evidence per context. All other direct writes are disabled."
+                WriteCapability = "See ControlCapabilities for the guarded picture workflows and CommandHistory for parameter/context-specific command tests. Acknowledgment or user confirmation without field readback is not read/write verification."
             }),
             Unresolved = new[] { "Verify readback against manual TV changes", "Confirm brightness/backlight/shadow-detail mapping", "Advanced white balance and custom color capabilities remain unverified" }
         }, JsonOptions);

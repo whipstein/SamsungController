@@ -1,4 +1,5 @@
 @page "/ip-remote"
+@using SamsungController.Web.Components.Shared
 @implements IDisposable
 @using SamsungController.Core.IpRemote
 @inject SamsungIpRemoteService IpRemoteController
@@ -11,6 +12,7 @@
         <span class="eyebrow">v@(SamsungIpRemoteService.Version) · GUARDED DIRECT PICTURE CONTROLS</span>
         <h1>IP Remote diagnostics</h1>
         <a class="toolbar-button" href="ip-controls">Open direct picture workspace</a>
+        <a class="toolbar-button" href="ip-commands">Test documented IP commands</a>
         <p>A separate, direct HTTPS connection. Read TV-reported data, verify each picture control, then apply explicit direct adjustments.</p>
     </div>
 </section>
@@ -19,7 +21,9 @@
     <strong>Isolated IP Remote preview</strong>
     <span>The Connect status and quick-access buttons above belong to the existing WebSocket remote. Pairing here saves a separate credential; it does not establish a persistent connection. Only the guarded Contrast, Color, and Sharpness workflows below can write a setting. No polling, fallback keys, resets, or calibration imports occur here.</span>
 </div>
-@if (PendingPicture)
+@if (Snapshot.CommandTrial?.RequiresReview == true)
+{ <p class="notice danger">An IP command needs review before further writes or profile changes. <a href="ip-commands">Open IP Commands</a>.</p> }
+@if (Snapshot.PictureTest?.RequiresRecovery == true)
 {
     <div class="notice danger" role="alert"><strong>@Snapshot.PictureTest!.ControlName restoration pending — original @Snapshot.PictureTest.Original</strong><span>Keep the original TV, input, picture mode, and signal unchanged. Finish or recover the picture operation below before leaving. Cancel stops requests; it does not undo a write. The original is saved privately for restart recovery.</span><a href="#contrast-test">Go to picture recovery</a></div>
 }
@@ -171,6 +175,7 @@
         </div>
     </section>
 
+    <IpRemoteRanges Snapshot="Snapshot" />
     <section class="panel ip-step" id="direct-contrast">
         <h2>4. Direct picture controls</h2>
         <label>Picture control
@@ -212,15 +217,15 @@
                 <fieldset disabled="@(!CanRead || PendingPicture)">
                     <label>Target @ControlName
                         <span class="ip-direct-input">
-                            <button class="toolbar-button" aria-label="@($"Lower staged {SelectedControl}")" @onclick="() => NudgeDirectTarget(-1)" disabled="@(DirectTarget is null or <= 0)">−</button>
-                            <input type="number" min="0" max="100" step="1" aria-label="@($"Target {SelectedControl}")" @bind="DirectTarget" @bind:event="oninput" />
-                            <button class="toolbar-button" aria-label="@($"Raise staged {SelectedControl}")" @onclick="() => NudgeDirectTarget(1)" disabled="@(DirectTarget is null or >= 100)">+</button>
+                            <button class="toolbar-button" aria-label="@($"Lower staged {SelectedControl}")" @onclick="() => NudgeDirectTarget(-1)" disabled="@(DirectTarget is null || DirectTarget <= DirectRange.Minimum)">−</button>
+                            <input type="number" min="@DirectRange.Minimum" max="@DirectRange.Maximum" step="1" aria-label="@($"Target {SelectedControl}")" @bind="DirectTarget" @bind:event="oninput" />
+                            <button class="toolbar-button" aria-label="@($"Raise staged {SelectedControl}")" @onclick="() => NudgeDirectTarget(1)" disabled="@(DirectTarget is null || DirectTarget >= DirectRange.Maximum)">+</button>
                         </span>
                     </label>
                     <label class="ip-check"><input type="checkbox" aria-label="Confirm direct picture conditions" @bind="DirectConditionsConfirmed" />
                         I am using the verified display/input, picture mode, and external signal conditions, and will choose targets within this TV's actual range.</label>
                 </fieldset>
-                <p>The protocol permits integers 0–100; this is <strong>not</strong> a claim about the TV's actual maximum. Use only values available on the TV. Read again after two minutes or after changing conditions.</p>
+                <p>Configured range: <strong>@DirectRange.Minimum–@DirectRange.Maximum</strong>. Set Allowed picture ranges above to the limits shown on your TV. The default 0–100 is only a protocol envelope, not a detected maximum. Read again after two minutes or after changing conditions.</p>
             }
         }
         <div class="ip-actions">
@@ -337,6 +342,7 @@
     private int? DirectTarget;
     private string SelectedControl = "contrast";
     private string ControlName => SamsungIpRemotePictureControl.Get(SelectedControl).Name;
+    private IpRemoteValueRange DirectRange => Snapshot.ActiveProfile?.RangeFor(SelectedControl) ?? new(0, 100);
     private IpRemotePictureReading? DirectReading => Snapshot.DirectPictureReading is { } reading && reading.Profile == Snapshot.ActiveProfile && reading.Control == SelectedControl ? reading : null;
     private IReadOnlyList<IpRemoteControlCapability> ContextCapabilities => Snapshot.ControlCapabilities
         .Where(item => item.Control == SelectedControl && item.Profile.ContextKey == Snapshot.ActiveProfile?.ContextKey && item.ReadVerified && item.WriteVerified).ToArray();
@@ -349,11 +355,11 @@
         : NeedsDirectVerification ? $"Direct {ControlName} is locked because its one-step verification is not complete for this display/input/mode/signal. Use Prepare {SelectedControl} verification next to Apply."
         : DirectReading is not { } reading ? $"Read direct {SelectedControl} to get a fresh starting value."
         : DateTimeOffset.UtcNow - reading.ReadAt > TimeSpan.FromMinutes(2) ? $"This reading is over two minutes old. Read direct {SelectedControl} again."
-        : DirectTarget is null or < 0 or > 100 ? "Enter an integer target within the protocol envelope and the TV's actual range."
+        : !DirectRange.Contains(DirectTarget) ? $"Enter an integer within the configured {ControlName} range {DirectRange.Minimum}–{DirectRange.Maximum}."
         : DirectTarget == reading.Value ? "Choose a different target. Editing it sends no command."
         : !DirectConditionsConfirmed ? "Confirm the target and unchanged TV/input/mode/signal conditions before applying."
         : null;
-    private bool PendingPicture => Snapshot.PictureTest?.RequiresRecovery == true;
+    private bool PendingPicture => Snapshot.PictureTest?.RequiresRecovery == true || Snapshot.CommandTrial?.RequiresReview == true;
     private bool IsSaved => Snapshot.ActiveProfile == Draft;
     private bool CanAct => Snapshot.Initialized && IsSaved && !Snapshot.IsBusy;
     private bool CanRead => ReadDisabledReason is null;
@@ -375,7 +381,8 @@
         Connection = new SamsungIpRemoteOptions { Host = Host.Trim(), Port = Port, AllowUntrustedCertificate = AllowUntrustedCertificate,
             CertificateSha256 = string.IsNullOrWhiteSpace(CertificatePin) ? null : CertificatePin.Trim(),
             RequestTimeout = TimeSpan.FromSeconds(ReadTimeoutSeconds), PairingTimeout = TimeSpan.FromSeconds(PairingTimeoutSeconds) },
-        Model = Model.Trim(), Firmware = Firmware.Trim(), InputSource = InputSource.Trim(), PictureMode = PictureMode.Trim(), Signal = Signal.Trim()
+        Model = Model.Trim(), Firmware = Firmware.Trim(), InputSource = InputSource.Trim(), PictureMode = PictureMode.Trim(), Signal = Signal.Trim(),
+        ControlRanges = Snapshot.ActiveProfile?.Connection.Host == Host.Trim() ? Snapshot.ActiveProfile.ControlRanges : new()
     };
 
     protected override async Task OnInitializedAsync()
@@ -452,7 +459,7 @@
     }
     private void NudgeDirectTarget(int delta)
     {
-        if (DirectTarget is { } value) DirectTarget = Math.Clamp(value + delta, 0, 100);
+        if (DirectTarget is { } value) DirectTarget = Math.Clamp(value + delta, DirectRange.Minimum, DirectRange.Maximum);
     }
     private Task ApplyDirectAsync() => GuardAsync(async () =>
     {

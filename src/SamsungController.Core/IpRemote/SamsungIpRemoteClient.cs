@@ -51,7 +51,14 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
         return ExecuteAsync(options, definition.Method, pairing: false, cancellationToken, definition, value);
     }
 
-    private async Task<SamsungIpRemoteExchange> ExecuteAsync(SamsungIpRemoteOptions options, string method, bool pairing, CancellationToken cancellationToken, SamsungIpRemotePictureControl? control = null, int? requestedValue = null)
+    public Task<SamsungIpRemoteExchange> ExecuteCommandAsync(SamsungIpRemoteOptions options, string method, JsonObject parameters, bool query = false, CancellationToken cancellationToken = default)
+    {
+        var command = SamsungIpRemoteCommands.Get(method);
+        var values = command.Validate(parameters, query);
+        return ExecuteAsync(options, method, false, cancellationToken, commandParameters: values, catalogCommand: command);
+    }
+
+    private async Task<SamsungIpRemoteExchange> ExecuteAsync(SamsungIpRemoteOptions options, string method, bool pairing, CancellationToken cancellationToken, SamsungIpRemotePictureControl? control = null, int? requestedValue = null, JsonObject? commandParameters = null, SamsungIpRemoteCommand? catalogCommand = null)
     {
         var endpoint = options.Endpoint;
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -64,12 +71,14 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
         int? httpStatus = null;
         var rejectedCertificate = false;
         string? token = null;
+        JsonNode? resultPayload = null;
         var accessingCredentials = false;
         HttpClient? ownedClient = null;
         SamsungIpRemoteExchange Complete(SamsungIpRemoteOutcome outcome, string message, JsonObject? result = null, int? code = null) =>
             new(started, id, method, endpoint.AbsoluteUri, outcome, message,
                 IpRemoteRedactor.Redact(request, token)!.ToJsonString(PrettyJson), responseJson, result,
-                httpStatus, code, timer.ElapsedMilliseconds, fingerprint);
+                httpStatus, code, timer.ElapsedMilliseconds, fingerprint)
+            { Payload = resultPayload?.DeepClone() };
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(pairing ? options.PairingTimeout : options.RequestTimeout);
         try
@@ -83,6 +92,8 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
                     return Complete(SamsungIpRemoteOutcome.NotPaired, "No separate IP Remote token is saved for this host and port. Pair explicitly first.");
                 request["params"] = new JsonObject { ["AccessToken"] = token };
                 if (control is not null) request["params"]![control.Id] = requestedValue!.Value;
+                if (commandParameters is not null)
+                    foreach (var item in commandParameters) request["params"]![item.Key] = item.Value?.DeepClone();
             }
 
             var client = httpClient;
@@ -146,6 +157,13 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
                 };
                 return Complete(outcome, $"The TV returned a JSON-RPC error{(code is null ? string.Empty : $" ({code})")}. Support remains context-specific; no retries or fallback keys were sent.", code: code);
             }
+            if (catalogCommand?.DeviceList == true && safeEnvelope["result"] is JsonArray list)
+            {
+                if (list.Any(item => item is not JsonObject))
+                    return Complete(SamsungIpRemoteOutcome.ProtocolError, "The device list contains invalid entries. No device was selected.");
+                resultPayload = list.DeepClone();
+                return Complete(SamsungIpRemoteOutcome.Success, $"Received {list.Count} device entries. A list or setter response is not verification of selection.");
+            }
             if (envelope["result"] is not JsonObject result || safeEnvelope["result"] is not JsonObject safeResult)
                 return Complete(SamsungIpRemoteOutcome.ProtocolError, "The reply has no object-valued result. Missing or unexpected values were not replaced with defaults.");
             if (pairing)
@@ -158,8 +176,10 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
                 accessingCredentials = false;
                 return Complete(SamsungIpRemoteOutcome.Success, "Pairing completed: separate IP Remote token saved. You can now read the current state; the state queries still need to be tested.");
             }
+            if (catalogCommand is not null) resultPayload = safeResult.DeepClone();
             return Complete(SamsungIpRemoteOutcome.Success,
                 control is not null ? $"{control.Name} command acknowledged. This alone does not confirm a change; independent readback and visual confirmation are required."
+                    : catalogCommand is { IsReadOnly: false } ? $"{catalogCommand.Name} acknowledged. Check independent readback and the actual display; an acknowledgment is not verification."
                     : $"Received {safeResult.Count} result fields. This is a timestamped response, not a verified control mapping or live subscription.",
                 (JsonObject)safeResult.DeepClone());
         }

@@ -37,6 +37,9 @@ public sealed partial class SamsungIpRemoteService
             {
                 var original = read.Value(control.Id) ?? throw new InvalidOperationException($"{control.Name} was not reported as a valid integer. No command was sent.");
                 if (requested[control.Id] == original) continue;
+                var range = profile.RangeFor(control.Id);
+                if (!range.Contains(requested[control.Id]))
+                    throw new InvalidOperationException($"{control.Name} must be within its configured range {range.Minimum}–{range.Maximum}. No command was sent.");
                 if (!snapshot.ControlCapabilities.Any(item => item.Matches(profile, read.ReportedInput, read.ReportedPictureMode, control.Id)))
                     throw new InvalidOperationException($"{control.Name} is not verified in this context. Verify it before including it in a batch; no command was sent.");
                 steps.Add(new(control.Id, original, requested[control.Id], Guid.NewGuid()));
@@ -122,6 +125,7 @@ public sealed partial class SamsungIpRemoteService
             IpRemoteBatchStepStage.Checking or IpRemoteBatchStepStage.Applying => step with
             {
                 Stage = operation?.Id == step.OperationId && operation.DirectChangeKept ? IpRemoteBatchStepStage.Confirmed
+                    : operation?.Id == step.OperationId && operation.RejectedUnchanged ? IpRemoteBatchStepStage.RejectedUnchanged
                     : operation?.Id == step.OperationId && operation.RequiresRecovery ? IpRemoteBatchStepStage.Uncertain : IpRemoteBatchStepStage.NotSent
             },
             _ => step

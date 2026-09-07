@@ -56,6 +56,7 @@ public sealed record SamsungIpRemoteExchange(
     string? ObservedCertificateSha256 = null)
 {
     public bool IsSuccess => Outcome == SamsungIpRemoteOutcome.Success;
+    public JsonNode? Payload { get; init; }
 }
 
 public interface ISamsungIpRemoteClient
@@ -65,4 +66,6 @@ public interface ISamsungIpRemoteClient
     Task<SamsungIpRemoteExchange> PairAsync(SamsungIpRemoteOptions options, CancellationToken cancellationToken = default);
     Task<SamsungIpRemoteExchange> ReadAsync(SamsungIpRemoteOptions options, string method, CancellationToken cancellationToken = default);
     Task<SamsungIpRemoteExchange> WritePictureControlAsync(SamsungIpRemoteOptions options, string control, int value, CancellationToken cancellationToken = default);
+    Task<SamsungIpRemoteExchange> ExecuteCommandAsync(SamsungIpRemoteOptions options, string method, JsonObject parameters, bool query = false, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This client does not implement the documented command catalog.");
 }

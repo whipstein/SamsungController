@@ -1,0 +1,46 @@
+@using SamsungController.Core.IpRemote
+@inject SamsungIpRemoteService Controller
+
+<details class="panel" style="padding: 1rem; margin-bottom: 1rem">
+    <summary>Allowed picture ranges for this display</summary>
+    <p>Enter the limits shown on your TV to block invalid targets before sending. These are user-defined limits, not automatically discovered ranges. Saving sends no TV command and preserves verification.</p>
+    @if (Error is not null) { <p class="notice danger" role="alert">@Error</p> }
+    <fieldset disabled="@(Snapshot.ActiveProfile is null || Snapshot.IsBusy || Snapshot.PictureTest?.RequiresRecovery == true || Snapshot.CommandTrial?.RequiresReview == true)">
+        <label>Control<select aria-label="Range control" value="@Control" @onchange="Select">
+            @foreach (var item in SamsungIpRemotePictureControl.All) { <option value="@item.Id">@item.Name</option> }
+        </select></label>
+        <label>Minimum<input aria-label="Allowed minimum" type="number" min="0" max="99" @bind="Minimum" @bind:event="oninput" /></label>
+        <label>Maximum<input aria-label="Allowed maximum" type="number" min="1" max="100" @bind="Maximum" @bind:event="oninput" /></label>
+        <button class="toolbar-button" @onclick="SaveAsync" disabled="@(Minimum is null || Maximum is null || Minimum < 0 || Maximum > 100 || Minimum >= Maximum)">Save allowed range</button>
+    </fieldset>
+</details>
+
+@code {
+    [Parameter] public IpRemoteSnapshot Snapshot { get; set; } = new();
+    private string Control = "sharpness";
+    private IpRemoteProfile? LoadedProfile;
+    private int? Minimum = 0, Maximum = 100;
+    private string? Error;
+    protected override void OnParametersSet()
+    {
+        if (LoadedProfile == Snapshot.ActiveProfile) return;
+        LoadedProfile = Snapshot.ActiveProfile;
+        LoadRange();
+    }
+    private void LoadRange()
+    { var range = Snapshot.ActiveProfile?.RangeFor(Control) ?? new(0, 100); Minimum = range.Minimum; Maximum = range.Maximum; }
+    private void Select(ChangeEventArgs args)
+    { if (SamsungIpRemotePictureControl.IsSupported(args.Value?.ToString())) { Control = args.Value!.ToString()!; LoadRange(); } }
+    private async Task SaveAsync()
+    {
+        Error = null;
+        if (Snapshot.ActiveProfile is not { } profile || Minimum is null || Maximum is null) return;
+        try
+        {
+            var ranges = profile.ControlRanges.With(Control, new(Minimum.Value, Maximum.Value));
+            await Controller.SaveProfileAsync(profile with { ControlRanges = ranges });
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException) { Error = error.Message; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { Error = "Could not save the private display ranges. Check file access."; }
+    }
+}

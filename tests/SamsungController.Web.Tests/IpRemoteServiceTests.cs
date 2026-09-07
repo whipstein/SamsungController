@@ -131,7 +131,7 @@ public sealed class IpRemoteServiceTests : IDisposable
         Assert.Equal(10, result["unknownNumber"]!.GetValue<int>());
         Assert.Null(result["nullable"]);
         Assert.False(result["switch"]!.GetValue<bool>());
-        Assert.Contains("All other direct writes are disabled", report, StringComparison.Ordinal);
+        Assert.Contains("parameter/context-specific command tests", report, StringComparison.Ordinal);
     }
 
     [Theory]

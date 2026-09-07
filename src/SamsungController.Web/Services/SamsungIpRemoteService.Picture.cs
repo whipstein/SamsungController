@@ -18,6 +18,9 @@ public sealed partial class SamsungIpRemoteService
         if (new[] { profile.Model, profile.Firmware, profile.InputSource, profile.PictureMode, profile.Signal }.Any(string.IsNullOrWhiteSpace))
             throw new InvalidOperationException("Save the model, firmware, input, picture mode, and signal annotations before preparing a write experiment.");
         var (input, mode, video, original) = await ReadPictureCheckpointAsync(profile, control, $"{definition.Name} · prepare (read only)", cancellation).ConfigureAwait(false);
+        var range = profile.RangeFor(control);
+        if (!range.Contains(original) || !range.Contains(SamsungIpRemotePictureControl.TestTarget(original)))
+            throw new InvalidOperationException($"The original/test target falls outside the configured {definition.Name} range {range.Minimum}–{range.Maximum}. Correct the range before testing.");
         await SavePictureTestAsync(new()
         {
             Profile = profile,
@@ -34,6 +37,7 @@ public sealed partial class SamsungIpRemoteService
 
     public Task ApplyPictureTestAsync(Guid testId, bool conditionsConfirmed) => RunPictureOperationAsync(async (profile, cancellation) =>
     {
+        if (GetSnapshot().CommandTrial?.RequiresReview == true) throw new InvalidOperationException("Review the pending command on IP Commands before picture adjustments.");
         var test = RequirePictureTest(testId, profile);
         if (test.Purpose != IpRemotePicturePurpose.Verification || test.Stage != IpRemotePictureStage.Prepared || test.WriteAttempted)
             throw new InvalidOperationException("Prepare a new baseline before applying a picture test. A previous write is never replayed.");
@@ -64,7 +68,24 @@ public sealed partial class SamsungIpRemoteService
             Message = $"Sending one {test.ControlName} change. Keep the display, input, picture mode, and signal unchanged."
         };
         await SavePictureTestAsync(test).ConfigureAwait(false);
-        await WritePictureOnceAsync(profile, test.Control, test.Target, $"{test.ControlName} · {(direct ? "apply target" : "one-step test")}", cancellation).ConfigureAwait(false);
+        try
+        {
+            await WritePictureOnceAsync(profile, test.Control, test.Target, $"{test.ControlName} · {(direct ? "apply target" : "one-step test")}", cancellation).ConfigureAwait(false);
+        }
+        catch (PictureCommandRejectedException rejection) when (!cancellation.IsCancellationRequested)
+        {
+            // Only an explicit, correlated RPC failure permits this read-only check.
+            // Never follow cancellation/timeouts with requests or assume an error means no change.
+            var unchanged = await ReadPictureCheckpointAsync(profile, test.Control, $"{test.ControlName} · rejected target check (read only)", cancellation).ConfigureAwait(false);
+            CheckContext(test, unchanged.Input, unchanged.Mode);
+            CheckOtherVideoFields(test, unchanged.Video);
+            if (unchanged.Value != test.Original)
+                throw new InvalidOperationException($"The TV rejected {test.Target}, but its value changed to {unchanged.Value}. Check recovery; no retry or restoring write was sent.");
+            var message = $"The TV rejected {test.ControlName} {test.Target} ({rejection.Code}). Readback confirms the original {test.Original} is unchanged. Choose a value within the TV's range or check whether this setting is available. No retry or restoring write was sent.";
+            await SavePictureTestAsync(test with { Stage = IpRemotePictureStage.Stopped, RejectedUnchanged = true, LastReadback = test.Original, Message = message }).ConfigureAwait(false);
+            if (direct) SetDirectPictureReading(profile, test.Control, unchanged.Input, unchanged.Mode, unchanged.Value, unchanged.Video);
+            throw new InvalidOperationException(message);
+        }
         var after = await ReadPictureCheckpointAsync(profile, test.Control, $"{test.ControlName} · changed-value readback", cancellation).ConfigureAwait(false);
         CheckContext(test, after.Input, after.Mode);
         CheckOtherVideoFields(test, after.Video);
@@ -178,7 +199,7 @@ public sealed partial class SamsungIpRemoteService
             var message = error is OperationCanceledException ? "Stopped. No follow-up request was sent."
                 : error is IOException or UnauthorizedAccessException or JsonException ? "The private picture recovery file could not be read or saved. Stop and check the TV; no further request was sent."
                 : error.Message;
-            if (test is not null && test.Stage != IpRemotePictureStage.Completed && test.Stage != IpRemotePictureStage.ManuallyClosed)
+            if (test is not null && !test.RejectedUnchanged && test.Stage != IpRemotePictureStage.Completed && test.Stage != IpRemotePictureStage.ManuallyClosed)
             {
                 var stopped = test with
                 {
@@ -236,6 +257,8 @@ public sealed partial class SamsungIpRemoteService
         cancellation.ThrowIfCancellationRequested();
         var exchange = await _client.WritePictureControlAsync(profile.Connection, control, value, cancellation).ConfigureAwait(false);
         await RecordExchangeAsync(profile, label, exchange).ConfigureAwait(false);
+        if (exchange.Outcome == SamsungIpRemoteOutcome.RpcError && exchange.RpcErrorCode is -32002 or -32003 or -32602)
+            throw new PictureCommandRejectedException(exchange.RpcErrorCode.Value);
         RequireSuccess(exchange);
         cancellation.ThrowIfCancellationRequested();
     }
@@ -244,6 +267,9 @@ public sealed partial class SamsungIpRemoteService
     {
         if (!exchange.IsSuccess) throw new InvalidOperationException($"{exchange.Method}: {exchange.Outcome}. {exchange.Message}");
     }
+
+    private sealed class PictureCommandRejectedException(int code) : InvalidOperationException($"The TV rejected the command ({code}).")
+    { public int Code { get; } = code; }
 
     private static string RequiredText(JsonObject? result, string field) =>
         result?[field] is JsonValue value && value.TryGetValue<string>(out var text) && !string.IsNullOrWhiteSpace(text)
@@ -274,6 +300,8 @@ public sealed partial class SamsungIpRemoteService
 
     private void EnsureNoPendingPictureTest()
     {
+        if (GetSnapshot().CommandTrial?.RequiresReview == true)
+            throw new InvalidOperationException("Review the pending IP command first. Check/handle its effect on the IP Commands page before starting another write or replacing its display context.");
         if (GetSnapshot().PictureTest?.RequiresRecovery == true)
             throw new InvalidOperationException("Resolve the pending picture operation first: check and restore the original value, or confirm manual restoration. Its original context must not be replaced.");
     }
@@ -297,6 +325,7 @@ public sealed partial class SamsungIpRemoteService
             || test.Original is < 0 or > 100 || test.Target is < 0 or > 100 || test.Target == test.Original
             || (test.Purpose == IpRemotePicturePurpose.Verification && test.Target != SamsungIpRemotePictureControl.TestTarget(test.Original))
             || (test.DirectChangeKept && (test.Purpose != IpRemotePicturePurpose.DirectAdjustment || !test.WriteAttempted || !test.ChangeReadbackConfirmed || test.Stage != IpRemotePictureStage.Completed))
+            || (test.RejectedUnchanged && (!test.WriteAttempted || test.ChangeReadbackConfirmed || test.DirectChangeKept || test.Stage != IpRemotePictureStage.Stopped || test.LastReadback != test.Original))
             || string.IsNullOrWhiteSpace(test.ReportedInput) || string.IsNullOrWhiteSpace(test.ReportedPictureMode) || test.VideoBaseline is null)
             throw new JsonException("The picture recovery file is invalid. Do not discard it before checking the TV manually.");
         _ = test.Profile.Endpoint;
