@@ -696,6 +696,16 @@ as `disabledWhen=external:pgen-output-format=YCbCr422`. The node editor lists
 external sources alongside TV settings. Display Verification creates one
 representative guided check for external disabled rows and one for external
 hidden rows; it asks you to set both the hardware and header selector first.
+Each signal-dependent line includes a bold **Required HDMI signal setup** box
+listing the required bit depth, HDMI color format, and any other defined external
+source settings. Set the physical source device and match the app's persistent
+**External HDMI Signal** selectors, then check **I have set the physical HDMI
+source to these values**. Matching app values alone does not unlock the test:
+the app cannot detect whether you changed the physical source. The test (including
+**Open on TV** for a previously verified check) remains disabled until confirmed.
+Confirmation sends no TV commands and is required again for each run. Signal
+changes, reconnecting, and reloading the menu clear it; saved verification results
+are not removed.
 For a disabled control, the test highlights the named row without pressing Enter
 on that control or changing its value. Gray siblings still count as cursor stops;
 hidden siblings do not. For an external-state hidden row, the test highlights the

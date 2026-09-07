@@ -15,6 +15,7 @@ public sealed partial class ControllerMenuIntegrationTests
         {
             await controller.SetMenuExternalStateAsync("depth", "10-bit");
             var before = controller.GetMenuNavigationSnapshot();
+            await controller.ConfirmMenuVerificationSignalSetupAsync("condition:external-hidden-behavior", true);
             var result = await controller.RunMenuDefinitionVerificationTestAsync("condition:external-hidden-behavior");
             Assert.Equal("missing", result.TargetNodeId);
             Assert.Contains(expectedLabel, result.ActionDescription);
@@ -30,6 +31,7 @@ public sealed partial class ControllerMenuIntegrationTests
             // The visible highlight, not the absent node, is the remembered position.
             await controller.ConfirmMenuDefinitionVerificationCheckAsync(result.CheckId);
             transport.SentMessages.Clear();
+            await controller.ConfirmMenuVerificationSignalSetupAsync(result.CheckId, true);
             await controller.RunMenuDefinitionVerificationTestAsync(result.CheckId);
             Assert.Empty(GetSentKeys(transport));
             Assert.True(controller.GetMenuDefinitionVerificationSnapshot().Checks.Single(check => check.Id == result.CheckId).Verified);
@@ -47,6 +49,7 @@ public sealed partial class ControllerMenuIntegrationTests
             await controller.SetMenuExternalStateAsync("depth", "10-bit");
             await controller.NavigateToMenuNodeAsync(start);
             transport.SentMessages.Clear();
+            await controller.ConfirmMenuVerificationSignalSetupAsync("condition:external-hidden-behavior", true);
             await controller.RunMenuDefinitionVerificationTestAsync("condition:external-hidden-behavior");
             Assert.Equal(Enumerable.Repeat(key, count), GetSentKeys(transport));
             Assert.Equal("replacement", controller.GetMenuNavigationSnapshot().State.NodeId);
@@ -60,6 +63,7 @@ public sealed partial class ControllerMenuIntegrationTests
         await using (controller)
         {
             await controller.SetMenuExternalStateAsync("depth", "10-bit");
+            await controller.ConfirmMenuVerificationSignalSetupAsync("condition:external-hidden-behavior", true);
             var result = await controller.RunMenuDefinitionVerificationTestAsync("condition:external-hidden-behavior");
             Assert.Contains("no neighboring control", result.ActionDescription);
             Assert.Equal("expert", controller.GetMenuNavigationSnapshot().State.NodeId);
@@ -78,6 +82,7 @@ public sealed partial class ControllerMenuIntegrationTests
         await using (controller)
         {
             await controller.SetMenuExternalStateAsync("depth", "10-bit");
+            await controller.ConfirmMenuVerificationSignalSetupAsync("condition:external-hidden-behavior", true);
             var result = await controller.RunMenuDefinitionVerificationTestAsync("condition:external-hidden-behavior");
             Assert.Contains("Tail", result.ActionDescription);
             Assert.Equal("tail", controller.GetMenuNavigationSnapshot().State.NodeId);
@@ -94,6 +99,7 @@ public sealed partial class ControllerMenuIntegrationTests
         await using (controller)
         {
             await controller.SetMenuExternalStateAsync("depth", "10-bit");
+            await controller.ConfirmMenuVerificationSignalSetupAsync("condition:external-hidden-behavior", true);
             var result = await controller.RunMenuDefinitionVerificationTestAsync("condition:external-hidden-behavior");
             Assert.Contains("Gamma [replacement]", result.ActionDescription);
             Assert.Contains("Gamma [missing] is absent", result.ActionDescription);
@@ -112,6 +118,7 @@ public sealed partial class ControllerMenuIntegrationTests
             await controller.NavigateToMenuNodeAsync("brightness");
             await controller.SetMenuExternalStateAsync("depth", "10-bit");
             transport.SentMessages.Clear();
+            await controller.ConfirmMenuVerificationSignalSetupAsync("condition:external-hidden-behavior", true);
             await Assert.ThrowsAsync<NavigationPlanningException>(() => controller.RunMenuDefinitionVerificationTestAsync("condition:external-hidden-behavior"));
             Assert.Empty(GetSentKeys(transport));
         }

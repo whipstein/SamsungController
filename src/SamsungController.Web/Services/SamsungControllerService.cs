@@ -471,6 +471,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
             {
                 _menuExternalStateValues[item.Id] = item.Value;
             }
+            _verificationSignalConfirmations.Clear();
 
             ResetMenuControlValues(definition);
             RestoreActiveConditionValues();
@@ -643,7 +644,9 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
                     verified ? record!.VerifiedAtUtc : null,
                     check.Kind == MenuVerificationCheckKind.Anchor && check.SourceItemId is { } anchorId
                         ? GetRelatedAnchorReturnCheckId(definition.GetRequiredAnchor(anchorId))
-                        : null);
+                        : null,
+                    GetVerificationSignalRequirements(definition, check),
+                    IsVerificationSignalSetupConfirmed(definition, check));
             }).ToArray();
             var currentRecordKeys = plan.Checks
                 .Select(check => $"{check.Id}\u001f{check.Fingerprint}")
@@ -840,6 +843,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
                 _menuExternalStateValues);
             controlVerification = GetMenuControlVerificationSnapshot();
             explicitlyKnown = new HashSet<string>(_explicitMenuControlValues, StringComparer.OrdinalIgnoreCase);
+            RequireVerificationSignalSetup(definition, check);
         }
 
         if (check.TargetNodeId is null)
@@ -9592,6 +9596,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
             _navigationPlan = null;
             _navigationProgress = null;
             _navigationStatus = "Menu definition loaded";
+            _verificationSignalConfirmations.Clear();
             _navigationError = null;
             _menuValidation = null;
             _menuTimingValidation = null;
@@ -10540,6 +10545,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
             lock (_sync)
             {
                 _verificationOptions = null;
+                _verificationSignalConfirmations.Clear();
             }
         }
         if (eventArgs.Current == SamsungConnectionState.Connected)

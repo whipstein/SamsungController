@@ -32,6 +32,7 @@ public sealed partial class ControllerMenuIntegrationTests
         {
             await controller.SetMenuExternalStateAsync("depth", depth);
             var before = controller.GetMenuNavigationSnapshot();
+            await controller.ConfirmMenuVerificationSignalSetupAsync("condition:external-hidden-behavior", true);
             var result = await controller.RunMenuDefinitionVerificationTestAsync("condition:external-hidden-behavior");
             Assert.Equal(visible, result.OpenedOptionsNodeId);
             Assert.NotNull(result.OptionsInspectionId);
@@ -74,6 +75,7 @@ public sealed partial class ControllerMenuIntegrationTests
             await using (var firstPage = new VerificationPageTestRenderer(services) { CheckId = checkId })
             {
                 await firstPage.StartAsync();
+                await firstPage.ConfirmSignalAsync(true);
                 await firstPage.ClickAsync("Run guided test");
                 Assert.Contains("contains only: ST.2084", firstPage.LineText);
                 Assert.Contains("Count pass", firstPage.LineText);
@@ -90,6 +92,7 @@ public sealed partial class ControllerMenuIntegrationTests
 
             if (passed)
             {
+                await page.ConfirmSignalAsync(true);
                 await page.ClickAsync("Open on TV");
                 Assert.NotNull(controller.GetOpenVerificationOptionsTest());
                 Assert.Contains("Count pass", page.LineText);
@@ -108,6 +111,7 @@ public sealed partial class ControllerMenuIntegrationTests
         await using (controller)
         {
             await controller.SetMenuExternalStateAsync("depth", "10-bit");
+            await controller.ConfirmMenuVerificationSignalSetupAsync("condition:external-hidden-behavior", true);
             var first = await controller.RunMenuDefinitionVerificationTestAsync("condition:external-hidden-behavior");
             transport.SentMessages.Clear();
             await controller.SendKeyAsync("KEY_RETURN");
@@ -115,6 +119,7 @@ public sealed partial class ControllerMenuIntegrationTests
             Assert.Equal(["KEY_RETURN"], GetSentKeys(transport));
             Assert.Equal("gamma-10bit", controller.GetMenuNavigationSnapshot().State.NodeId);
 
+            await controller.ConfirmMenuVerificationSignalSetupAsync(first.CheckId, true);
             var second = await controller.RunMenuDefinitionVerificationTestAsync(first.CheckId);
             Assert.NotEqual(first.OptionsInspectionId, second.OptionsInspectionId);
             transport.SentMessages.Clear();
@@ -134,6 +139,7 @@ public sealed partial class ControllerMenuIntegrationTests
         await using (controller)
         {
             await controller.SetMenuExternalStateAsync("depth", "10-bit");
+            await controller.ConfirmMenuVerificationSignalSetupAsync("condition:external-hidden-behavior", true);
             var result = await controller.RunMenuDefinitionVerificationTestAsync("condition:external-hidden-behavior");
             transport.SentMessages.Clear();
             await controller.SendKeyAsync(key);
@@ -155,6 +161,7 @@ public sealed partial class ControllerMenuIntegrationTests
         await using (controller)
         {
             await controller.SetMenuExternalStateAsync("depth", "10-bit");
+            await controller.ConfirmMenuVerificationSignalSetupAsync("condition:external-hidden-behavior", true);
             var result = await controller.RunMenuDefinitionVerificationTestAsync("condition:external-hidden-behavior");
             Assert.Null(result.OptionsInspectionId);
             Assert.Equal(["KEY_MENU", "KEY_ENTER", "KEY_DOWN", "KEY_DOWN"], GetSentKeys(transport));

@@ -19,6 +19,7 @@
                 <li>Carry forward routes and controls already verified elsewhere in the app.</li>
                 <li>For timing, anchor, return-script, and route checks, use <strong>Prepare start</strong> and <strong>Run test</strong> directly on the listed line.</li>
                 <li>Use <strong>Run guided test</strong> for each remaining representative control behavior. The app opens the right menu and makes a safe, visible adjustment for you.</li>
+                <li>For signal-dependent tests, first set the <strong>physical HDMI source</strong> and the app's <strong>External HDMI Signal</strong> selectors to the bold values on the test line. Confirm the checkbox to unlock that run; the app cannot detect the physical source settings.</li>
                 <li>Count or fail the result on that same line. Use the remote only if the TV needs a manual correction.</li>
                 <li>If a result was accepted accidentally, select <strong>Remove validation</strong> on that completed line. Only that local display result is removed.</li>
             </ol>
@@ -84,6 +85,27 @@
                                     <span>@FormatKind(check.Kind)@FormatConfiguration(check)</span>
                                     <strong>@check.Label</strong>
                                     <p>@check.Description</p>
+                                    @if (check.SignalRequirements is { Count: > 0 } signalRequirements)
+                                    {
+                                        <div class="verification-signal-setup @(check.SignalSetupConfirmed || IsPendingVisualTest(check) ? "confirmed" : "required")" role="group" aria-label="Required HDMI signal setup">
+                                            <strong>REQUIRED BEFORE RUNNING: Set the physical HDMI source</strong>
+                                            @foreach (var signal in signalRequirements)
+                                            {
+                                                <div class="verification-signal-value">
+                                                    <strong>@signal.Label: @signal.RequiredValue</strong>
+                                                    <span class="@(signal.Matches ? "matches" : "mismatch")">App: @signal.SelectedValue · @(signal.Matches ? "matches" : "does not match — change the header selector")</span>
+                                                </div>
+                                            }
+                                            <p>Set your source device to all values above, then match the app's <strong>External HDMI Signal</strong> selectors. Changing the app selectors does not change the source device.</p>
+                                            <label class="verification-signal-confirmation">
+                                                <input type="checkbox" checked="@(check.SignalSetupConfirmed || IsPendingVisualTest(check))"
+                                                       disabled="@(TvActionsDisabled || IsPendingVisualTest(check) || signalRequirements.Any(signal => !signal.Matches))"
+                                                       @onchange="args => ConfirmSignalSetupAsync(check, args.Value is true)" />
+                                                <strong>I have set the physical HDMI source to these values.</strong>
+                                            </label>
+                                            <small>@(IsPendingVisualTest(check) ? "Signal setup confirmed for this run." : check.SignalSetupConfirmed ? "Signal setup confirmed. This test is ready to run." : "Test locked until the app values match and you confirm the physical source. Confirm again for each run.")</small>
+                                        </div>
+                                    }
                                     @if (!check.Verified && !check.ExistingEvidenceReady && RequiresEvidenceTest(check))
                                     {
                                         <small class="verification-route-progress">Visual validation · @check.ValidationPasses/@check.RequiredValidationPasses passes</small>
@@ -141,8 +163,8 @@
                                     }
                                     else if (!check.Verified && !check.ExistingEvidenceReady && CanRunEvidenceTest(check) && check.IsForActiveConfiguration)
                                     {
-                                        <button class="secondary-action" @onclick="() => PrepareEvidenceTestAsync(check)" disabled="@TvActionsDisabled">Prepare start</button>
-                                        <button class="primary-action" @onclick="() => RunEvidenceTestAsync(check)" disabled="@TvActionsDisabled">Run test</button>
+                                        <button class="secondary-action" @onclick="() => PrepareEvidenceTestAsync(check)" disabled="@VerificationTestDisabled(check)">Prepare start</button>
+                                        <button class="primary-action" @onclick="() => RunEvidenceTestAsync(check)" disabled="@VerificationTestDisabled(check)">Run test</button>
                                     }
                                     else if (!check.Verified && !check.ExistingEvidenceReady && RequiresEvidenceTest(check) && !check.IsForActiveConfiguration)
                                     {
@@ -150,7 +172,7 @@
                                     }
                                     else if (!check.Verified && !check.ExistingEvidenceReady && CanRunGuidedTest(check))
                                     {
-                                        <button class="primary-action" @onclick="() => RunGuidedTestAsync(check)" disabled="@TvActionsDisabled">@(IsRunningGuidedTest(check) ? "Preparing test…" : "Run guided test")</button>
+                                        <button class="primary-action" @onclick="() => RunGuidedTestAsync(check)" disabled="@VerificationTestDisabled(check)">@(IsRunningGuidedTest(check) ? "Preparing test…" : "Run guided test")</button>
                                     }
                                     else if (!check.Verified && !check.IsForActiveConfiguration && IsGuidedVisualCheck(check))
                                     {
@@ -158,7 +180,7 @@
                                     }
                                     else if (check.Verified && CanOpenOnTv(check))
                                     {
-                                        <button class="secondary-action" @onclick="() => OpenOnTvAsync(check)" disabled="@TvActionsDisabled">Open on TV</button>
+                                        <button class="secondary-action" @onclick="() => OpenOnTvAsync(check)" disabled="@VerificationTestDisabled(check)">Open on TV</button>
                                     }
                                     @if (!check.AwaitingValidationConfirmation && check.Verified)
                                     {
@@ -234,6 +256,8 @@
         || ControllerState.MacroRunning
         || ControllerState.NavigationRunning
         || Authoring.IsRecording;
+    private bool VerificationTestDisabled(MenuDefinitionVerificationCheckSummary check) => TvActionsDisabled
+        || (check.SignalRequirements is { Count: > 0 } && !check.SignalSetupConfirmed);
     private IReadOnlyList<VerificationGroup> Groups =>
     new[]
     {
@@ -289,6 +313,14 @@
         }
         await Controller.NavigateToMenuNodeAsync(check.TargetNodeId!);
         StatusMessage = $"Opened {check.Label} without changing its recorded verification result.";
+    });
+
+    private async Task ConfirmSignalSetupAsync(MenuDefinitionVerificationCheckSummary check, bool confirmed) => await RunAsync(async () =>
+    {
+        await Controller.ConfirmMenuVerificationSignalSetupAsync(check.Id, confirmed);
+        StatusMessage = confirmed
+            ? $"Physical HDMI signal setup confirmed for {check.Label}. No TV commands were sent; you can now run this test."
+            : $"Signal setup confirmation removed for {check.Label}. The test is locked until confirmed again.";
     });
 
     private async Task ActivateConfigurationAsync(MenuDefinitionVerificationCheckSummary check) => await RunAsync(async () =>

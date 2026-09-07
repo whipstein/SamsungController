@@ -43,6 +43,24 @@ internal sealed class VerificationPageTestRenderer(IServiceProvider services)
     public string TimingText => LineText;
     public string LineText => FrameText(LineFrames);
     public string Text => FrameText(Frames);
+    public string BoldLineText => string.Join(" ", LineFrames.Select((frame, index) => (frame, index))
+        .Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "strong")
+        .Select(item => FrameText(LineFrames.Skip(item.index).Take(item.frame.ElementSubtreeLength)))
+        .Concat(LineFrames.Where(frame => frame.FrameType == RenderTreeFrameType.Markup)
+            .SelectMany(frame => System.Text.RegularExpressions.Regex.Matches(frame.MarkupContent, "<strong>(.*?)</strong>")
+                .Select(match => System.Net.WebUtility.HtmlDecode(match.Groups[1].Value)))));
+
+    private RenderTreeFrame[] FindElement(string tag, string? label, bool wholePage = false) =>
+        (wholePage ? Frames : LineFrames).Select((frame, index) => (frame, index))
+            .Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == tag)
+            .Select(item => (wholePage ? Frames : LineFrames).Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray())
+            .Single(item => label is null || FrameText(item).Trim().StartsWith(label, StringComparison.Ordinal));
+
+    public bool ButtonDisabled(string label) => HasTrueAttribute(FindElement("button", label), "disabled");
+    public bool SignalConfirmationDisabled => HasTrueAttribute(FindElement("input", null), "disabled");
+    public bool SignalConfirmationChecked => HasTrueAttribute(FindElement("input", null), "checked");
+    private static bool HasTrueAttribute(IEnumerable<RenderTreeFrame> frames, string name) => frames.Any(frame =>
+        frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == name && frame.AttributeValue is true);
 
     public Task StartAsync(Type? componentType = null) => Dispatcher.InvokeAsync(async () =>
     {
@@ -54,6 +72,7 @@ internal sealed class VerificationPageTestRenderer(IServiceProvider services)
         new ChangeEventArgs { Value = routeId });
 
     public Task ClickAsync(string label) => DispatchAsync("button", label, "onclick", new MouseEventArgs());
+    public Task ConfirmSignalAsync(bool confirmed) => DispatchAsync("input", null, "onchange", new ChangeEventArgs { Value = confirmed });
     public Task ClickPageButtonAsync(string label) => DispatchAsync("button", label, "onclick", new MouseEventArgs(), wholePage: true);
 
     public string? LinkDestination => LineFrames.FirstOrDefault(frame => frame.FrameType == RenderTreeFrameType.Attribute
@@ -61,11 +80,7 @@ internal sealed class VerificationPageTestRenderer(IServiceProvider services)
 
     private Task DispatchAsync(string tag, string? label, string eventName, EventArgs args, bool wholePage = false) => Dispatcher.InvokeAsync(async () =>
     {
-        var frames = wholePage ? Frames : LineFrames;
-        var element = frames.Select((frame, index) => (frame, index))
-            .Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == tag)
-            .Select(item => frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray())
-            .Single(item => label is null || FrameText(item).Trim().StartsWith(label, StringComparison.Ordinal));
+        var element = FindElement(tag, label, wholePage);
         Assert.DoesNotContain(element, frame => frame.FrameType == RenderTreeFrameType.Attribute
             && frame.AttributeName == "disabled" && frame.AttributeValue is true);
         var handler = element.Single(frame => frame.FrameType == RenderTreeFrameType.Attribute

@@ -272,7 +272,18 @@ public sealed record MenuDefinitionVerificationCheckSummary(
     int RequiredValidationPasses,
     bool AwaitingValidationConfirmation,
     DateTimeOffset? VerifiedAtUtc,
-    string? RelatedReturnCheckId = null);
+    string? RelatedReturnCheckId = null,
+    IReadOnlyList<MenuVerificationSignalRequirement>? SignalRequirements = null,
+    bool SignalSetupConfirmed = false);
+
+public sealed record MenuVerificationSignalRequirement(
+    string StateId,
+    string Label,
+    string RequiredValue,
+    string SelectedValue)
+{
+    public bool Matches => RequiredValue.Equals(SelectedValue, StringComparison.OrdinalIgnoreCase);
+}
 
 public sealed record MenuDefinitionVerificationSnapshot(
     string? DefinitionName,

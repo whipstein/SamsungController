@@ -20,6 +20,7 @@ public sealed partial class ControllerMenuIntegrationTests
             Assert.Contains("No currently available", error.Message);
             Assert.Empty(GetSentKeys(transport));
 
+            await controller.ConfirmMenuVerificationSignalSetupAsync($"condition:external-{behavior}-behavior", true);
             var externalTest = await controller.RunMenuDefinitionVerificationTestAsync(
                 $"condition:external-{behavior}-behavior");
             Assert.Equal("signal-controls", externalTest.TargetNodeId);

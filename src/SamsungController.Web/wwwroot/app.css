@@ -1330,6 +1330,16 @@ input:focus, select:focus, textarea:focus { border-color: rgba(var(--cyan-rgb),.
 .verification-inline-route > span { margin: 0; color: var(--faint); font: 9px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; }
 .verification-inline-route select { min-width: 0; padding: 8px 9px; font-size: 11px; }
 .verification-prerequisite { color: var(--amber); }
+.verification-signal-setup { margin-top: 12px; padding: 12px; border: 2px solid var(--amber); border-radius: 8px; background: rgba(var(--amber-rgb), .1); color: var(--ink); }
+.verification-signal-setup > strong { display: block; font-size: 15px; line-height: 1.45; color: var(--amber); }
+.verification-signal-setup.confirmed { border-color: var(--positive); background: rgba(var(--positive-rgb), .08); }
+.verification-signal-setup.confirmed > strong { color: var(--positive); }
+.verification-signal-value { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-top: 8px; font-size: 14px; }
+.verification-signal-value .matches { color: var(--muted); font-size: 12px; }
+.verification-signal-value .mismatch { color: var(--danger); font-weight: 700; font-size: 12px; }
+.verification-signal-setup p, .verification-signal-setup small { color: var(--ink); font-size: 12px; }
+.verification-signal-confirmation { display: flex; align-items: flex-start; gap: 9px; margin-top: 12px; font-size: 14px; line-height: 1.5; }
+.verification-signal-confirmation input { flex: 0 0 auto; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--cyan); }
 .verification-evidence { color: var(--cyan); }
 .verification-test-result { padding: 6px 8px; border-left: 2px solid var(--cyan); background: var(--cyan-soft); color: var(--ink); line-height: 1.5; }
 .verification-test-error { padding: 6px 8px; border-left: 2px solid var(--danger); background: rgba(var(--danger-rgb),.07); color: var(--danger); line-height: 1.5; }

@@ -21,6 +21,7 @@ public sealed partial class ControllerMenuIntegrationTests
             Assert.Equal("auto-hdr-remastering", check.TargetNodeId);
             Assert.Contains("highlight Normal video / Settings / Expert Settings / Auto HDR Remastering", check.Description);
 
+            await controller.ConfirmMenuVerificationSignalSetupAsync(check.Id, true);
             var result = await controller.RunMenuDefinitionVerificationTestAsync(check.Id);
             Assert.Equal("auto-hdr-remastering", result.TargetNodeId);
             Assert.Contains("Highlighted", result.ActionDescription);
@@ -35,6 +36,7 @@ public sealed partial class ControllerMenuIntegrationTests
             // Repeating the test at the same highlighted row must not send more keys.
             await controller.ConfirmMenuDefinitionVerificationCheckAsync(check.Id);
             transport.SentMessages.Clear();
+            await controller.ConfirmMenuVerificationSignalSetupAsync(check.Id, true);
             await controller.RunMenuDefinitionVerificationTestAsync(check.Id);
             Assert.Empty(GetSentKeys(transport));
             Assert.True(controller.GetMenuDefinitionVerificationSnapshot().Checks.Single(candidate => candidate.Id == check.Id).Verified);
@@ -53,6 +55,7 @@ public sealed partial class ControllerMenuIntegrationTests
             await controller.SetMenuExternalStateAsync("hdmi-bit-depth", "10-bit");
             await controller.NavigateToMenuNodeAsync(start);
             transport.SentMessages.Clear();
+            await controller.ConfirmMenuVerificationSignalSetupAsync("condition:external-disabled-behavior", true);
             var result = await controller.RunMenuDefinitionVerificationTestAsync("condition:external-disabled-behavior");
             Assert.Equal(Enumerable.Repeat(direction, count), GetSentKeys(transport));
             Assert.Equal("auto-hdr-remastering", result.TargetNodeId);
@@ -83,6 +86,7 @@ public sealed partial class ControllerMenuIntegrationTests
         await using (controller)
         {
             await controller.SetMenuExternalStateAsync("hdmi-bit-depth", "10-bit");
+            await controller.ConfirmMenuVerificationSignalSetupAsync("condition:external-hidden-behavior", true);
             var result = await controller.RunMenuDefinitionVerificationTestAsync("condition:external-hidden-behavior");
             Assert.Equal("color", result.TargetNodeId);
             Assert.Contains("absent", result.ActionDescription);
@@ -104,6 +108,7 @@ public sealed partial class ControllerMenuIntegrationTests
             await controller.SetMenuExternalStateAsync("hdmi-bit-depth", "10-bit");
             Assert.Null(controller.GetMenuNavigationSnapshot().State.NodeId);
             transport.SentMessages.Clear();
+            await controller.ConfirmMenuVerificationSignalSetupAsync("condition:external-disabled-behavior", true);
             await Assert.ThrowsAsync<NavigationPlanningException>(() =>
                 controller.RunMenuDefinitionVerificationTestAsync("condition:external-disabled-behavior"));
             Assert.Empty(GetSentKeys(transport));
