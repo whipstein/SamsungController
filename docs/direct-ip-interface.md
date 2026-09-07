@@ -14,6 +14,8 @@ For installation, all platform launchers, first pairing, and updates, start with
 
 Only queried, representable values can be edited. This is a current-state requirement, not a manual verification requirement. A documented method that fails in the current display/mode is shown with its response/error and can be retried with Refresh. Unsupported fields do not prevent other fields in the section from loading.
 
+Controls use the compact slider and pill-switch layout: a prominent target value, native slider with round −/+ buttons, and an editable number box. Native slider thumbs/fill remain aligned at both endpoints. The **TV:** label remains the last queried value while an edit is pending. Switches support keyboard focus/Space as well as clicking; a staged toggle still needs Apply unless immediate mode is selected.
+
 Refresh keeps staged targets, so the user can see pending work. If another controller changes a staged setting, the next Apply refuses to overwrite it using an old baseline: refresh and re-enter the target, or discard the draft. Switching/reconnecting displays clears unsent drafts. The app does not continuously poll or detect external HDMI signal changes in the background.
 
 ## Calibration sections
@@ -35,7 +37,11 @@ RGB gains are in one column and RGB offsets in another. Each edit sends only tha
 3. The full grid loads automatically: 5%, 10%, …, 100%, all visible together. Use Load all rows / Reload all rows or Refresh TV values to read it again.
 4. Edit Red/Green/Blue in any rows using the slider, −/+, or number input, then Apply. Edits across different rows remain separate. Immediate mode also addresses the exact row automatically.
 
-The RGB getters address the **current interval**, not a full array. The app handles that selector behind the scenes: temporarily select each percentage, query its three values, check context/selection, and restore the initial interval after successful loading. Only queried values are placed into the matching row. This takes more requests than an ordinary refresh; progress and Stop are available throughout. No mode is enabled automatically.
+The RGB getters address the **current interval**, not a full array. The app handles that selector behind the scenes: temporarily select each percentage, query its three values, check context/selection, and restore the initial interval after successful loading. Only queried values are placed into the matching row. This takes more requests than an ordinary refresh; progress and Stop are available throughout, with elapsed time shown after loading. No mode is enabled automatically.
+
+The optimized scan queries RGB once per cell, confirms a changed selector before reading, and checks input, picture mode, calibration mode, and selector after each row. That final context check also prepares the next row; unrelated `getVideoStates` values are no longer repeatedly queried between RGB cells. The simulated 20-point scan uses **176 requests instead of 340**, and Custom color uses **67 instead of 119**, including initial reads and successful selector restoration. Actual elapsed time depends on the TV/network. The client also reuses its HTTPS connection when the TV permits keep-alive, without sharing connections across endpoints or changed certificate-trust policies. Full pre/post-write safety checks for Apply are unchanged.
+
+No bulk all-interval/all-color getter was found in the [firmware method reference](https://github.com/TheFab21/ha-samsungtv-smart/blob/8c7000522b4045b42ff26d129d8d5fe9daf280cb/notes/QN55LS03FAFXZA/IPCONTROL_DECOMPILED.md). The app uses documented selector/channel methods rather than guessing a batch API or querying different selectors concurrently. Avoid other controllers changing these settings during a scan.
 
 Apply groups pending edits by row, selects and confirms each required interval, reads the original value again, then sends/checks the requested RGB changes. Edits to other intervals are not overwritten. The selector is restored at the end of the group on success, without undoing RGB adjustments. Another controller changing the input, picture mode, calibration mode, or selected row during an operation stops it. Avoid concurrent TV adjustments while a load or Apply is running.
 

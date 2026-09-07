@@ -112,23 +112,25 @@
     private string Target(IpMenuControl control) => Edits.GetValueOrDefault(control.Id) ?? Snapshot.Menu.Pending.GetValueOrDefault(control.Id)?.Target.ToString() ?? Snapshot.Menu.Value(control)?.ToString() ?? "";
     private bool Dirty(IpMenuControl control) => Snapshot.Menu.Pending.ContainsKey(control.Id);
     private string? DisabledReason(IpMenuControl control) => ActionRunning ? "A TV request is running." : Controller.MenuControlDisabledReason(control);
-    private string Fill(IpMenuControl control) => double.TryParse(Target(control), NumberStyles.Number, CultureInfo.InvariantCulture, out var value)
-        ? Math.Clamp((value - control.Parameter.Minimum) * 100 / (control.Parameter.Maximum - control.Parameter.Minimum), 0, 100).ToString(CultureInfo.InvariantCulture) + "%" : "0%";
     private RenderFragment ControlCard(IpMenuControl control) => @<article class="direct-control @(Dirty(control) ? "pending" : "")">
-        <div class="direct-control-heading"><h3>@(control.IsIndexed ? control.Field.Split('.').Last() : control.Name)</h3><span class="direct-read-value">@(Snapshot.Menu.Value(control)?.ToString() ?? "Not reported")</span></div>
+        <div class="direct-control-heading"><h3>@(control.IsIndexed ? control.Field.Split('.').Last() : control.Name)</h3><span class="direct-read-value">TV: @(Snapshot.Menu.Value(control)?.ToString() ?? "Not reported")</span></div>
         @if (control.IsSwitch)
         {
-            <label class="direct-switch"><input type="checkbox" aria-label="@control.Name" checked="@Target(control).EndsWith("On", StringComparison.OrdinalIgnoreCase)" @onchange="args => SwitchAsync(control, args)" disabled="@(DisabledReason(control) is not null)" /><span>@(Target(control).EndsWith("On", StringComparison.OrdinalIgnoreCase) ? "On" : "Off")</span></label>
+            <label class="picture-switch-control">
+                <span class="picture-switch-copy"><strong>@(Target(control).Length == 0 ? "Not reported" : Target(control).EndsWith("On", StringComparison.OrdinalIgnoreCase) ? "On" : "Off")</strong><small>Select to toggle</small></span>
+                <input type="checkbox" role="switch" aria-label="@control.Name" checked="@Target(control).EndsWith("On", StringComparison.OrdinalIgnoreCase)" @onchange="args => SwitchAsync(control, args)" disabled="@(DisabledReason(control) is not null)" />
+                <span class="picture-switch-track" aria-hidden="true"><i></i></span>
+            </label>
         }
         else if (control.Parameter.Kind == IpRemoteParameterKind.Integer)
         {
-            <fieldset disabled="@(DisabledReason(control) is not null)"><div class="direct-number-row">
-                <button class="toolbar-button" aria-label="@($"Decrease {control.Name}")" @onclick="() => NudgeAsync(control, -1)" disabled="@(Target(control) == "" || Target(control) == control.Parameter.Minimum.ToString(CultureInfo.InvariantCulture))">−</button>
-                <div class="direct-slider" style="@($"--fill: {Fill(control)}")"><span></span><input type="range" aria-label="@($"{control.Name} slider")" min="@control.Parameter.Minimum" max="@control.Parameter.Maximum" step="1" value="@Target(control)" @oninput="args => Preview(control, args)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" /></div>
-                <button class="toolbar-button" aria-label="@($"Increase {control.Name}")" @onclick="() => NudgeAsync(control, 1)" disabled="@(Target(control) == "" || Target(control) == control.Parameter.Maximum.ToString(CultureInfo.InvariantCulture))">+</button>
-                <input class="direct-number-value" aria-label="@($"{control.Name} value")" type="number" min="@control.Parameter.Minimum" max="@control.Parameter.Maximum" step="1" value="@Target(control)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" />
+            <div class="picture-compact-value"><strong>@(Target(control).Length > 0 ? Target(control) : "Not reported")</strong><span>@control.Parameter.Minimum – @control.Parameter.Maximum</span></div>
+            <fieldset disabled="@(DisabledReason(control) is not null)"><div class="picture-compact-slider">
+                <button aria-label="@($"Decrease {control.Name}")" @onclick="() => NudgeAsync(control, -1)" disabled="@(Target(control) == "" || Target(control) == control.Parameter.Minimum.ToString(CultureInfo.InvariantCulture))">−</button>
+                <input type="range" aria-label="@($"{control.Name} slider")" min="@control.Parameter.Minimum" max="@control.Parameter.Maximum" step="1" value="@Target(control)" @oninput="args => Preview(control, args)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" />
+                <button aria-label="@($"Increase {control.Name}")" @onclick="() => NudgeAsync(control, 1)" disabled="@(Target(control) == "" || Target(control) == control.Parameter.Maximum.ToString(CultureInfo.InvariantCulture))">+</button>
+                <input class="picture-compact-number direct-number-value" aria-label="@($"{control.Name} value")" type="number" min="@control.Parameter.Minimum" max="@control.Parameter.Maximum" step="1" value="@Target(control)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" />
             </div></fieldset>
-            <small>@control.Parameter.Minimum to @control.Parameter.Maximum · documented range</small>
         }
         else
         {

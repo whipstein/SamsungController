@@ -11,6 +11,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
         .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "unknown";
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private readonly ISamsungIpRemoteClient _client;
+    private readonly bool _ownsClient;
     private readonly string _directory;
     private readonly TimeProvider _timeProvider;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -23,6 +24,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
         var root = configuration["SamsungController:ConfigurationDirectory"] ?? WebApplicationPaths.GetDefaultConfigurationDirectory();
         _directory = Path.Combine(Path.GetFullPath(root), "ip-remote");
         _client = client ?? new SamsungIpRemoteClient(new PrivateIpRemoteTokenStore(_directory));
+        _ownsClient = client is null;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -293,6 +295,10 @@ public sealed partial class SamsungIpRemoteService : IDisposable
         Changed?.Invoke();
     }
 
-    public void Dispose() { Cancel(); }
+    public void Dispose()
+    {
+        Cancel();
+        if (_ownsClient && _client is IDisposable disposable) disposable.Dispose();
+    }
     private sealed record SavedProfiles(string? ActiveEndpoint, IReadOnlyList<IpRemoteProfile> Profiles);
 }

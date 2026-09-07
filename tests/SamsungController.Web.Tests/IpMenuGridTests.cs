@@ -10,6 +10,63 @@ namespace SamsungController.Web.Tests;
 public sealed class IpMenuGridTests
 {
     [Theory]
+    [InlineData("white20", 176)]
+    [InlineData("color", 67)]
+    public async Task GridReadUsesOneRgbQueryPerCellAndSharesContextChecksBetweenRows(string section, int expectedRequests)
+    {
+        using var fixture = await CreateAsync();
+        fixture.Display.Requests.Clear();
+        await fixture.Service.RefreshMenuGridAsync(section);
+        var grid = IpMenuGrids.ForSection(section)!;
+        // Previously 340 requests for 20-point / 119 for color. Keep redundant
+        // full-context reads from creeping back into this read-only RGB scan.
+        Assert.Equal(expectedRequests, fixture.Display.Requests.Count);
+        foreach (var field in grid.Fields)
+            Assert.Equal(grid.Values.Count, fixture.Display.Methods.Count(method => method == field + "Control"));
+        Assert.All(fixture.Writes, request => Assert.Equal(grid.SelectorMethod, request["method"]!.ToString()));
+    }
+
+    [Theory]
+    [InlineData("input")]
+    [InlineData("picture")]
+    [InlineData("mode")]
+    public async Task ContextChangeDuringRgbReadStopsBeforeTheNextSelectorOrRestore(string change)
+    {
+        using var fixture = await CreateAsync();
+        fixture.Override = (request, _) =>
+        {
+            if (request["method"]!.ToString() == "WB20P.RedControl")
+            {
+                if (change == "input") fixture.Display.Input = "HDMI2";
+                else if (change == "picture") fixture.Display.Mode = "Standard";
+                else fixture.Values["WB20PointMode"] = "Off";
+            }
+            return Task.FromResult<HttpResponseMessage?>(null);
+        };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.RefreshMenuGridAsync("white20"));
+        Assert.Single(fixture.Writes);
+        Assert.Empty(RgbWrites(fixture));
+        Assert.Empty(fixture.Service.GetSnapshot().Menu.IndexedReadings);
+        Assert.False(fixture.Service.GetSnapshot().Menu.GridsRead.ContainsKey("white20"));
+        Assert.Equal("Stopped", fixture.Service.GetSnapshot().Menu.SelectorSession!.Status);
+    }
+
+    [Fact]
+    public async Task SelectorAcknowledgmentAloneDoesNotAllowReadingAnIncorrectRow()
+    {
+        using var fixture = await CreateAsync();
+        fixture.Display.Requests.Clear();
+        fixture.Override = (request, _) => Task.FromResult<HttpResponseMessage?>(
+            request["method"]!.ToString() == "WB20P.IntervalControl" && request["params"]!.AsObject().Count > 1
+                ? new(HttpStatusCode.OK) { Content = new StringContent(new JsonObject { ["jsonrpc"] = "2.0", ["id"] = request["id"]!.DeepClone(), ["result"] = new JsonObject { ["WB20P.Interval"] = "5%" } }.ToJsonString()) }
+                : null);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.RefreshMenuGridAsync("white20"));
+        Assert.DoesNotContain("WB20P.RedControl", fixture.Display.Methods);
+        Assert.Single(fixture.Writes);
+        Assert.Empty(fixture.Service.GetSnapshot().Menu.IndexedReadings);
+    }
+
+    [Theory]
     [InlineData("white20", 20, "50%")]
     [InlineData("color", 6, "Blue")]
     public async Task LoadsEveryIndependentRgbRowWithoutChangingValuesAndRestoresSelector(string section, int count, string original)
@@ -231,6 +288,11 @@ public sealed class IpMenuGridTests
         await using var renderer = new IpRemotePageTests.IpPageRenderer(services, typeof(DirectMenu));
         await renderer.StartAsync();
         await renderer.ClickAsync("20-point white balance");
+        await renderer.AssertClassPresentAsync("picture-switch-control");
+        await renderer.AssertClassPresentAsync("picture-switch-track");
+        await renderer.AssertClassPresentAsync("picture-compact-slider");
+        await renderer.AssertClassPresentAsync("picture-compact-value");
+        await renderer.AssertClassPresentAsync("direct-slider", false);
         await renderer.AssertInputPresentAsync("20-point white balance enabled", true);
         await renderer.AssertInputPresentAsync("20-point interval", false);
         foreach (var control in IpMenuCatalog.IndexedControls.Where(control => control.Section == "white20"))
@@ -257,6 +319,8 @@ public sealed class IpMenuGridTests
         Assert.Equal("On", fixture.Values["WB20PointMode"]!.ToString());
         Assert.True(fixture.Service.GetSnapshot().Menu.GridsRead.ContainsKey("white20"));
         await renderer.AssertTextAbsentAsync("An IP Remote action is already running");
+        Assert.Contains("Read all 20 rows in", fixture.Service.GetSnapshot().Menu.SelectorSession!.Message, StringComparison.Ordinal);
+        await renderer.AssertTextAsync("Read all 20 rows in");
         await renderer.AssertTargetAsync("5% Red value", 11);
         Assert.Equal(0, javascript.ConfirmCalls);
     }

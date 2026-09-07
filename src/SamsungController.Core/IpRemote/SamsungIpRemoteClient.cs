@@ -13,11 +13,14 @@ using SamsungController.Core.Devices;
 namespace SamsungController.Core.IpRemote;
 
 /// <summary>A separate HTTPS client with two getters and explicitly allowlisted picture writes.</summary>
-public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpClient? httpClient = null) : ISamsungIpRemoteClient
+public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpClient? httpClient = null) : ISamsungIpRemoteClient, IDisposable
 {
     public static IReadOnlyList<string> ReadMethods { get; } = Array.AsReadOnly(new[] { "getTVStates", "getVideoStates" });
     private const int MaximumResponseBytes = 1024 * 1024;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly object _transportLock = new();
+    private OwnedTransport? _transport;
+    private bool _disposed;
     private long _requestId;
     private static readonly JsonSerializerOptions PrettyJson = new() { WriteIndented = true };
 
@@ -67,22 +70,21 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
         var timer = Stopwatch.StartNew();
         var request = new JsonObject { ["jsonrpc"] = "2.0", ["id"] = id, ["method"] = method };
         string? responseJson = null;
-        string? fingerprint = null;
         int? httpStatus = null;
-        var rejectedCertificate = false;
         string? token = null;
         JsonNode? resultPayload = null;
         var accessingCredentials = false;
-        HttpClient? ownedClient = null;
+        OwnedTransport? transport = null;
         SamsungIpRemoteExchange Complete(SamsungIpRemoteOutcome outcome, string message, JsonObject? result = null, int? code = null) =>
             new(started, id, method, endpoint.AbsoluteUri, outcome, message,
                 IpRemoteRedactor.Redact(request, token)!.ToJsonString(PrettyJson), responseJson, result,
-                httpStatus, code, timer.ElapsedMilliseconds, fingerprint)
+                httpStatus, code, timer.ElapsedMilliseconds, transport?.Fingerprint)
             { Payload = resultPayload?.DeepClone() };
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(pairing ? options.PairingTimeout : options.RequestTimeout);
         try
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             if (!pairing)
             {
                 accessingCredentials = true;
@@ -99,16 +101,9 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
             var client = httpClient;
             if (client is null)
             {
-                var handler = new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false };
-                handler.ServerCertificateCustomValidationCallback = (message, certificate, _, errors) =>
-                {
-                    fingerprint = certificate?.GetCertHashString(HashAlgorithmName.SHA256);
-                    var trusted = IsCertificateTrusted(options, message.RequestUri!, certificate, errors);
-                    rejectedCertificate |= !trusted;
-                    return trusted;
-                };
-                ownedClient = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
-                client = ownedClient;
+                transport = GetTransport(options);
+                transport.RejectedCertificate = false;
+                client = transport.Client;
             }
 
             using var message = new HttpRequestMessage(HttpMethod.Post, endpoint);
@@ -191,8 +186,8 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
         }
         catch (HttpRequestException)
         {
-            return Complete(rejectedCertificate ? SamsungIpRemoteOutcome.CertificateError : SamsungIpRemoteOutcome.TransportError,
-                rejectedCertificate ? "The TV certificate was not trusted. Verify its SHA-256 fingerprint and pin it, or explicitly allow an untrusted certificate for this endpoint only."
+            return Complete(transport?.RejectedCertificate == true ? SamsungIpRemoteOutcome.CertificateError : SamsungIpRemoteOutcome.TransportError,
+                transport?.RejectedCertificate == true ? "The TV certificate was not trusted. Verify its SHA-256 fingerprint and pin it, or explicitly allow an untrusted certificate for this endpoint only."
                     : "The HTTPS request failed. Check the IP Remote port, whether the TV is on, and local-network/VPN access.");
         }
         catch (ResponseTooLargeException)
@@ -207,9 +202,63 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
         }
         finally
         {
-            ownedClient?.Dispose();
             _gate.Release();
         }
+    }
+
+    // Reuse TCP/TLS connections, but never reuse a permissive connection after
+    // changing endpoint, certificate pin, or trust policy. Credentials are still
+    // loaded and attached separately to each RPC, not kept in default headers.
+    private OwnedTransport GetTransport(SamsungIpRemoteOptions options)
+    {
+        lock (_transportLock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            var key = new TransportKey(options.Endpoint, options.AllowUntrustedCertificate, options.NormalizedCertificatePin);
+            if (_transport?.Key != key)
+            {
+                _transport?.Dispose();
+                _transport = new OwnedTransport(key, options);
+            }
+            return _transport;
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (_transportLock)
+        {
+            _disposed = true;
+            _transport?.Dispose();
+            _transport = null;
+            // An injected HttpClient belongs to its caller.
+        }
+    }
+
+    private sealed record TransportKey(Uri Endpoint, bool AllowUntrusted, string? Pin);
+
+    private sealed class OwnedTransport : IDisposable
+    {
+        public TransportKey Key { get; }
+        public HttpClient Client { get; }
+        public string? Fingerprint { get; private set; }
+        public bool RejectedCertificate { get; set; }
+
+        public OwnedTransport(TransportKey key, SamsungIpRemoteOptions options)
+        {
+            Key = key;
+            var handler = new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false };
+            handler.ServerCertificateCustomValidationCallback = (message, certificate, _, errors) =>
+            {
+                Fingerprint = certificate?.GetCertHashString(HashAlgorithmName.SHA256);
+                var trusted = IsCertificateTrusted(options, message.RequestUri!, certificate, errors);
+                RejectedCertificate |= !trusted;
+                return trusted;
+            };
+            Client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
+        }
+
+        public void Dispose() => Client.Dispose();
     }
 
     private static bool MatchesRequestId(JsonNode? node, long expected)

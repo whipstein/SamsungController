@@ -442,6 +442,10 @@ public sealed class IpRemotePageTests
             Button(label).Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "disabled" && frame.AttributeValue is true)));
         public Task AssertTextAsync(string expected) => Dispatcher.InvokeAsync(() => Assert.Contains(expected, Text(Frames), StringComparison.Ordinal));
         public Task AssertTextAbsentAsync(string text) => Dispatcher.InvokeAsync(() => Assert.DoesNotContain(text, Text(Frames), StringComparison.Ordinal));
+        public Task AssertClassPresentAsync(string name, bool expected = true) => Dispatcher.InvokeAsync(() => Assert.Equal(expected,
+            Frames.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "class"
+                && (frame.AttributeValue?.ToString() ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains(name, StringComparer.Ordinal)
+                || frame.FrameType == RenderTreeFrameType.Markup && frame.MarkupContent.Contains($"class=\"{name}\"", StringComparison.Ordinal))));
         public Task AssertTargetAsync(string label, int expected) => Dispatcher.InvokeAsync(() =>
         {
             var frames = Frames;

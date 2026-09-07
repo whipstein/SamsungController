@@ -16,6 +16,7 @@ Development and real-display feedback proceed separately on `feature/ip-remote-v
 - [x] Cover the cutover with simulated service and Blazor event tests; update installation/use documentation.
 - [ ] User exercises the replacement interface on real displays, especially advanced calibration and mode-dependent controls.
 - [x] Restore simultaneous 20-point and Custom color RGB grids using queried per-row values, explicit selector routing/restoration, staged/immediate updates, and cancellation/restart tests.
+- [x] Restore compact native sliders/pill switches; accelerate grid reads with shared context checks and endpoint/trust-scoped HTTPS connection reuse, covered by request-count and loopback TLS tests.
 - [ ] Design direct-IP macro editing and portable full calibration preset import/export.
 
 - [x] Add an independent HTTPS JSON-RPC client with explicit pairing and a two-getter read-only allowlist.

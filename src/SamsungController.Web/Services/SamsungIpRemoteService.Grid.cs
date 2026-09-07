@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using SamsungController.Core.IpRemote;
@@ -17,10 +18,11 @@ public sealed partial class SamsungIpRemoteService
     /// <summary>Read every indexed RGB row. Only selectors are moved, never modes or RGB values.</summary>
     public Task RefreshMenuGridAsync(string section) => RunMenuOperationAsync(async (profile, cancellation) =>
     {
+        var started = Stopwatch.GetTimestamp();
         EnsureMenuWritesAllowed(); // Reading all rows moves a selector; an unresolved RGB write must be handled first.
         var grid = IpMenuGrids.ForSection(section) ?? throw new ArgumentException("Unknown calibration grid.");
         UpdateMenu(menu => ClearMenuGridCache(menu, section));
-        await RefreshMenuSectionCoreAsync(profile, section, cancellation).ConfigureAwait(false);
+        await RefreshMenuSectionCoreAsync(profile, section, cancellation, loadingGrid: true).ConfigureAwait(false);
         if (GetSnapshot().Menu.Readings.GetValueOrDefault(grid.ModeMethod)?.Values?[grid.ModeField]?.ToString() != grid.RequiredMode)
         {
             UpdateMenu(menu => menu with { Status = $"Set {grid.ModeField} to {grid.RequiredMode} and Apply to load all rows. No mode or RGB value was changed." });
@@ -30,11 +32,15 @@ public sealed partial class SamsungIpRemoteService
         try
         {
             session = await BeginMenuSelectorSessionAsync(profile, grid, cancellation).ConfigureAwait(false);
+            var current = session.Original;
             for (var index = 0; index < grid.Values.Count; index++)
             {
                 var value = grid.Values[index];
                 UpdateMenu(menu => menu with { Status = $"Reading {value} · row {index + 1} of {grid.Values.Count}. RGB values are unchanged." });
-                await MoveMenuSelectorAsync(profile, grid, session, value, cancellation).ConfigureAwait(false);
+                // The previous row's final context check is this row's preflight.
+                // Only selector writes happen here. RGB Apply keeps its full,
+                // independent pre/post-write checks in MoveMenuSelectorAsync.
+                await MoveMenuReadSelectorAsync(profile, grid, session, current, value, cancellation).ConfigureAwait(false);
                 var readings = new Dictionary<string, IpMenuRead>();
                 foreach (var control in grid.Row(value))
                 {
@@ -44,15 +50,18 @@ public sealed partial class SamsungIpRemoteService
                     readings[control.Id] = GetSnapshot().Menu.Readings[control.Method];
                 }
                 // Do not label a response as belonging to a row if another controller moved its selector/context.
-                if (await ReadMenuGridContextAsync(profile, grid, session, cancellation).ConfigureAwait(false) != value)
+                current = await ReadMenuGridContextAsync(profile, grid, session, cancellation, readingGrid: true).ConfigureAwait(false);
+                if (current != value)
                     throw new InvalidOperationException("The interval/color changed during the read. Load the grid again; no RGB setting was sent.");
-                foreach (var reading in readings) CacheMenuGridRead(IpMenuCatalog.Get(reading.Key), reading.Value);
+                UpdateMenu(menu => menu with { IndexedReadings = menu.IndexedReadings.Concat(readings).ToDictionary() });
             }
             await RestoreMenuSelectorAsync(profile, session, cancellation).ConfigureAwait(false);
+            var completed = $"Read all {grid.Values.Count} rows in {Stopwatch.GetElapsedTime(started).TotalSeconds:F1}s. Original selector {session.Original} restored; RGB values unchanged.";
+            await SaveMenuSelectorSessionAsync(GetSnapshot().Menu.SelectorSession! with { Message = completed }).ConfigureAwait(false);
             UpdateMenu(menu => menu with
             {
                 GridsRead = new Dictionary<string, DateTimeOffset>(menu.GridsRead) { [section] = _timeProvider.GetUtcNow() },
-                Status = $"Read all {grid.Values.Count} rows. Original selector {session.Original} restored; RGB values unchanged."
+                Status = completed
             });
         }
         catch (Exception error) when (IsMenuGridError(error))
@@ -80,9 +89,11 @@ public sealed partial class SamsungIpRemoteService
         return session;
     }
 
-    private async Task<string> ReadMenuGridContextAsync(IpRemoteProfile profile, IpMenuGrid grid, IpMenuSelectorSession? session, CancellationToken cancellation)
+    private async Task<string> ReadMenuGridContextAsync(IpRemoteProfile profile, IpMenuGrid grid, IpMenuSelectorSession? session, CancellationToken cancellation, bool readingGrid = false)
     {
-        await ReadMenuBaseAsync(profile, cancellation).ConfigureAwait(false);
+        // Input/picture mode come from getTVStates. getVideoStates contains
+        // ordinary picture values, not the indexed RGB row or its context.
+        await ReadMenuBaseAsync(profile, cancellation, includeVideo: !readingGrid).ConfigureAwait(false);
         foreach (var method in new[] { grid.ModeMethod, grid.SelectorMethod })
         {
             var exchange = await MenuQueryAsync(profile, method, cancellation).ConfigureAwait(false);
@@ -99,6 +110,23 @@ public sealed partial class SamsungIpRemoteService
         if (value is null || !grid.Values.Contains(value, StringComparer.Ordinal))
             throw new InvalidOperationException("The TV did not report a documented interval/color. No selector value was guessed.");
         return value;
+    }
+
+    private async Task MoveMenuReadSelectorAsync(IpRemoteProfile profile, IpMenuGrid grid, IpMenuSelectorSession session, string current, string target, CancellationToken cancellation)
+    {
+        if (current == target) return;
+        await SaveMenuSelectorSessionAsync(session with { Requested = target, LastConfirmed = current, Status = "Sending" }).ConfigureAwait(false);
+        cancellation.ThrowIfCancellationRequested();
+        var exchange = await _client.ExecuteCommandAsync(profile.Connection, grid.SelectorMethod, new() { [grid.SelectorField] = target }, cancellationToken: cancellation).ConfigureAwait(false);
+        await RecordExchangeAsync(profile, "Calibration · select " + target, exchange).ConfigureAwait(false);
+        RequireSuccess(exchange);
+        // A setter acknowledgment is not evidence that the selector changed.
+        var selected = await MenuQueryAsync(profile, grid.SelectorMethod, cancellation).ConfigureAwait(false);
+        StoreMenuRead(grid.SelectorMethod, selected); RequireSuccess(selected);
+        if (selected.Result?[grid.SelectorField]?.ToString() != target)
+            throw new InvalidOperationException($"The TV did not select {target}. No RGB command was sent to that row.");
+        UpdateMenu(menu => menu with { Readings = menu.Readings.Where(pair => !grid.Fields.Any(field => pair.Key == field + "Control")).ToDictionary() });
+        await SaveMenuSelectorSessionAsync(session with { Requested = target, LastConfirmed = target, Status = "Selected" }).ConfigureAwait(false);
     }
 
     private async Task MoveMenuSelectorAsync(IpRemoteProfile profile, IpMenuGrid grid, IpMenuSelectorSession session, string target, CancellationToken cancellation, bool restoring = false)

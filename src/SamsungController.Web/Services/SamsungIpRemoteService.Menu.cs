@@ -33,7 +33,7 @@ public sealed partial class SamsungIpRemoteService
 
     public Task RefreshMenuSectionAsync(string section) => RunMenuOperationAsync((profile, cancellation) => RefreshMenuSectionCoreAsync(profile, section, cancellation));
 
-    private async Task RefreshMenuSectionCoreAsync(IpRemoteProfile profile, string section, CancellationToken cancellation)
+    private async Task RefreshMenuSectionCoreAsync(IpRemoteProfile profile, string section, CancellationToken cancellation, bool loadingGrid = false)
     {
         if (!IpMenuCatalog.Sections.Any(item => item.Id == section)) throw new ArgumentException("Unknown settings section.");
         var methods = IpMenuCatalog.ForSection(section).Select(control => control.Method).Distinct().ToArray();
@@ -49,6 +49,10 @@ public sealed partial class SamsungIpRemoteService
             cancellation.ThrowIfCancellationRequested();
             var command = SamsungIpRemoteCommands.Get(method);
             if (command.ReadbackMethod is "getTVStates" or "getVideoStates") continue;
+            // A grid load reads its selector and RGB channels at their actual
+            // indexed locations below, not once more for the initial row here.
+            if (loadingGrid && IpMenuGrids.ForSection(section) is { } grid
+                && (method == grid.SelectorMethod || grid.Fields.Any(field => method == field + "Control"))) continue;
             var exchange = await MenuQueryAsync(profile, method, cancellation).ConfigureAwait(false);
             StoreMenuRead(method, exchange);
             if (IsConnectionFailure(exchange.Outcome) || exchange.Outcome == SamsungIpRemoteOutcome.Canceled) RequireSuccess(exchange);
@@ -308,25 +312,27 @@ public sealed partial class SamsungIpRemoteService
         return exchange;
     }
 
-    private async Task ReadMenuBaseAsync(IpRemoteProfile profile, CancellationToken cancellation)
+    private async Task ReadMenuBaseAsync(IpRemoteProfile profile, CancellationToken cancellation, bool includeVideo = true)
     {
         var tv = await MenuQueryAsync(profile, "getTVStates", cancellation).ConfigureAwait(false); RequireSuccess(tv);
-        var video = await MenuQueryAsync(profile, "getVideoStates", cancellation).ConfigureAwait(false); RequireSuccess(video);
-        if (tv.Result is null || video.Result is null) throw new InvalidOperationException("The TV did not return state objects.");
+        var video = includeVideo ? await MenuQueryAsync(profile, "getVideoStates", cancellation).ConfigureAwait(false) : null;
+        if (video is not null) RequireSuccess(video);
+        if (tv.Result is null || includeVideo && video?.Result is null) throw new InvalidOperationException("The TV did not return state objects.");
         var previous = GetSnapshot().Menu;
         var changed = !EquivalentCommandValue(previous.Tv["inputSource"], tv.Result["inputSource"])
             || !EquivalentCommandValue(previous.Tv["pictureMode"], tv.Result["pictureMode"]);
         UpdateMenu(menu => (changed ? ClearMenuGridCache(menu) : menu) with
         {
             Tv = (JsonObject)tv.Result.DeepClone(),
-            Video = (JsonObject)video.Result.DeepClone(),
+            Video = video?.Result is { } values ? (JsonObject)values.DeepClone() : changed ? new() : menu.Video,
             Readings = changed ? new Dictionary<string, IpMenuRead>() : menu.Readings,
             SectionsRead = changed ? new Dictionary<string, DateTimeOffset>() : menu.SectionsRead
         });
         foreach (var method in IpMenuCatalog.Controls.Select(control => control.Method).Distinct())
         {
             var readback = SamsungIpRemoteCommands.Get(method).ReadbackMethod;
-            if (readback is "getTVStates" or "getVideoStates") StoreMenuRead(method, readback == "getTVStates" ? tv : video);
+            if (readback == "getTVStates") StoreMenuRead(method, tv);
+            else if (readback == "getVideoStates" && video is not null) StoreMenuRead(method, video);
         }
     }
 
