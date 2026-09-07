@@ -173,7 +173,9 @@
     <section class="panel ip-step" id="direct-contrast">
         <h2>4. Direct picture controls</h2>
         <label>Picture control
-            <select aria-label="IP Remote picture control" @bind="SelectedControl" @bind:after="ControlChanged" disabled="@(Snapshot.IsBusy || PendingPicture)">
+            <select aria-label="IP Remote picture control" value="@SelectedControl"
+                    @oninput="SelectPictureControl" @onchange="SelectPictureControl"
+                    disabled="@(!InteractiveReady || !Snapshot.Initialized || Snapshot.IsBusy || PendingPicture)">
                 @foreach (var control in SamsungIpRemotePictureControl.All)
                 {
                     <option value="@control.Id">@control.Name</option>
@@ -316,6 +318,7 @@
     private bool AllowUntrustedCertificate, RedactIdentifiers = true, RedactCertificateFingerprints = true;
     private bool PictureConditionsConfirmed;
     private bool DirectConditionsConfirmed;
+    private bool InteractiveReady;
     private int? DirectTarget;
     private string SelectedControl = "contrast";
     private string ControlName => SamsungIpRemotePictureControl.Get(SelectedControl).Name;
@@ -360,6 +363,14 @@
     {
         IpRemoteController.Changed += Refresh;
         await InitializeAsync();
+    }
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender) return;
+        // Static prerendered HTML cannot process events. Do not let a native
+        // select appear to change while its server-side handlers are not ready.
+        InteractiveReady = true;
+        StateHasChanged();
     }
     private Task InitializeAsync() => GuardAsync(async () => { await IpRemoteController.InitializeAsync(); LoadActiveProfile(); });
     private void Refresh() => _ = InvokeAsync(() =>
@@ -407,11 +418,18 @@
     private Task ReadBothAsync() => GuardAsync(() => IpRemoteController.ReadBothAsync(Label));
     private Task ReadAsync(string method) => GuardAsync(() => IpRemoteController.ReadAsync(method, Label));
     private Task RefreshDirectPictureAsync() => GuardAsync(() => IpRemoteController.ReadDirectPictureAsync(SelectedControl));
-    private void ControlChanged()
+    private void SelectPictureControl(ChangeEventArgs args)
     {
+        if (!InteractiveReady || !Snapshot.Initialized || Snapshot.IsBusy || PendingPicture) return;
+        var control = args.Value?.ToString();
+        if (!SamsungIpRemotePictureControl.IsSupported(control) || control == SelectedControl) return;
+        // Handle native input immediately and change as a fallback. They may
+        // both fire for one choice; the second event must not clear new state.
+        SelectedControl = control!;
         DirectTarget = DirectReading?.Value;
         DirectConditionsConfirmed = false;
         PictureConditionsConfirmed = false;
+        Error = null;
     }
     private void NudgeDirectTarget(int delta)
     {

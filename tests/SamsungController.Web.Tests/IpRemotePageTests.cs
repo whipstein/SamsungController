@@ -152,6 +152,75 @@ public sealed class IpRemotePageTests
     }
 
     [Fact]
+    public async Task StaticPageCannotOfferAnInteractiveLookingSelectorBeforeHandlersAreReady()
+    {
+        using var fixture = await ContrastFixture.CreateAsync();
+        await using var services = new ServiceCollection().AddLogging().AddSingleton(fixture.Service)
+            .AddSingleton<IJSRuntime>(new DownloadJavaScript()).BuildServiceProvider();
+        await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
+        var html = await renderer.Dispatcher.InvokeAsync(async () =>
+            (await renderer.RenderComponentAsync<IpRemote>()).ToHtmlString());
+        var select = System.Text.RegularExpressions.Regex.Match(html,
+            "<select[^>]*aria-label=\"IP Remote picture control\"[^>]*>");
+        Assert.True(select.Success);
+        Assert.Contains("disabled", select.Value, StringComparison.Ordinal);
+        Assert.Empty(fixture.Display.Requests);
+    }
+
+    [Fact]
+    public async Task DuplicateNativeChangeDoesNotClearConditionsForTheSelectedControl()
+    {
+        using var fixture = await ContrastFixture.CreateAsync();
+        await using var services = new ServiceCollection().AddLogging().AddSingleton(fixture.Service)
+            .AddSingleton<IJSRuntime>(new DownloadJavaScript()).BuildServiceProvider();
+        await using var renderer = new IpPageRenderer(services);
+        await renderer.StartAsync();
+        await renderer.SelectControlAsync("color", "oninput");
+        await renderer.ClickAsync("Prepare color test (read only)");
+        await renderer.SetCheckboxAsync("Confirm picture test conditions", true);
+        var count = fixture.Display.Requests.Count;
+        await renderer.SelectControlAsync("color", "onchange");
+        await renderer.AssertCheckboxAsync("Confirm picture test conditions", true);
+        await renderer.AssertDisabledAsync("Apply one-step color test", false);
+        await renderer.SelectControlAsync("invalid-control", "oninput");
+        await renderer.AssertSelectedControlAsync("color");
+        await renderer.AssertCheckboxAsync("Confirm picture test conditions", true);
+        Assert.Equal(count, fixture.Display.Requests.Count);
+    }
+
+    [Theory]
+    [InlineData("oninput")]
+    [InlineData("onchange")]
+    public async Task NativeControlSelectionUpdatesEveryActionAndRemainsSelectedAfterRefresh(string eventName)
+    {
+        using var fixture = await ContrastFixture.CreateAsync();
+        await fixture.VerifyAsync();
+        fixture.Display.Requests.Clear();
+        await using var services = new ServiceCollection().AddLogging().AddSingleton(fixture.Service)
+            .AddSingleton<IJSRuntime>(new DownloadJavaScript()).BuildServiceProvider();
+        await using var renderer = new IpPageRenderer(services);
+        await renderer.StartAsync();
+        foreach (var control in new[] { "color", "sharpness", "contrast" })
+        {
+            var count = fixture.Display.Requests.Count;
+            await renderer.SelectControlAsync(control, eventName);
+            await renderer.AssertSelectedControlAsync(control);
+            await renderer.AssertDisabledAsync($"Read direct {control}", false);
+            await renderer.AssertDisabledAsync($"Apply direct {control}", true);
+            await renderer.AssertDisabledAsync($"Prepare {control} test (read only)", false);
+            Assert.Equal(count, fixture.Display.Requests.Count);
+            await renderer.ClickAsync($"Read direct {control}");
+            Assert.Equal(control, fixture.Service.GetSnapshot().DirectPictureReading!.Control);
+            await renderer.AssertSelectedControlAsync(control);
+            await renderer.ClickAsync($"Prepare {control} test (read only)");
+            Assert.Equal(control, fixture.Service.GetSnapshot().PictureTest!.Control);
+            await renderer.AssertDisabledAsync($"Apply one-step {control} test", true);
+            await renderer.AssertSelectedControlAsync(control);
+        }
+        Assert.All(fixture.Display.Methods, method => Assert.StartsWith("get", method));
+    }
+
+    [Fact]
     public async Task RestartShowsRecoveryControlsWithoutSendingAndRequiresRecoveryConfirmation()
     {
         using var fixture = await ContrastFixture.CreateAsync();
@@ -339,15 +408,22 @@ public sealed class IpRemotePageTests
                 .Single(item => item.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == label));
             Assert.Equal(expected, input.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "checked" && frame.AttributeValue is true));
         });
-        public Task SelectControlAsync(string value) => Dispatcher.InvokeAsync(async () =>
+        private RenderTreeFrame[] ControlSelect()
         {
             var frames = Frames;
-            var select = frames.Select((frame, index) => (frame, index)).Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "select")
+            return frames.Select((frame, index) => (frame, index)).Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "select")
                 .Select(item => frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray())
                 .Single(item => item.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == "IP Remote picture control"));
+        }
+        public Task AssertSelectedControlAsync(string value) => Dispatcher.InvokeAsync(() => Assert.Equal(value,
+            ControlSelect().Skip(1).TakeWhile(frame => frame.FrameType == RenderTreeFrameType.Attribute)
+                .Single(frame => frame.AttributeName == "value").AttributeValue));
+        public Task SelectControlAsync(string value, string eventName = "onchange") => Dispatcher.InvokeAsync(async () =>
+        {
+            var select = ControlSelect();
             Assert.DoesNotContain(select, frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "disabled" && frame.AttributeValue is true);
-            await DispatchEventAsync(select.Single(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "onchange").AttributeEventHandlerId,
-                null, new ChangeEventArgs { Value = value });
+            await DispatchEventAsync(select.Single(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == eventName).AttributeEventHandlerId,
+                new EventFieldInfo { ComponentId = _root, FieldValue = value }, new ChangeEventArgs { Value = value });
         });
         private static string Text(IEnumerable<RenderTreeFrame> frames) => string.Concat(frames.Select(frame => frame.FrameType switch
         { RenderTreeFrameType.Text => frame.TextContent, RenderTreeFrameType.Markup => frame.MarkupContent, _ => "" }));
