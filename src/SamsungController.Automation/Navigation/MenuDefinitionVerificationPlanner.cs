@@ -516,10 +516,20 @@ public static class MenuDefinitionVerificationPlanner
             };
             var highlightExternalRow = group.Key.Equals("external-disabled", StringComparison.OrdinalIgnoreCase)
                 && representative.ControlType != MenuControlType.Submenu;
+            var inspectExternalHiddenRow = group.Key.Equals("external-hidden", StringComparison.OrdinalIgnoreCase);
             var externalPreparation = highlightExternalRow
                 ? $"highlight {definition.GetPath(representative.Id)} without pressing Enter on that row or changing its value"
-                : $"open {viewPath}";
-            var coverageVersion = external
+                : inspectExternalHiddenRow
+                    ? $"highlight the next visible control after the missing {definition.GetPath(representative.Id)} (or the previous visible control if none follows), without activating it; if only submenus or no rows remain, inspect {viewPath}"
+                    : $"open {viewPath}";
+            var siblingCoverage = inspectExternalHiddenRow
+                ? string.Join(";", definition.Nodes.Values
+                    .Where(node => string.Equals(node.ParentId, representative.ParentId, StringComparison.OrdinalIgnoreCase))
+                    .Select(node => $"{node.ControlType}:{ConditionShape(definition, node)}"))
+                : string.Empty;
+            var coverageVersion = inspectExternalHiddenRow
+                ? $"representative-external-hidden-location-v5|{representative.Id}|{representative.ParentId}|{siblingCoverage}"
+                : external
                 ? $"representative-external-condition-coverage-v4|{representative.Id}"
                 : "representative-condition-coverage-v3";
             Add(

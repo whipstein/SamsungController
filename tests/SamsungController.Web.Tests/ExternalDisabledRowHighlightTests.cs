@@ -75,7 +75,7 @@ public sealed partial class ControllerMenuIntegrationTests
     }
 
     [Fact]
-    public async Task ExternalHiddenVerificationStillOpensContainingMenuWithoutTargetingAbsentRow()
+    public async Task ExternalHiddenVerificationHighlightsNeighborWithoutTargetingAbsentRow()
     {
         var yaml = ExternalDisabledRowHighlightYaml.Replace("COLOR_VISIBILITY",
             "hiddenWhen: [{ externalState: hdmi-bit-depth, equals: 10-bit }]", StringComparison.Ordinal);
@@ -86,8 +86,10 @@ public sealed partial class ControllerMenuIntegrationTests
             var result = await controller.RunMenuDefinitionVerificationTestAsync("condition:external-hidden-behavior");
             Assert.Equal("color", result.TargetNodeId);
             Assert.Contains("absent", result.ActionDescription);
-            Assert.Equal(new[] { "KEY_MENU", "KEY_ENTER" }, GetSentKeys(transport));
-            Assert.Equal("expert", controller.GetMenuNavigationSnapshot().State.NodeId);
+            Assert.Contains("Tint", result.ActionDescription);
+            Assert.Contains("next visible control", result.ActionDescription);
+            Assert.Equal(new[] { "KEY_MENU", "KEY_ENTER", "KEY_DOWN", "KEY_DOWN", "KEY_DOWN" }, GetSentKeys(transport));
+            Assert.Equal("tint", controller.GetMenuNavigationSnapshot().State.NodeId);
         }
     }
 

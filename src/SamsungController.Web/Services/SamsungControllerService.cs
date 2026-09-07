@@ -6298,25 +6298,27 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
                 ?? throw new InvalidOperationException(
                     $"No representative rule controlled by '{state.Label}' remains in this verification group.");
             var viewNodeId = affected.ParentId ?? affected.Id;
-            var highlightRow = !externalHidden && affected.ControlType != MenuControlType.Submenu;
+            if (externalHidden)
+            {
+                return await InspectExternalHiddenRowAsync(definition, check, affected, effectiveValues,
+                    $"{state.Label} = {selectedValue}", cancellationToken).ConfigureAwait(false);
+            }
+            var highlightRow = affected.ControlType != MenuControlType.Submenu;
             if (highlightRow)
             {
-                await HighlightDisabledVerificationRowAsync(definition, affected, effectiveValues, cancellationToken)
+                await HighlightVerificationRowAsync(definition, affected, effectiveValues, "disabled row", cancellationToken)
                     .ConfigureAwait(false);
             }
             else
             {
                 await NavigateToMenuNodeAsync(viewNodeId, cancellationToken).ConfigureAwait(false);
             }
-            var externalExpectedBehavior = externalHidden
-                ? "absent"
-                : "visible but gray and unavailable";
             return new MenuDefinitionVerificationTestResult(
                 check.Id,
                 affected.Id,
                 definition.GetPath(affected.Id),
                 null,
-                $"{(highlightRow ? $"Highlighted {definition.GetPath(affected.Id)} without pressing Enter on that row or changing its value" : $"Opened {definition.GetPath(viewNodeId)}")} with {state.Label} = {selectedValue}. Confirm that {affected.Label} is {externalExpectedBehavior}.",
+                $"{(highlightRow ? $"Highlighted {definition.GetPath(affected.Id)} without pressing Enter on that row or changing its value" : $"Opened {definition.GetPath(viewNodeId)}")} with {state.Label} = {selectedValue}. Confirm that {affected.Label} is visible but gray and unavailable.",
                 []);
         }
 
@@ -6398,17 +6400,67 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
             CollapseMenuControlUpdates(appliedUpdates));
     }
 
-    // A disabled row is still a cursor stop. Verification may highlight it, but
-    // normal navigation/adjustment must continue rejecting disabled destinations.
-    private async Task HighlightDisabledVerificationRowAsync(
+    private async Task<MenuDefinitionVerificationTestResult> InspectExternalHiddenRowAsync(
+        MenuDefinition definition,
+        MenuDefinitionVerificationCheck check,
+        MenuNode hiddenNode,
+        IReadOnlyDictionary<string, string> effectiveValues,
+        string signalDescription,
+        CancellationToken cancellationToken)
+    {
+        var parent = definition.GetRequiredNode(hiddenNode.ParentId
+            ?? throw new InvalidOperationException($"'{hiddenNode.Label}' has no containing menu to inspect."));
+        if (!IsMenuNodeHidden(definition, hiddenNode, effectiveValues)
+            || IsMenuNodeOrAncestorHidden(definition, parent, effectiveValues)
+            || IsMenuNodeOrAncestorDisabled(definition, parent, effectiveValues))
+        {
+            throw new InvalidOperationException(
+                $"Cannot inspect the missing '{definition.GetPath(hiddenNode.Id)}': the row is not hidden or its containing menu is unavailable under the selected settings.");
+        }
+
+        var siblings = definition.Nodes.Values.Where(node =>
+            node.ParentId?.Equals(parent.Id, StringComparison.OrdinalIgnoreCase) == true).ToArray();
+        var hiddenIndex = Array.FindIndex(siblings, node => node.Id.Equals(hiddenNode.Id, StringComparison.OrdinalIgnoreCase));
+        // A submenu node represents being inside that submenu. Never enter one
+        // just to inspect a missing sibling or claim that a highlighted row is open.
+        bool CanHighlight(MenuNode node) => node.ControlType != MenuControlType.Submenu
+            && !IsMenuNodeHidden(definition, node, effectiveValues);
+        var next = siblings.Skip(hiddenIndex + 1).FirstOrDefault(CanHighlight);
+        var neighbor = next ?? siblings.Take(hiddenIndex).Reverse().FirstOrDefault(CanHighlight);
+        string DescribeRow(MenuNode node) => siblings.Any(sibling => sibling.Id != node.Id
+            && sibling.Label.Equals(node.Label, StringComparison.OrdinalIgnoreCase))
+                ? $"{node.Label} [{node.Id}]{(node.SelectionOptions is { Count: > 0 } options ? $" (options: {string.Join(", ", options)})" : string.Empty)}"
+                : node.Label;
+        var missingLabel = DescribeRow(hiddenNode);
+        string preparation;
+        if (neighbor is not null)
+        {
+            await HighlightVerificationRowAsync(definition, neighbor, effectiveValues, "hidden-row location", cancellationToken)
+                .ConfigureAwait(false);
+            preparation = $"Highlighted {definition.GetPath(parent.Id)} / {DescribeRow(neighbor)}, the {(next is not null ? "next" : "previous")} visible control relative to the missing {missingLabel}. No Enter or value adjustment was sent to that control.";
+        }
+        else
+        {
+            await NavigateToMenuNodeAsync(parent.Id, cancellationToken).ConfigureAwait(false);
+            preparation = $"Opened {definition.GetPath(parent.Id)} for manual inspection: only submenus or no rows remain visible, so there is no neighboring control to highlight safely. No neighboring submenu was entered.";
+        }
+        return new MenuDefinitionVerificationTestResult(check.Id, hiddenNode.Id, definition.GetPath(hiddenNode.Id), null,
+            $"{preparation} With {signalDescription}, confirm that {missingLabel} is absent and the surrounding visible rows line up with no cursor stop for it.", []);
+    }
+
+    // Visible gray rows still count as cursor stops. Verification may highlight
+    // them, but normal navigation/adjustment must reject disabled destinations.
+    private async Task HighlightVerificationRowAsync(
         MenuDefinition definition,
         MenuNode node,
         IReadOnlyDictionary<string, string> effectiveValues,
+        string purpose,
         CancellationToken cancellationToken)
     {
         var parent = definition.GetRequiredNode(node.ParentId
             ?? throw new InvalidOperationException($"'{node.Label}' has no containing menu to verify."));
-        if (parent.ControlType != MenuControlType.Submenu
+        if (node.ControlType == MenuControlType.Submenu
+            || parent.ControlType != MenuControlType.Submenu
             || IsMenuNodeOrAncestorDisabled(definition, parent, effectiveValues)
             || IsMenuNodeOrAncestorHidden(definition, node, effectiveValues))
         {
@@ -6423,7 +6475,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
         var tracker = _menuStateTracker
             ?? throw new InvalidOperationException("No menu state tracker is available.");
         await RunNavigationAsync(
-            $"Verify disabled row · {definition.GetPath(node.Id)}",
+            $"Verify {purpose} · {definition.GetPath(node.Id)}",
             async (navigator, token) =>
             {
                 var current = tracker.Current;
@@ -6443,7 +6495,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
                 if (offset != 0)
                 {
                     await ExecutePictureControlOperationsAsync(
-                        $"Highlight disabled row · {node.Label}",
+                        $"Highlight {purpose} · {node.Label}",
                         tracker.Current.Path ?? definition.GetPath(parent.Id),
                         definition.GetPath(node.Id),
                         [new MenuOperation(offset > 0 ? "KEY_DOWN" : "KEY_UP", Repeat: Math.Abs(offset))],
@@ -6451,7 +6503,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
                         token).ConfigureAwait(false);
                 }
                 tracker.AssumeNode(node.Id,
-                    $"Expected highlight on disabled row '{definition.GetPath(node.Id)}'; no activation or value adjustment was sent to that control. Visually confirm the verification result.");
+                    $"Expected highlight on '{definition.GetPath(node.Id)}' for {purpose}; no activation or value adjustment was sent to that control. Visually confirm the verification result.");
             },
             clearPlanOnSuccess: true,
             cancellationToken).ConfigureAwait(false);

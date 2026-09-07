@@ -697,9 +697,18 @@ external sources alongside TV settings. Display Verification creates one
 representative guided check for external disabled rows and one for external
 hidden rows; it asks you to set both the hardware and header selector first.
 For a disabled control, the test highlights the named row without pressing Enter
-on that control or changing its value. Gray siblings still count as cursor stops; hidden siblings
-do not. For hidden rows or disabled submenus, the test opens the containing menu
-for visual inspection rather than attempting to enter an unavailable item.
+on that control or changing its value. Gray siblings still count as cursor stops;
+hidden siblings do not. For an external-state hidden row, the test highlights the
+next visible sibling control at the missing row's location, or the previous
+visible control if none follows. It names both the highlighted control and the
+item that should be absent. For example, when BT.1886 is the representative
+hidden under 10-bit input, the ST.2084 replacement slider is highlighted instead.
+Same-named variants are identified by node ID and, for selections, their options.
+No setting is changed.
+The current menu state reflects the visible control, never the missing row.
+Submenus are not entered just to inspect a missing sibling. If only submenus or
+no rows remain visible, the test explicitly asks for manual inspection of the
+containing menu. Disabled submenus also use containing-menu inspection.
 
 When a submenu is disabled, every descendant is also unavailable automatically.
 Define `disabledWhen` only on that submenu; repeating the same condition on its

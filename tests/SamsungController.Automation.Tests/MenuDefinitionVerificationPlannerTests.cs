@@ -24,6 +24,30 @@ public sealed class MenuDefinitionVerificationPlannerTests
     }
 
     [Fact]
+    public void ExternalHiddenLocationCheckTracksNeighborOrderWithoutResettingUnrelatedChecks()
+    {
+        var nodes = new MenuNode[]
+        {
+            new("normal-video", "Normal video"),
+            new("settings", "Settings", "normal-video"),
+            new("missing", "Missing", "settings", ControlType: MenuControlType.Switch, DefaultValue: "off",
+                HiddenWhen: [new MenuNodeHiddenCondition("depth", "10-bit", MenuConditionSourceKind.ExternalState)]),
+            new("next", "Next", "settings", ControlType: MenuControlType.Switch, DefaultValue: "off"),
+            new("last", "Last", "settings", ControlType: MenuControlType.Switch, DefaultValue: "off")
+        };
+        MenuDefinition Make(IEnumerable<MenuNode> ordered) => new("hidden-position", "Hidden position", "Test TV", new("1"),
+            ordered, [], [], externalStates: [new("depth", "Bit depth", "8-bit", ["8-bit", "10-bit"])]);
+        var original = MenuDefinitionVerificationPlanner.Create(Make(nodes));
+        var reordered = MenuDefinitionVerificationPlanner.Create(Make([nodes[0], nodes[1], nodes[2], nodes[4], nodes[3]]));
+        var originalCheck = original.Checks.Single(check => check.Id == "condition:external-hidden-behavior");
+        Assert.Contains("next visible control", originalCheck.Description);
+        Assert.Contains("previous visible control", originalCheck.Description);
+        Assert.NotEqual(originalCheck.Fingerprint, reordered.Checks.Single(check => check.Id == originalCheck.Id).Fingerprint);
+        foreach (var unchanged in original.Checks.Where(check => check.Id != originalCheck.Id))
+            Assert.Equal(unchanged.Fingerprint, reordered.Checks.Single(check => check.Id == unchanged.Id).Fingerprint);
+    }
+
+    [Fact]
     public void ExternalStateRulesUseOneDedicatedGuidedCheck()
     {
         var definition = new MenuDefinition(
