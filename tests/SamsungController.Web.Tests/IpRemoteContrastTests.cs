@@ -358,21 +358,29 @@ internal sealed class ContrastFixture : IDisposable
     public ContrastDisplay Display { get; } = new();
     public SamsungIpRemoteService Service { get; private set; } = null!;
     private readonly List<HttpClient> _clients = [];
+    private TimeProvider? _timeProvider;
     private SamsungIpRemoteService CreateService()
     {
         var http = new HttpClient(Display, disposeHandler: false);
         _clients.Add(http);
         return new(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         { ["SamsungController:ConfigurationDirectory"] = DirectoryPath }).Build(),
-            new SamsungIpRemoteClient(new PrivateIpRemoteTokenStore(Path.Combine(DirectoryPath, "ip-remote")), http));
+            new SamsungIpRemoteClient(new PrivateIpRemoteTokenStore(Path.Combine(DirectoryPath, "ip-remote")), http), _timeProvider);
     }
-    public static async Task<ContrastFixture> CreateAsync()
+    public static async Task<ContrastFixture> CreateAsync(TimeProvider? timeProvider = null)
     {
-        var fixture = new ContrastFixture();
+        var fixture = new ContrastFixture { _timeProvider = timeProvider };
         await new PrivateIpRemoteTokenStore(Path.Combine(fixture.DirectoryPath, "ip-remote")).SaveAsync(Profile.Endpoint, Token);
         fixture.Service = fixture.CreateService();
         await fixture.Service.SaveProfileAsync(Profile);
         return fixture;
+    }
+    public async Task VerifyAsync(bool visualPass = true)
+    {
+        await Service.PrepareContrastTestAsync();
+        var id = Service.GetSnapshot().ContrastTest!.Id;
+        await Service.ApplyContrastTestAsync(id, true);
+        await Service.RestoreContrastTestAsync(id, visualPass);
     }
     public async Task RestartAsync()
     {

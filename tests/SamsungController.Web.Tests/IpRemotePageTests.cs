@@ -16,6 +16,69 @@ namespace SamsungController.Web.Tests;
 #pragma warning disable BL0006
 public sealed class IpRemotePageTests
 {
+    [Fact]
+    public async Task VerifiedDirectControlStagesEditsRequiresConfirmationAndKeepsOrUndoesValue()
+    {
+        using var fixture = await ContrastFixture.CreateAsync();
+        await fixture.VerifyAsync();
+        fixture.Display.Requests.Clear();
+        var javascript = new DownloadJavaScript();
+        await using var services = new ServiceCollection().AddLogging().AddSingleton(fixture.Service).AddSingleton<IJSRuntime>(javascript).BuildServiceProvider();
+        await using var renderer = new IpPageRenderer(services);
+        await renderer.StartAsync();
+        await renderer.AssertTextAsync("Contrast read/write verification saved");
+        await renderer.AssertDisabledAsync("Apply direct contrast…", true);
+        Assert.Empty(fixture.Display.Requests);
+        await renderer.ClickAsync("Read direct contrast");
+        await renderer.ChangeAsync("Target contrast", "40");
+        Assert.Empty(fixture.Display.Writes);
+        await renderer.AssertDisabledAsync("Apply direct contrast…", true);
+        await renderer.SetCheckboxAsync("Confirm direct contrast conditions", true);
+        await renderer.AssertDisabledAsync("Apply direct contrast…", false);
+        javascript.Confirm = false;
+        await renderer.ClickAsync("Apply direct contrast…");
+        Assert.Empty(fixture.Display.Writes);
+        javascript.Confirm = true;
+        await renderer.ClickAsync("Apply direct contrast…");
+        Assert.Equal(40, fixture.Display.Contrast);
+        await renderer.AssertTextAsync("New value kept on TV");
+        await renderer.AssertTextAsync("Contrast read/write verification saved");
+        await renderer.AssertDisabledAsync("New display", false);
+        await renderer.AssertDisabledAsync("Apply direct contrast…", true);
+        await renderer.ClickAsync("Undo last direct change…");
+        Assert.Equal(45, fixture.Display.Contrast);
+        await renderer.AssertTextAsync("Original restored");
+        Assert.Equal(new[] { 40, 45 }, fixture.Display.Writes);
+        await renderer.ClickAsync("Download diagnostic report");
+        Assert.Contains("ControlCapabilities", javascript.Download, StringComparison.Ordinal);
+        Assert.DoesNotContain(ContrastFixture.Token, javascript.Download, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task UnverifiedContextCanReadButCannotApplyAndStagingNewTargetClearsConsent()
+    {
+        using var fixture = await ContrastFixture.CreateAsync();
+        var javascript = new DownloadJavaScript();
+        await using var services = new ServiceCollection().AddLogging().AddSingleton(fixture.Service).AddSingleton<IJSRuntime>(javascript).BuildServiceProvider();
+        await using var renderer = new IpPageRenderer(services);
+        await renderer.StartAsync();
+        await renderer.ClickAsync("Read direct contrast");
+        await renderer.ChangeAsync("Target contrast", "44");
+        await renderer.SetCheckboxAsync("Confirm direct contrast conditions", true);
+        await renderer.AssertDisabledAsync("Apply direct contrast…", true);
+        Assert.Empty(fixture.Display.Writes);
+        await fixture.VerifyAsync();
+        await renderer.ClickAsync("Read direct contrast");
+        await renderer.ChangeAsync("Target contrast", "44");
+        await renderer.SetCheckboxAsync("Confirm direct contrast conditions", true);
+        await renderer.AssertDisabledAsync("Apply direct contrast…", false);
+        await renderer.ChangeAsync("Target contrast", "43");
+        await renderer.AssertDisabledAsync("Apply direct contrast…", true);
+        await renderer.SetCheckboxAsync("Confirm direct contrast conditions", true);
+        await renderer.ChangeAsync("TV IP address or hostname", "192.0.2.11");
+        await renderer.AssertDisabledAsync("Apply direct contrast…", true);
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]

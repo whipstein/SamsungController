@@ -11,6 +11,7 @@ public sealed partial class SamsungIpRemoteService
     public Task PrepareContrastTestAsync() => RunContrastOperationAsync(async (profile, cancellation) =>
     {
         EnsureNoPendingContrastTest();
+        Update(state => state with { DirectContrastReading = null });
         if (new[] { profile.Model, profile.Firmware, profile.InputSource, profile.PictureMode, profile.Signal }.Any(string.IsNullOrWhiteSpace))
             throw new InvalidOperationException("Save the model, firmware, input, picture mode, and signal annotations before preparing a write experiment.");
         var (input, mode, video, original) = await ReadContrastCheckpointAsync(profile, "Contrast · prepare (read only)", cancellation).ConfigureAwait(false);
@@ -18,6 +19,7 @@ public sealed partial class SamsungIpRemoteService
         await SaveContrastTestAsync(new()
         {
             Profile = profile,
+            PreparedAt = _timeProvider.GetUtcNow(),
             Original = original,
             Target = original - 1,
             ReportedInput = input,
@@ -30,16 +32,25 @@ public sealed partial class SamsungIpRemoteService
     public Task ApplyContrastTestAsync(Guid testId, bool conditionsConfirmed) => RunContrastOperationAsync(async (profile, cancellation) =>
     {
         var test = RequireContrastTest(testId, profile);
-        if (test.Stage != IpRemoteContrastStage.Prepared || test.WriteAttempted)
+        if (test.Purpose != IpRemoteContrastPurpose.Verification || test.Stage != IpRemoteContrastStage.Prepared || test.WriteAttempted)
             throw new InvalidOperationException("Prepare a new baseline before applying a contrast test. A previous write is never replayed.");
         if (!conditionsConfirmed) throw new InvalidOperationException("Confirm the displayed original value, valid one-step target, and unchanged TV/input/signal conditions first.");
-        if (DateTimeOffset.UtcNow - test.PreparedAt > TimeSpan.FromMinutes(2))
+        if (_timeProvider.GetUtcNow() - test.PreparedAt > TimeSpan.FromMinutes(2))
             throw new InvalidOperationException("The baseline is over two minutes old. Prepare again; no write was sent.");
         var before = await ReadContrastCheckpointAsync(profile, "Contrast · recheck before write", cancellation).ConfigureAwait(false);
         CheckContext(test, before.Input, before.Mode);
         CheckOtherVideoFields(test, before.Video);
         if (before.Contrast != test.Original)
             throw new InvalidOperationException("Contrast changed since preparation. Prepare again; no write was sent.");
+
+        Update(state => state with { DirectContrastReading = null });
+        await ApplyPreparedContrastAsync(test, cancellation).ConfigureAwait(false);
+    });
+
+    private async Task ApplyPreparedContrastAsync(IpRemoteContrastTest test, CancellationToken cancellation)
+    {
+        var profile = test.Profile;
+        var direct = test.Purpose == IpRemoteContrastPurpose.DirectAdjustment;
 
         // Durably remember the original BEFORE the request can leave the app.
         // A crash/cancel after this point is treated as potentially applied.
@@ -50,7 +61,7 @@ public sealed partial class SamsungIpRemoteService
             Message = "Sending one contrast change. Keep the display, input, picture mode, and signal unchanged."
         };
         await SaveContrastTestAsync(test).ConfigureAwait(false);
-        await WriteContrastOnceAsync(profile, test.Target, "Contrast · lower by one", cancellation).ConfigureAwait(false);
+        await WriteContrastOnceAsync(profile, test.Target, direct ? "Direct contrast · apply target" : "Contrast · lower by one", cancellation).ConfigureAwait(false);
         var after = await ReadContrastCheckpointAsync(profile, "Contrast · changed-value readback", cancellation).ConfigureAwait(false);
         CheckContext(test, after.Input, after.Mode);
         CheckOtherVideoFields(test, after.Video);
@@ -58,22 +69,31 @@ public sealed partial class SamsungIpRemoteService
             throw new InvalidOperationException($"Readback did not confirm the target {test.Target}; it reported {after.Contrast}. No retry or automatic restoration was sent.");
         await SaveContrastTestAsync(test with
         {
-            Stage = IpRemoteContrastStage.AwaitingVisualCheck,
+            Stage = direct ? IpRemoteContrastStage.Completed : IpRemoteContrastStage.AwaitingVisualCheck,
             ChangeReadbackConfirmed = true,
+            DirectChangeKept = direct,
             LastReadback = after.Contrast,
-            Message = $"TV reports contrast {test.Target}. Check the Contrast value on the TV, then select a visual result to restore {test.Original}."
+            Message = direct ? $"Direct contrast applied: {test.Original} → {test.Target}, confirmed by independent readback. The new value is kept on the TV. Undo is explicit; no new verification was awarded."
+                : $"TV reports contrast {test.Target}. Check the Contrast value on the TV, then select a visual result to restore {test.Original}."
         }).ConfigureAwait(false);
-    });
+        if (direct) SetDirectContrastReading(profile, after.Input, after.Mode, after.Contrast, after.Video);
+    }
 
     // A null visual result means explicit recovery, not visual verification.
-    public Task RestoreContrastTestAsync(Guid testId, bool? visualConfirmed = null) => RunContrastOperationAsync(async (profile, cancellation) =>
+    public Task RestoreContrastTestAsync(Guid testId, bool? visualConfirmed = null, bool undoConfirmed = false) => RunContrastOperationAsync(async (profile, cancellation) =>
     {
         var test = RequireContrastTest(testId, profile);
-        if (!test.RequiresRecovery) throw new InvalidOperationException("There is no unresolved contrast write to restore.");
+        var undo = test.Purpose == IpRemoteContrastPurpose.DirectAdjustment && test.DirectChangeKept;
+        if (undoConfirmed && !undo) throw new InvalidOperationException("There is no kept direct adjustment to undo. Use the guided test or recovery controls for other pending operations.");
+        if (!test.RequiresRecovery && !undo) throw new InvalidOperationException("There is no unresolved contrast write or retained direct adjustment to restore.");
+        if (undo && !undoConfirmed) throw new InvalidOperationException("Confirm the original display and conditions before undoing this direct contrast adjustment.");
         if (visualConfirmed is not null && test.Stage != IpRemoteContrastStage.AwaitingVisualCheck)
             throw new InvalidOperationException("Visual confirmation is available only after a successful changed-value readback.");
+        Update(state => state with { DirectContrastReading = null });
+        // A failed preflight for an explicit Undo does not turn a previously
+        // successful kept adjustment into an unresolved write.
         test = test with { VisualConfirmed = visualConfirmed ?? test.VisualConfirmed, Stage = IpRemoteContrastStage.Restoring };
-        await SaveContrastTestAsync(test).ConfigureAwait(false);
+        if (!undo) await SaveContrastTestAsync(test).ConfigureAwait(false);
         var before = await ReadContrastCheckpointAsync(profile, "Contrast · recheck before restoration", cancellation).ConfigureAwait(false);
         CheckContext(test, before.Input, before.Mode);
         CheckOtherVideoFields(test, before.Video);
@@ -86,7 +106,7 @@ public sealed partial class SamsungIpRemoteService
             throw new InvalidOperationException($"Contrast is now {before.Contrast}, neither original {test.Original} nor test target {test.Target}. Restore manually in the original context; no value was overwritten.");
         if (test.RestoreAttempted)
             throw new InvalidOperationException($"A restoration was already attempted but contrast is still {before.Contrast}. No repeated write was sent. Restore {test.Original} manually, then check again.");
-        test = test with { RestoreAttempted = true, Message = $"Restoring contrast to {test.Original} once, then checking readback." };
+        test = test with { DirectChangeKept = false, RestoreAttempted = true, Message = $"Restoring contrast to {test.Original} once, then checking readback." };
         await SaveContrastTestAsync(test).ConfigureAwait(false);
         await WriteContrastOnceAsync(profile, test.Original, "Contrast · restore original", cancellation).ConfigureAwait(false);
         test = test with { RestoreAcknowledged = true };
@@ -117,15 +137,22 @@ public sealed partial class SamsungIpRemoteService
         finally { _gate.Release(); }
     }
 
-    private Task CompleteRestorationAsync(IpRemoteContrastTest test, int value)
+    private async Task CompleteRestorationAsync(IpRemoteContrastTest test, int value)
     {
-        var completed = test with { Stage = IpRemoteContrastStage.Completed, RestorationConfirmed = true, LastReadback = value };
-        return SaveContrastTestAsync(completed with
+        var completed = test with { Stage = IpRemoteContrastStage.Completed, DirectChangeKept = false, RestorationConfirmed = true, LastReadback = value };
+        await SaveContrastTestAsync(completed with
         {
-            Message = completed.Verified
+            Message = test.Purpose == IpRemoteContrastPurpose.DirectAdjustment ? $"Direct contrast restored to {test.Original}, confirmed by readback. Saved capability evidence is unchanged."
+            : completed.Verified
             ? $"Contrast test passed in this saved context: {test.Original} → {test.Target} → {test.Original}. Change readback, visual confirmation, and restoration readback completed. Other controls remain unverified."
             : $"Original contrast {test.Original} confirmed by readback. The experiment is not verified: changed-value readback, positive visual confirmation, or restoration-command acknowledgment is missing."
-        });
+        }).ConfigureAwait(false);
+        if (test.Purpose == IpRemoteContrastPurpose.DirectAdjustment)
+        {
+            var video = (JsonObject)test.VideoBaseline.DeepClone();
+            video["contrast"] = value;
+            SetDirectContrastReading(test.Profile, test.ReportedInput, test.ReportedPictureMode, value, video);
+        }
     }
 
     private async Task RunContrastOperationAsync(Func<IpRemoteProfile, CancellationToken, Task> action)
@@ -245,6 +272,7 @@ public sealed partial class SamsungIpRemoteService
         RestrictFile(temporary);
         File.Move(temporary, ContrastTestPath, overwrite: true);
         Update(state => state with { ContrastTest = test, Status = test.Message });
+        await RememberContrastCapabilityAsync(test).ConfigureAwait(false);
     }
 
     private async Task<IpRemoteContrastTest?> LoadContrastTestAsync()
@@ -252,7 +280,9 @@ public sealed partial class SamsungIpRemoteService
         if (!File.Exists(ContrastTestPath)) return null;
         var test = JsonSerializer.Deserialize<IpRemoteContrastTest>(await File.ReadAllTextAsync(ContrastTestPath).ConfigureAwait(false))
             ?? throw new JsonException("The contrast recovery file is empty.");
-        if (test.Profile?.Connection is null || test.Original is < 1 or > 100 || test.Target != test.Original - 1
+        if (test.Profile?.Connection is null || !Enum.IsDefined(test.Purpose) || test.Original is < 0 or > 100 || test.Target is < 0 or > 100 || test.Target == test.Original
+            || (test.Purpose == IpRemoteContrastPurpose.Verification && (test.Original == 0 || test.Target != test.Original - 1))
+            || (test.DirectChangeKept && (test.Purpose != IpRemoteContrastPurpose.DirectAdjustment || !test.WriteAttempted || !test.ChangeReadbackConfirmed || test.Stage != IpRemoteContrastStage.Completed))
             || string.IsNullOrWhiteSpace(test.ReportedInput) || string.IsNullOrWhiteSpace(test.ReportedPictureMode) || test.VideoBaseline is null)
             throw new JsonException("The contrast recovery file is invalid. Do not discard it before checking the TV manually.");
         _ = test.Profile.Endpoint;

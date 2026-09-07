@@ -10,13 +10,14 @@ The supplied IP Remote handoff is design background. This repository is C#/.NET,
 
 - Sends **one explicitly requested pairing call**: `createAccessToken`.
 - Sends **two explicitly requested read methods**: `getTVStates` and `getVideoStates`.
-- Offers one **explicitly confirmed contrast experiment**: fresh reads → current contrast minus one → readback → visual pass/fail → original value → restoration readback. No arbitrary setter/value editor is provided.
+- Offers one **explicitly confirmed contrast experiment**: fresh reads → current contrast minus one → readback → visual pass/fail → original value → restoration readback. No arbitrary method editor is provided.
+- Unlocks a **direct contrast editor** only after that experiment passes for the matching display/context. Target edits are local until explicit Apply; successful readback keeps the new value, with an optional checked Undo.
 - Saves a separate credential per HTTPS host/port. Existing WebSocket tokens are never read or replaced by this client.
 - Shows method outcomes, timestamps, raw JSON fields/types, and differences from the previous successful response in the same annotated context.
 - Preserves unknown fields. Missing fields say **Not reported**, not zero, false, or a previous value. A successful empty result does not prove any control is available.
 - Provides cancellation, finite timeouts, redacted request/response history, and a downloadable report.
 
-Outside the guarded contrast experiment it does **not** write settings. It does not infer other control mappings, discover TVs, scan ports, poll in the background, subscribe to picture changes, retrieve menu trees or screenshots, issue reset/calibration commands, or automatically fall back to remote keys. It does not alter menu definitions, verification sidecars, saved calibration values, or predicted menu position.
+Only the guarded contrast experiment and verified direct contrast editor can write settings. The preview does not infer other control mappings, discover TVs, scan ports, poll in the background, subscribe to picture changes, retrieve menu trees or screenshots, issue reset/calibration commands, or automatically fall back to remote keys. It does not alter menu definitions, verification sidecars, saved calibration values, or predicted menu position.
 
 ## 1. Start the working branch
 
@@ -87,15 +88,17 @@ Do not test resets, service-menu functions, or calibration-start commands. In pa
 
 The comparison table unions field names from the latest response and previous successful response in the same saved context. A field that disappears is marked **Not reported**. When a new request fails, its card reports the failure and marks any prior success as historical/stale; old values are not presented as a current reading.
 
-## 6. Current checkpoint: one guarded contrast write
+## 6. Verify one guarded contrast write
 
 Evidence collected on 2026-09-07: the user confirmed saved-token reuse after restarting, and the S95F firmware **1301** capture showed `contrast` **45 → 44 → 45** during the manual change/restore test. The TV reported **HDMI4** and **FilmmakerMode**, with user annotations describing RGB 8-bit. This establishes contrast readback in that context, not setter support, HDR status, other settings, or Odyssey compatibility.
 
-The experiment uses `contrastControl` with `params.contrast` and the separate access token. The [Samsung command list](https://s7d2.scene7.com/is/content/SamsungUS/samsungbusiness/products/tvs/tvci-8-21-17/resource-center/control-codes/TV_IP_CommandList_v.1.1_1Pager.pdf) identifies this method; the [reference client implementation](https://github.com/iloveicedgreentea/py-samsungtv/blob/master/pysamsungtv/client.py) supplies the parameter shape. Their historical 0–100 envelope is **not** a claim about this display's actual slider range. Live setter verification is the next test, not an already completed milestone.
+The experiment uses `contrastControl` with `params.contrast` and the separate access token. The [Samsung command list](https://s7d2.scene7.com/is/content/SamsungUS/samsungbusiness/products/tvs/tvci-8-21-17/resource-center/control-codes/TV_IP_CommandList_v.1.1_1Pager.pdf) identifies this method; the [reference client implementation](https://github.com/iloveicedgreentea/py-samsungtv/blob/master/pysamsungtv/client.py) supplies the parameter shape. Their historical 0–100 envelope is **not** a claim about this display's actual slider range.
+
+The subsequent user-supplied report on 2026-09-07 confirms successful direct writes **45 → 44 → 45**, independent readbacks, positive visual confirmation, and restoration on the S95F firmware 1301 in that same context. Other returned video fields stayed unchanged. No new pairing occurred during that test. This is evidence for contrast in that context only; other displays, settings, and full value ranges remain unverified.
 
 1. Rebuild and restart the working branch using section 1. Open **IP Remote · Preview**. Reuse the saved token; do not pair again unless authorization actually fails.
 2. Save accurate model, firmware, input, picture-mode, and signal annotations. Keep the physical remote available for inspection or recovery. Do not run other adjustments simultaneously.
-3. In **4. Guided contrast test**, choose **Prepare contrast test (read only)**. This reads `getTVStates` and `getVideoStates` and shows the original contrast, proposed one-step-lower target, and reported input/mode. It changes nothing. Missing input/mode, a non-integer contrast, or a zero contrast blocks the experiment.
+3. In **5. Guided contrast test and recovery**, choose **Prepare contrast test (read only)**. This reads `getTVStates` and `getVideoStates` and shows the original contrast, proposed one-step-lower target, and reported input/mode. It changes nothing. Missing input/mode, a non-integer contrast, or a zero contrast blocks the experiment.
 4. Check the actual Contrast value on the TV. Confirm that both the original and target are valid on this display and that input, mode, and signal conditions will stay unchanged. Check the confirmation box. Preparation expires after two minutes; prepare again if needed.
 5. Select **Apply one-step contrast test…**, then accept the explicit confirmation dialog. The app re-reads input/mode and video values before sending **one** contrast write. If the original or other reported video fields changed, it stops before writing. After an acknowledged write it reads again; the returned contrast must equal the target. The setter's own reply is not accepted as readback evidence.
 6. The app **pauses at the target** so you can inspect the TV's Contrast number. It does not navigate menus for you. Select **Matches — restore original** or **Does not match — restore original**. Either selection rechecks the context/value, restores the original once if needed, and reads back. A failed visual check restores but does not mark the experiment verified.
@@ -118,6 +121,22 @@ If communication is unavailable, restore the original value with the physical re
 
 The baseline and recovery reads are sequential, not atomic. Signal format/bit depth and some other context cannot be detected through these two getters. Keep those conditions fixed yourself, and avoid changing settings with another app or remote during the experiment. A canceled/late request can have an uncertain outcome; inspect the TV before recovery. Merely navigating away does not cancel a running operation or restore a paused test.
 
+## 7. Current checkpoint: use verified direct contrast
+
+On startup, a previously completed **local** contrast test is carried into the separate capability file automatically. No TV requests occur, no diagnostic report needs importing, and a successful existing test does not have to be repeated just for this upgrade. Failed, canceled, manually closed, or incompletely restored tests cannot unlock direct writes.
+
+1. Restart the updated server and open **IP Remote · Preview** with the same saved display and annotations. Look for **Contrast read/write verification saved** under **4. Direct contrast**.
+2. Select **Read direct contrast**. This retrieves the current contrast plus reported input/mode. Apply stays locked unless those match saved evidence for the endpoint, model, firmware, annotated source/picture mode/signal, and reported input/mode. A success on one display or signal context does not unlock another.
+3. Enter a target using the number box or +/−. Editing sends nothing. For this first UI checkpoint, if the TV is still at **45**, choose the already tested **44**. The 0–100 numeric limit is the historical protocol envelope, **not** a verified TV slider range; use only values valid on the TV.
+4. Check the confirmation box for the target and unchanged conditions, then select **Apply direct contrast…** and accept the dialog. The app rechecks the baseline immediately before writing. Changed contrast, other returned video fields, input/mode, stale readings (over two minutes), unsaved profile edits, or missing context verification stop the write. A mismatch requires another read and review; it never silently rebases your edit.
+5. A successful Apply writes once, reads back independently, and **keeps the requested value on the TV**. It does not automatically restore it. Inspect the actual value on the TV as the next hardware checkpoint. An HTTP/setter acknowledgment without matching readback is not success.
+6. To reverse it, select **Undo last direct change…** and confirm the original conditions. It rechecks before restoring the original, then reads back. If a different value or context is now present, it refuses to overwrite it. If the original is already restored, no redundant write is sent. Only the latest operation has an Undo; starting another test or adjustment replaces that operation record.
+7. Download the diagnostic report after Apply and Undo and share it for review. Other controls remain read-only. We will investigate another control's mapping and reversible write separately.
+
+Verification evidence and operations are separate: `ControlCapabilities` in the report describes historical read/write verification, while `ContrastTest.Purpose` distinguishes `Verification` from `DirectAdjustment`. A direct adjustment does not manufacture a new verification pass. Your saved contrast capability remains available after later adjustments and restarts; the current reading is deliberately not restored from disk. Read again for a current value.
+
+Cancellation/timeout/failure after a possible write uses the same private original-value journal and explicit recovery described above. No request is replayed on restart. A successfully kept adjustment is not an unresolved recovery; you may leave it in place or explicitly Undo it later. A failed preflight for Undo leaves the earlier successful adjustment intact and sends no restoring write. Keep input, picture mode, and external signal unchanged during operations; these getter calls are not atomic and cannot identify every signal condition.
+
 ## Files, privacy, and troubleshooting
 
 Files live in an `ip-remote` subdirectory of the same personal configuration root used by the web app, honoring `SamsungController:ConfigurationDirectory` if configured:
@@ -127,7 +146,8 @@ Files live in an `ip-remote` subdirectory of the same personal configuration roo
 | `tokens.json` | IP Remote credentials, keyed by HTTPS endpoint; private, never share |
 | `profiles.json` | Saved endpoint/trust options and user-entered context; no tokens |
 | `diagnostics.ndjson` | Append-only timestamped, token-redacted observations; device identifiers retained |
-| `contrast-test.json` | Latest contrast experiment: original/target, context, readback/visual outcome, and restart-recovery state; no token |
+| `contrast-test.json` | Latest verification or direct adjustment: original/target, context, readback/visual outcome, kept/undo state, and restart recovery; no token |
+| `control-capabilities.json` | Independent context-specific contrast read/write evidence, tested value pair, and source test ID; no token |
 
 On Unix systems, the IP Remote directory is restricted to the user (0700) and final files to user read/write (0600). Windows uses the personal configuration folder's user ACL. Credentials are local plaintext files, **not OS-vault encrypted**. Do not commit or share that directory. Its normal repository path is ignored.
 
@@ -135,7 +155,7 @@ The page retains the last 100 observations in memory; a restart starts an empty 
 
 Certificate SHA-256 fingerprint redaction is also on by default, independently of IP/MAC/UUID redaction. It masks `CertificateSha256`, `NormalizedCertificatePin`, and `ObservedCertificateSha256` throughout the export, including saved-context copies, method summaries, embedded request/response JSON, and matching fingerprint echoes. This is export-only: it never changes the certificate pin used to connect or rewrites the private log. A fingerprint is a certificate identifier, not a private key; it is still useful to redact when sharing display diagnostics. Plain numeric firmware values, JSON-RPC versions, and text request IDs remain visible rather than being interpreted as abbreviated IPv4 addresses.
 
-Reports also include the latest contrast test's original/target, context, outcomes, and recovery state, including after a restart. That summary survives independently of the in-memory request history. The same token, identifier, and fingerprint redactions apply to its nested profile and baseline fields. The private recovery file is not a portable capability declaration or part of a shared menu definition.
+Reports also include saved control capabilities, the latest direct reading (if any), and the latest operation's original/target, context, outcomes, and recovery state. Saved evidence/operation summaries survive independently of in-memory request history; direct readings do not survive a restart. The same token, identifier, and fingerprint redactions apply to their nested profiles and baseline fields. These private records are not portable model-wide capability declarations or part of shared menu definitions. No personal evidence or downloaded report is committed to the repository.
 
 If a read fails:
 
@@ -174,11 +194,13 @@ If a read fails:
 - [x] Implement write once → independent readback → visual pass/fail → original-value restoration → readback.
 - [x] Implement cancellation/failure handling and a private restart-recovery record; never blindly retry an ambiguous write.
 - [x] Exercise protocol, round-trip, false success, context drift, storage failures, cancellation, restart recovery, and page actions with simulated HTTP replies.
-- [ ] Verify the direct contrast write, visual result, and restoration on the S95F; review the exported report before expanding scope.
+- [x] Verify the direct contrast write, visual result, and restoration on S95F firmware 1301; review the exported report (2026-09-07).
 
 ### Phase D — expand only demonstrated capabilities
 
-- [ ] Add verified controls with separate read/write support records, context keys, and capability-gated UI.
+- [x] Add verified direct contrast with independent read/write evidence, context keys, capability-gated UI, explicit Apply/readback, and optional checked Undo.
+- [ ] User verifies the direct editor's Apply/keep/Undo workflow on the display.
+- [ ] Extend additional controls only after their own field mapping and reversible-write verification.
 - [ ] Add bounded state polling only if useful and proven safe; do not assume subscriptions exist.
 - [ ] Investigate advanced white balance and custom-color methods independently, including any special mode/authorization requirements.
 - [ ] Revisit integration with existing menu/calibration workflows using evidence, not implicit fallback.

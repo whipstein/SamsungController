@@ -8,15 +8,15 @@
 
 <section class="page-heading compact-heading">
     <div>
-        <span class="eyebrow">v@(SamsungIpRemoteService.Version) · GUARDED CONTRAST CHECKPOINT</span>
+        <span class="eyebrow">v@(SamsungIpRemoteService.Version) · VERIFIED DIRECT CONTRAST</span>
         <h1>IP Remote diagnostics</h1>
-        <p>A separate, direct HTTPS connection. Read TV-reported data and explicitly test one reversible contrast change.</p>
+        <p>A separate, direct HTTPS connection. Read TV-reported data, verify contrast, then apply explicit direct adjustments.</p>
     </div>
 </section>
 
 <div class="notice">
     <strong>Isolated IP Remote preview</strong>
-    <span>The Connect status and quick-access buttons above belong to the existing WebSocket remote. Pairing here saves a separate credential; it does not establish a persistent connection. Only the explicitly confirmed contrast test below can write a setting. No polling, fallback keys, resets, or calibration imports occur here.</span>
+    <span>The Connect status and quick-access buttons above belong to the existing WebSocket remote. Pairing here saves a separate credential; it does not establish a persistent connection. Only the guarded contrast test and verified direct contrast control below can write a setting. No polling, fallback keys, resets, or calibration imports occur here.</span>
 </div>
 @if (PendingContrast)
 {
@@ -170,8 +170,63 @@
         </div>
     </section>
 
+    <section class="panel ip-step" id="direct-contrast">
+        <h2>4. Direct contrast</h2>
+        <p>Apply a chosen contrast value and <strong>keep it on the TV</strong>. This is separate from the verification test, which restores its original value. Each Apply reads first, writes once, and checks readback. Editing the target or pressing +/− sends nothing.</p>
+        @if (ContextCapabilities.Count == 0)
+        {
+            <p class="ip-read-blocked"><strong>Direct writes locked.</strong> No completed contrast verification is saved for this display and annotated conditions. <a href="#contrast-test">Run the guided contrast test below.</a> Other picture controls remain read-only.</p>
+        }
+        else
+        {
+            <div class="ip-pairing-result success"><strong>Contrast read/write verification saved</strong>
+                @foreach (var capability in ContextCapabilities)
+                {
+                    <span>@capability.Profile.Model · @capability.Profile.Firmware · @capability.ReportedInput · @capability.ReportedPictureMode · @capability.Profile.Signal — tested @capability.Original → @capability.TestedTarget → @capability.Original</span>
+                }
+                <span>These are tested values, not a measured slider range. A fresh reading must match one of these contexts before Apply unlocks.</span>
+            </div>
+        }
+        <div class="ip-actions">
+            <button class="primary-action" @onclick="RefreshDirectContrastAsync" disabled="@(!CanRead || PendingContrast)">Read direct contrast</button>
+            <button class="toolbar-button" @onclick="IpRemoteController.Cancel" disabled="@(!Snapshot.IsBusy)">Stop direct requests</button>
+        </div>
+        @if (DirectReading is { } reading)
+        {
+            <div class="ip-contrast-values"><span>Last TV read <strong>@reading.Value</strong></span></div>
+            <p>@reading.ReadAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz") · @reading.ReportedInput · @reading.ReportedPictureMode. This is a timestamped reading, not continuous monitoring.</p>
+            <fieldset disabled="@(!CanRead || PendingContrast)">
+                <label>Target contrast
+                    <span class="ip-direct-input">
+                        <button class="toolbar-button" aria-label="Lower staged contrast" @onclick="() => NudgeDirectTarget(-1)" disabled="@(DirectTarget is null or <= 0)">−</button>
+                        <input type="number" min="0" max="100" step="1" aria-label="Target contrast" @bind="DirectTarget" @bind:event="oninput" @bind:after="DirectTargetChanged" />
+                        <button class="toolbar-button" aria-label="Raise staged contrast" @onclick="() => NudgeDirectTarget(1)" disabled="@(DirectTarget is null or >= 100)">+</button>
+                    </span>
+                </label>
+                <label class="ip-check"><input type="checkbox" aria-label="Confirm direct contrast conditions" @bind="DirectConditionsConfirmed" />
+                    The target is valid on this TV, and its display/input, picture mode, and external signal are unchanged from the saved verified conditions.</label>
+            </fieldset>
+            <p>The protocol permits integers 0–100; this is <strong>not</strong> a claim about the TV's actual maximum. Use only values available on the TV. Read again after two minutes or after changing conditions.</p>
+        }
+        <button class="primary-action" @onclick="ApplyDirectAsync" disabled="@(DirectApplyDisabledReason is not null)">Apply direct contrast…</button>
+        @if (DirectApplyDisabledReason is { } directReason) { <p class="ip-read-blocked">@directReason</p> }
+        @if (Snapshot.ContrastTest is { Purpose: IpRemoteContrastPurpose.DirectAdjustment } adjustment)
+        {
+            <div class="ip-contrast-result @(adjustment.RequiresRecovery ? "failure" : "")" role="status" aria-live="polite">
+                <strong>Last direct adjustment · @adjustment.Profile.Model · @adjustment.ReportedInput · @adjustment.ReportedPictureMode</strong>
+                <p>@adjustment.Message</p>
+                <p>Original @adjustment.Original → requested @adjustment.Target · @(adjustment.DirectChangeKept ? "New value kept on TV" : adjustment.RestorationConfirmed ? "Original restored" : "Check recovery below")</p>
+                @if (adjustment.DirectChangeKept)
+                {
+                    <button class="toolbar-button" @onclick="() => UndoDirectAsync(adjustment)" disabled="@(!CanRead || adjustment.Profile != Snapshot.ActiveProfile)">Undo last direct change…</button>
+                }
+            </div>
+        }
+        <p>Undo is optional and explicit. It checks the original context and current value before restoring; it never overwrites an unrelated newer value. Only the latest direct operation is undoable. Stop does not undo a delivered write; unresolved operations use the recovery controls below. No changes are copied into the existing Menu/calibration workflow.</p>
+    </section>
+
     <section class="panel ip-step" id="contrast-test">
-        <h2>4. Guided contrast test</h2>
+        <h2>5. Guided contrast test and recovery</h2>
         <p>One experiment only: read the current contrast, lower it by <strong>1</strong>, check it, then restore the original. Support must be verified on each display. No other setting or navigation key is sent.</p>
         <p><strong>Keep the TV/input, picture mode, and external signal unchanged until restoration is confirmed.</strong> The app checks reported input/mode and other returned video fields; it cannot detect every signal condition or prevent changes made with another remote.</p>
         <div class="ip-actions">
@@ -179,10 +234,10 @@
             <button class="toolbar-button" @onclick="IpRemoteController.Cancel" disabled="@(!Snapshot.IsBusy)">Stop requests</button>
         </div>
         @if (!CanRead && ReadDisabledReason is { } testReason) { <p class="ip-read-blocked">@testReason</p> }
-        @if (Snapshot.ContrastTest is { } test)
+        @if (Snapshot.ContrastTest is { } test && (test.Purpose == IpRemoteContrastPurpose.Verification || test.RequiresRecovery))
         {
             <div class="ip-contrast-result @(test.Verified ? "success" : test.RequiresRecovery ? "failure" : "")" role="status" aria-live="polite">
-                <strong>@test.Stage · @(test.Verified ? "Passed in this saved context" : "Not verified")</strong>
+                <strong>@test.Stage · @(test.Purpose == IpRemoteContrastPurpose.DirectAdjustment ? "Direct adjustment recovery" : test.Verified ? "Passed in this saved context" : "Not verified")</strong>
                 <p>@test.Message</p>
                 <p><strong>Test display:</strong> @test.Profile.Model · firmware @test.Profile.Firmware · @test.Profile.Endpoint<br />
                     <strong>Reported conditions:</strong> @test.ReportedInput · @test.ReportedPictureMode<br />
@@ -217,7 +272,7 @@
                 </div>
             }
         }
-        <p>The recovery record survives app restarts. Startup sends no requests and never resumes a write. A passed test applies only to this display and saved conditions; it does not enable other controls or update existing calibration/menu verification.</p>
+        <p>The recovery record survives app restarts. Startup sends no requests and never resumes a write. A passed test saves separate contrast capability evidence for this display and conditions; it does not enable other controls or update existing calibration/menu verification.</p>
     </section>
 
     <section class="panel ip-step">
@@ -251,6 +306,20 @@
     private int Port = 1516, ReadTimeoutSeconds = 10, PairingTimeoutSeconds = 60;
     private bool AllowUntrustedCertificate, RedactIdentifiers = true, RedactCertificateFingerprints = true;
     private bool ContrastConditionsConfirmed;
+    private bool DirectConditionsConfirmed;
+    private int? DirectTarget;
+    private IpRemoteContrastReading? DirectReading => Snapshot.DirectContrastReading is { } reading && reading.Profile == Snapshot.ActiveProfile ? reading : null;
+    private IReadOnlyList<IpRemoteControlCapability> ContextCapabilities => Snapshot.ControlCapabilities
+        .Where(item => item.Profile.ContextKey == Snapshot.ActiveProfile?.ContextKey && item.ReadVerified && item.WriteVerified).ToArray();
+    private string? DirectApplyDisabledReason => !CanRead ? ReadDisabledReason
+        : PendingContrast ? "Finish or recover the pending contrast operation first."
+        : DirectReading is not { } reading ? "Read direct contrast to get a fresh starting value."
+        : DateTimeOffset.UtcNow - reading.ReadAt > TimeSpan.FromMinutes(2) ? "This reading is over two minutes old. Read direct contrast again."
+        : !Snapshot.ControlCapabilities.Any(item => item.Matches(reading.Profile, reading.ReportedInput, reading.ReportedPictureMode)) ? "Direct writes are locked for this reported input/mode and saved context. Complete its guided verification first."
+        : DirectTarget is null or < 0 or > 100 ? "Enter an integer target within the protocol envelope and the TV's actual range."
+        : DirectTarget == reading.Value ? "Choose a different target. Editing it sends no command."
+        : !DirectConditionsConfirmed ? "Confirm the target and unchanged TV/input/mode/signal conditions before applying."
+        : null;
     private bool PendingContrast => Snapshot.ContrastTest?.RequiresRecovery == true;
     private bool IsSaved => Snapshot.ActiveProfile == Draft;
     private bool CanAct => Snapshot.Initialized && IsSaved && !Snapshot.IsBusy;
@@ -287,6 +356,11 @@
         var updated = IpRemoteController.GetSnapshot();
         if (updated.ContrastTest?.Id != Snapshot.ContrastTest?.Id || updated.ActiveProfile != Snapshot.ActiveProfile)
             ContrastConditionsConfirmed = false;
+        if (updated.DirectContrastReading?.Id != Snapshot.DirectContrastReading?.Id || updated.ActiveProfile != Snapshot.ActiveProfile)
+        {
+            DirectTarget = updated.DirectContrastReading?.Value;
+            DirectConditionsConfirmed = false;
+        }
         Snapshot = updated;
         StateHasChanged();
     });
@@ -320,6 +394,24 @@
     });
     private Task ReadBothAsync() => GuardAsync(() => IpRemoteController.ReadBothAsync(Label));
     private Task ReadAsync(string method) => GuardAsync(() => IpRemoteController.ReadAsync(method, Label));
+    private Task RefreshDirectContrastAsync() => GuardAsync(() => IpRemoteController.ReadDirectContrastAsync());
+    private void DirectTargetChanged() => DirectConditionsConfirmed = false;
+    private void NudgeDirectTarget(int delta)
+    {
+        if (DirectTarget is { } value) DirectTarget = Math.Clamp(value + delta, 0, 100);
+        DirectConditionsConfirmed = false;
+    }
+    private Task ApplyDirectAsync() => GuardAsync(async () =>
+    {
+        if (DirectApplyDisabledReason is null && DirectReading is { } reading && DirectTarget is { } target
+            && await JavaScript.InvokeAsync<bool>("confirm", $"Apply Contrast {reading.Value} → {target} on {reading.Profile.Model}, {reading.ReportedInput}, {reading.ReportedPictureMode}? The new value will stay on the TV after readback. Keep all signal conditions unchanged. Undo is a separate explicit action; Stop does not undo a delivered write."))
+            await IpRemoteController.ApplyDirectContrastAsync(reading.Id, target, true);
+    });
+    private Task UndoDirectAsync(IpRemoteContrastTest adjustment) => GuardAsync(async () =>
+    {
+        if (CanRead && await JavaScript.InvokeAsync<bool>("confirm", $"Confirm the original {adjustment.Profile.Model}, {adjustment.ReportedInput}, {adjustment.ReportedPictureMode}, signal {adjustment.Profile.Signal}. Check the current value and undo Contrast {adjustment.Target} → {adjustment.Original}? No other value will be overwritten."))
+            await IpRemoteController.UndoDirectContrastAsync(adjustment.Id, true);
+    });
     private Task PrepareContrastAsync() => GuardAsync(async () =>
     {
         ContrastConditionsConfirmed = false;
@@ -355,7 +447,7 @@
         catch (InvalidOperationException exception) { Error = exception.Message; }
         catch (OperationCanceledException) { Error = "Request canceled. No automatic retry was attempted."; }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
-        { Error = "Could not read or save the separate IP Remote files. Check personal data folder permissions and profiles.json / contrast-test.json formatting. Do not discard an unresolved contrast recovery record before checking the TV. Existing remote files were not changed."; }
+        { Error = "Could not read or save the separate IP Remote files. Check personal data folder permissions and profiles.json / contrast-test.json / control-capabilities.json formatting. Do not discard an unresolved contrast recovery record before checking the TV. Existing remote files were not changed."; }
         finally { Snapshot = IpRemoteController.GetSnapshot(); }
     }
     public void Dispose() => IpRemoteController.Changed -= Refresh;

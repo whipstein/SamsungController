@@ -32,4 +32,7 @@
 .ip-contrast-values span { display: grid; gap: .3rem; }
 .ip-contrast-values strong { font-size: 1.8rem; }
 #contrast-test { scroll-margin-top: 8rem; }
+.ip-direct-input { display: flex; align-items: center; gap: .65rem; max-width: 18rem; }
+.ip-direct-input input { font-size: 1.8rem; font-weight: 700; text-align: center; }
+.ip-direct-input button { min-width: 2.75rem; min-height: 2.75rem; }
 @media (max-width: 680px) { .ip-fields { grid-template-columns: 1fr; } .ip-step { padding: 1rem; } }
