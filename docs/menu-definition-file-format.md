@@ -704,8 +704,18 @@ visible control if none follows. It names both the highlighted control and the
 item that should be absent. For example, when BT.1886 is the representative
 hidden under 10-bit input, the ST.2084 replacement slider is highlighted instead.
 Same-named variants are identified by node ID and, for selections, their options.
-No setting is changed.
-The current menu state reflects the visible control, never the missing row.
+For a same-named **selection** variant (such as Gamma), the test instead highlights
+the available variant and sends `KEY_ENTER` to show its choices. The confirmation
+names the expected choices and which choices must not be offered: for example,
+only ST.2084, with neither BT.1886 nor 2.2 available. It does not move within the
+list or confirm a choice. **Count pass** and **Failed** both send `KEY_RETURN` to
+dismiss the list before the usual return-to-video script; the quick-access return
+to video also dismisses it first. No setting is changed. Unrelated selections,
+sliders, disabled controls, and actions are not opened just to inspect a hidden row.
+While the option list is open, normal route navigation is unavailable; finish the
+inspection or return to video first. After dismissal, the predicted position is
+the visible selection row. Highlight-only tests likewise track the visible
+control, never the missing row.
 Submenus are not entered just to inspect a missing sibling. If only submenus or
 no rows remain visible, the test explicitly asks for manual inspection of the
 containing menu. Disabled submenus also use containing-menu inspection.

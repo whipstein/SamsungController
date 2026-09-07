@@ -517,18 +517,26 @@ public static class MenuDefinitionVerificationPlanner
             var highlightExternalRow = group.Key.Equals("external-disabled", StringComparison.OrdinalIgnoreCase)
                 && representative.ControlType != MenuControlType.Submenu;
             var inspectExternalHiddenRow = group.Key.Equals("external-hidden", StringComparison.OrdinalIgnoreCase);
+            static bool IsSelection(MenuNode node) => node.ControlType is MenuControlType.Selection
+                or MenuControlType.SubmenuSelection or MenuControlType.IndexedSelection;
+            var hasSelectionVariant = inspectExternalHiddenRow && IsSelection(representative)
+                && definition.Nodes.Values.Any(node => node.Id != representative.Id && IsSelection(node)
+                    && string.Equals(node.ParentId, representative.ParentId, StringComparison.OrdinalIgnoreCase)
+                    && node.Label.Equals(representative.Label, StringComparison.OrdinalIgnoreCase));
             var externalPreparation = highlightExternalRow
                 ? $"highlight {definition.GetPath(representative.Id)} without pressing Enter on that row or changing its value"
+                : hasSelectionVariant
+                    ? $"highlight the visible {representative.Label} variant and press KEY_ENTER to show its options; confirm only that variant's declared choices are offered, without selecting or changing a value (Count pass or Failed closes the list with KEY_RETURN before returning to video)"
                 : inspectExternalHiddenRow
                     ? $"highlight the next visible control after the missing {definition.GetPath(representative.Id)} (or the previous visible control if none follows), without activating it; if only submenus or no rows remain, inspect {viewPath}"
                     : $"open {viewPath}";
             var siblingCoverage = inspectExternalHiddenRow
                 ? string.Join(";", definition.Nodes.Values
                     .Where(node => string.Equals(node.ParentId, representative.ParentId, StringComparison.OrdinalIgnoreCase))
-                    .Select(node => $"{node.ControlType}:{ConditionShape(definition, node)}"))
+                    .Select(node => $"{node.ControlType}:{node.Label}:{string.Join("\u001e", node.SelectionOptions ?? [])}:{ConditionShape(definition, node)}"))
                 : string.Empty;
             var coverageVersion = inspectExternalHiddenRow
-                ? $"representative-external-hidden-location-v5|{representative.Id}|{representative.ParentId}|{siblingCoverage}"
+                ? $"representative-external-hidden-options-v6|{representative.Id}|{representative.ParentId}|{siblingCoverage}"
                 : external
                 ? $"representative-external-condition-coverage-v4|{representative.Id}"
                 : "representative-condition-coverage-v3";
@@ -541,7 +549,7 @@ public static class MenuDefinitionVerificationPlanner
                 group.Key.Equals("always-disabled", StringComparison.OrdinalIgnoreCase)
                     ? $"Open {viewPath} and verify the representative {behavior}. This covers {affected}."
                     : external
-                        ? $"Set the external equipment and the app's {controllerLabel} selector to {representativeEntry.EqualsValue}, then {externalPreparation} and verify the representative {behavior}. This covers {affected} across {distinctRuleCount} declared conditional rule{(distinctRuleCount == 1 ? string.Empty : "s")}."
+                        ? $"Set the external equipment and the app's {controllerLabel} selector to {representativeEntry.EqualsValue}, then {externalPreparation}{(hasSelectionVariant ? string.Empty : $" and verify the representative {behavior}")}. This covers {affected} across {distinctRuleCount} declared conditional rule{(distinctRuleCount == 1 ? string.Empty : "s")}."
                         : $"Change {controllerLabel} and verify the representative {behavior}. This covers {affected} across {distinctRuleCount} declared conditional rule{(distinctRuleCount == 1 ? string.Empty : "s")}.",
                 $"{coverageVersion}|{group.Key}|{string.Join(";", nodes.Select(node => ConditionShape(definition, node)))}",
                 highlightExternalRow ? representative.Id : targetNodeId,

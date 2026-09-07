@@ -78,6 +78,7 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
     private MenuValidationSession? _menuValidation;
     private MenuTimingValidationSession? _menuTimingValidation;
     private MenuReturnValidationSession? _menuReturnValidation;
+    private (MenuDefinitionVerificationTestResult Test, MenuState State)? _verificationOptions;
     private string? _menuAuthoringStatus;
     private string? _menuAuthoringError;
     private string? _lastError;
@@ -442,6 +443,10 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
             {
                 return;
             }
+            if (GetOpenVerificationOptionsTest() is not null)
+            {
+                throw new InvalidOperationException("Finish the open options inspection or return to video before changing the external signal conditions.");
+            }
             values = definition.ExternalStates.Values.Select(item =>
                 new MenuExternalStateValue(
                     item.Id,
@@ -804,6 +809,10 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
         await InitializeAsync(cancellationToken).ConfigureAwait(false);
         EnsureNoAutomationRunning("run a display-verification test");
         EnsureNoMenuRecording("run a display-verification test");
+        if (GetOpenVerificationOptionsTest() is not null)
+        {
+            throw new InvalidOperationException("Count pass, fail the current options inspection, or return to video before running another test.");
+        }
         if (_client.State != SamsungConnectionState.Connected)
         {
             throw new InvalidOperationException(
@@ -1016,6 +1025,12 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
         }
 
         var restoredCount = 0;
+        if (test.OptionsInspectionId is not null)
+        {
+            await RunNavigationAsync("Close verification options",
+                (_, token) => CloseVerificationOptionsAsync(test.OptionsInspectionId, token),
+                clearPlanOnSuccess: true, cancellationToken).ConfigureAwait(false);
+        }
         foreach (var applied in test.AppliedUpdates.Reverse())
         {
             var node = definition.GetRequiredNode(applied.NodeId);
@@ -1472,6 +1487,14 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         EnsureNoAutomationRunning("send a manual key");
+        if (key.Trim().Equals("KEY_RETURN", StringComparison.OrdinalIgnoreCase)
+            && action == RemoteKeyAction.Click && GetOpenVerificationOptionsTest() is not null)
+        {
+            await RunNavigationAsync("Close verification options",
+                (_, token) => CloseVerificationOptionsAsync(null, token),
+                clearPlanOnSuccess: true, cancellationToken).ConfigureAwait(false);
+            return;
+        }
         await SendTrackedKeyAsync(key, action, cancellationToken).ConfigureAwait(false);
         var recorded = false;
         lock (_sync)
@@ -4514,7 +4537,11 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(anchorId);
         return RunNavigationAsync(
             $"Anchor · {anchorId}",
-            (navigator, token) => navigator.ExecuteAnchorAsync(anchorId, token),
+            async (navigator, token) =>
+            {
+                await CloseVerificationOptionsAsync(null, token).ConfigureAwait(false);
+                await navigator.ExecuteAnchorAsync(anchorId, token).ConfigureAwait(false);
+            },
             clearPlanOnSuccess: true,
             cancellationToken);
     }
@@ -6425,6 +6452,45 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
         // just to inspect a missing sibling or claim that a highlighted row is open.
         bool CanHighlight(MenuNode node) => node.ControlType != MenuControlType.Submenu
             && !IsMenuNodeHidden(definition, node, effectiveValues);
+        static bool IsSelection(MenuNode node) => node.ControlType is MenuControlType.Selection
+            or MenuControlType.SubmenuSelection or MenuControlType.IndexedSelection;
+        // A signal-dependent selection can keep the same on-screen label while
+        // replacing its choices. Inspect that counterpart, even if it precedes
+        // the hidden definition; a neighboring row cannot prove its options.
+        var selectionVariant = IsSelection(hiddenNode)
+            ? siblings.FirstOrDefault(node => node.Id != hiddenNode.Id && IsSelection(node)
+                && node.Label.Equals(hiddenNode.Label, StringComparison.OrdinalIgnoreCase)
+                && CanHighlight(node) && !IsMenuNodeOrAncestorDisabled(definition, node, effectiveValues)
+                && node.SelectionOptions is { Count: > 0 })
+            : null;
+        if (selectionVariant is not null)
+        {
+            await HighlightVerificationRowAsync(definition, selectionVariant, effectiveValues,
+                "available options", cancellationToken).ConfigureAwait(false);
+            var options = string.Join(", ", selectionVariant.SelectionOptions!);
+            var excluded = (hiddenNode.SelectionOptions ?? []).Except(selectionVariant.SelectionOptions!,
+                StringComparer.OrdinalIgnoreCase).ToArray();
+            var exclusion = excluded.Length > 0
+                ? $" The other variant's choices ({string.Join(", ", excluded)}) must not be offered."
+                : string.Empty;
+            var result = new MenuDefinitionVerificationTestResult(check.Id, hiddenNode.Id,
+                definition.GetPath(hiddenNode.Id), null,
+                $"Opened {definition.GetPath(selectionVariant.Id)} [{selectionVariant.Id}] with KEY_ENTER to show its options. With {signalDescription}, confirm the list contains only: {options}.{exclusion} No option was selected or value changed. Count pass or Failed will send KEY_RETURN to close the list before returning to video.",
+                [], OpenedOptionsNodeId: selectionVariant.Id, OptionsInspectionId: Guid.NewGuid());
+            await RunNavigationAsync($"Inspect options · {selectionVariant.Label}", async (_, token) =>
+            {
+                var tracker = _menuStateTracker!;
+                tracker.MarkUnknown($"{selectionVariant.Label} options inspection is open; count pass, fail, or return to video before navigating.");
+                await ExecutePictureControlOperationsAsync("Open verification options",
+                    definition.GetPath(selectionVariant.Id), definition.GetPath(selectionVariant.Id),
+                    [new MenuOperation("KEY_ENTER")], definition.Timing, token).ConfigureAwait(false);
+                lock (_sync)
+                {
+                    _verificationOptions = (result, tracker.Current);
+                }
+            }, clearPlanOnSuccess: true, cancellationToken).ConfigureAwait(false);
+            return result;
+        }
         var next = siblings.Skip(hiddenIndex + 1).FirstOrDefault(CanHighlight);
         var neighbor = next ?? siblings.Take(hiddenIndex).Reverse().FirstOrDefault(CanHighlight);
         string DescribeRow(MenuNode node) => siblings.Any(sibling => sibling.Id != node.Id
@@ -6446,6 +6512,46 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
         }
         return new MenuDefinitionVerificationTestResult(check.Id, hiddenNode.Id, definition.GetPath(hiddenNode.Id), null,
             $"{preparation} With {signalDescription}, confirm that {missingLabel} is absent and the surrounding visible rows line up with no cursor stop for it.", []);
+    }
+
+    public MenuDefinitionVerificationTestResult? GetOpenVerificationOptionsTest()
+    {
+        lock (_sync)
+        {
+            return _verificationOptions is { } pending
+                && ReferenceEquals(pending.State, _menuStateTracker?.Current)
+                    ? pending.Test : null;
+        }
+    }
+
+    // Called within RunNavigationAsync so dismissal and anchor execution cannot
+    // overlap another automation. Never replay a stale dismissal after manual
+    // correction, reconnect, or a menu reload.
+    private async Task CloseVerificationOptionsAsync(Guid? inspectionId, CancellationToken cancellationToken)
+    {
+        MenuDefinitionVerificationTestResult? pending;
+        MenuDefinition definition;
+        MenuStateTracker tracker;
+        lock (_sync)
+        {
+            pending = GetOpenVerificationOptionsTest();
+            if (pending is null)
+            {
+                _verificationOptions = null;
+                return;
+            }
+            if (inspectionId is not null && inspectionId != pending.OptionsInspectionId)
+            {
+                throw new InvalidOperationException("A different options inspection is open. Finish the current test first.");
+            }
+            definition = _menuDefinition!;
+            tracker = _menuStateTracker!;
+            _verificationOptions = null;
+        }
+        var path = definition.GetPath(pending.OpenedOptionsNodeId!);
+        await ExecutePictureControlOperationsAsync("Close verification options", path, path,
+            [new MenuOperation("KEY_RETURN")], definition.Timing, cancellationToken).ConfigureAwait(false);
+        tracker.AssumeNode(pending.OpenedOptionsNodeId!, "Closed the options inspection without selecting or changing a value.");
     }
 
     // Visible gray rows still count as cursor stops. Verification may highlight
@@ -9347,6 +9453,11 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
         {
             _navigationPlan = null;
             tracker = _menuStateTracker;
+            if (normalizedKey.ToUpperInvariant() is "KEY_UP" or "KEY_DOWN" or "KEY_LEFT" or "KEY_RIGHT"
+                or "KEY_ENTER" or "KEY_RETURN" or "KEY_HOME" or "KEY_MENU" or "KEY_EXIT" or "KEY_SOURCE")
+            {
+                _verificationOptions = null;
+            }
         }
 
         tracker?.ObserveCommand(normalizedKey, action);
@@ -10424,6 +10535,13 @@ public sealed partial class SamsungControllerService : IAsyncDisposable
         object? sender,
         SamsungConnectionStateChangedEventArgs eventArgs)
     {
+        if (eventArgs.Current != SamsungConnectionState.Connected)
+        {
+            lock (_sync)
+            {
+                _verificationOptions = null;
+            }
+        }
         if (eventArgs.Current == SamsungConnectionState.Connected)
         {
             lock (_sync)

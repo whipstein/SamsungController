@@ -296,7 +296,9 @@ public sealed record MenuDefinitionVerificationTestResult(
     MenuControlType? ControlType,
     string ActionDescription,
     IReadOnlyList<MenuControlValueUpdate> AppliedUpdates,
-    IReadOnlyList<string>? DefaultBasedNodeIds = null);
+    IReadOnlyList<string>? DefaultBasedNodeIds = null,
+    string? OpenedOptionsNodeId = null,
+    Guid? OptionsInspectionId = null);
 
 public sealed record MenuAnchorSummary(
     string Id,

@@ -277,9 +277,13 @@
     {
         if (check.Id is "condition:external-disabled-behavior" or "condition:external-hidden-behavior")
         {
-            // External-condition checks only inspect a row; they do not adjust
-            // controls. Use the same highlight-only path after verification too.
+            // Inspect the same location/option list after verification, without
+            // changing values or the recorded result merely by opening it.
             var result = await Controller.RunMenuDefinitionVerificationTestAsync(check.Id);
+            if (result.OptionsInspectionId is not null)
+            {
+                PendingVisualTest = result;
+            }
             StatusMessage = $"{result.ActionDescription} The recorded verification result was not changed.";
             return;
         }
@@ -521,6 +525,12 @@
         Authoring = Controller.GetMenuAuthoringSnapshot();
         VerificationState = Controller.GetMenuDefinitionVerificationSnapshot();
         ControlVerification = Controller.GetMenuControlVerificationSnapshot();
+        // Preserve the close/pass/fail actions if the user returns to this page
+        // while a read-only options inspection is still open on the TV.
+        if (Controller.GetOpenVerificationOptionsTest() is { } optionsTest)
+        {
+            PendingVisualTest = optionsTest;
+        }
         if (string.IsNullOrWhiteSpace(SelectedTimingTestRouteId)
             || Authoring.TimingTestRoutes.All(route => !route.Id.Equals(
                 SelectedTimingTestRouteId,

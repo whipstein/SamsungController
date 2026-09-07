@@ -4,6 +4,37 @@ namespace SamsungController.Automation.Tests;
 
 public sealed class MenuDefinitionVerificationPlannerTests
 {
+    [Theory]
+    [InlineData("gamma")]
+    [InlineData("gamma-10bit")]
+    public void HiddenSelectionInspectionTracksAvailableAndExcludedChoices(string changedNode)
+    {
+        var nodes = new MenuNode[]
+        {
+            new("normal-video", "Normal video"),
+            new("settings", "Settings", "normal-video"),
+            new("gamma", "Gamma", "settings", ControlType: MenuControlType.Selection,
+                DefaultValue: "BT.1886", SelectionOptions: ["BT.1886", "2.2"],
+                HiddenWhen: [new("depth", "10-bit", MenuConditionSourceKind.ExternalState)]),
+            new("gamma-10bit", "Gamma", "settings", ControlType: MenuControlType.Selection,
+                DefaultValue: "ST.2084", SelectionOptions: ["ST.2084"],
+                HiddenWhen: [new("depth", "8-bit", MenuConditionSourceKind.ExternalState)])
+        };
+        MenuDefinition Make(IEnumerable<MenuNode> entries) => new("gamma-options", "Gamma options", "Test TV", new("1"),
+            entries, [], [], externalStates: [new("depth", "Bit depth", "8-bit", ["8-bit", "10-bit"])]);
+        var original = MenuDefinitionVerificationPlanner.Create(Make(nodes));
+        var changed = MenuDefinitionVerificationPlanner.Create(Make(nodes.Select(node => node.Id == changedNode
+            ? node with { SelectionOptions = [.. node.SelectionOptions!, "Additional choice"] } : node)));
+        const string id = "condition:external-hidden-behavior";
+        var check = original.Checks.Single(check => check.Id == id);
+        Assert.Contains("KEY_ENTER to show its options", check.Description);
+        Assert.Contains("KEY_RETURN", check.Description);
+        Assert.NotEqual(check.Fingerprint, changed.Checks.Single(check => check.Id == id).Fingerprint);
+        // Display identity and timing are unaffected by changed option coverage.
+        foreach (var unrelated in original.Checks.Where(check => check.Kind is MenuVerificationCheckKind.Display or MenuVerificationCheckKind.Timing))
+            Assert.Equal(unrelated.Fingerprint, changed.Checks.Single(check => check.Id == unrelated.Id).Fingerprint);
+    }
+
     [Fact]
     public void VerificationIdentityUsesModelAndFirmwareAndRejectsChangedFirmware()
     {
