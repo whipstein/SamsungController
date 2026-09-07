@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.RenderTree;
 using Microsoft.AspNetCore.Components.Web;
@@ -5,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
+using SamsungController.Core.IpRemote;
 using SamsungController.Web.Components.Pages;
 using SamsungController.Web.Services;
 
@@ -46,6 +49,66 @@ public sealed class IpRemotePageTests
             await renderer.AssertDisabledAsync("Pair again…", true);
         }
         finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RealPairingClientWithTextIdEnablesReadsOrShowsTheRejection(bool matchingId)
+    {
+        var directory = Directory.CreateTempSubdirectory("SamsungController-IP-pairing-ui-").FullName;
+        try
+        {
+            var handler = new TextIdReplyHandler(matchingId);
+            using var http = new HttpClient(handler);
+            var client = new SamsungIpRemoteClient(new PrivateIpRemoteTokenStore(Path.Combine(directory, "ip-remote")), http);
+            using var service = new SamsungIpRemoteService(new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?> { ["SamsungController:ConfigurationDirectory"] = directory }).Build(), client);
+            var javascript = new DownloadJavaScript();
+            await using var services = new ServiceCollection().AddLogging().AddSingleton(service).AddSingleton<IJSRuntime>(javascript).BuildServiceProvider();
+            await using var renderer = new IpPageRenderer(services);
+            await renderer.StartAsync();
+            await renderer.ChangeAsync("TV IP address or hostname", "192.0.2.10");
+            await renderer.ClickAsync("Save IP Remote profile");
+            await renderer.ClickAsync("Pair with TV");
+            Assert.Equal(matchingId, await client.HasTokenAsync(new SamsungIpRemoteOptions { Host = "192.0.2.10" }));
+            await renderer.AssertDisabledAsync("Read both state queries", !matchingId);
+            await renderer.AssertTextAsync(matchingId ? "Last pairing attempt: completed" : "Last pairing attempt: failed");
+            if (matchingId)
+            {
+                await renderer.ClickAsync("Read both state queries");
+                Assert.Equal(new[] { "createAccessToken", "getTVStates", "getVideoStates" }, handler.Methods);
+                Assert.All(service.GetSnapshot().Observations, observation => Assert.True(observation.Exchange.IsSuccess));
+            }
+            else
+            {
+                await renderer.AssertTextAsync("Pairing has not saved an IP Remote token.");
+                await renderer.AssertDisabledAsync("Pair with TV", false);
+                Assert.Single(handler.Methods);
+            }
+            await renderer.ClickAsync("Download diagnostic report");
+            Assert.DoesNotContain("simulated-pairing-credential", javascript.Download, StringComparison.Ordinal);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    private sealed class TextIdReplyHandler(bool matchingId) : HttpMessageHandler
+    {
+        public List<string> Methods { get; } = [];
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var json = JsonNode.Parse(await request.Content!.ReadAsStringAsync(cancellationToken))!;
+            var method = json["method"]!.GetValue<string>();
+            Methods.Add(method);
+            var response = new JsonObject
+            {
+                ["jsonrpc"] = "2.0",
+                ["id"] = matchingId ? json["id"]!.ToJsonString() : "wrong-id",
+                ["result"] = method == "createAccessToken" ? new JsonObject { ["AccessToken"] = "simulated-pairing-credential" }
+                    : new JsonObject { ["brightness"] = 20 }
+            };
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(response.ToJsonString()) };
+        }
     }
 
     private sealed class DownloadJavaScript : IJSRuntime

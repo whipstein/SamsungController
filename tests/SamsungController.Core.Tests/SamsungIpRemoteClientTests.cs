@@ -61,6 +61,77 @@ public sealed class SamsungIpRemoteClientTests
         Assert.Empty(handler.Requests);
     }
 
+    [Fact]
+    public async Task PairingAndBothGettersAcceptMatchingTextIdsWithoutExposingTheToken()
+    {
+        var tokens = new MemoryTokens();
+        var handler = new RpcHandler((request, _) => Task.FromResult(JsonResponse(new JsonObject
+        {
+            ["jsonrpc"] = "2.0",
+            ["id"] = request["id"]!.ToJsonString(),
+            ["result"] = request["method"]!.GetValue<string>() == "createAccessToken"
+                ? new JsonObject { ["AccessToken"] = Token, ["echo"] = Token }
+                : new JsonObject { ["brightness"] = 20, ["echo"] = Token }
+        })));
+        using var http = new HttpClient(handler);
+        var client = new SamsungIpRemoteClient(tokens, http);
+        var exchanges = new[] { await client.PairAsync(Options), await client.ReadAsync(Options, "getTVStates"), await client.ReadAsync(Options, "getVideoStates") };
+        Assert.True(await client.HasTokenAsync(Options));
+        Assert.Equal(Token, tokens.Values[Options.Endpoint.AbsoluteUri]);
+        Assert.All(exchanges, exchange =>
+        {
+            Assert.True(exchange.IsSuccess, exchange.Message);
+            Assert.Equal(exchange.RequestId.ToString(System.Globalization.CultureInfo.InvariantCulture), JsonNode.Parse(exchange.ResponseJson!)!["id"]!.GetValue<string>());
+            Assert.DoesNotContain(Token, JsonSerializer.Serialize(exchange), StringComparison.Ordinal);
+        });
+        Assert.Equal(20, exchanges[1].Result!["brightness"]!.GetValue<int>());
+        Assert.Equal(3, handler.Requests.Count);
+    }
+
+    [Theory]
+    [InlineData("\"99\"")]
+    [InlineData("\"01\"")]
+    [InlineData("\"1.0\"")]
+    [InlineData("\" 1 \"")]
+    [InlineData("\"private-ip-credential\"")]
+    [InlineData("null")]
+    [InlineData("true")]
+    [InlineData("{}")]
+    [InlineData("[1]")]
+    [InlineData("missing")]
+    public async Task InvalidPairingIdsStillRejectTokenReplacementAndStayRedacted(string responseId)
+    {
+        var tokens = PairedTokens();
+        var handler = new RpcHandler((_, _) =>
+        {
+            var reply = new JsonObject { ["jsonrpc"] = "2.0", ["result"] = new JsonObject { ["AccessToken"] = "replacement-credential" } };
+            if (responseId != "missing") reply["id"] = JsonNode.Parse(responseId);
+            return Task.FromResult(JsonResponse(reply));
+        });
+        using var http = new HttpClient(handler);
+        var exchange = await new SamsungIpRemoteClient(tokens, http).PairAsync(Options);
+        Assert.Equal(SamsungIpRemoteOutcome.ProtocolError, exchange.Outcome);
+        Assert.Equal(Token, tokens.Values[Options.Endpoint.AbsoluteUri]);
+        Assert.DoesNotContain(Token, JsonSerializer.Serialize(exchange), StringComparison.Ordinal);
+        Assert.DoesNotContain("replacement-credential", JsonSerializer.Serialize(exchange), StringComparison.Ordinal);
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public async Task MatchingTextIdDoesNotTurnAnRpcErrorIntoSuccess()
+    {
+        using var http = new HttpClient(new RpcHandler((request, _) => Task.FromResult(JsonResponse(new JsonObject
+        {
+            ["jsonrpc"] = "2.0",
+            ["id"] = request["id"]!.ToJsonString(),
+            ["error"] = new JsonObject { ["code"] = -32010, ["message"] = Token }
+        }))));
+        var exchange = await new SamsungIpRemoteClient(PairedTokens(), http).ReadAsync(Options, "getTVStates");
+        Assert.Equal(SamsungIpRemoteOutcome.Unauthorized, exchange.Outcome);
+        Assert.Null(exchange.Result);
+        Assert.DoesNotContain(Token, JsonSerializer.Serialize(exchange), StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("setVideoStates")]
     [InlineData("brightnessControl")]

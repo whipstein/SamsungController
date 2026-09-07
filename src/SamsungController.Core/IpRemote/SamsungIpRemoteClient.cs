@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Security;
@@ -102,6 +103,10 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
                 // Pairing text is always masked, even an unexpected reply, so a
                 // newly issued credential cannot escape via an error/echo field.
                 safeEnvelope = IpRemoteRedactor.Redact(envelope, token, pairing) as JsonObject;
+                // Preserve only a response ID that we can prove is our own
+                // public request ID. All other pairing strings remain masked.
+                if (safeEnvelope is not null && MatchesRequestId(envelope?["id"], id))
+                    safeEnvelope["id"] = envelope!["id"]!.DeepClone();
                 responseJson = safeEnvelope?.ToJsonString(PrettyJson) ?? "[Response is not a JSON object; content omitted for credential safety.]";
             }
             catch (Exception exception) when (exception is JsonException or ArgumentException or InvalidOperationException)
@@ -114,8 +119,8 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
                 return Complete(SamsungIpRemoteOutcome.HttpError, $"The TV returned HTTP {httpStatus}. Redirects are not followed.");
             if (envelope is null || safeEnvelope is null
                 || envelope["jsonrpc"] is not JsonValue version || !version.TryGetValue<string>(out var protocol) || protocol != "2.0"
-                || envelope["id"] is not JsonValue requestId || !requestId.TryGetValue<long>(out var returnedId) || returnedId != id)
-                return Complete(SamsungIpRemoteOutcome.ProtocolError, "The response was not a matching JSON-RPC 2.0 reply. No values or credentials were accepted.");
+                || !MatchesRequestId(envelope["id"], id))
+                return Complete(SamsungIpRemoteOutcome.ProtocolError, "The response was not a matching JSON-RPC 2.0 reply. Its ID must equal the request ID as a number or the same decimal text. No values or credentials were accepted.");
             if (envelope.ContainsKey("error"))
             {
                 if (envelope.ContainsKey("result"))
@@ -140,7 +145,7 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
                 accessingCredentials = true;
                 await tokenStore.SaveAsync(endpoint.AbsoluteUri, accessToken, timeout.Token).ConfigureAwait(false);
                 accessingCredentials = false;
-                return Complete(SamsungIpRemoteOutcome.Success, "Separate IP Remote token saved. State queries still need to be tested.");
+                return Complete(SamsungIpRemoteOutcome.Success, "Pairing completed: separate IP Remote token saved. You can now read the current state; the state queries still need to be tested.");
             }
             return Complete(SamsungIpRemoteOutcome.Success,
                 $"Received {safeResult.Count} result fields. This is a timestamped response, not a verified control mapping or live subscription.",
@@ -173,6 +178,16 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
             ownedClient?.Dispose();
             _gate.Release();
         }
+    }
+
+    private static bool MatchesRequestId(JsonNode? node, long expected)
+    {
+        if (node is not JsonValue value) return false;
+        // Observed Samsung pairing replies stringify the numeric request ID.
+        // Accept that representation without accepting a different, missing,
+        // fractional, padded, or otherwise coerced ID (including on reads/errors).
+        return value.TryGetValue<long>(out var number) && number == expected
+            || value.TryGetValue<string>(out var text) && text == expected.ToString(CultureInfo.InvariantCulture);
     }
 
     public static bool IsCertificateTrusted(SamsungIpRemoteOptions options, Uri requestEndpoint, X509Certificate2? certificate, SslPolicyErrors errors)

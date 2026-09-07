@@ -90,6 +90,13 @@
             <button class="toolbar-button" @onclick="IpRemoteController.Cancel" disabled="@(!Snapshot.IsBusy)">Cancel request</button>
         </div>
         <p role="status" aria-live="polite">@Snapshot.Status</p>
+        @if (!Snapshot.IsBusy && LatestPairing is { } pairing)
+        {
+            <div class="ip-pairing-result @(pairing.IsSuccess ? "success" : "failure")" role="@(pairing.IsSuccess ? "status" : "alert")">
+                <strong>Last pairing attempt: @(pairing.IsSuccess ? "completed" : $"failed — {pairing.Outcome}")</strong>
+                <span>@pairing.Message</span>
+            </div>
+        }
         @if (LatestCertificate is { } fingerprint)
         {
             <p>Last observed server certificate SHA-256:</p>
@@ -113,6 +120,10 @@
                 <button class="toolbar-button" @onclick="() => ReadAsync(method)" disabled="@(!CanRead)">@method</button>
             }
         </div>
+        @if (ReadDisabledReason is { } reason)
+        {
+            <p class="ip-read-blocked" role="status"><strong>Read unavailable:</strong> @reason</p>
+        }
         <p><strong>Do not map fields by name yet.</strong> A reported “brightness” field may not represent the modern TV Brightness slider. Backlight/Brightness and Shadow Detail must be checked against actual manual changes. Advanced white balance and custom color support are still unknown.</p>
         <div class="ip-results">
             @foreach (var method in SamsungIpRemoteClient.ReadMethods)
@@ -185,7 +196,15 @@
     private bool AllowUntrustedCertificate, RedactIdentifiers = true;
     private bool IsSaved => Snapshot.ActiveProfile == Draft;
     private bool CanAct => Snapshot.Initialized && IsSaved && !Snapshot.IsBusy;
-    private bool CanRead => CanAct && Snapshot.HasToken && !Snapshot.AuthorizationRejected;
+    private bool CanRead => ReadDisabledReason is null;
+    private string? ReadDisabledReason => !Snapshot.Initialized ? "Load the IP Remote profiles first."
+        : !IsSaved ? "Save the IP Remote profile or discard its unsaved edits first."
+        : Snapshot.IsBusy ? "An IP Remote request is still running. Wait for it to finish or select Cancel request."
+        : Snapshot.AuthorizationRejected ? "The TV rejected authorization. Pair again explicitly when ready."
+        : !Snapshot.HasToken ? "Pairing has not saved an IP Remote token. Complete pairing in step 2; accepting on the TV must also return a valid response to the app."
+        : null;
+    private SamsungIpRemoteExchange? LatestPairing => Snapshot.Observations.LastOrDefault(item =>
+        item.UserEnteredContext.Endpoint == Snapshot.ActiveProfile?.Endpoint && item.Exchange.Method == "createAccessToken")?.Exchange;
     private string TokenStatus => Snapshot.AuthorizationRejected ? "Authorization rejected — pair again explicitly when ready"
         : Snapshot.HasToken ? "Separate IP Remote token saved — reachability not continuously monitored" : "No IP Remote token saved for this endpoint";
     private IEnumerable<IpRemoteObservation> ContextObservations => Snapshot.Observations.Where(item => item.UserEnteredContext.ContextKey == Snapshot.ActiveProfile?.ContextKey);

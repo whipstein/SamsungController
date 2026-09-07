@@ -54,6 +54,8 @@ Use **Cancel request** to stop waiting. A canceled or timed-out pairing request 
 
 An authorization failure leaves the existing token intact and asks for explicit re-pairing. A malformed or unsuccessful pairing response never replaces it. **Forget local IP Remote token** only removes the selected endpoint's locally saved credential; it does not revoke permissions on the TV or affect the WebSocket token.
 
+The page shows the last pairing outcome beside the pairing buttons and explains why reads are disabled. TV approval alone is not enough: the app must receive and save the token. The client accepts a response ID as either the original number or exactly the same decimal text (for example, `2` and `"2"`); other IDs still fail correlation. Earlier preview builds rejected text IDs, so an affected pairing must be repeated after updating—no token was saved from those rejected replies.
+
 ## 4. First live checkpoint: reads only
 
 For the first test, **do not change any settings**:
