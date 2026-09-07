@@ -27,6 +27,11 @@
 .direct-control-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr)); gap:12px; }
 .direct-control { padding:14px; border:1px solid var(--line); border-radius:8px; background:var(--surface-row); min-width:0; }
 .direct-control.pending { border-color:var(--amber); }
+.direct-control.unavailable { background:var(--surface-control); border-style:dashed; }
+.direct-control.unavailable :is(h3,.direct-read-value,.picture-compact-value,.direct-slider-bound) { color:var(--muted); }
+.direct-control.unavailable .picture-switch-copy strong { color:var(--muted); }
+.direct-control.unavailable :is(input,select,.picture-switch-track) { filter:grayscale(1); opacity:.55; cursor:not-allowed; }
+.direct-control.unavailable .direct-unavailable { color:var(--muted); font-size:13px; }
 .direct-control-heading { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:13px; }
 .direct-control h3 { font-size:15px; line-height:1.35; margin:0; font-weight:600; }
 .direct-read-value { font-family:inherit; font-weight:600; font-size:16px; line-height:1.4; color:var(--muted); overflow-wrap:anywhere; text-align:right; }

@@ -76,6 +76,7 @@ public sealed partial class SamsungIpRemoteService
         if (!menu.Connected) return "Connect to the TV first.";
         if (snapshot.IsBusy) return "A TV request is running.";
         if (menu.Update?.NeedsReview == true) return "Review the interrupted update before applying more changes.";
+        if (IpMenuAvailability.For(menu, control) is { Reason: { } unavailable }) return unavailable;
         if (menu.Value(control) is not { } value) return (control.IsIndexed ? menu.IndexedReadings.GetValueOrDefault(control.Id) : menu.Readings.GetValueOrDefault(control.Method)) is { } reading
             ? reading.Outcome == SamsungIpRemoteOutcome.Success ? "Not reported in the TV reply for this display/state." : reading.Message
             : control.IsIndexed ? "Load all rows to read this value from the TV. Enable the required mode first." : "Read this section to get the current TV value.";
@@ -381,7 +382,7 @@ public sealed partial class SamsungIpRemoteService
         UpdateMenu(menu => menu with
         {
             Readings = new Dictionary<string, IpMenuRead>(menu.Readings)
-            { [method] = new(_timeProvider.GetUtcNow(), values, exchange.Outcome, exchange.IsSuccess ? "Read from TV" : exchange.Message) { Payload = exchange.Payload?.DeepClone() } }
+            { [method] = new(_timeProvider.GetUtcNow(), values, exchange.Outcome, exchange.IsSuccess ? "Read from TV" : exchange.Message) { Payload = exchange.Payload?.DeepClone(), RpcErrorCode = exchange.RpcErrorCode } }
         });
     }
 

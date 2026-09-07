@@ -10,12 +10,12 @@ This is the **v1 working branch**, `feature/ip-remote-v1`, version **1.0.0-alpha
 - Picture, Sound, and System controls. Picture has Expert settings, 2-point white balance, 20-point white balance, and Color tabs.
 - TV-queried current values with compact sliders, number fields, switches, and selections.
 - Staged Apply or remembered Apply immediately, per-setting readback, progress, and Stop.
-- Direct IP remote buttons, light/dark mode, and optional diagnostics for 69 command families.
+- Direct IP remote buttons, light/dark mode, and a live, searchable, exportable communication log.
 - Private local data, redacted reports, and Windows/macOS/Linux support.
 
 Documented settings require **no manual verification**. Support still varies by display, firmware, input, and mode: failed or missing queries are shown, not replaced with defaults. Numeric controls use documented limits; no range-discovery query was found in the protocol references. See [ranges and availability](docs/direct-ip-interface.md#ranges-and-availability).
 
-The old menu builder, verification pages, and macro editor are hidden; their files are preserved. The catalog does not cover every on-screen TV setting. Apps, device discovery, channels, and explicit power/reboot commands remain in Diagnostics. No service-menu/factory reset or firmware-update commands are provided.
+The old menu builder, verification pages, and macro editor are hidden; their files are preserved. The catalog does not cover every on-screen TV setting. The command-testing pages have been replaced with the communication log; they no longer expose app/channel/power experiments. No service-menu/factory reset or firmware-update commands are provided.
 
 ## Before starting
 
@@ -106,12 +106,12 @@ Direct settings do not navigate TV menus, so there is no return-to-video script 
 - **Connection fails:** check TV power, IP Remote, address/port, certificate policy, LAN permissions, VPN/firewall restrictions, and the actual error. Do not repeatedly re-pair unless authorization was rejected.
 - **macOS receives no response:** check System Settings → Privacy & Security → Local Network for the app hosting the process (Terminal, your editor, or ChatGPT when started there). A correct IP and a working browser do not prove the server process has local-network permission. Restart the affected host app/server after changing permission.
 - **Approval accepted but no connection:** verify the token was received/saved; inspect the pairing error. Connect reuses saved tokens.
-- **Not reported / query error:** the setting may be unavailable for this display/mode. Refresh after changing conditions. Defaults are never used as current values.
+- **Gray setting:** a prerequisite is unmet—for example Judder Reduction requires Picture Clarity / Auto Motion Plus set to Custom. Apply that prerequisite to refresh its dependent controls. Rejected/absent controls without an unmet prerequisite are hidden for the current context; Refresh checks them again. Defaults are never used as current values.
 - **Out-of-range value:** correct the inline error; no command is sent for invalid local input. TV rejections stop the operation with an error, without retrying.
 - **Interrupted update:** the journal survives restart; nothing resumes automatically. Inspect its original/target values and the actual TV before closing review.
-- **Need a report:** Diagnostics → Pairing diagnostics & report export → Download diagnostic report. Token, UUID, MAC, IP/host, and certificate SHA-256 redaction options are provided. Review exports before sharing.
+- **Need a log:** open **Communication log** in the sidebar. Choose Live session or Saved history, search or select Errors only, then expand a row for TX/RX JSON. Under Privacy and export, use **Export filtered log** to download every matching exchange, not just the current page. Tokens are always redacted; IP/MAC/UUID/serial and SHA-256 redaction default to on. Review exports before sharing.
 
-The [command reference](docs/ip-remote-commands.md) describes optional diagnostics. Those tests are not required for Menu access. The [early preview test guide](docs/ip-remote-preview.md) remains for recovery and investigation, not normal setup.
+See the [communication-log guide](docs/direct-ip-interface.md#communication-log) for history, export, and interrupted-operation recovery. The command reference and early preview test guide are development archives; their testing UI is no longer exposed.
 
 ## Private data, command line, and updates
 

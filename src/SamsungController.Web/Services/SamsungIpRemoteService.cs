@@ -253,7 +253,8 @@ public sealed partial class SamsungIpRemoteService : IDisposable
         var observation = new IpRemoteObservation(profile, label.Trim(), exchange);
         Update(current => current with
         {
-            Observations = current.Observations.Append(observation).TakeLast(100).ToArray(),
+            Observations = current.Observations.Append(observation).TakeLast(2000).ToArray(),
+            CommunicationCount = current.CommunicationCount + 1,
             Status = exchange.Message,
             HasToken = exchange.Outcome != SamsungIpRemoteOutcome.NotPaired && (pairing && exchange.IsSuccess || current.HasToken),
             AuthorizationRejected = exchange.Outcome == SamsungIpRemoteOutcome.Unauthorized

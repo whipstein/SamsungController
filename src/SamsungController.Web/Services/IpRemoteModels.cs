@@ -45,6 +45,7 @@ public sealed record IpRemoteSnapshot
     public string Status { get; init; } = "Save an IP Remote profile to begin. No network request has been sent.";
     public string? StorageWarning { get; init; }
     public IReadOnlyList<IpRemoteObservation> Observations { get; init; } = [];
+    public long CommunicationCount { get; init; }
     public IpRemotePictureTest? PictureTest { get; init; }
     public IReadOnlyList<IpRemoteControlCapability> ControlCapabilities { get; init; } = [];
     public IpRemotePictureReading? DirectPictureReading { get; init; }

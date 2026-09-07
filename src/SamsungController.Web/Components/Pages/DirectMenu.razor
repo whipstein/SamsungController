@@ -9,7 +9,7 @@
 @if (Error is not null) { <div class="notice danger" role="alert">@Error</div> }
 @if (!Snapshot.Menu.Connected) { <div class="notice"><strong>Display disconnected</strong><span>Connect to read current settings.</span><a href="/">Choose display →</a></div> }
 @if (Snapshot.PictureTest?.RequiresRecovery == true || Snapshot.CommandTrial?.RequiresReview == true)
-{ <div class="notice danger">An earlier diagnostic write needs attention. <a href="@(Snapshot.CommandTrial?.RequiresReview == true ? "ip-commands" : "diagnostics/picture-tests")">Open its saved recovery details</a>.</div> }
+{ <div class="notice danger">An earlier diagnostic write needs attention. <a href="diagnostics#recovery">Open its saved recovery details</a>.</div> }
 
 <section class="panel direct-panel">
     @if (Snapshot.Menu.Connected && Snapshot.Menu.ConnectionLoadAttempted && Snapshot.Menu.SettingsLoadedAt is null && !Snapshot.IsBusy)
@@ -19,6 +19,7 @@
         <details class="direct-details compact"><summary>Connection preload · @loadedAt.ToLocalTime().ToString("HH:mm:ss") · @(Snapshot.Menu.LoadWarnings.Count == 0 ? "complete" : "some values unavailable")</summary>
             <p>@Snapshot.Menu.TransportStatus</p>
             @foreach (var warning in Snapshot.Menu.LoadWarnings) { <p class="direct-unavailable">@warning</p> }
+            <p><a href="diagnostics">Browse requests and replies →</a></p>
             <p>Loaded values belong to the current input/picture mode. Inactive or unsupported values are not replaced with defaults. Refresh reads the selected section again.</p>
         </details>
     }
@@ -53,6 +54,8 @@
     {
         <div class="direct-control-grid">@foreach (var control in VisibleControls) { @ControlCard(control) }</div>
     }
+    @if (HiddenControls.Any())
+    { <p class="direct-hint">@HiddenControls.Count() controls hidden because their queries were rejected or their values were absent. <a href="diagnostics">See communication log</a>. Refresh reevaluates availability.</p> }
     @if (Grid is { } grid)
     {
         <section class="direct-indexed" aria-label="@(grid.Section == "white20" ? "All white balance intervals" : "All custom colors")">
@@ -68,7 +71,7 @@
                 @foreach (var value in grid.Values)
                 {
                     <section class="direct-indexed-row" @key="value"><h3>@value</h3>
-                        <div class="direct-indexed-channels">@foreach (var control in grid.Row(value)) { @ControlCard(control) }</div>
+                        <div class="direct-indexed-channels">@foreach (var control in grid.Row(value).Where(IsVisible)) { @ControlCard(control) }</div>
                     </section>
                 }
             </div>
@@ -102,8 +105,11 @@
     private bool CanApply => CanWork && Snapshot.Menu.Pending.Count > 0 && Snapshot.Menu.Update?.NeedsReview != true;
     private IpMenuGrid? Grid => IpMenuGrids.ForSection(Section);
     private bool GridModeEnabled => Grid is { } grid && Snapshot.Menu.Readings.GetValueOrDefault(grid.ModeMethod)?.Values?[grid.ModeField]?.ToString() == grid.RequiredMode;
-    private IEnumerable<IpMenuControl> VisibleControls => IpMenuCatalog.ForSection(Section)
-        .Where(control => Grid is not { } grid || control.Field != grid.SelectorField && !grid.Fields.Contains(control.Field))
+    private bool IsVisible(IpMenuControl control) => Dirty(control) || IpMenuAvailability.For(Snapshot.Menu, control).Visible;
+    private IEnumerable<IpMenuControl> SectionControls => IpMenuCatalog.ForSection(Section)
+        .Where(control => Grid is not { } grid || control.Field != grid.SelectorField && !grid.Fields.Contains(control.Field));
+    private IEnumerable<IpMenuControl> HiddenControls => SectionControls.Concat(IpMenuCatalog.IndexedControls.Where(control => control.Section == Section)).Where(control => !IsVisible(control));
+    private IEnumerable<IpMenuControl> VisibleControls => SectionControls.Where(IsVisible)
         .OrderBy(control => control.Method is "WB20PointModeControl" or "colorSpaceControl" ? 0 : 2);
     protected override async Task OnInitializedAsync() { Controller.Changed += Refresh; await GuardAsync(Controller.InitializeAsync); }
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -123,7 +129,7 @@
     private string Target(IpMenuControl control) => Edits.GetValueOrDefault(control.Id) ?? Snapshot.Menu.Pending.GetValueOrDefault(control.Id)?.Target.ToString() ?? Snapshot.Menu.Value(control)?.ToString() ?? "";
     private bool Dirty(IpMenuControl control) => Snapshot.Menu.Pending.ContainsKey(control.Id);
     private string? DisabledReason(IpMenuControl control) => ActionRunning ? "A TV request is running." : Controller.MenuControlDisabledReason(control);
-    private RenderFragment ControlCard(IpMenuControl control) => @<article class="direct-control @(Dirty(control) ? "pending" : "")">
+    private RenderFragment ControlCard(IpMenuControl control) => @<article class="direct-control @(Dirty(control) ? "pending" : "") @(DisabledReason(control) is not null ? "unavailable" : "")" aria-disabled="@(DisabledReason(control) is not null ? "true" : "false")">
         <div class="direct-control-heading"><h3>@(control.IsIndexed ? control.Field.Split('.').Last() : control.Name)</h3><span class="direct-read-value">TV: @(Snapshot.Menu.Value(control)?.ToString() ?? "Not reported")</span></div>
         @if (control.IsSwitch)
         {

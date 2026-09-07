@@ -1,6 +1,6 @@
 # Direct IP interface
 
-The v1 web workflow is **Display → Menu**, with Remote and optional Diagnostics. It replaces menu traversal for normal settings. Existing IP Remote profiles/tokens are reused; v0 menus, verification, macros, and calibration files are preserved but do not drive this interface. The macro editor is hidden until it supports direct commands.
+The v1 web workflow is **Display → Menu**, with Remote and Communication log. It replaces menu traversal for normal settings. Existing IP Remote profiles/tokens are reused; v0 menus, verification, macros, and calibration files are preserved but do not drive this interface. The macro editor is hidden until it supports direct commands. The earlier command/picture-testing pages are no longer exposed.
 
 For installation, all platform launchers, first pairing, and updates, start with the [README](../README.md). `feature/ip-remote-v1` remains separate from `main`.
 
@@ -12,7 +12,9 @@ For installation, all platform launchers, first pairing, and updates, start with
 4. Apply sends pending settings sequentially. Each has a fresh preflight, a saved original/target, a single setter, and an independent readback. Successful values stay on the TV. There are no verification checkboxes/pass counts, menu keys, auto-return scripts, or automatic rollback.
 5. Apply immediately is a persisted option under the collapsed Update behavior box. Clear/apply pending edits before enabling it. Number/selection/switch edits send when committed; range drags preview locally and send on release.
 
-Only queried, representable values can be edited. This is a current-state requirement, not a manual verification requirement. A documented method that fails in the current display/mode is shown with its response/error and can be retried with Refresh. Unsupported fields do not prevent other fields in the section from loading.
+Only queried, representable values can be edited. This is a current-state requirement, not a manual verification requirement. Controls with an unmet prerequisite remain visible, gray, and disabled, even when their getter fails: Judder Reduction requires Picture Clarity / Auto Motion Plus = Custom, and HDR gamma sliders require the matching Gamma mode. The explanation names that prerequisite and its current value. Applying a local prerequisite reloads its section.
+
+Explicitly unsupported queries, absent fields, and rejected getters without a known unmet prerequisite are hidden from Menu for the current context. The section reports how many controls were hidden and links to their raw exchanges. Refresh reevaluates them; no permanent model blacklist is created. A failed setter does not hide the entire setting. In particular, `−32002` means a generic failure, not proof of permanently unsupported hardware; unmet modes and invalid values can produce it too. See the [firmware error reference](https://github.com/TheFab21/ha-samsungtv-smart/blob/8c7000522b4045b42ff26d129d8d5fe9daf280cb/notes/QN55LS03FAFXZA/IPCONTROL_DECOMPILED.md).
 
 Controls use the compact slider and pill-switch layout: a prominent target value, native slider with round −/+ buttons, and an editable number box. The minimum is immediately to the left of the slider and the maximum immediately to its right. Native slider thumbs/fill remain aligned at both endpoints. The **TV:** label remains the last queried value while an edit is pending. Switches support keyboard focus/Space as well as clicking; a staged toggle still needs Apply unless immediate mode is selected.
 
@@ -27,6 +29,18 @@ The client sends `Connection: keep-alive`, allows one pooled connection per serv
 Each diagnostic exchange reports `NewTlsHandshake` and `ServerClosesConnection`; injected transports may not report handshake reuse. The header tooltip and connection-preload details summarize the latest successful query. This makes it possible to distinguish server-requested closure from client connection reuse without assuming the TV keeps sockets open forever. There is no automatic RPC replay, background settings polling, or re-pairing.
 
 Preloading moves the initial read cost to Connect; it does not eliminate the multiple documented requests needed for indexed values. It only covers the active input/picture context, not other inputs/picture modes. Changing TV context invalidates cached settings. Actual speed and server idle behavior need testing on the display. See [.NET connection-pooling guidance](https://learn.microsoft.com/en-us/dotnet/fundamentals/networking/http/httpclient-guidelines) and the [firmware protocol reference](https://github.com/TheFab21/ha-samsungtv-smart/blob/8c7000522b4045b42ff26d129d8d5fe9daf280cb/notes/QN55LS03FAFXZA/IPCONTROL_DECOMPILED.md).
+
+## Communication log
+
+Open **Communication log** in the sidebar. This replaces the initial command catalog/picture-test UI; existing bookmarks open the log too. Viewing the log never sends queries or commands to the TV.
+
+1. **Live session** follows completed request/reply exchanges as they arrive. It retains the newest 2,000 exchanges, enough to include the initial calibration preload; an overflow notice points to Saved history. Pause freezes the view without stopping recording or the active TV operation. Paging older live entries also pauses the view.
+2. **Saved history** reads the private `ip-remote/diagnostics.ndjson` archive, including earlier app runs. It is paged rather than limited to the last 100 requests. Refresh it to see newly appended records. Nothing in the source file is deleted or rewritten.
+3. Search by display name, method, message, error code, or payload. Filter Queries/Writes/Pairing or Errors only. Expand a row for separate **TX** and **RX** panels, request ID, timestamp, duration, HTTP/RPC outcome, endpoint, and TLS reuse/server-close information. A missing reply is explicit.
+4. Under **Privacy and export**, download **Export filtered log**. The NDJSON download contains every matching exchange from the selected source, not only the visible page. A live export uses the latest retained records even if the view is paused; use Saved history for the full archive. Tokens and token echoes are always redacted. IP/MAC/UUID/serial and certificate SHA-256 redaction default to on for viewing and export; local source records are unchanged. Free-text labels should still be reviewed before sharing.
+5. Malformed/incomplete records are reported. Exports refuse to silently omit them; refresh after active requests finish or inspect the original private archive. Browser exports are limited to 20 million characters: narrow the filter for a large archive, or access the private source file directly (it retains identifiers, so do not share it unreviewed).
+
+If a prior testing operation was interrupted, a manual-recovery section preserves its originals, requested values, and known results. After checking/handling the correct TV, explicitly close the recovery record. Closing it sends no TV command and awards no verification. No test controls or automatic restoration are exposed by the log.
 
 ## Calibration sections
 
@@ -99,15 +113,15 @@ No pass-count gate is used for documented controls. Actual query failures, inval
 - A correlated value rejection can be followed by read-only checks. If the original/context are unchanged, it is marked Rejected unchanged and can be corrected without a false recovery lock.
 - An ambiguous write, readback mismatch, or interrupted delivered request requires checking the TV. Refresh remains read-only. Close the interrupted-update review explicitly after checking; this sends no restoration or verification command.
 - Transport/authentication failure clears Connected. Connect reuses credentials; pairing is never retried automatically.
-- The optional early picture-test/command diagnostics retain their own unresolved-write safeguards. An unfinished experiment must be resolved before normal writes; historical lack of verification does not block Menu.
+- Existing early picture-test/command records retain unresolved-write safeguards. Resolve an unfinished operation in Communication log's manual-recovery section before normal writes; historical lack of verification does not block Menu.
 
 ## Persistence and boundaries
 
-All new state is private under the configured data root's `ip-remote` directory. `menu-preferences.json` stores Apply immediately. `menu-update.json` stores the last update and interrupted-write information, including each row's unique ID and original value. `menu-selector.json` records selector movement before sending, the original/last-confirmed selector, and completion/interruption. Profiles/tokens and diagnostic history retain their existing files. Runtime query caches and unsent targets are not resumed after restart. Diagnostic exports include the Menu snapshot, grid values, and update/selector state with the existing redaction options.
+All new state is private under the configured data root's `ip-remote` directory. `menu-preferences.json` stores Apply immediately. `menu-update.json` stores the last update and interrupted-write information, including each row's unique ID and original value. `menu-selector.json` records selector movement before sending, the original/last-confirmed selector, and completion/interruption. Profiles/tokens and diagnostic history retain their existing files. Runtime query caches and unsent targets are not resumed after restart. Communication exports contain the filtered request/reply records with the selected redactions.
 
-No menu definition or verification file is read/written by the new primary pages. No existing macro/calibration file is deleted or interpreted as a direct-IP script. The older three-control preset workspace remains an optional diagnostic endpoint. The full interval/color grids now have live queried snapshots, but portable direct-IP calibration preset import/export remains future work.
+No menu definition or verification file is read/written by the new primary pages. No existing macro/calibration file is deleted or interpreted as a direct-IP script. The older three-control testing workspace is no longer exposed. The full interval/color grids now have live queried snapshots, but portable direct-IP calibration preset import/export remains future work.
 
-Settings with numeric/enum getters appear in Menu. Apps, discovered devices, channels, and broad power/reboot actions remain explicit in Diagnostics. Remote and header keys send one direct IP key each; they do not predict the on-screen location. A power key clears local connection readiness. Connection status is based on the last request, not a live socket or a heartbeat.
+Settings with usable numeric/enum getters appear in Menu. Discovery replies and other catalog reads can be inspected in the communication log; the log has no command execution controls. Remote and header keys send one direct IP key each; they do not predict the on-screen location. A power key clears local connection readiness. Connection status is based on the last request, not a live socket or a heartbeat.
 
 ## Implementation and verification
 

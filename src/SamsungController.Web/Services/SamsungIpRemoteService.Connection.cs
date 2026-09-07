@@ -53,7 +53,14 @@ public sealed partial class SamsungIpRemoteService
         var missing = IpMenuCatalog.Controls.Where(control => !control.IsSelector
             && !IpMenuGrids.All.Any(grid => grid.Fields.Contains(control.Field))).Count(control => GetSnapshot().Menu.Value(control) is null);
         missing += IpMenuCatalog.IndexedControls.Count(control => GetSnapshot().Menu.Value(control) is null);
-        if (missing > 0) warnings.Add($"{missing} Menu values were not reported, including inactive calibration rows. They remain unavailable, not assumed to be zero.");
+        if (missing > 0)
+        {
+            var menu = GetSnapshot().Menu;
+            var hidden = IpMenuCatalog.AllControls.Count(control => !control.IsSelector
+                && (control.IsIndexed || !IpMenuGrids.All.Any(grid => grid.Fields.Contains(control.Field)))
+                && !IpMenuAvailability.For(menu, control).Visible);
+            warnings.Add($"{missing} Menu values were not reported. {hidden} rejected/absent controls are hidden; controls with unmet prerequisites remain gray and disabled. Open the communication log for each response.");
+        }
         UpdateMenu(menu => menu with
         {
             SettingsLoadedAt = _timeProvider.GetUtcNow(),

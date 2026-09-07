@@ -1,0 +1,147 @@
+@page "/diagnostics"
+@page "/ip-commands"
+@page "/diagnostics/picture-tests"
+@page "/diagnostics/picture-workspace"
+@implements IDisposable
+@using SamsungController.Core.IpRemote
+@inject SamsungIpRemoteService Controller
+@inject IJSRuntime JavaScript
+
+<PageTitle>Communication log · SamsungController</PageTitle>
+<section class="page-heading compact-heading"><div><span class="eyebrow">DIRECT IP · DIAGNOSTICS</span><h1>Communication log</h1><p>Browse commands sent to the display and the replies received. Viewing, filtering, and exporting this log send no TV commands.</p></div></section>
+@if (Error is not null) { <div class="notice danger" role="alert">@Error</div> }
+@if (Snapshot.StorageWarning is { } storageWarning) { <div class="notice danger">@storageWarning</div> }
+
+<section class="panel direct-panel communication-log">
+    <div class="direct-toolbar">
+        <div><h2>@(SavedHistory ? "Saved history" : "Live communication")</h2><p>@(SavedHistory ? "Includes earlier app runs. Refresh to include new exchanges." : Paused ? "View paused. Logging continues; Resume shows new exchanges." : "Completed exchanges appear as replies arrive. Newest first.")</p></div>
+        <div class="direct-actions">
+            <button class="toolbar-button" @onclick="LiveAsync" disabled="@Loading">Live session</button>
+            <button class="toolbar-button" @onclick="HistoryAsync" disabled="@Loading">Saved history</button>
+            @if (!SavedHistory) { <button class="toolbar-button" @onclick="TogglePause">@(Paused ? "Resume live view" : "Pause live view")</button> }
+            <button class="toolbar-button" @onclick="RefreshLogAsync" disabled="@Loading">Refresh log</button>
+        </div>
+    </div>
+    <div class="communication-filters">
+        <label>Search method, message, or payload<input aria-label="Search communication log" value="@Search" @onchange="SearchAsync" disabled="@Loading" placeholder="e.g. gamma, -32002, WB20P" /></label>
+        <label>Operation<select aria-label="Communication operation" value="@Kind" @onchange="KindAsync" disabled="@Loading"><option value="all">All operations</option><option value="query">Queries</option><option value="write">Writes</option><option value="pairing">Pairing</option></select></label>
+        <label class="direct-check"><input type="checkbox" aria-label="Errors only" checked="@ErrorsOnly" @onchange="ErrorsAsync" disabled="@Loading" /> Errors only</label>
+    </div>
+    <details class="direct-details compact"><summary>Privacy and export</summary>
+        <p>Tokens are always redacted. These options affect both the displayed payloads and downloads, not the private source log.</p>
+        <label class="direct-check"><input type="checkbox" aria-label="Redact device identifiers" checked="@RedactIdentifiers" @onchange="IdentifiersChanged" /> Redact IP, MAC, UUID, and serial numbers</label>
+        <label class="direct-check"><input type="checkbox" aria-label="Redact SHA keys" checked="@RedactSha" @onchange="ShaChanged" /> Redact certificate SHA-256 fingerprints</label>
+        <p>Export includes every matching exchange in the selected source, not just this page. Live export includes the latest retained exchanges even when viewing is paused. NDJSON has one complete request/reply record per line. Review free-text labels before sharing.</p>
+        <button class="toolbar-button" @onclick="ExportAsync" disabled="@(Loading || Page.Total == 0)">Export filtered log</button>
+    </details>
+    @if (!SavedHistory && Snapshot.CommunicationCount > Snapshot.Observations.Count)
+    { <p class="direct-unavailable">Live view retains the newest @Snapshot.Observations.Count of @Snapshot.CommunicationCount exchanges. Choose Saved history to browse or export the full archive.</p> }
+    @if (Page.SkippedLines > 0) { <p class="direct-unavailable">@Page.SkippedLines invalid or incomplete records were skipped. The source file is unchanged. Refresh after active requests finish.</p> }
+    <div class="communication-pagination"><span role="status">@Page.Total matching exchanges · page @(PageIndex + 1) of @PageCount</span>
+        <button class="toolbar-button" @onclick="PreviousAsync" disabled="@(Loading || PageIndex == 0)">Newer</button><button class="toolbar-button" @onclick="NextAsync" disabled="@(Loading || PageIndex + 1 >= PageCount)">Older</button>
+    </div>
+    @if (Page.Entries.Count == 0) { <p>No matching communication. Connect to a display, adjust the filter, or open Saved history.</p> }
+    <div class="communication-entries">
+        @foreach (var entry in Page.Entries)
+        {
+            var observation = IpCommunicationLog.Safe(entry.Observation, RedactIdentifiers, RedactSha);
+            var exchange = observation.Exchange;
+            <details class="communication-entry @(!exchange.IsSuccess ? "failed" : "")" @key="entry.Number">
+                <summary><span class="communication-time">#@entry.Number · @exchange.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")</span><strong>@exchange.Method</strong><span class="communication-kind">@IpCommunicationLog.Kind(observation)</span><span class="communication-outcome">@exchange.Outcome @(exchange.RpcErrorCode is { } code ? $"({code})" : "")</span><span>@exchange.DurationMilliseconds ms</span></summary>
+                <p>@observation.UserEnteredContext.Model · @exchange.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff zzz") · request ID @exchange.RequestId · @exchange.Endpoint</p>
+                <p>@observation.Label · HTTP @(exchange.HttpStatus?.ToString() ?? "no response") · @(exchange.NewTlsHandshake is true ? "New TLS connection" : exchange.NewTlsHandshake is false ? "TLS reused" : "TLS reuse not reported")@(exchange.ServerClosesConnection == true ? " · TV requested connection close" : "")</p>
+                <p>@exchange.Message</p>
+                @if (exchange.RpcErrorCode == -32002) { <p>Generic TV failure: this code alone does not distinguish an unsupported feature, unmet condition, or rejected value.</p> }
+                <div class="communication-payloads"><section><h3>TX · sent to TV</h3><pre>@exchange.RequestJson</pre></section><section><h3>RX · received from TV</h3><pre>@(exchange.ResponseJson ?? "No response body received.")</pre></section></div>
+            </details>
+        }
+    </div>
+</section>
+
+@if (Snapshot.PictureTest?.RequiresRecovery == true || Snapshot.CommandTrial?.RequiresReview == true)
+{
+    <section id="recovery" class="panel direct-panel"><h2>Interrupted operation · manual recovery</h2>
+        <p>The testing interface has been removed. Existing recovery records are preserved. Check and handle any earlier change on the correct display before closing its record. These buttons send no TV commands and award no verification.</p>
+        @if (Snapshot.PictureTest is { RequiresRecovery: true } picture)
+        {
+            <p>@picture.Profile.Model · @picture.ReportedInput · @picture.ReportedPictureMode · @picture.ControlName: original @picture.Original → requested @picture.Target</p><p>@picture.Message</p>
+            <button class="toolbar-button" @onclick="() => GuardAsync(() => Controller.CloseManuallyRestoredPictureTestAsync(picture.Id))" disabled="@Snapshot.IsBusy">I restored the original picture value manually — close record</button>
+        }
+        @if (Snapshot.CommandTrial is { RequiresReview: true } command)
+        {
+            <p>@command.Profile.Model · @command.Method · @command.Stage</p><p>@command.Message</p>
+            <pre>@RecoveryDetails(command)</pre>
+            <button class="toolbar-button" @onclick="() => GuardAsync(() => Controller.ConfirmCatalogCommandAsync(command.Id, false))" disabled="@Snapshot.IsBusy">I checked and handled the command manually — close record</button>
+        }
+    </section>
+}
+
+@code {
+    private IpRemoteSnapshot Snapshot = new();
+    private IpCommunicationPage Page = new([], 0);
+    private IReadOnlyList<IpRemoteObservation>? Frozen;
+    private long FrozenStart;
+    private bool SavedHistory, Paused, ErrorsOnly, Loading, RedactIdentifiers = true, RedactSha = true;
+    private string Search = "", Kind = "all";
+    private string? Error;
+    private int PageIndex;
+    private const int PageSize = 50;
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(Page.Total / (double)PageSize));
+    private IpCommunicationFilter Filter => new(Search, ErrorsOnly, Kind);
+    private readonly CancellationTokenSource StopReading = new();
+    protected override async Task OnInitializedAsync()
+    {
+        Controller.Changed += Changed;
+        await GuardAsync(Controller.InitializeAsync);
+        LivePage();
+    }
+    private void Changed() => _ = InvokeAsync(() =>
+    {
+        Snapshot = Controller.GetSnapshot();
+        if (!SavedHistory && !Paused) LivePage();
+        StateHasChanged();
+    });
+    private void LivePage()
+    {
+        var source = Frozen ?? Snapshot.Observations;
+        var start = Frozen is not null ? FrozenStart : Math.Max(0, Snapshot.CommunicationCount - Snapshot.Observations.Count);
+        var matches = source.Select((observation, index) => new IpCommunicationEntry(start + index + 1, observation)).Where(entry => Filter.Matches(entry.Observation)).Reverse().ToArray();
+        PageIndex = Math.Min(PageIndex, Math.Max(0, (matches.Length - 1) / PageSize));
+        Page = new(matches.Skip(PageIndex * PageSize).Take(PageSize).ToArray(), matches.Length);
+    }
+    private Task RefreshLogAsync() => GuardAsync(async () =>
+    {
+        if (SavedHistory)
+        {
+            Page = await Controller.ReadCommunicationLogAsync(Filter, PageIndex, PageSize, StopReading.Token);
+            if (PageIndex >= PageCount) { PageIndex = PageCount - 1; Page = await Controller.ReadCommunicationLogAsync(Filter, PageIndex, PageSize, StopReading.Token); }
+        }
+        else { Snapshot = Controller.GetSnapshot(); LivePage(); }
+    });
+    private Task HistoryAsync() { SavedHistory = true; PageIndex = 0; Frozen = null; return RefreshLogAsync(); }
+    private Task LiveAsync() { SavedHistory = false; Paused = false; Frozen = null; PageIndex = 0; return RefreshLogAsync(); }
+    private void Freeze() { Frozen = Snapshot.Observations; FrozenStart = Math.Max(0, Snapshot.CommunicationCount - Snapshot.Observations.Count); }
+    private void TogglePause() { Paused = !Paused; if (Paused) Freeze(); else Frozen = null; PageIndex = 0; LivePage(); }
+    private Task PreviousAsync() { PageIndex--; return RefreshLogAsync(); }
+    private Task NextAsync() { if (!SavedHistory) { Paused = true; if (Frozen is null) Freeze(); } PageIndex++; return RefreshLogAsync(); }
+    private Task SearchAsync(ChangeEventArgs args) { Search = args.Value?.ToString() ?? ""; PageIndex = 0; return RefreshLogAsync(); }
+    private Task KindAsync(ChangeEventArgs args) { Kind = args.Value?.ToString() ?? "all"; PageIndex = 0; return RefreshLogAsync(); }
+    private Task ErrorsAsync(ChangeEventArgs args) { ErrorsOnly = args.Value is true; PageIndex = 0; return RefreshLogAsync(); }
+    private void IdentifiersChanged(ChangeEventArgs args) => RedactIdentifiers = args.Value is true;
+    private void ShaChanged(ChangeEventArgs args) => RedactSha = args.Value is true;
+    private Task ExportAsync() => GuardAsync(async () => await JavaScript.InvokeVoidAsync("samsungController.downloadText",
+        $"samsung-communication-{DateTime.Now:yyyyMMdd-HHmmss}.ndjson", await Controller.ExportCommunicationLogAsync(Filter, SavedHistory, RedactIdentifiers, RedactSha, StopReading.Token)));
+    private string RecoveryDetails(IpRemoteCommandTrial command)
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(new { command.Parameters, command.BeforeTv, command.BeforeVideo, command.BeforeCommand, command.AfterTv, command.AfterVideo, command.AfterCommand });
+        return ProtocolMessageFormatter.FormatJson(json, revealSensitive: false, revealDeviceIdentifiers: !RedactIdentifiers);
+    }
+    private async Task GuardAsync(Func<Task> action)
+    {
+        Error = null; Loading = true;
+        try { await action(); }
+        catch (Exception error) when (error is InvalidOperationException or ArgumentException or IOException or UnauthorizedAccessException or JsonException or OperationCanceledException) { Error = error.Message; }
+        finally { Snapshot = Controller.GetSnapshot(); Loading = false; }
+    }
+    public void Dispose() { Controller.Changed -= Changed; StopReading.Cancel(); StopReading.Dispose(); }
+}

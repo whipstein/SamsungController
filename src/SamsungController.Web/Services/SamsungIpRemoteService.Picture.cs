@@ -303,7 +303,7 @@ public sealed partial class SamsungIpRemoteService
         if (GetSnapshot().Menu.Update?.NeedsReview == true)
             throw new InvalidOperationException("Check the interrupted update on the Menu page before changing display context or sending more commands.");
         if (GetSnapshot().CommandTrial?.RequiresReview == true)
-            throw new InvalidOperationException("Review the pending IP command first. Check/handle its effect on the IP Commands page before starting another write or replacing its display context.");
+            throw new InvalidOperationException("Review the pending IP command first. Check/handle its effect in Communication log recovery before starting another write or replacing its display context.");
         if (GetSnapshot().PictureTest?.RequiresRecovery == true)
             throw new InvalidOperationException("Resolve the pending picture operation first: check and restore the original value, or confirm manual restoration. Its original context must not be replaced.");
     }

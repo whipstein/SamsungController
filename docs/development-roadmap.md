@@ -21,6 +21,8 @@ Development and real-display feedback proceed separately on `feature/ip-remote-v
 - [x] Request persistent HTTPS connections with no client-side idle expiry, TCP keepalive, explicit disconnect, and handshake/server-close diagnostics; test connection reuse and server closure using loopback TLS.
 - [ ] Enable and restore inactive calibration modes during Connect only with user approval, so off-mode 20-point and non-Custom color banks can also preload; preserve recovery information if interrupted.
 - [x] Preserve unrelated calibration caches across local mode changes, prevent unnecessary rescans when revisiting loaded tabs, and label slider minimum/maximum at the track ends.
+- [x] Hide currently query-rejected/absent controls, render prerequisite-dependent controls gray/disabled, and reevaluate on refresh without a permanent unsupported blacklist.
+- [x] Replace testing-page routes with a live/persisted communication log, search/filter/pagination, redacted full-filter NDJSON export, and manual recovery for retained interrupted operations.
 - [ ] Design direct-IP macro editing and portable full calibration preset import/export.
 
 - [x] Add an independent HTTPS JSON-RPC client with explicit pairing and a two-getter read-only allowlist.
