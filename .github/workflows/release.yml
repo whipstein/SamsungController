@@ -76,6 +76,7 @@ jobs:
         run: |
           cp README.md staging/SamsungController/README.md
           cp packaging/PACKAGE-README.md staging/SamsungController/START-HERE.md
+          cp packaging/RELEASE-NOTES.md staging/SamsungController/RELEASE-NOTES.md
           cp LICENSE staging/SamsungController/LICENSE
           cp -R docs staging/SamsungController/docs
           cp -R samples staging/SamsungController/samples

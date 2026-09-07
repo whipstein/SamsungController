@@ -1,6 +1,6 @@
 {
     "version": 1,
-    "id": "s95f-1296-sdr",
+    "id": "s95f-1296",
     "name": "S95F · firmware 1296",
     "model": "S95F",
     "context": {
@@ -19,6 +19,12 @@
             "label": "PGen output format",
             "defaultValue": "RGB",
             "options": ["RGB", "YCbCr422", "YCbCr444"]
+        },
+        {
+            "id": "hdmi-bit-depth",
+            "label": "Bit depth",
+            "defaultValue": "8-bit",
+            "options": ["8-bit", "10-bit"]
         }
     ],
     "timing": {
@@ -168,7 +174,13 @@
                                             "controlType": "slider",
                                             "defaultValue": "17",
                                             "minimumValue": 0,
-                                            "maximumValue": 50
+                                            "maximumValue": 50,
+                                            "defaultValueWhen": [
+                                                {
+                                                    "when": { "hdmi-bit-depth": "10-bit" },
+                                                    "value": "50"
+                                                }
+                                            ]
                                         },
                                         {
                                             "id": "contrast",
@@ -176,7 +188,13 @@
                                             "controlType": "slider",
                                             "defaultValue": "45",
                                             "minimumValue": 0,
-                                            "maximumValue": 50
+                                            "maximumValue": 50,
+                                            "defaultValueWhen": [
+                                                {
+                                                    "when": { "hdmi-bit-depth": "10-bit" },
+                                                    "value": "50"
+                                                }
+                                            ]
                                         },
                                         {
                                             "id": "sharpness",
@@ -206,20 +224,39 @@
                                             "id": "auto-hdr-remastering",
                                             "label": "Auto HDR Remastering",
                                             "controlType": "switch",
-                                            "defaultValue": "off"
+                                            "defaultValue": "off",
+                                            "disabledWhen": [
+                                                {
+                                                    "externalState": "hdmi-bit-depth",
+                                                    "equals": "10-bit"
+                                                }
+                                            ]
                                         },
                                         {
                                             "id": "hdr-tone-mapping",
                                             "label": "HDR Tone Mapping",
-                                            "controlType": "submenu",
-                                            "disabled": true
+                                            "controlType": "selection",
+                                            "defaultValue": "Static",
+                                            "options": ["Static", "Active"],
+                                            "disabledWhen": [
+                                                {
+                                                    "externalState": "hdmi-bit-depth",
+                                                    "equals": "8-bit"
+                                                }
+                                            ]
                                         },
                                         {
                                             "id": "peak-brightness",
                                             "label": "Peak Brightness",
                                             "controlType": "selection",
                                             "defaultValue": "Medium",
-                                            "options": ["Off", "Medium", "High"]
+                                            "options": ["Off", "Medium", "High"],
+                                            "defaultValueWhen": [
+                                                {
+                                                    "when": { "hdmi-bit-depth": "10-bit" },
+                                                    "value": "High"
+                                                }
+                                            ]
                                         },
                                         {
                                             "id": "contrast-enhancer",
@@ -241,7 +278,26 @@
                                             "label": "Gamma",
                                             "controlType": "selection",
                                             "defaultValue": "BT.1886",
-                                            "options": ["BT.1886", "2.2"]
+                                            "options": ["BT.1886", "2.2"],
+                                            "hiddenWhen": [
+                                                {
+                                                    "externalState": "hdmi-bit-depth",
+                                                    "equals": "10-bit"
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "id": "gamma-10bit",
+                                            "label": "Gamma",
+                                            "controlType": "selection",
+                                            "defaultValue": "ST.2084",
+                                            "options": ["ST.2084"],
+                                            "hiddenWhen": [
+                                                {
+                                                    "externalState": "hdmi-bit-depth",
+                                                    "equals": "8-bit"
+                                                }
+                                            ]
                                         },
                                         {
                                             "id": "bt.1886",
@@ -254,6 +310,24 @@
                                                 {
                                                     "setting": "gamma",
                                                     "equals": "2.2"
+                                                },
+                                                {
+                                                    "externalState": "hdmi-bit-depth",
+                                                    "equals": "10-bit"
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "id": "st.2084",
+                                            "label": "ST.2084",
+                                            "controlType": "slider",
+                                            "defaultValue": "0",
+                                            "minimumValue": -3,
+                                            "maximumValue": 3,
+                                            "hiddenWhen": [
+                                                {
+                                                    "externalState": "hdmi-bit-depth",
+                                                    "equals": "8-bit"
                                                 }
                                             ]
                                         },
@@ -269,8 +343,8 @@
                                             "label": "Film Mode",
                                             "controlType": "selection",
                                             "defaultValue": "Off",
-                                            "disabled": true,
-                                            "options": ["Off", "On"]
+                                            "options": ["Off", "On"],
+                                            "disabled": true
                                         },
                                         {
                                             "id": "color-space-settings",
@@ -2106,7 +2180,7 @@
                                             "label": "HDMI Black Level",
                                             "controlType": "selection",
                                             "defaultValue": "Auto",
-                                            "options": ["Auto", "Low", "High"],
+                                            "options": ["Normal", "Low", "Auto"],
                                             "disabledWhen": [
                                                 {
                                                     "externalState": "pgen-output-format",

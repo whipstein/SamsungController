@@ -13,6 +13,20 @@
             "conditions": "Record the setting values that affect which menu items are visible."
         }
     ],
+    "externalStates": [
+        {
+            "id": "pgen-output-format",
+            "label": "Color format",
+            "defaultValue": "RGB",
+            "options": ["RGB", "YCbCr422", "YCbCr444"]
+        },
+        {
+            "id": "hdmi-bit-depth",
+            "label": "Bit depth",
+            "defaultValue": "8-bit",
+            "options": ["8-bit", "10-bit"]
+        }
+    ],
     "timing": {
         "defaultDelay": "150ms",
         "screenChangeDelay": "800ms",
@@ -99,7 +113,7 @@
                                             "id": "adjust-logo-brightness",
                                             "label": "Adjust Logo Brightness",
                                             "controlType": "selection",
-                                            "defaultValue": "Off",
+                                            "defaultValue": "Low",
                                             "options": ["Off", "Low", "High"]
                                         }
                                     ]
@@ -113,7 +127,7 @@
                                             "id": "brightness",
                                             "label": "Brightness",
                                             "controlType": "slider",
-                                            "defaultValue": "17",
+                                            "defaultValue": "30",
                                             "minimumValue": 0,
                                             "maximumValue": 50
                                         },
@@ -121,7 +135,7 @@
                                             "id": "contrast",
                                             "label": "Contrast",
                                             "controlType": "slider",
-                                            "defaultValue": "45",
+                                            "defaultValue": "50",
                                             "minimumValue": 0,
                                             "maximumValue": 50
                                         },
@@ -129,7 +143,7 @@
                                             "id": "sharpness",
                                             "label": "Sharpness",
                                             "controlType": "slider",
-                                            "defaultValue": "0",
+                                            "defaultValue": "10",
                                             "minimumValue": 0,
                                             "maximumValue": 20
                                         },
@@ -182,8 +196,27 @@
                                             "id": "gamma",
                                             "label": "Gamma",
                                             "controlType": "selection",
-                                            "defaultValue": "BT.1886",
-                                            "options": ["BT.1886", "2.2"]
+                                            "defaultValue": "2.2",
+                                            "options": ["BT.1886", "2.2"],
+                                            "hiddenWhen": [
+                                                {
+                                                    "externalState": "hdmi-bit-depth",
+                                                    "equals": "10-bit"
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "id": "gamma-10bit",
+                                            "label": "Gamma",
+                                            "controlType": "selection",
+                                            "defaultValue": "ST.2084",
+                                            "options": ["ST.2084"],
+                                            "hiddenWhen": [
+                                                {
+                                                    "externalState": "hdmi-bit-depth",
+                                                    "equals": "8-bit"
+                                                }
+                                            ]
                                         },
                                         {
                                             "id": "bt.1886",
@@ -196,6 +229,24 @@
                                                 {
                                                     "setting": "gamma",
                                                     "equals": "2.2"
+                                                },
+                                                {
+                                                    "externalState": "hdmi-bit-depth",
+                                                    "equals": "10-bit"
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "id": "st.2084",
+                                            "label": "ST.2084",
+                                            "controlType": "slider",
+                                            "defaultValue": "0",
+                                            "minimumValue": -3,
+                                            "maximumValue": 3,
+                                            "hiddenWhen": [
+                                                {
+                                                    "externalState": "hdmi-bit-depth",
+                                                    "equals": "8-bit"
                                                 }
                                             ]
                                         },
@@ -216,7 +267,7 @@
                                                     "id": "color-space",
                                                     "label": "Color Space",
                                                     "controlType": "selection",
-                                                    "defaultValue": "Auto",
+                                                    "defaultValue": "Native",
                                                     "options": ["Auto", "Normal", "Native", "Custom"]
                                                 },
                                                 {
@@ -339,7 +390,7 @@
                                             "id": "color-tone",
                                             "label": "Color Tone",
                                             "controlType": "selection",
-                                            "defaultValue": "Warm2",
+                                            "defaultValue": "Warm1",
                                             "options": ["Cool", "Standard", "Warm1", "Warm2"]
                                         },
                                         {
@@ -727,7 +778,7 @@
                                     "id": "surround-sound",
                                     "label": "Surround Sound",
                                     "controlType": "switch",
-                                    "defaultValue": "off"
+                                    "defaultValue": "on"
                                 },
                                 {
                                     "id": "dynamic-black-equalizer",
@@ -752,7 +803,7 @@
                                             "id": "hdr10plus-gaming",
                                             "label": "HDR10+ GAMING",
                                             "controlType": "selection",
-                                            "defaultValue": "Off",
+                                            "defaultValue": "Basic",
                                             "options": ["Off", "Basic", "Advanced"]
                                         },
                                         {
@@ -837,8 +888,7 @@
                                             "id": "auto-volume",
                                             "label": "Auto Volume",
                                             "controlType": "switch",
-                                            "defaultValue": "off",
-                                            "disabled": true
+                                            "defaultValue": "off"
                                         },
                                         {
                                             "id": "sound-feedback",
@@ -852,7 +902,6 @@
                                             "label": "Reset Sound",
                                             "controlType": "confirmation",
                                             "defaultValue": "Reset",
-                                            "disabled": true,
                                             "options": ["Reset", "Cancel"]
                                         }
                                     ]
@@ -878,8 +927,13 @@
                                             "id": "network-settings",
                                             "label": "Network Settings",
                                             "controlType": "submenu-selection",
-                                            "defaultValue": "Wired",
+                                            "defaultValue": "Wireless",
                                             "options": ["Wireless", "Wired"]
+                                        },
+                                        {
+                                            "id": "network-id",
+                                            "label": "Network ID",
+                                            "controlType": "action"
                                         },
                                         {
                                             "id": "reset-network",
@@ -958,11 +1012,6 @@
                                             "controlType": "action"
                                         }
                                     ]
-                                },
-                                {
-                                    "id": "apple-airplay-settings",
-                                    "label": "Apple AirPlay Settings",
-                                    "controlType": "action"
                                 }
                             ]
                         },
@@ -1050,13 +1099,13 @@
                                             "id": "start-with-smart-hub-home",
                                             "label": "Start with Smart Hub Home",
                                             "controlType": "switch",
-                                            "defaultValue": "on"
+                                            "defaultValue": "off"
                                         },
                                         {
-                                            "id": "autorun-samsung-tv-plus",
-                                            "label": "Autorun Samsung TV Plus",
+                                            "id": "autorun-last-app",
+                                            "label": "Autorun Last App",
                                             "controlType": "switch",
-                                            "defaultValue": "on"
+                                            "defaultValue": "off"
                                         },
                                         {
                                             "id": "autorun-multi-view-casting",
@@ -1068,7 +1117,7 @@
                                             "id": "autorun-multi-view-mirroring",
                                             "label": "Autorun Multi View Mirroring",
                                             "controlType": "switch",
-                                            "defaultValue": "on"
+                                            "defaultValue": "off"
                                         }
                                     ]
                                 }
@@ -1207,12 +1256,12 @@
                                         {
                                             "id": "learn-smart-monitor-remote",
                                             "label": "Learn Smart Monitor Remote",
-                                            "controlType": "submenu"
+                                            "controlType": "action"
                                         },
                                         {
                                             "id": "learn-menu-screen",
                                             "label": "Learn Menu Screen",
-                                            "controlType": "submenu"
+                                            "controlType": "action"
                                         },
                                         {
                                             "id": "caption-settings",
@@ -1644,13 +1693,13 @@
                                             "id": "brightness-optimization",
                                             "label": "Brightness Optimization",
                                             "controlType": "switch",
-                                            "defaultValue": "on"
+                                            "defaultValue": "off"
                                         },
                                         {
                                             "id": "minimum-brightness",
                                             "label": "Minimum Brightness",
                                             "controlType": "slider",
-                                            "defaultValue": "3",
+                                            "defaultValue": "2",
                                             "minimumValue": 0,
                                             "maximumValue": 50,
                                             "disabledWhen": [
@@ -1755,8 +1804,8 @@
                                             "id": "hdmi-black-level",
                                             "label": "HDMI Black Level",
                                             "controlType": "selection",
-                                            "defaultValue": "Auto",
-                                            "options": ["Auto", "Low", "High"],
+                                            "defaultValue": "Normal",
+                                            "options": ["Auto", "Low", "Normal"],
                                             "disabledWhen": [
                                                 {
                                                     "setting": "game-mode",

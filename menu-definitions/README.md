@@ -34,8 +34,8 @@ color-format/bit-depth combinations into separate profiles.
 
 | File | Display context | Notes |
 | --- | --- | --- |
-| `odyssey_g9_oled-game.json` | Samsung Odyssey G9 OLED, firmware 2231, Game signal | Nested game-mode topology. Picture mode and input remain `any`; complete local Display Verification before using Menu controls. |
-| `s95f-1296-sdr.json` | Samsung S95F, firmware 1296, SDR | Complete nested base topology and generated routes. Picture mode and input remain `any`; select and complete local Display Verification before using Menu controls. |
+| `odyssey_g9_oled-2231-game.json` | Samsung Odyssey G9 OLED, firmware 2231 | Game-menu topology with independent external color-format and bit-depth selectors. Complete local Display Verification before using Menu controls. |
+| `s95f-1296.json` | Samsung S95F, firmware 1296 | Nested base topology and generated routes, including input-dependent availability, Gamma controls, and defaults. Complete local Display Verification before using Menu controls. |
 
 The S95F file is the distributable structure only. Its display-verification
 sidecar, pairing token, protocol logs, macros, and saved current/target values
