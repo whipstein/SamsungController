@@ -173,6 +173,8 @@ public sealed partial class SamsungIpRemoteService
                 cancellation.ThrowIfCancellationRequested();
                 var exchange = await _client.ExecuteCommandAsync(profile.Connection, control.Method, new() { [control.Field] = draft.Target.DeepClone() }, cancellationToken: cancellation).ConfigureAwait(false);
                 await RecordExchangeAsync(profile, "Menu · apply " + control.Name, exchange).ConfigureAwait(false);
+                IpMenuSnapshot? after = null;
+                string? warning = null;
                 if (!exchange.IsSuccess)
                 {
                     // A correlated rejection permits a read-only check, never a blind retry or rollback.
@@ -183,16 +185,31 @@ public sealed partial class SamsungIpRemoteService
                         await ReadMenuControlAsync(profile, control, cancellation).ConfigureAwait(false);
                         var rejected = GetSnapshot().Menu;
                         if (EquivalentCommandValue(rejected.Value(control), draft.Original) && JsonNode.DeepEquals(before.Tv, rejected.Tv)
-                            && JsonNode.DeepEquals(before.Video, rejected.Video) && JsonNode.DeepEquals(MenuPrerequisites(rejected, control), draft.Prerequisites))
+                            && JsonNode.DeepEquals(before.Video, rejected.Video) && JsonNode.DeepEquals(MenuPrerequisites(rejected, control), draft.Prerequisites)
+                            && (control.Method != "WB2PointControl" || CompleteWhiteBalancePeersUnchanged(before, rejected, control.Field)))
                             update = MenuStep(update, index, "Rejected unchanged");
+                        // Observed on the display: a partial WB2Point write can
+                        // return -32002 after taking effect. Reuse the independent
+                        // read, never the setter reply, and still run every normal
+                        // context/other-field check below before accepting it.
+                        if (control.Method == "WB2PointControl" && exchange.RpcErrorCode == -32002
+                            && EquivalentCommandValue(rejected.Value(control), draft.Target)
+                            && CompleteWhiteBalancePeersUnchanged(before, rejected, control.Field))
+                        {
+                            after = rejected;
+                            warning = $"TV returned -32002, but independent readback confirmed {control.Name} = {draft.Target} with the other five white-balance channels and TV context unchanged. No retry was sent; the original error remains in Communication log.";
+                        }
                     }
-                    RequireSuccess(exchange);
+                    if (after is null) RequireSuccess(exchange);
                 }
                 cancellation.ThrowIfCancellationRequested();
-                await ReadMenuBaseAsync(profile, cancellation).ConfigureAwait(false);
-                await ReadMenuPrerequisitesAsync(profile, control, cancellation).ConfigureAwait(false);
-                await ReadMenuControlAsync(profile, control, cancellation).ConfigureAwait(false);
-                var after = GetSnapshot().Menu;
+                if (after is null)
+                {
+                    await ReadMenuBaseAsync(profile, cancellation).ConfigureAwait(false);
+                    await ReadMenuPrerequisitesAsync(profile, control, cancellation).ConfigureAwait(false);
+                    await ReadMenuControlAsync(profile, control, cancellation).ConfigureAwait(false);
+                    after = GetSnapshot().Menu;
+                }
                 if (!EquivalentCommandValue(after.Value(control), draft.Target)) throw new InvalidOperationException($"{control.Name}: the TV readback did not match the requested value.");
                 if (!control.ChangesContext && ((after.Input ?? "") != draft.Input || (after.PictureMode ?? "") != draft.PictureMode)
                     || !JsonNode.DeepEquals(MenuPrerequisites(after, control), draft.Prerequisites))
@@ -202,7 +219,7 @@ public sealed partial class SamsungIpRemoteService
                     throw new InvalidOperationException("Another reported setting changed unexpectedly. Later settings were stopped; check the TV before continuing.");
                 if (control.Method == "WB2PointControl" && before.Readings[control.Method].Values!.Any(pair => pair.Key != control.Field && !EquivalentCommandValue(after.Readings[control.Method].Values?[pair.Key], pair.Value)))
                     throw new InvalidOperationException("Another white-balance channel changed unexpectedly. Later settings were stopped.");
-                update = MenuStep(update, index, "Applied");
+                update = MenuStep(update, index, warning is null ? "Applied" : "Applied with TV warning", warning);
                 RemoveMenuDraft(draft.ControlId);
                 await SaveMenuUpdateAsync(update).ConfigureAwait(false);
                 // Input/picture context changes invalidate everything. A local
@@ -231,14 +248,29 @@ public sealed partial class SamsungIpRemoteService
                 selectorSession = null;
             }
         }
-        await SaveMenuUpdateAsync(update with { Status = "Completed", Message = "Applied settings and confirmed them by query. No menu navigation or return-to-video keys were needed." }).ConfigureAwait(false);
+        var warnings = update.Steps.Count(step => step.Warning is not null);
+        await SaveMenuUpdateAsync(update with
+        {
+            Status = warnings == 0 ? "Completed" : "Completed with TV warning",
+            Message = warnings == 0 ? "Applied settings and confirmed them by query. No menu navigation or return-to-video keys were needed."
+                : $"Applied settings and confirmed them by independent readback, with {warnings} TV warning(s). See the affected rows and Communication log. No command was retried."
+        }).ConfigureAwait(false);
     });
+
+    private static bool CompleteWhiteBalancePeersUnchanged(IpMenuSnapshot before, IpMenuSnapshot after, string changedField)
+    {
+        var original = before.Readings.GetValueOrDefault("WB2PointControl")?.Values;
+        var actual = after.Readings.GetValueOrDefault("WB2PointControl")?.Values;
+        return SamsungIpRemoteCommands.Get("WB2PointControl").Parameters.All(parameter =>
+            UsableOriginal(parameter, original?[parameter.Name]) && UsableOriginal(parameter, actual?[parameter.Name])
+            && (parameter.Name == changedField || EquivalentCommandValue(actual?[parameter.Name], original?[parameter.Name])));
+    }
 
     private static bool ChangedOutsideMenuField(JsonObject before, JsonObject after, string field) => before.Select(pair => pair.Key).Union(after.Select(pair => pair.Key))
         .Any(key => key != field && !EquivalentCommandValue(before[key], after[key]));
 
-    private static IpMenuUpdate MenuStep(IpMenuUpdate update, int index, string status) => update with
-    { Steps = update.Steps.Select((step, position) => position == index ? step with { Status = status } : step).ToArray() };
+    private static IpMenuUpdate MenuStep(IpMenuUpdate update, int index, string status, string? warning = null) => update with
+    { Steps = update.Steps.Select((step, position) => position == index ? step with { Status = status, Warning = warning ?? step.Warning } : step).ToArray() };
     private void RemoveMenuDraft(string id) => UpdateMenu(menu => menu with { Pending = menu.Pending.Where(pair => pair.Key != id).ToDictionary() });
 
     public async Task CloseMenuUpdateReviewAsync()
@@ -427,7 +459,7 @@ public sealed partial class SamsungIpRemoteService
     private async Task SaveMenuUpdateAsync(IpMenuUpdate update)
     {
         await SaveMenuFileAsync(MenuUpdatePath, update).ConfigureAwait(false);
-        UpdateMenu(menu => menu with { Update = update, Status = update.Message.Length > 0 ? update.Message : $"Applying {update.Steps.Count(step => step.Status is "Applied" or "Already at target")} / {update.Steps.Count}" });
+        UpdateMenu(menu => menu with { Update = update, Status = update.Message.Length > 0 ? update.Message : $"Applying {update.Steps.Count(step => step.Status is "Applied" or "Applied with TV warning" or "Already at target")} / {update.Steps.Count}" });
     }
     private static async Task SaveMenuFileAsync<T>(string path, T data)
     {
@@ -446,7 +478,8 @@ public sealed partial class SamsungIpRemoteService
             foreach (var step in update.Steps)
             {
                 if (step is null || !IpMenuCatalog.AllControls.Any(control => control.Id == step.ControlId) || step.Target is null || step.Original is null
-                    || step.Status is not ("Pending" or "Sending" or "Uncertain" or "Applied" or "Already at target" or "Rejected unchanged" or "Not sent" or "Checked manually"))
+                    || step.Status is not ("Pending" or "Sending" or "Uncertain" or "Applied" or "Applied with TV warning" or "Already at target" or "Rejected unchanged" or "Not sent" or "Checked manually")
+                    || step.Status == "Applied with TV warning" && (string.IsNullOrWhiteSpace(step.Warning) || IpMenuCatalog.Get(step.ControlId).Method != "WB2PointControl"))
                     throw new JsonException("Invalid direct menu update step. Preserve the journal and inspect it before continuing.");
             }
             if (update.Status == "Running") update = update with { Status = "Stopped", Message = "The previous update was interrupted. Nothing was resumed. Read/check the TV before applying more changes." };

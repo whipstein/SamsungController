@@ -153,7 +153,7 @@ public sealed record IpMenuSelectorSession(string Section, string Endpoint, stri
 public sealed record IpMenuWhiteBalanceRead(string Endpoint, string Input, string PictureMode, DateTimeOffset StartedAt,
     string? OriginalInterval = null, bool NeedsRestore = true, string Message = "20-point white balance was Off; temporarily enabling it to read all rows.");
 
-public sealed record IpMenuUpdateStep(string ControlId, JsonNode Original, JsonNode Target, string Status = "Pending");
+public sealed record IpMenuUpdateStep(string ControlId, JsonNode Original, JsonNode Target, string Status = "Pending", string? Warning = null);
 public sealed record IpMenuUpdate
 {
     public Guid Id { get; init; } = Guid.NewGuid();

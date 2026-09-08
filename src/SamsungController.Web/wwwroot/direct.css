@@ -97,6 +97,7 @@
 .direct-white2 section > h3 { font-size:16px; margin:0 0 12px; }
 .direct-white2 .direct-control { margin-bottom:12px; }
 .direct-update-rows > div { display:grid; grid-template-columns:minmax(100px,1fr) 100px minmax(100px,1fr); gap:12px; padding:10px 0; border-bottom:1px solid var(--line); font-size:14px; }
+.direct-update-warning { display:block; margin-top:6px; font-size:13px; line-height:1.5; color:var(--amber); }
 .direct-panel .direct-error { color:var(--danger); }
 .direct-indexed { margin-top:24px; }
 .direct-indexed-rows { display:grid; gap:10px; }
