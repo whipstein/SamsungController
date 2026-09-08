@@ -239,15 +239,19 @@ public sealed class IpMenuTests
     }
 
     [Fact]
-    public async Task RemoteSendsOneExplicitKeyAndInvalidatesStaleReadings()
+    public async Task RemoteSendsOneExplicitKeyAndKeepsReadingsAndPendingEdits()
     {
         using var fixture = await MenuFixture.CreateAsync();
         await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
+        fixture.Service.StageMenuValue("contrastControl/contrast", "44");
+        var before = fixture.Service.GetSnapshot().Menu;
         var count = fixture.Display.Requests.Count;
         await fixture.Service.SendMenuKeyAsync("return");
         Assert.Equal(count + 1, fixture.Display.Requests.Count);
         Assert.Equal("return", fixture.Writes.Single()["params"]!["remoteKey"]!.ToString());
-        Assert.Empty(fixture.Service.GetSnapshot().Menu.Readings);
+        Assert.Equal(before.Readings, fixture.Service.GetSnapshot().Menu.Readings);
+        Assert.Equal(before.Pending, fixture.Service.GetSnapshot().Menu.Pending);
+        Assert.Equal(before.ValuesRevision, fixture.Service.GetSnapshot().Menu.ValuesRevision);
         Assert.True(fixture.Service.GetSnapshot().Menu.Connected);
         await fixture.Service.SendMenuKeyAsync("power");
         Assert.False(fixture.Service.GetSnapshot().Menu.Connected);
@@ -345,6 +349,7 @@ public sealed class IpMenuTests
         Assert.DoesNotContain("href=\"remote\"", html, StringComparison.Ordinal);
         Assert.Contains("popovertarget=\"remote-drawer\"", html, StringComparison.Ordinal);
         Assert.Contains("popover=\"auto\"", html, StringComparison.Ordinal);
+        Assert.Contains("class=\"remote-drawer-body\"", html, StringComparison.Ordinal);
         Assert.Contains("aria-label=\"Close remote\"", html, StringComparison.Ordinal);
         Assert.DoesNotContain("<h1>Remote</h1>", html, StringComparison.Ordinal);
         var routes = typeof(DirectMenu).Assembly.GetTypes().SelectMany(type => type.GetCustomAttributes(typeof(RouteAttribute), true).Cast<RouteAttribute>().Select(route => route.Template)).ToArray();
@@ -426,5 +431,12 @@ internal sealed class MenuFixture(ContrastFixture inner) : IDisposable
     public static HttpResponseMessage Reject(JsonObject request, int code) => new(HttpStatusCode.OK)
     { Content = new StringContent(new JsonObject { ["jsonrpc"] = "2.0", ["id"] = request["id"]!.ToJsonString(), ["error"] = new JsonObject { ["code"] = code, ["message"] = "Rejected by simulated TV" } }.ToJsonString()) };
     public Task RestartAsync() => inner.RestartAsync();
+    public void AssertOnlyWhiteBalanceReadWrites()
+    {
+        Assert.All(Writes, request => Assert.Contains(request["method"]!.ToString(), new[] { "WB20PointModeControl", "WB20P.IntervalControl" }));
+        Assert.Equal(new[] { "On", "Off" }, Writes.Where(request => request["method"]!.ToString() == "WB20PointModeControl")
+            .Select(request => request["params"]!["WB20PointMode"]!.ToString()));
+        Assert.Equal("Off", Values["WB20PointMode"]!.ToString());
+    }
     public void Dispose() => inner.Dispose();
 }

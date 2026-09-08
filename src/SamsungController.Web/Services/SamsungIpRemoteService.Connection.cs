@@ -8,6 +8,7 @@ public sealed partial class SamsungIpRemoteService
     /// <summary>Explicitly reload every setting for the current signal, without reconnecting or reusing cached values.</summary>
     public Task RefreshAllMenuSettingsAsync() => RunMenuOperationAsync(async (profile, cancellation) =>
     {
+        EnsureMenuWritesAllowed();
         // Bit depth/HDR may change without a different reported HDMI port or
         // picture-mode name. Never carry values or unsent edits across this reload.
         UpdateMenu(menu => ClearMenuGridCache(menu) with
@@ -55,11 +56,15 @@ public sealed partial class SamsungIpRemoteService
             try
             {
                 EnsureMenuWritesAllowed();
-                await RefreshMenuGridCoreAsync(profile, grid.Section, cancellation, sectionAlreadyRead: true).ConfigureAwait(false);
+                if (refreshing && grid.Section == "white20")
+                    await RefreshWhiteBalanceIncludingInactiveCoreAsync(profile, cancellation, sectionAlreadyRead: true).ConfigureAwait(false);
+                else
+                    await RefreshMenuGridCoreAsync(profile, grid.Section, cancellation, sectionAlreadyRead: true).ConfigureAwait(false);
                 if (!GetSnapshot().Menu.GridsRead.ContainsKey(grid.Section)) warnings.Add(GetSnapshot().Menu.Status);
             }
             catch (InvalidOperationException error) when (GetSnapshot().Menu.Connected)
             {
+                if (GetSnapshot().Menu.WhiteBalanceRead?.NeedsRestore == true) throw;
                 warnings.Add(error.Message);
                 break; // Do not continue selector moves after an uncertain scan.
             }

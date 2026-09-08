@@ -10,6 +10,15 @@
 @if (!Snapshot.Menu.Connected) { <div class="notice"><strong>Display disconnected</strong><span>Connect to read current settings.</span><a href="/">Choose display →</a></div> }
 @if (Snapshot.PictureTest?.RequiresRecovery == true || Snapshot.CommandTrial?.RequiresReview == true)
 { <div class="notice danger">An earlier diagnostic write needs attention. <a href="diagnostics#recovery">Open its saved recovery details</a>.</div> }
+@if (Snapshot.Menu.WhiteBalanceRead is { NeedsRestore: true } modeRead && !Snapshot.IsBusy)
+{
+    <section class="panel direct-panel" aria-label="Interrupted white-balance read">
+        <h2>Restore 20-point white balance</h2><p class="direct-error" role="alert">@modeRead.Message</p>
+        <p>Original display: @modeRead.Endpoint · @modeRead.Input · @modeRead.PictureMode. Original mode: <strong>Off</strong>. Original interval: @(modeRead.OriginalInterval ?? "not yet read").</p>
+        <p>Keep the original signal active. Restore reads the current state first, restores the saved interval when available, then turns 20-point WB Off. It never changes RGB values. If you restored these manually, confirm below instead.</p>
+        <div class="direct-actions"><button class="toolbar-button" @onclick="RestoreWhiteBalanceAsync" disabled="@(!CanWork)">Restore 20-point WB to Off</button><button class="toolbar-button" @onclick="CloseWhiteBalanceReviewAsync" disabled="@Snapshot.IsBusy">I restored the original interval and Off manually</button></div>
+    </section>
+}
 
 <section class="panel direct-panel">
     @if (Snapshot.Menu.Connected && Snapshot.Menu.ConnectionLoadAttempted && Snapshot.Menu.SettingsLoadedAt is null && !Snapshot.IsBusy)
@@ -25,9 +34,9 @@
     }
     <div class="direct-toolbar">
         <div><h2>@(Category == "Picture" ? "Calibration controls" : Category + " controls")</h2><p>@(Snapshot.Menu.SectionsRead.TryGetValue(Section, out var readAt) ? "Read from TV " + readAt.ToLocalTime().ToString("HH:mm:ss") : "Select a section to read its current values.")</p></div>
-        <div class="direct-actions"><button class="toolbar-button" @onclick="RefreshAllAsync" disabled="@(!CanWork)">Refresh TV values</button><button class="toolbar-button" @onclick="RefreshAsync" disabled="@(!CanWork)">Refresh section</button><button class="primary-action" @onclick="ApplyAsync" disabled="@(!CanApply)">Apply @Snapshot.Menu.Pending.Count pending</button><button class="toolbar-button danger-action" @onclick="Controller.Cancel" disabled="@(!Snapshot.IsBusy)">Stop</button></div>
+        <div class="direct-actions"><button class="toolbar-button" @onclick="RefreshAllAsync" disabled="@(!CanLoadGrid)">Refresh TV values</button><button class="toolbar-button" @onclick="RefreshAsync" disabled="@(!(Grid is null ? CanWork : CanLoadGrid))">Refresh section</button><button class="primary-action" @onclick="ApplyAsync" disabled="@(!CanApply)">Apply @Snapshot.Menu.Pending.Count pending</button><button class="toolbar-button danger-action" @onclick="Controller.Cancel" disabled="@(!Snapshot.IsBusy)">Stop</button></div>
     </div>
-    <p class="direct-hint">After changing HDMI signal, bit depth, or picture mode, use <strong>Refresh TV values</strong>. It rereads all settings and available calibration rows, discards unsent edits, and keeps your connection. <strong>Refresh section</strong> only rereads this tab. Keep the signal unchanged while loading.</p>
+    <p class="direct-hint">After changing HDMI signal, bit depth, or picture mode, use <strong>Refresh TV values</strong>. It rereads all settings and available calibration rows, discards unsent edits, and keeps your connection. If 20-point WB is Off, refresh temporarily enables it, reads all intervals, then restores the original interval and Off. <strong>Refresh section</strong> only rereads this tab. Keep the signal unchanged while loading.</p>
     <details class="direct-details compact"><summary>Update behavior · @(Snapshot.Menu.Preferences.ApplyImmediately ? "Apply immediately" : "Wait for Apply")</summary>
         <label class="direct-check"><input type="checkbox" aria-label="Apply settings immediately" checked="@Snapshot.Menu.Preferences.ApplyImmediately" @onchange="SetImmediateAsync" disabled="@Snapshot.IsBusy" /> Apply immediately when an edit is committed</label>
         <p>Sliders send when released, not on every drag event. Apply or discard pending changes before turning this on. Direct settings do not open menus, so no return-to-video sequence is needed.</p>
@@ -62,10 +71,12 @@
         <section class="direct-indexed" aria-label="@(grid.Section == "white20" ? "All white balance intervals" : "All custom colors")">
             <div class="direct-toolbar"><div><h2>@(grid.Section == "white20" ? "20-point RGB adjustments" : "Custom color RGB adjustments")</h2>
                 <p>@grid.Values.Count fixed rows · each has its own Red, Green, and Blue values.</p></div>
-                <button class="toolbar-button" @onclick="RefreshAsync" disabled="@(!CanWork || Snapshot.Menu.Update?.NeedsReview == true)">@(Snapshot.Menu.GridsRead.ContainsKey(Section) ? "Reload all rows" : "Load all rows")</button></div>
-            <p class="direct-hint">Loading reads each row by temporarily selecting it, then restores the original selection. Apply addresses the edited rows automatically and restores the selector when finished. No RGB value changes during loading. Stop sends no further commands, including restoration.</p>
+                <button class="toolbar-button" @onclick="RefreshAsync" disabled="@(!CanLoadGrid)">@(Snapshot.Menu.GridsRead.ContainsKey(Section) ? "Reload all rows" : "Load all rows")</button></div>
+            <p class="direct-hint">Loading reads each row by temporarily selecting it, then restores the original selection. Refresh also reads 20-point WB while Off by temporarily enabling it and restoring Off afterward. Apply addresses edited rows automatically and restores the selector when finished. No RGB value changes during loading. Stop sends no further commands, including restoration; use the recovery controls if a temporary mode change was interrupted.</p>
             @if (!Snapshot.Menu.GridsRead.ContainsKey(Section))
-            { <p class="direct-unavailable">@(GridModeEnabled ? "Load all rows to read their current values." : grid.Section == "white20" ? "Turn on 20-point white balance above and Apply to enable these controls." : "Choose Custom in Color space above and Apply to enable these controls.")</p> }
+            { <p class="direct-unavailable">@(GridModeEnabled ? "Load all rows to read their current values." : grid.Section == "white20" ? "Load all rows reads the values while Off, restoring Off afterward. Turn on 20-point white balance above and Apply to enable these controls." : "Choose Custom in Color space above and Apply to enable these controls.")</p> }
+            @if (grid.Section == "white20" && Snapshot.Menu.GridsRead.ContainsKey(Section) && !GridModeEnabled)
+            { <p class="direct-hint">All 20-point values are loaded. The original Off mode was preserved; enable 20-point WB to edit them.</p> }
             @if (Snapshot.Menu.SelectorSession is { } session && session.Section == Section)
             { <p class="direct-hint" role="status">@(Snapshot.IsBusy ? Snapshot.Menu.Status : session.Message)</p> }
             <div class="direct-indexed-rows">
@@ -103,7 +114,9 @@
     private string? Error;
     private bool ActionRunning;
     private bool CanWork => Snapshot.Menu.Connected && !Snapshot.IsBusy && !ActionRunning;
-    private bool CanApply => CanWork && Snapshot.Menu.Pending.Count > 0 && Snapshot.Menu.Update?.NeedsReview != true;
+    private bool CanLoadGrid => CanWork && Snapshot.Menu.Update?.NeedsReview != true && Snapshot.Menu.WhiteBalanceRead?.NeedsRestore != true
+        && Snapshot.PictureTest?.RequiresRecovery != true && Snapshot.CommandTrial?.RequiresReview != true;
+    private bool CanApply => CanWork && Snapshot.Menu.Pending.Count > 0 && Snapshot.Menu.Update?.NeedsReview != true && Snapshot.Menu.WhiteBalanceRead?.NeedsRestore != true;
     private IpMenuGrid? Grid => IpMenuGrids.ForSection(Section);
     private bool GridModeEnabled => Grid is { } grid && Snapshot.Menu.Readings.GetValueOrDefault(grid.ModeMethod)?.Values?[grid.ModeField]?.ToString() == grid.RequiredMode;
     private bool IsVisible(IpMenuControl control) => Dirty(control) || IpMenuAvailability.For(Snapshot.Menu, control).Visible;
@@ -116,8 +129,9 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         var key = Snapshot.Menu.SessionId + ":" + Section;
+        if (Snapshot.Menu.WhiteBalanceRead?.NeedsRestore == true) { AutoReads.Add(key); return; }
         if (Snapshot.Menu.ConnectionLoadAttempted) AutoReads.Add(key); // Do not retry incomplete/unsupported connection reads on tab visits.
-        if (CanWork && (!Snapshot.Menu.SectionsRead.ContainsKey(Section) || Grid is not null && GridModeEnabled && !Snapshot.Menu.GridsRead.ContainsKey(Section)) && AutoReads.Add(key)) await RefreshAsync();
+        if (CanWork && (!Snapshot.Menu.SectionsRead.ContainsKey(Section) || Grid is not null && GridModeEnabled && !Snapshot.Menu.GridsRead.ContainsKey(Section)) && AutoReads.Add(key)) await GuardAsync(() => ReadSectionAsync(Section));
     }
     private void Refresh() => _ = InvokeAsync(() =>
     {
@@ -180,8 +194,10 @@
         AutoReads.Add(Snapshot.Menu.SessionId + ":" + section);
         return IpMenuGrids.ForSection(section) is null ? Controller.RefreshMenuSectionAsync(section) : Controller.RefreshMenuGridAsync(section);
     }
-    private Task RefreshAsync() => GuardAsync(async () => { Edits.Clear(); await ReadSectionAsync(Section); });
+    private Task RefreshAsync() => GuardAsync(async () => { Edits.Clear(); if (Section == "white20") await Controller.RefreshInactiveWhiteBalanceAsync(); else await ReadSectionAsync(Section); });
     private Task RefreshAllAsync() => GuardAsync(async () => { Edits.Clear(); await Controller.RefreshAllMenuSettingsAsync(); });
+    private Task RestoreWhiteBalanceAsync() => GuardAsync(Controller.RestoreWhiteBalanceReadAsync);
+    private Task CloseWhiteBalanceReviewAsync() => GuardAsync(Controller.CloseWhiteBalanceReadReviewAsync);
     private Task ApplyAsync() => GuardAsync(async () => { await Controller.ApplyMenuAsync(); Edits.Clear(); if (!Controller.GetSnapshot().Menu.SectionsRead.ContainsKey(Section)) await ReadSectionAsync(Section); });
     private Task RefreshAfterModeAsync(IpMenuControl control) => !Controller.GetSnapshot().Menu.SectionsRead.ContainsKey(control.Section) ? ReadSectionAsync(control.Section) : Task.CompletedTask;
     private Task SetImmediateAsync(ChangeEventArgs args) => GuardAsync(() => Controller.SaveMenuPreferencesAsync(args.Value is true));

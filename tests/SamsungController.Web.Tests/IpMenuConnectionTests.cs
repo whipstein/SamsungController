@@ -175,7 +175,7 @@ public sealed class IpMenuConnectionTests
         Assert.Equal(40, fixture.Value("contrastControl/contrast")!.GetValue<int>());
         Assert.Equal(2, fixture.Display.Methods.Count(method => method == "getDeviceInformation"));
         Assert.DoesNotContain("createAccessToken", fixture.Display.Methods);
-        Assert.Empty(fixture.Writes);
+        fixture.AssertOnlyWhiteBalanceReadWrites();
         Assert.Contains("TV settings refreshed", menu.Status, StringComparison.Ordinal);
     }
 
@@ -233,7 +233,7 @@ public sealed class IpMenuConnectionTests
         await renderer.AssertTextAbsentAsync("All-settings load is incomplete");
         Assert.NotNull(fixture.Service.GetSnapshot().Menu.SettingsLoadedAt);
         Assert.Equal(IpMenuCatalog.Sections.Count, fixture.Service.GetSnapshot().Menu.SectionsRead.Count);
-        Assert.Empty(fixture.Writes);
+        fixture.AssertOnlyWhiteBalanceReadWrites();
     }
 
     [Fact]
@@ -256,7 +256,7 @@ public sealed class IpMenuConnectionTests
         await fixture.Service.RefreshAllMenuSettingsAsync();
         Assert.NotNull(fixture.Service.GetSnapshot().Menu.SettingsLoadedAt);
         Assert.Equal("HDMI2", fixture.Service.GetSnapshot().Menu.Input);
-        Assert.Empty(fixture.Writes);
+        fixture.AssertOnlyWhiteBalanceReadWrites();
     }
 
     [Fact]
@@ -283,16 +283,22 @@ public sealed class IpMenuConnectionTests
     }
 
     [Fact]
-    public async Task RemoteKeyInvalidationOffersFullRefreshWithoutAStaleCompletedLoad()
+    public async Task RemoteKeyKeepsLoadedSettingsUntilExplicitFullRefresh()
     {
         using var fixture = await MenuFixture.CreateAsync();
         await fixture.Service.ConnectMenuAsync();
+        var before = fixture.Service.GetSnapshot().Menu;
+        fixture.Display.Contrast = 39;
         await fixture.Service.SendMenuKeyAsync("return");
-        Assert.Null(fixture.Service.GetSnapshot().Menu.SettingsLoadedAt);
-        await fixture.Service.RefreshAllMenuSettingsAsync();
-        Assert.NotNull(fixture.Service.GetSnapshot().Menu.SettingsLoadedAt);
+        Assert.Equal(before.SettingsLoadedAt, fixture.Service.GetSnapshot().Menu.SettingsLoadedAt);
+        Assert.Equal(45, fixture.Value("contrastControl/contrast")!.GetValue<int>());
         Assert.Single(fixture.Writes);
         Assert.Equal("remoteKeyControl", fixture.Writes.Single()["method"]!.ToString());
+        fixture.Display.Requests.Clear();
+        await fixture.Service.RefreshAllMenuSettingsAsync();
+        Assert.NotNull(fixture.Service.GetSnapshot().Menu.SettingsLoadedAt);
+        Assert.Equal(39, fixture.Value("contrastControl/contrast")!.GetValue<int>());
+        fixture.AssertOnlyWhiteBalanceReadWrites();
     }
 
     private static ServiceProvider Services(MenuFixture fixture) => new ServiceCollection().AddLogging().AddSingleton(fixture.Service)

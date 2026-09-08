@@ -2,7 +2,7 @@
 @using SamsungController.Core.IpRemote
 @inject SamsungIpRemoteService Controller
 
-<p class="direct-hint">Each button sends one direct IP key. Opening or closing this panel sends nothing to the TV.</p>
+<p class="direct-hint">Each button sends one direct IP key. Loaded settings and pending edits stay as shown; refresh Menu manually when needed. Opening or closing this panel sends nothing to the TV.</p>
 <p class="remote-drawer-display">@(Snapshot.ActiveProfile?.Model is { Length: > 0 } model ? model : "Samsung display") · @(Snapshot.Menu.Connected ? "Connected" : "Disconnected")</p>
 @if (Error is not null) { <div class="notice danger" role="alert">@Error</div> }
 @if (!Snapshot.Menu.Connected) { <div class="notice">Connect to the TV first. <a href="/">Choose display</a></div> }
@@ -18,7 +18,7 @@
     private IpRemoteSnapshot Snapshot = new();
     private string Key = "play";
     private string? Error;
-    private bool Disabled => !Snapshot.Menu.Connected || Snapshot.IsBusy || Snapshot.Menu.Update?.NeedsReview == true;
+    private bool Disabled => !Snapshot.Menu.Connected || Snapshot.IsBusy || Snapshot.Menu.Update?.NeedsReview == true || Snapshot.Menu.WhiteBalanceRead?.NeedsRestore == true;
     protected override async Task OnInitializedAsync()
     {
         Controller.Changed += Refresh;

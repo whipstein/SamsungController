@@ -18,10 +18,10 @@ public sealed partial class SamsungIpRemoteService
     /// <summary>Read every indexed RGB row. Only selectors are moved, never modes or RGB values.</summary>
     public Task RefreshMenuGridAsync(string section) => RunMenuOperationAsync((profile, cancellation) => RefreshMenuGridCoreAsync(profile, section, cancellation));
 
-    private async Task RefreshMenuGridCoreAsync(IpRemoteProfile profile, string section, CancellationToken cancellation, bool sectionAlreadyRead = false)
+    private async Task RefreshMenuGridCoreAsync(IpRemoteProfile profile, string section, CancellationToken cancellation, bool sectionAlreadyRead = false, bool temporaryWhiteBalanceRead = false)
     {
         var started = Stopwatch.GetTimestamp();
-        EnsureMenuWritesAllowed(); // Reading all rows moves a selector; an unresolved RGB write must be handled first.
+        EnsureMenuWritesAllowed(temporaryWhiteBalanceRead); // Reading all rows moves a selector; an unresolved RGB write must be handled first.
         var grid = IpMenuGrids.ForSection(section) ?? throw new ArgumentException("Unknown calibration grid.");
         UpdateMenu(menu => ClearMenuGridCache(menu, section));
         if (!sectionAlreadyRead) await RefreshMenuSectionCoreAsync(profile, section, cancellation, loadingGrid: true).ConfigureAwait(false);
@@ -34,6 +34,8 @@ public sealed partial class SamsungIpRemoteService
         try
         {
             session = await BeginMenuSelectorSessionAsync(profile, grid, cancellation).ConfigureAwait(false);
+            if (temporaryWhiteBalanceRead)
+                await SaveWhiteBalanceReadAsync(GetSnapshot().Menu.WhiteBalanceRead! with { OriginalInterval = session.Original }).ConfigureAwait(false);
             var current = session.Original;
             for (var index = 0; index < grid.Values.Count; index++)
             {

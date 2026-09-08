@@ -298,8 +298,10 @@ public sealed partial class SamsungIpRemoteService
         return test;
     }
 
-    private void EnsureNoPendingPictureTest()
+    private void EnsureNoPendingPictureTest(bool allowTemporaryWhiteBalanceRead = false)
     {
+        if (!allowTemporaryWhiteBalanceRead && GetSnapshot().Menu.WhiteBalanceRead?.NeedsRestore == true)
+            throw new InvalidOperationException("Restore/check the interrupted 20-point white-balance read on Menu before sending more commands or changing displays.");
         if (GetSnapshot().Menu.Update?.NeedsReview == true)
             throw new InvalidOperationException("Check the interrupted update on the Menu page before changing display context or sending more commands.");
         if (GetSnapshot().CommandTrial?.RequiresReview == true)

@@ -39,6 +39,7 @@
             </div>
             @if (Error is not null) { <p class="topbar-feedback danger" role="alert">@Error</p> }
             @if (Snapshot.StorageWarning is not null) { <p class="topbar-feedback danger" role="alert">@Snapshot.StorageWarning</p> }
+            @if (Snapshot.Menu.WhiteBalanceRead?.NeedsRestore == true && !Snapshot.IsBusy) { <p class="topbar-feedback danger" role="alert">20-point WB was temporarily enabled for reading. <a href="menu">Check/restore its original Off mode in Menu</a>.</p> }
             @if (Snapshot.IsBusy) { <p class="topbar-feedback" role="status">@Snapshot.Menu.Status</p> }
         </header>
         <article class="page-content">@Body</article>
@@ -51,14 +52,14 @@
         <div><span class="eyebrow">DIRECT IP KEYS</span><h2 id="remote-drawer-title">Remote</h2></div>
         <button type="button" class="toolbar-button" popovertarget="remote-drawer" popovertargetaction="hide" aria-label="Close remote" autofocus>Close ×</button>
     </header>
-    <DirectRemote />
+    <div class="remote-drawer-body"><DirectRemote /></div>
 </aside>
 
 @code {
     private IpRemoteSnapshot Snapshot = new();
     private string? Error;
     private bool ThemeBusy;
-    private bool CanSend => Snapshot.Menu.Connected && !Snapshot.IsBusy && Snapshot.Menu.Update?.NeedsReview != true;
+    private bool CanSend => Snapshot.Menu.Connected && !Snapshot.IsBusy && Snapshot.Menu.Update?.NeedsReview != true && Snapshot.Menu.WhiteBalanceRead?.NeedsRestore != true;
     protected override async Task OnInitializedAsync()
     { Controller.Changed += Refresh; await GuardAsync(Controller.InitializeAsync); }
     private void Refresh() => _ = InvokeAsync(() => { Snapshot = Controller.GetSnapshot(); StateHasChanged(); });

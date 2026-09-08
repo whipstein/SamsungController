@@ -8,7 +8,7 @@ public sealed partial class SamsungIpRemoteService
 {
     private string MenuUpdatePath => Path.Combine(_directory, "menu-update.json");
     private string MenuPreferencesPath => Path.Combine(_directory, "menu-preferences.json");
-    private static IpMenuSnapshot ResetMenu(IpMenuSnapshot previous) => new() { Preferences = previous.Preferences, Update = previous.Update, SelectorSession = previous.SelectorSession };
+    private static IpMenuSnapshot ResetMenu(IpMenuSnapshot previous) => new() { Preferences = previous.Preferences, Update = previous.Update, SelectorSession = previous.SelectorSession, WhiteBalanceRead = previous.WhiteBalanceRead };
     private static bool IsConnectionFailure(SamsungIpRemoteOutcome outcome) => outcome is SamsungIpRemoteOutcome.NotPaired or SamsungIpRemoteOutcome.Unauthorized
         or SamsungIpRemoteOutcome.TransportError or SamsungIpRemoteOutcome.CertificateError or SamsungIpRemoteOutcome.Timeout or SamsungIpRemoteOutcome.HttpError;
     private void UpdateMenu(Func<IpMenuSnapshot, IpMenuSnapshot> change) => Update(state => state with { Menu = change(state.Menu) });
@@ -76,6 +76,7 @@ public sealed partial class SamsungIpRemoteService
         if (!menu.Connected) return "Connect to the TV first.";
         if (snapshot.IsBusy) return "A TV request is running.";
         if (menu.Update?.NeedsReview == true) return "Review the interrupted update before applying more changes.";
+        if (menu.WhiteBalanceRead?.NeedsRestore == true) return "Restore/check the interrupted 20-point white-balance read before applying changes.";
         if (IpMenuAvailability.For(menu, control) is { Reason: { } unavailable }) return unavailable;
         if (menu.Value(control) is not { } value) return (control.IsIndexed ? menu.IndexedReadings.GetValueOrDefault(control.Id) : menu.Readings.GetValueOrDefault(control.Method)) is { } reading
             ? reading.Outcome == SamsungIpRemoteOutcome.Success ? "Not reported in the TV reply for this display/state." : reading.Message
@@ -278,14 +279,13 @@ public sealed partial class SamsungIpRemoteService
         SamsungIpRemoteCommands.Get("remoteKeyControl").Validate(new() { ["remoteKey"] = key }, false);
         var exchange = await _client.ExecuteCommandAsync(profile.Connection, "remoteKeyControl", new() { ["remoteKey"] = key }, cancellationToken: cancellation).ConfigureAwait(false);
         await RecordExchangeAsync(profile, "Remote · " + key, exchange).ConfigureAwait(false);
-        UpdateMenu(menu => ClearMenuGridCache(menu) with { Connected = key != "power" && menu.Connected, Readings = new Dictionary<string, IpMenuRead>(), SectionsRead = new Dictionary<string, DateTimeOffset>(), SettingsLoadedAt = null, LoadWarnings = [], ValuesRevision = menu.ValuesRevision + 1 });
         RequireSuccess(exchange);
-        UpdateMenu(menu => menu with { Status = "Sent " + key + ". Refresh Menu for current settings." });
+        UpdateMenu(menu => menu with { Connected = key != "power" && menu.Connected, Status = "Sent " + key + ". Loaded settings kept; use Refresh when you want to reread the TV." });
     });
 
-    private void EnsureMenuWritesAllowed()
+    private void EnsureMenuWritesAllowed(bool allowTemporaryWhiteBalanceRead = false)
     {
-        EnsureNoPendingPictureTest();
+        EnsureNoPendingPictureTest(allowTemporaryWhiteBalanceRead);
         if (GetSnapshot().Menu.Update?.NeedsReview == true) throw new InvalidOperationException("Check the interrupted update before sending more commands.");
     }
 
@@ -371,12 +371,12 @@ public sealed partial class SamsungIpRemoteService
         }
     }
 
-    private void StoreMenuRead(string method, SamsungIpRemoteExchange exchange)
+    private void StoreMenuRead(string method, SamsungIpRemoteExchange exchange, bool preserveGridCache = false)
     {
         var fields = exchange.IsSuccess ? CommandFields(SamsungIpRemoteCommands.Get(method), exchange.Result) : null;
         var values = fields is null ? null : (JsonObject)fields.DeepClone();
         var grid = IpMenuGrids.All.FirstOrDefault(item => item.ModeMethod == method);
-        if (grid is not null && !EquivalentCommandValue(GetSnapshot().Menu.Readings.GetValueOrDefault(method)?.Values?[grid.ModeField], values?[grid.ModeField]))
+        if (!preserveGridCache && grid is not null && !EquivalentCommandValue(GetSnapshot().Menu.Readings.GetValueOrDefault(method)?.Values?[grid.ModeField], values?[grid.ModeField]))
             UpdateMenu(menu => ClearMenuGridCache(menu, grid.Section));
         foreach (var control in IpMenuCatalog.Controls.Where(control => control.Method == method && control.Parameter.Kind == IpRemoteParameterKind.Integer))
             if (values?[control.Field] is JsonValue scalar && scalar.TryGetValue<string>(out var text)
@@ -457,6 +457,16 @@ public sealed partial class SamsungIpRemoteService
             if (grid is null || !grid.Values.Contains(selector.Original) || selector.Message is null) throw new JsonException("Invalid calibration selector journal.");
             if (selector.Status is not ("Restored" or "Stopped")) selector = selector with { Status = "Stopped", Message = "The previous selector operation was interrupted. Nothing was resumed. Load the grid again to read its current values." };
         }
-        return new() { Preferences = preferences, Update = update, SelectorSession = selector };
+        var whiteBalanceRead = File.Exists(WhiteBalanceReadPath)
+            ? JsonSerializer.Deserialize<IpMenuWhiteBalanceRead>(await File.ReadAllTextAsync(WhiteBalanceReadPath).ConfigureAwait(false)) : null;
+        if (whiteBalanceRead is not null)
+        {
+            if (string.IsNullOrWhiteSpace(whiteBalanceRead.Endpoint) || string.IsNullOrWhiteSpace(whiteBalanceRead.Input)
+                || string.IsNullOrWhiteSpace(whiteBalanceRead.PictureMode) || whiteBalanceRead.Message is null
+                || whiteBalanceRead.OriginalInterval is { } interval && !IpMenuGrids.ForSection("white20")!.Values.Contains(interval))
+                throw new JsonException("Invalid temporary white-balance read journal. Preserve it and check the original display.");
+            if (whiteBalanceRead.NeedsRestore) whiteBalanceRead = whiteBalanceRead with { Message = "A temporary 20-point read was interrupted. Its original mode was Off. Nothing resumed automatically; restore it below or confirm manual restoration." };
+        }
+        return new() { Preferences = preferences, Update = update, SelectorSession = selector, WhiteBalanceRead = whiteBalanceRead };
     }
 }

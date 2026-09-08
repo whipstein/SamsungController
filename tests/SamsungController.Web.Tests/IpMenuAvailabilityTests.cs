@@ -28,7 +28,7 @@ public sealed class IpMenuAvailabilityTests
         fixture.Override = null;
         await renderer.ClickAsync("Refresh TV values");
         await renderer.AssertInputPresentAsync(control.Name, true);
-        Assert.Empty(fixture.Writes);
+        fixture.AssertOnlyWhiteBalanceReadWrites();
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public sealed class IpMenuAvailabilityTests
         fixture.Values["autoMotionPlus"] = "Custom";
         await renderer.ClickAsync("Refresh TV values");
         Assert.Null(fixture.Service.MenuControlDisabledReason(IpMenuCatalog.Get("gamma.HLGControl/gamma.HLG")));
-        Assert.Empty(fixture.Writes);
+        fixture.AssertOnlyWhiteBalanceReadWrites();
     }
 
     [Fact]

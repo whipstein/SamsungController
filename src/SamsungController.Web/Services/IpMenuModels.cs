@@ -111,6 +111,7 @@ public sealed record IpMenuSnapshot
     public IReadOnlyDictionary<string, IpMenuRead> IndexedReadings { get; init; } = new Dictionary<string, IpMenuRead>();
     public IReadOnlyDictionary<string, DateTimeOffset> GridsRead { get; init; } = new Dictionary<string, DateTimeOffset>();
     public IpMenuSelectorSession? SelectorSession { get; init; }
+    public IpMenuWhiteBalanceRead? WhiteBalanceRead { get; init; }
     public IReadOnlyDictionary<string, DateTimeOffset> SectionsRead { get; init; } = new Dictionary<string, DateTimeOffset>();
     public IReadOnlyDictionary<string, IpMenuDraft> Pending { get; init; } = new Dictionary<string, IpMenuDraft>();
     public IpMenuPreferences Preferences { get; init; } = new();
@@ -144,6 +145,10 @@ public static class IpMenuGrids
 // A selector move never changes an RGB value, but is recorded before sending and never resumed at startup.
 public sealed record IpMenuSelectorSession(string Section, string Endpoint, string Input, string PictureMode, string Original,
     string? Requested = null, string? LastConfirmed = null, string Status = "Ready", string Message = "");
+
+// Written before temporarily enabling 20-point WB. Never resumes automatically.
+public sealed record IpMenuWhiteBalanceRead(string Endpoint, string Input, string PictureMode, DateTimeOffset StartedAt,
+    string? OriginalInterval = null, bool NeedsRestore = true, string Message = "20-point white balance was Off; temporarily enabling it to read all rows.");
 
 public sealed record IpMenuUpdateStep(string ControlId, JsonNode Original, JsonNode Target, string Status = "Pending");
 public sealed record IpMenuUpdate
