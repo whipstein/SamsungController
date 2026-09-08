@@ -168,10 +168,11 @@ public sealed partial class SamsungIpRemoteService
                     await FinishIndexedGroupAsync().ConfigureAwait(false);
                     continue;
                 }
+                var parameters = MenuWriteParameters(before, control, draft.Target);
                 update = MenuStep(update, index, "Sending");
                 await SaveMenuUpdateAsync(update).ConfigureAwait(false);
                 cancellation.ThrowIfCancellationRequested();
-                var exchange = await _client.ExecuteCommandAsync(profile.Connection, control.Method, new() { [control.Field] = draft.Target.DeepClone() }, cancellationToken: cancellation).ConfigureAwait(false);
+                var exchange = await _client.ExecuteCommandAsync(profile.Connection, control.Method, parameters, cancellationToken: cancellation).ConfigureAwait(false);
                 await RecordExchangeAsync(profile, "Menu · apply " + control.Name, exchange).ConfigureAwait(false);
                 IpMenuSnapshot? after = null;
                 string? warning = null;
@@ -188,7 +189,7 @@ public sealed partial class SamsungIpRemoteService
                             && JsonNode.DeepEquals(before.Video, rejected.Video) && JsonNode.DeepEquals(MenuPrerequisites(rejected, control), draft.Prerequisites)
                             && (control.Method != "WB2PointControl" || CompleteWhiteBalancePeersUnchanged(before, rejected, control.Field)))
                             update = MenuStep(update, index, "Rejected unchanged");
-                        // Observed on the display: a partial WB2Point write can
+                        // Observed on the display: a WB2Point write can
                         // return -32002 after taking effect. Reuse the independent
                         // read, never the setter reply, and still run every normal
                         // context/other-field check below before accepting it.
@@ -200,7 +201,12 @@ public sealed partial class SamsungIpRemoteService
                             warning = $"TV returned -32002, but independent readback confirmed {control.Name} = {draft.Target} with the other five white-balance channels and TV context unchanged. No retry was sent; the original error remains in Communication log.";
                         }
                     }
-                    if (after is null) RequireSuccess(exchange);
+                    if (after is null)
+                    {
+                        if (update.Steps[index].Status == "Rejected unchanged")
+                            throw new InvalidOperationException($"{control.Name}: the TV rejected the requested value {draft.Target} (error {exchange.RpcErrorCode}). Readback confirmed it is still {draft.Original}, with the checked settings/context unchanged. The controls remain available; correct or discard the pending change before applying again.");
+                        RequireSuccess(exchange);
+                    }
                 }
                 cancellation.ThrowIfCancellationRequested();
                 if (after is null)
@@ -256,6 +262,26 @@ public sealed partial class SamsungIpRemoteService
                 : $"Applied settings and confirmed them by independent readback, with {warnings} TV warning(s). See the affected rows and Communication log. No command was retried."
         }).ConfigureAwait(false);
     });
+
+    private static JsonObject MenuWriteParameters(IpMenuSnapshot before, IpMenuControl control, JsonNode target)
+    {
+        var parameters = new JsonObject();
+        if (control.Method == "WB2PointControl")
+        {
+            // Partial requests can apply R-Gain and then fail, or reject later
+            // channels without applying them. Send the complete six-field value
+            // from this write's fresh preflight, never defaults or pending peers.
+            var values = before.Readings.GetValueOrDefault(control.Method)?.Values;
+            foreach (var field in control.Command.Parameters)
+            {
+                if (!UsableOriginal(field, values?[field.Name]))
+                    throw new InvalidOperationException($"{control.Name}: a complete 2-point white-balance reading is required; {field.Name} is missing or invalid. Refresh the section. No setting was sent and no default was substituted.");
+                parameters[field.Name] = values![field.Name]!.DeepClone();
+            }
+        }
+        parameters[control.Field] = target.DeepClone();
+        return parameters;
+    }
 
     private static bool CompleteWhiteBalancePeersUnchanged(IpMenuSnapshot before, IpMenuSnapshot after, string changedField)
     {

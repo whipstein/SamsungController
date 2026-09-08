@@ -35,7 +35,7 @@ public static partial class SamsungIpRemoteCommands
             Fields(new[] { "R-Gain", "G-Gain", "B-Gain", "R-Offset", "G-Offset", "B-Offset" }
                 .Select(field => Number(field, -50, 50) with { Optional = true }).ToArray()),
             CanQuery: true, ReadbackMethod: "WB2PointControl",
-            Notes: "Experimental. Enter one or more channels; blank channels are omitted, not zeroed. Six flat, hyphenated integer parameters, not a nested WB2Point object.");
+            Notes: "Six flat, hyphenated integer parameters, not a nested WB2Point object. Menu sends all six freshly read channels, replacing only the edited value and preserving the other five. Incomplete readings stop the write; no defaults are used. Partial requests may be rejected or only partly applied by the TV.");
         yield return EnumSetting("WB20PointMode", "20-point white balance enabled", "White balance · 20 point", "Off|On");
         yield return EnumSetting("WB20P.Interval", "20-point interval", "White balance · 20 point",
             string.Join('|', Enumerable.Range(1, 20).Select(index => $"{index * 5}%")), "Requires 20-point mode On. Changes which interval the RGB commands address.");

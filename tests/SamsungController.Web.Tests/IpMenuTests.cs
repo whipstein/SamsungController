@@ -202,7 +202,7 @@ public sealed class IpMenuTests
     }
 
     [Fact]
-    public async Task PartialTwoPointUpdatesLeaveOtherChannelsAloneAndNormalizeNumericStrings()
+    public async Task TwoPointUpdatesSendAllChannelsPreservingOtherValuesAndNormalizeNumericStrings()
     {
         using var fixture = await MenuFixture.CreateAsync();
         await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
@@ -214,7 +214,7 @@ public sealed class IpMenuTests
         await fixture.Service.ApplyMenuAsync();
         Assert.Equal(-4, fixture.Values["R-Gain"]!.GetValue<int>());
         Assert.Equal(4, fixture.Values["G-Gain"]!.GetValue<int>());
-        Assert.Equal(new[] { "R-Gain", "AccessToken" }.Order(), fixture.Writes.Single()["params"]!.AsObject().Select(pair => pair.Key).Order());
+        Assert.Equal(new[] { "R-Gain", "G-Gain", "B-Gain", "R-Offset", "G-Offset", "B-Offset", "AccessToken" }.Order(), fixture.Writes.Single()["params"]!.AsObject().Select(pair => pair.Key).Order());
     }
 
     [Fact]

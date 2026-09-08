@@ -19,7 +19,7 @@ public sealed class IpMenuWhiteBalanceWarningTests
     [InlineData("R-Offset", "flat")]
     [InlineData("G-Offset", "object")]
     [InlineData("B-Offset", "string")]
-    public async Task ConfirmedPartialWriteAcceptsWarningWithoutRetryAndPersistsEvidence(string field, string shape)
+    public async Task ConfirmedFullWriteAcceptsWarningWithoutRetryAndPersistsEvidence(string field, string shape)
     {
         using var fixture = await ReadyAsync(shape);
         var before = Fields.ToDictionary(name => name, name => fixture.Values[name]!.GetValue<int>());
@@ -37,7 +37,8 @@ public sealed class IpMenuWhiteBalanceWarningTests
         Assert.Equal(target, fixture.Value("WB2PointControl/" + field)!.GetValue<int>());
         foreach (var other in Fields.Where(name => name != field)) Assert.Equal(before[other], fixture.Values[other]!.GetValue<int>());
         var write = Assert.Single(fixture.Writes);
-        Assert.Equal(new[] { "AccessToken", field }.Order(), write["params"]!.AsObject().Select(pair => pair.Key).Order());
+        Assert.Equal(Fields.Append("AccessToken").Order(), write["params"]!.AsObject().Select(pair => pair.Key).Order());
+        foreach (var other in Fields.Where(name => name != field)) Assert.Equal(before[other], write["params"]![other]!.GetValue<int>());
         Assert.Equal(7, fixture.Display.Requests.Count); // Preflight x3, one write, readback x3; no second scan.
         Assert.Contains(fixture.Service.GetSnapshot().Observations, observation => observation.Exchange.Method == "WB2PointControl"
             && observation.Exchange.Outcome == SamsungIpRemoteOutcome.RpcError && observation.Exchange.RpcErrorCode == -32002);
@@ -134,7 +135,6 @@ public sealed class IpMenuWhiteBalanceWarningTests
     [Theory]
     [InlineData("wrong target")]
     [InlineData("other channel")]
-    [InlineData("missing before")]
     [InlineData("missing after")]
     [InlineData("unusable channel")]
     [InlineData("input")]
@@ -160,7 +160,7 @@ public sealed class IpMenuWhiteBalanceWarningTests
                 return Task.FromResult<HttpResponseMessage?>(MenuFixture.Reject(request, -32002));
             }
             var values = Values(fixture);
-            if (failure == "missing before" && !written || failure == "missing after" && written) values.Remove("G-Offset");
+            if (failure == "missing after" && written) values.Remove("G-Offset");
             if (failure == "unusable channel" && written) values["G-Offset"] = "unknown";
             return Task.FromResult<HttpResponseMessage?>(ContrastDisplay.Reply(request, values));
         };
