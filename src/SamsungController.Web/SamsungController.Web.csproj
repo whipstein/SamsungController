@@ -10,6 +10,7 @@
     <IntermediateOutputPath Condition="'$(OS)' != 'Windows_NT'">$(BaseIntermediateOutputPath)$(Configuration)/$(TargetFramework)/</IntermediateOutputPath>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../SamsungController.Desktop/SamsungController.Desktop.csproj" />
     <ProjectReference Include="../SamsungController.Automation/SamsungController.Automation.csproj" />
     <ProjectReference Include="../SamsungController.Core/SamsungController.Core.csproj" />
   </ItemGroup>

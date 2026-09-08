@@ -23,6 +23,6 @@ jobs:
       - name: Restore
         run: dotnet restore SamsungController.sln
       - name: Build
-        run: dotnet build SamsungController.sln --configuration Release --no-restore
+        run: dotnet build SamsungController.sln --configuration Release --no-restore --disable-build-servers -m:1
       - name: Test
-        run: dotnet test SamsungController.sln --configuration Release --no-build
+        run: dotnet test SamsungController.sln --configuration Release --no-build --no-restore --disable-build-servers -m:1

@@ -1,96 +1,62 @@
-# SamsungController downloadable package
+# SamsungController v1.0.0
 
-This is a self-contained SamsungController release. It includes the application and its .NET runtime; a repository clone, .NET SDK, and separate installer are not required.
+This package includes the desktop launcher, local web server, optional CLI, and .NET runtime. No clone, SDK, or terminal window is required.
 
-If this is your first time using SamsungController, start with the
-[complete beginner guide](docs/getting-started.md). It continues from download
-and first launch through pairing, menu setup, display verification, entering
-current values, safely applying changes, macros, upgrades, and troubleshooting.
+Read [README.md](README.md) or the [step-by-step tutorial](docs/getting-started.md) for first pairing, adjustments, troubleshooting, and updates.
 
-## License
+## Start the app
 
-This package uses **MIT + Commons Clause v1.0 with a Paid Services Exception**,
-not MIT alone. You may use it in a business and charge for services such as TV
-calibration; selling the tool itself or paid access to it is restricted. You do
-not have to publish modifications. Preserve the full included [LICENSE](LICENSE)
-when redistributing. See [licensing examples and scope](docs/licensing.md),
-including the value-added-product boundary. Older packages distributed under
-MIT retain their original terms.
+- **macOS:** Extract the ZIP, then drag **SamsungController.app** to Applications. Double-click it. Official release Mac apps are Developer ID signed, notarized, and stapled; temporary CI artifacts are not. Allow Local Network access when prompted.
+- **Windows:** Extract the entire ZIP and double-click **SamsungController.App.exe**. Keep all extracted files together. Windows binaries are not Authenticode-signed; SmartScreen may warn. Only allow an archive downloaded from the official release.
+- **Linux:** Extract the entire tar.gz and run **SamsungController.App**. If needed, allow executing it in file properties. Run `./install-shortcut.sh` once for an optional applications-menu shortcut; keep the extracted folder at that location.
 
-## Start the web interface
+Choose arm64 for Apple silicon/Arm64 computers or x64 for Intel/AMD. Linux requires the normal .NET 10 native OS dependencies and a graphical browser; `xdg-open` opens the browser automatically.
 
-Keep the complete extracted folder together. The launcher starts the local server, waits for it to become ready, and opens `http://127.0.0.1:5050` in the default browser.
+The app starts its server at **http://127.0.0.1:5050** and opens your browser. It runs in the background with no terminal window. Opening the app again reuses the same running instance. **Closing the browser does not stop the server.** Use **Display → Quit app** when done; stop any active TV operation first. No login service or automatic startup is installed.
 
-### macOS
+If the browser does not open, enter the URL manually. Background startup errors are recorded in your private configuration directory under `desktop/last-launch-error.txt`; server output is in `desktop/server.log`. Port 5050 must not be occupied by an old foreground server or another application.
 
-1. Double-click the downloaded `.tar.gz` file to extract it.
-2. Open the extracted `SamsungController` folder.
-3. Control-click **Start SamsungController.command**, choose **Open**, then confirm **Open**. Keep its Terminal window open while using the application.
-4. If macOS blocks the unsigned application, open **System Settings > Privacy & Security** and choose **Open Anyway** for SamsungController. As a terminal fallback, run `xattr -dr com.apple.quarantine` followed by a space and the path to the extracted folder.
+## Pair and use
 
-Choose `macos-arm64` for an Apple silicon Mac or `macos-x64` for an Intel Mac.
+1. Turn on the TV, put both devices on the same trusted LAN, and enable the TV's **IP Remote** setting.
+2. Add its address on Display. Direct HTTPS IP Remote normally uses **1516**, not WebSocket ports 8001/8002.
+3. Set the certificate policy, save, pair, and accept the TV's approval dialog. Subsequent connections reuse that token.
+4. Choose a Menu tab and edit queried values. **On Apply** stages targets; **Immediately** sends committed adjustments.
+5. Use **Refresh state** after outside changes. Help beside it explains the current page. Stop cancels remaining commands, not changes already delivered.
 
-### Windows
+## Stop or use the command line
 
-1. Right-click the downloaded `.zip` file and choose **Extract All**. Do not run the launcher from inside the ZIP preview.
-2. Open the extracted `SamsungController` folder.
-3. Double-click **Start SamsungController.cmd**. Keep its command window open while using the application.
-4. These first packages are unsigned. If Microsoft Defender SmartScreen appears, choose **More info > Run anyway** only if the file came from the official SamsungController GitHub release.
+On Windows, use PowerShell in the extracted folder:
 
-Choose `windows-x64` for a normal Intel/AMD Windows PC or `windows-arm64` for a Windows on Arm device.
-
-### Linux
-
-1. Extract the downloaded `.tar.gz` file.
-2. Open the extracted `SamsungController` folder.
-3. Double-click **start-samsungcontroller.sh** and choose **Run**. Keep the process running while using the application.
-4. If the file manager does not offer Run, open the file's **Properties > Permissions** and enable execution. You can also launch `./start-samsungcontroller.sh` from a terminal.
-
-Choose `linux-x64` for most Intel/AMD PCs or `linux-arm64` for an Arm64/aarch64 system. A graphical browser and either `xdg-open` or `gio` are required for automatic browser opening; otherwise open the local URL manually.
-
-## First connection
-
-1. Make sure the computer and Samsung TV are on the same trusted local network.
-2. Select a saved display definition, or enter the TV's IPv4 address manually on the Connection page.
-3. Choose the matching menu definition/configuration and select Save display if you want to restore this combination with one selection later.
-4. Keep Secure WebSocket and Accept TV certificate enabled under normal conditions.
-5. Select Connect and choose Allow on the TV when prompted.
-
-The launcher and server bind only to this computer. Closing the launcher window or pressing Ctrl+C stops the server. TV settings, tokens, macros, menu definitions, and logs remain in the normal per-user configuration directory when the package is replaced with a newer version.
-
-## If the TV connection times out
-
-VPNs and network filters can allow the TV to appear on the network while blocking its control connection. Before removing the saved pairing token:
-
-1. Open `http://<TV-IP>:8001/api/v2/` in a browser on the same computer. A timeout indicates a network path or TV-service problem, not a rejected token.
-2. Temporarily disconnect the VPN and retry SamsungController.
-3. If that works, enable the VPN's LAN-access exception. In Proton VPN for macOS, use **Settings > Connection > Allow LAN connections**, then reconnect the VPN.
-4. Check filters such as LuLu, Little Snitch, or endpoint-security software for a rule blocking SamsungController or the TV address.
-
-See the included `README.md` for the full connection troubleshooting sequence.
-
-## Optional command line
-
-The package also includes the complete `samsungctl` CLI.
-
-On macOS or Linux, open a terminal in this folder:
-
-```text
-./samsungctl help
-./samsungctl status
-./samsungctl key KEY_HOME
-```
-
-On Windows, open PowerShell in this folder:
-
-```text
+```powershell
+.\SamsungController.App.exe --stop
 .\samsungctl.exe help
-.\samsungctl.exe status
-.\samsungctl.exe key KEY_HOME
+.\SamsungController.Web.exe
 ```
 
-See the included `README.md` for pairing recovery, macros, console mode, menu authoring, protocol capture, privacy, and safety guidance.
+On Linux:
 
-## Security
+```sh
+./SamsungController.App --stop
+./samsungctl help
+./SamsungController.Web
+```
 
-The web interface can send arbitrary remote keys and raw protocol requests, so leave it bound to `127.0.0.1`. Pairing tokens and full protocol logs are private. Do not publish them without reviewing their contents.
+On macOS (after copying to Applications):
+
+```sh
+/Applications/SamsungController.app/Contents/MacOS/SamsungController.App --stop
+/Applications/SamsungController.app/Contents/MacOS/samsungctl help
+cd /Applications/SamsungController.app/Contents/MacOS
+./SamsungController.Web
+```
+
+Running **SamsungController.Web** directly is the optional foreground-server mode; keep that terminal open and use Ctrl+C to stop it. The separate **samsungctl** CLI retains its menu-key/WebSocket workflows and is not the new direct-IP GUI.
+
+## Update and privacy
+
+Quit the app before replacing it. Install the new archive/app; do not overwrite a running installation. Profiles, credentials, preferences, and logs remain in the normal per-user configuration directory outside the package. Back up that directory before major updates.
+
+The server binds to this computer only. Never expose it or the TV's control service to the internet. Do not distribute personal tokens, profiles, or raw logs. Use the Communication log export's redaction controls.
+
+This version uses **MIT + Commons Clause v1.0 with a Paid Services Exception**, not MIT alone. Business use and paid calibration services are allowed; selling the tool or paid access to it is restricted. Preserve the full included [LICENSE](LICENSE) when redistributing. See [licensing details](docs/licensing.md). Earlier MIT releases keep their original terms.

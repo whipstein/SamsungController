@@ -2,7 +2,7 @@
 
 Control Samsung displays locally using direct HTTPS IP commands. The web interface reads current settings from the TV, then applies your changes directly—without recording menu paths or counting verification passes.
 
-This is the **v1 working branch**, `feature/ip-remote-v1`, version **1.0.0-alpha.1**. The stable published release is still v0.3.0 and has a different interface. This branch is not merged into `main` until explicitly approved.
+**v1.0.0 is the default on `main`.** It replaces the v0 menu-traversal GUI with direct IP control. Start with the [step-by-step beginner tutorial](docs/getting-started.md).
 
 ## License
 
@@ -39,14 +39,14 @@ The old menu builder, verification pages, and macro editor are hidden; their fil
 
 Direct IP uses HTTPS, normally port **1516**; some older displays use **1515**. It is separate from WebSocket ports 8001/8002 and uses its own token. Do not expose the controller or TV endpoint to the internet.
 
-## Install and run this v1 preview from source
+## Install and run from source
 
 Install [Git](https://git-scm.com/downloads) and the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0). Choose Arm64 for Apple silicon or Windows/Linux on Arm; choose x64 for Intel/AMD. Microsoft provides SDK instructions for [Windows](https://learn.microsoft.com/en-us/dotnet/core/install/windows), [macOS](https://learn.microsoft.com/en-us/dotnet/core/install/macos), and [Linux](https://learn.microsoft.com/en-us/dotnet/core/install/linux).
 
 In macOS Terminal, Windows PowerShell, or a Linux terminal:
 
 ```sh
-git clone --branch feature/ip-remote-v1 https://github.com/whipstein/SamsungController.git
+git clone https://github.com/whipstein/SamsungController.git
 cd SamsungController
 dotnet restore SamsungController.sln
 dotnet build SamsungController.sln --no-restore --disable-build-servers -m:1
@@ -63,27 +63,31 @@ dotnet test SamsungController.sln --no-restore --disable-build-servers -m:1
 
 ## Downloadable packages (no Git or .NET required)
 
-The [Releases page](https://github.com/whipstein/SamsungController/releases) provides self-contained packages. **The stable v0.3.0 download does not contain this v1 interface**; use the source instructions above until a v1 package is published. For stable-v0 usage, follow the [v0 beginner guide](docs/getting-started.md).
+The [Releases page](https://github.com/whipstein/SamsungController/releases/latest) provides self-contained desktop apps. Follow the [beginner tutorial](docs/getting-started.md) from download through pairing, calibration, troubleshooting, and updates.
 
-| Computer | Archive | Launcher after extracting |
+| Computer | Archive suffix | App after extracting |
 | --- | --- | --- |
-| Apple silicon Mac | `SamsungController-*-macos-arm64.tar.gz` | `Start SamsungController.command` |
-| Intel Mac | `SamsungController-*-macos-x64.tar.gz` | `Start SamsungController.command` |
-| Intel/AMD Windows | `SamsungController-*-windows-x64.zip` | `Start SamsungController.cmd` |
-| Windows on Arm | `SamsungController-*-windows-arm64.zip` | `Start SamsungController.cmd` |
-| Intel/AMD Linux | `SamsungController-*-linux-x64.tar.gz` | `start-samsungcontroller.sh` |
-| Arm64 Linux | `SamsungController-*-linux-arm64.tar.gz` | `start-samsungcontroller.sh` |
+| Apple silicon Mac | `macos-arm64.zip` | `SamsungController.app` |
+| Intel Mac | `macos-x64.zip` | `SamsungController.app` |
+| Intel/AMD Windows | `windows-x64.zip` | `SamsungController.App.exe` |
+| Windows on Arm | `windows-arm64.zip` | `SamsungController.App.exe` |
+| Intel/AMD Linux | `linux-x64.tar.gz` | `SamsungController.App` |
+| Arm64 Linux | `linux-arm64.tar.gz` | `SamsungController.App` |
 
-1. Download the correct archive and extract the **whole folder**. Do not run inside a ZIP or move individual binaries out of it.
-2. Run its launcher. It starts the server and opens the browser; keep its terminal/command window open.
-3. If the browser does not open, navigate to `http://127.0.0.1:5050`.
-4. Close the launcher window or press Ctrl+C to stop.
+1. Download the correct archive and extract it completely. Copy the Mac app to Applications; keep Windows/Linux binaries together in the extracted folder.
+2. Double-click the app. It starts the local server **in the background**, waits for it, and opens the browser. No terminal window is needed.
+3. If the browser does not open, visit `http://127.0.0.1:5050`. Reopening the app reuses the running instance.
+4. **Closing the browser leaves the server running.** Use **Display → Quit app** to stop it; stop any active TV operation first. No login/startup service is installed.
 
 Platform notes:
 
-- **macOS:** Control-click the `.command` launcher and choose Open. Packages are unsigned/not notarized. If blocked, use System Settings → Privacy & Security → Open Anyway only for an official release archive. Terminal fallback for that trusted extracted folder: `xattr -dr com.apple.quarantine /path/to/SamsungController`.
-- **Windows:** Use Extract All first. SmartScreen may flag unsigned packages; confirm the official source before More info → Run anyway.
-- **Linux:** Enable execution in file properties, or run `chmod +x start-samsungcontroller.sh` then `./start-samsungcontroller.sh` from the extracted folder. Browser opening uses `xdg-open` or `gio`; otherwise enter the URL manually.
+- **macOS:** Official release apps are Developer ID signed, notarized, and stapled. Allow Local Network access when prompted. CI artifacts are unsigned until the maintainer completes signing; use the published release for normal installation.
+- **Windows:** Use Extract All first. Windows binaries are not Authenticode-signed; SmartScreen may warn. Verify the official source before allowing execution.
+- **Linux:** Enable execution in file properties if needed. Run `./install-shortcut.sh` for an optional applications-menu entry. A graphical browser, `xdg-open`, and the normal [.NET native Linux dependencies](https://learn.microsoft.com/dotnet/core/install/linux) are required.
+
+Port 5050 is loopback-only. Stop any old foreground server occupying it before launching the app. Background logs and startup errors live under `desktop/` in the [private data folder](#private-data-command-line-and-updates). The launcher does not kill unrelated processes.
+
+For an optional terminal shutdown, run `SamsungController.App --stop` (add `.exe` on Windows). On macOS the executable is inside `/Applications/SamsungController.app/Contents/MacOS/`. Running `SamsungController.Web` directly preserves foreground-server mode; Ctrl+C stops it. The separate `samsungctl` CLI remains available.
 
 Releases include `SHA256SUMS.txt`. Optional integrity checks: macOS `shasum -a 256 <archive>`, Linux `sha256sum <archive>`, PowerShell `Get-FileHash <archive> -Algorithm SHA256`.
 
@@ -171,8 +175,8 @@ The CLI remains independent of the new web UI:
 dotnet run --project src/SamsungController.Cli -- --help
 ```
 
-Packaged binaries are `samsungctl` (macOS/Linux) and `samsungctl.exe` (Windows); run with `--help` in a terminal. The [v0 CLI guide](docs/v0-user-guide.md#use-the-command-line-interface) covers retained WebSocket/key/macro commands, not the direct-IP web settings API.
+Packaged binaries are `samsungctl` (macOS/Linux) and `samsungctl.exe` (Windows); run with `--help` in a terminal. The Mac binary is inside `/Applications/SamsungController.app/Contents/MacOS/`. The [v0 CLI guide](docs/v0-user-guide.md#use-the-command-line-interface) covers retained WebSocket/key/macro commands, not the direct-IP web settings API.
 
-To update source: stop the server, preserve edits, `git pull --ff-only`, then restore/build/run again. To update packages: stop the old copy, extract the new version into a separate folder, and launch it. Back up private data before moving between major versions. Restart the server and refresh the browser. A working-branch commit does not create a release or merge into `main`.
+To update source: stop the server, preserve edits, `git pull --ff-only`, then restore/build/run again. To update packages: stop the old copy, extract the new version into a separate folder, and launch it. Back up private data before moving between major versions. Restart the server and refresh the browser. The source default is now `main`; see the [release-maintainer guide](docs/releasing.md) for packaging, signing, notarization, and publication.
 
 For contributors: [development roadmap](docs/development-roadmap.md), [direct-interface design](docs/direct-ip-interface.md), and [preserved v0 menu-file format](docs/menu-definition-file-format.md).

@@ -4,9 +4,13 @@ This document preserves the implementation plan and research direction that are 
 
 Status was reconciled with the repository on 2026-08-30. A checked box means the capability is present in the code and covered by automated tests where practical; it does not imply that every Samsung model or firmware has been tested.
 
-## v1 IP Remote preview — working branch
+## v1 IP Remote — default interface
 
-Development and real-display feedback proceed separately on `feature/ip-remote-v1`, starting at `1.0.0-alpha.1`. The primary interface now uses direct IP controls; see the [current workflow](direct-ip-interface.md). Earlier guarded test milestones below are retained as development history, not current Menu access requirements. No main-branch merge is implied.
+Development and real-display feedback began on `feature/ip-remote-v1` at `1.0.0-alpha.1`. With user approval, that work is now merged into `main` for v1.0.0. See the [current workflow](direct-ip-interface.md). Earlier guarded milestones remain development history, not current Menu access requirements.
+
+- [x] Promote the direct-IP interface to main and version 1.0.0.
+- [x] Add self-contained background app launchers, explicit Quit, private shutdown authorization, and package smoke tests for Windows/macOS/Linux.
+- [x] Add Developer ID signing/notarization/stapling tooling for Mac release packages without exporting private keys to CI.
 
 - [x] Replace the primary web workflow with Display, direct Menu, direct Remote, and optional Diagnostics; hide the menu builder, verification pages, and macro editor while preserving their files.
 - [x] Populate current controls from base/dedicated TV queries; make documented settings usable without capability/pass-count gates.

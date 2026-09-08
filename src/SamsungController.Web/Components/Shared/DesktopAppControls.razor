@@ -1,0 +1,28 @@
+@implements IDisposable
+@inject IServiceProvider Services
+@inject SamsungIpRemoteService Controller
+
+@if (Runtime is { Enabled: true })
+{
+    <div class="direct-actions">
+        <button type="button" class="toolbar-button" title="Stop the background server. Closing the browser alone leaves it running." @onclick="QuitAsync" disabled="@(Quitting || Controller.GetSnapshot().IsBusy)">Quit app</button>
+        @if (Message is not null) { <span role="status">@Message</span> }
+    </div>
+}
+
+@code {
+    private DesktopRuntime? Runtime;
+    private string? Message;
+    private bool Quitting;
+    protected override void OnInitialized() { Runtime = Services.GetService<DesktopRuntime>(); Controller.Changed += Changed; }
+    private void Changed() => _ = InvokeAsync(StateHasChanged);
+    private async Task QuitAsync()
+    {
+        if (Runtime is null) return;
+        Quitting = true;
+        Message = "Stopping the app. Reopen SamsungController to start it again; your saved data is kept.";
+        try { await Runtime.QuitAsync(Controller); }
+        catch (InvalidOperationException error) { Quitting = false; Message = error.Message; }
+    }
+    public void Dispose() => Controller.Changed -= Changed;
+}

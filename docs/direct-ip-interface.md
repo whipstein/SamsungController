@@ -2,7 +2,7 @@
 
 The v1 web workflow is **Display → Menu**, with Communication log and a global right-side Remote drawer. Remote has no separate page or navigation entry: its edge button opens a full-window-height, modeless native popover, preserving the current page, scroll, and edits. The close header stays visible while the buttons scroll independently. Close, Escape, and outside-click dismiss it; it uses the active theme and honors reduced motion. Opening/closing sends no TV requests. It replaces menu traversal for normal settings. Existing IP Remote profiles/tokens are reused; v0 menus, verification, macros, and calibration files are preserved but do not drive this interface. The macro editor is hidden until it supports direct commands. The earlier command/picture-testing pages are no longer exposed.
 
-For installation, all platform launchers, first pairing, and updates, start with the [README](../README.md). `feature/ip-remote-v1` remains separate from `main`.
+For installation, background desktop apps, first pairing, and updates, start with the [README](../README.md). The direct-IP interface is the default on `main` starting with v1.0.0.
 
 ## Read, edit, apply
 
