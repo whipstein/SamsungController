@@ -8,7 +8,7 @@
 @inject NavigationManager Navigation
 
 <PageTitle>Display · SamsungController</PageTitle>
-<section class="page-heading compact-heading"><div><span class="eyebrow">DIRECT IP CONTROL</span><h1>Choose your display.</h1><p>Pair once. Connect preloads all Menu sections and available calibration rows for the current input/picture mode. No menu file or verification setup is required.</p></div></section>
+<section class="page-heading compact-heading"><div><span class="eyebrow">DIRECT IP CONTROL</span><h1>Choose your display.</h1></div></section>
 @if (Error is not null) { <div class="notice danger" role="alert">@Error</div> }
 <section class="panel direct-panel">
     <div class="direct-toolbar"><h2>Saved displays</h2><button class="toolbar-button" @onclick="NewDisplay" disabled="@Snapshot.IsBusy">Add display</button></div>
@@ -32,7 +32,6 @@
         <p role="status">@Snapshot.Menu.Status</p>
         @foreach (var warning in Snapshot.Menu.LoadWarnings) { <p class="direct-unavailable">@warning</p> }
     }
-    <p class="direct-hint">HTTPS keep-alive reuses one connection where supported. The TV may close it; the saved pairing token is reused on the next request. Connection loading can take a while; Stop cancels remaining requests.</p>
     <ConnectionRecovery />
 </section>
 
@@ -47,7 +46,6 @@
             <label>Firmware note (optional)<input @bind="Firmware" /></label>
         </fieldset>
         <details class="direct-details"><summary>Certificate trust and timeouts</summary>
-            <p>Samsung TVs commonly use self-signed certificates. Prefer a trusted SHA-256 fingerprint, or explicitly allow an untrusted certificate for this TV on your trusted LAN.</p>
             <fieldset disabled="@Snapshot.IsBusy" class="direct-fields">
                 <label>Certificate SHA-256<input aria-label="Display certificate SHA-256" @bind="Pin" autocomplete="off" /></label>
                 <label class="direct-check"><input type="checkbox" aria-label="Allow untrusted display certificate" @bind="AllowUntrusted" /> Allow an untrusted certificate for this endpoint only</label>
@@ -56,7 +54,6 @@
             </fieldset>
         </details>
         <div class="direct-actions"><button class="primary-action" @onclick="SaveAsync" disabled="@Snapshot.IsBusy">Save display</button><button class="toolbar-button" @onclick="CancelEdit" disabled="@Snapshot.IsBusy">Cancel</button></div>
-        <p>Saving changes the local profile only. Pair and Connect are separate actions.</p>
     </section>
 }
 
@@ -64,7 +61,6 @@
 {
     <section class="panel direct-panel">
         <h2>@(Snapshot.HasToken ? "Pairing saved" : "Pair with the TV")</h2>
-        <p>Enable <strong>IP Remote</strong> in the TV's network expert settings. Keep the TV on, then accept its approval dialog. Connect reuses your saved token; pairing again requests a new one.</p>
         <div class="direct-actions"><button class="toolbar-button" @onclick="PairAsync" disabled="@Snapshot.IsBusy">@(Snapshot.HasToken ? "Pair again (TV approval)" : "Pair with TV")</button><button class="toolbar-button" @onclick="Controller.Cancel" disabled="@(!Snapshot.IsBusy)">Cancel request</button></div>
         <p role="status">@Snapshot.Status</p>
         @if (Snapshot.Menu.Readings.GetValueOrDefault("getDeviceInformation")?.Values is { } identity)

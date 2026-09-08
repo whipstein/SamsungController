@@ -84,7 +84,7 @@ public sealed class IpMenuSectionsTests
         Assert.Contains("Refresh section", toolbar);
         Assert.Contains("Reload all rows", toolbar);
         Assert.Contains("Apply (0)", toolbar);
-        Assert.DoesNotContain("Refresh TV state", toolbar);
+        Assert.DoesNotContain("Refresh state", toolbar);
         foreach (var section in IpMenuCatalog.Sections)
         {
             await renderer.ClickAsync(section.Name);
@@ -140,16 +140,16 @@ public sealed class IpMenuSectionsTests
         await using var header = new IpRemotePageTests.IpPageRenderer(services, typeof(MainLayout));
         await menu.StartAsync();
         await header.StartAsync();
-        Assert.Equal(new[] { "Home", "Back", "Exit menu", "Refresh TV state" }, await header.ButtonTextsWithinAsync("div", "TV shortcuts"));
+        Assert.Equal(new[] { "Home", "Back", "Exit menu", "Refresh state", "Help" }, await header.ButtonTextsWithinAsync("div", "TV shortcuts"));
         await menu.ChangeAsync("Contrast value", "40");
         await menu.AssertInputValueAsync("Contrast value", "40");
         fixture.Display.Contrast = 42;
-        await header.ClickAsync("Refresh TV state");
+        await header.ClickAsync("Refresh state");
         await menu.AssertInputValueAsync("Contrast value", "42");
         Assert.NotNull(fixture.Service.GetSnapshot().Menu.SettingsLoadedAt);
         fixture.AssertOnlyWhiteBalanceReadWrites();
         await fixture.Service.DisconnectMenuAsync();
-        await header.AssertDisabledAsync("Refresh TV state", true);
+        await header.AssertDisabledAsync("Refresh state", true);
         await menu.AssertDisabledAsync("Refresh section", true);
         await menu.AssertDisabledAsync("Reload all rows", true);
     }

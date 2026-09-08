@@ -195,7 +195,8 @@ public sealed class IpMenuSpeedTests
             await renderer.ClickAsync("20-point white balance");
             await renderer.ClickAsync("Picture");
             Assert.Single(javascript.Calls, call => call == "samsungMenuToolbar.attach");
-            Assert.Equal(2, javascript.Calls.Count(call => call == "samsungMenuToolbar.scrollToContent"));
+            Assert.Equal(3, javascript.Calls.Count(call => call == "samsungMenuToolbar.restorePosition"));
+            Assert.Equal(2, javascript.Calls.Count(call => call == "samsungMenuToolbar.savePosition"));
             Assert.DoesNotContain("samsungMenuToolbar.detach", javascript.Calls);
         }
         Assert.Single(javascript.Calls, call => call == "samsungMenuToolbar.detach");

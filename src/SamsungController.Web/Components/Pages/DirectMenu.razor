@@ -5,7 +5,7 @@
 @inject SamsungIpRemoteService Controller
 
 <PageTitle>Menu · SamsungController</PageTitle>
-<section class="direct-menu-toolbar" aria-label="Menu controls and navigation" @ref="MenuToolbarElement">
+<section class="direct-menu-toolbar" aria-label="Menu controls and navigation" data-menu-section="@Section" @ref="MenuToolbarElement">
     <div class="direct-menu-behavior">
         <fieldset class="direct-apply-mode"><legend>Apply behavior</legend>
             <label title="Stage changes until you select Apply"><input type="radio" name="menu-apply-mode" value="wait" aria-label="Wait for Apply" checked="@(!Snapshot.Menu.Preferences.ApplyImmediately)" @onchange="() => SetWaitAsync()" disabled="@Snapshot.IsBusy" /> On Apply</label>
@@ -22,11 +22,10 @@
     <div class="direct-menu-navigation">
         <nav class="direct-tabs" aria-label="Top-level settings">
             @foreach (var section in IpMenuCatalog.Sections)
-            { <button type="button" class="@(Section == section.Id ? "active" : "")" aria-label="@section.Name" title="@section.Name" aria-pressed="@(Section == section.Id ? "true" : "false")" @onclick="() => SelectSection(section.Id)" disabled="@(Snapshot.IsBusy || LayoutSaving)">@SectionLabel(section)</button> }
+            { <button type="button" class="@(Section == section.Id ? "active" : "")" aria-label="@section.Name" title="@section.Name" aria-pressed="@(Section == section.Id ? "true" : "false")" @onclick="() => SelectSectionAsync(section.Id)" disabled="@(Snapshot.IsBusy || LayoutSaving || SwitchingSection)">@SectionLabel(section)</button> }
         </nav>
     </div>
 </section>
-<section class="page-heading compact-heading"><div><span class="eyebrow">DIRECT SETTINGS</span><h1>Menu</h1><p>Current values are queried from the TV. Documented commands are ready to use—no traversal recording or verification required.</p></div></section>
 @if (Error is not null) { <div class="notice danger" role="alert">@Error</div> }
 @if (!Snapshot.Menu.Connected) { <div class="notice"><strong>Display disconnected</strong><span>Connect to read current settings.</span><a href="/">Choose display →</a></div> }
 @if (Snapshot.PictureTest?.RequiresRecovery == true || Snapshot.CommandTrial?.RequiresReview == true)
@@ -43,31 +42,27 @@
 
 <section class="panel direct-panel" @ref="MenuContentElement">
     @if (Snapshot.Menu.Connected && Snapshot.Menu.ConnectionLoadAttempted && Snapshot.Menu.SettingsLoadedAt is null && !Snapshot.IsBusy)
-    { <p class="direct-unavailable" role="status">All-settings load is incomplete or the TV context changed. Select Refresh TV state in the top header to reload all settings for the current signal—no reconnect needed. Opening a tab does not resume a stopped load.</p> }
+    { <p class="direct-unavailable" role="status">All-settings load is incomplete or the TV context changed. Select Refresh state in the top header to reload all settings for the current signal—no reconnect needed. Opening a tab does not resume a stopped load.</p> }
     @if (Snapshot.Menu.SettingsLoadedAt is { } loadedAt)
     {
         <details class="direct-details compact"><summary>Settings load · @loadedAt.ToLocalTime().ToString("HH:mm:ss") · @(Snapshot.Menu.LoadWarnings.Count == 0 ? "complete" : "some values unavailable")</summary>
             <p>@Snapshot.Menu.TransportStatus</p>
             @foreach (var warning in Snapshot.Menu.LoadWarnings) { <p class="direct-unavailable">@warning</p> }
             <p><a href="diagnostics">Browse requests and replies →</a></p>
-            <p>Loaded values belong to the current input/picture mode. Inactive or unsupported values are not replaced with defaults.</p>
         </details>
     }
     <div class="direct-toolbar">
-        <div><h2>@SectionName controls</h2><p>@(Snapshot.Menu.SectionsRead.TryGetValue(Section, out var readAt) ? "Read from TV " + readAt.ToLocalTime().ToString("HH:mm:ss") : "Select a section to read its current values.")</p></div>
+        <div><h1>@SectionName</h1><p>@(Snapshot.Menu.SectionsRead.TryGetValue(Section, out var readAt) ? "Read from TV " + readAt.ToLocalTime().ToString("HH:mm:ss") : "Not yet read")</p></div>
+        <div class="direct-actions">
+            @if (HasArrangedLayout) { <button class="toolbar-button" @onclick="ResetExpertLayoutAsync" disabled="@LayoutLocked">Reset layout</button> }
+            <button class="toolbar-button @(Snapshot.Menu.Pending.Count == 0 ? "direct-discard-empty" : "")" aria-label="Discard pending changes" title="Discard unsent edits without changing the TV" @onclick="Discard" disabled="@(Snapshot.IsBusy || Snapshot.Menu.Pending.Count == 0)">Discard</button>
+        </div>
     </div>
-    <p class="direct-hint">After changing HDMI signal, bit depth, or picture mode, use <strong>Refresh TV state</strong> beside Home/Back/Exit in the top header. It rereads all settings and available calibration rows, discards unsent edits, and keeps your connection. If 20-point WB is Off, refresh temporarily enables it, reads all intervals, then restores the original interval and Off. <strong>Refresh section</strong> and <strong>Reload all rows</strong> are beside Apply in the pinned toolbar. They only reread this tab; row reload is available in 20pt WB and Color. Keep the signal unchanged while loading.</p>
-    <details class="direct-details compact"><summary>Adjustment details</summary>
-        <p><strong>Query before changes</strong> is On by default. Off skips pre-change queries and uses the last successfully read values, including untouched 2-point/RGB channels. Post-change readback remains On. Refresh after outside changes, an HDMI signal change, or uncertain state. Selector isolation between different controllers has not been established; Off assumes nothing else changes the display. Recovery originals in this mode are last known values, not fresh pre-change readings.</p>
-        <p>With Apply immediately, slider drags, typed values, and +/− remain usable while earlier adjustments run. Unsent edits to the same setting combine into the latest target; a command already being sent is unchanged. Pending RGB edits in one percentage block share a selection. Dragging and typing alone send nothing. The number shows your latest edit or queued target, and TV shows the last read value. Stop or a failed change discards unsent adjustments. Apply or discard pending changes before turning this on.</p>
-        <button class="toolbar-button" @onclick="Discard" disabled="@(Snapshot.IsBusy || Snapshot.Menu.Pending.Count == 0)">Discard pending changes</button>
-    </details>
     @if (HasArrangedLayout)
     {
         <section class="direct-expert-layout" @key="Section" @ref="ExpertLayoutElement" data-layout-section="@Section" data-layout-locked="@(LayoutLocked ? "true" : "false")" aria-label="@($"Arrange {SectionName} controls")">
-            <div class="direct-layout-toolbar"><p class="direct-hint" id="expert-layout-help">Click and drag a box's heading or background to move it. Linked controls move together; sliders and inputs still adjust values. Keyboard: focus a box and use Alt + arrow keys. Layout saves automatically; TV settings are unchanged.</p>
-                <button class="toolbar-button" @onclick="ResetExpertLayoutAsync" disabled="@LayoutLocked">Reset layout</button></div>
-            <p class="direct-layout-feedback" role="status">@LayoutFeedback</p>
+            <span class="visually-hidden" id="expert-layout-help">Drag the box background or use Alt + arrow keys to reorder. Linked controls move together. Open Help in the header for instructions.</span>
+            @if (LayoutFeedback is not null) { <p class="direct-layout-feedback" role="status">@LayoutFeedback</p> }
             <div class="direct-control-grid direct-expert-grid">
                 @foreach (var group in VisibleExpertGroups)
                 {
@@ -94,11 +89,6 @@
     @if (Grid is { } grid)
     {
         <section class="direct-indexed" aria-label="@(grid.Section == "white20" ? "All white balance intervals" : "All custom colors")">
-            <div class="direct-toolbar"><div><h2>@(grid.Section == "white20" ? "20-point RGB adjustments" : "Custom color RGB adjustments")</h2>
-                <p>@grid.Values.Count fixed rows · each has its own Red, Green, and Blue values.</p></div></div>
-            <p class="direct-hint">Loading temporarily visits each row, then restores your previous selection. Apply leaves the last edited percentage/color selected so later edits can reuse it. All three colors and context are checked after each update group. With Query before changes Off, previously read values replace the preflight reads. Keep the physical signal stable and refresh after outside changes. No RGB value changes during loading. Stop sends no further commands; use recovery controls if a temporary mode change was interrupted.</p>
-            @if (grid.Section == "white20" && !Snapshot.Menu.Preferences.ApplyImmediately)
-            { <p class="direct-hint">Each percentage block has its own Apply button: it sends only that block's pending RGB values. Other blocks and settings stay pending. The Apply button at the top still sends all pending settings.</p> }
             @if (!Snapshot.Menu.GridsRead.ContainsKey(Section))
             { <p class="direct-unavailable">@(GridModeEnabled ? "Use Reload all rows in the pinned toolbar to read their current values." : grid.Section == "white20" ? "Reload all rows reads the values while Off, restoring Off afterward. Turn on 20-point white balance above and Apply to enable these controls." : "Choose Custom in Color space above and Apply to enable these controls.")</p> }
             @if (grid.Section == "white20" && Snapshot.Menu.GridsRead.ContainsKey(Section) && !GridModeEnabled)
@@ -118,7 +108,6 @@
             </div>
         </section>
     }
-    <p class="direct-hint">Limits are from Samsung's command tables and protocol references—not range metadata returned by queries. Unsupported/unreported controls can be retried with Refresh after changing the display's mode or signal.</p>
 </section>
 
 @if (Snapshot.Menu.Update is { } update)
@@ -180,7 +169,7 @@
     protected override async Task OnInitializedAsync() { Controller.Changed += Refresh; await GuardAsync(Controller.InitializeAsync); }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await AttachMenuToolbarAsync();
+        if (await AttachMenuToolbarAsync()) return;
         await AttachExpertLayoutAsync();
         var key = Snapshot.Menu.SessionId + ":" + Section;
         if (Snapshot.Menu.WhiteBalanceRead?.NeedsRestore == true) { AutoReads.Add(key); return; }
@@ -195,7 +184,6 @@
         if (Snapshot.Menu.SessionId != next.Menu.SessionId || Snapshot.Menu.ValuesRevision != next.Menu.ValuesRevision) Edits.Clear();
         Snapshot = next; StateHasChanged();
     });
-    private void SelectSection(string section) { if (Section != section) { ScrollSectionOnRender = true; LayoutFeedback = null; } Section = section; Error = null; }
     private static string SectionLabel(IpMenuSection section) => section.Id switch { "white2" => "2pt WB", "white20" => "20pt WB", _ => section.Name };
     private string Target(IpMenuControl control) => Edits.GetValueOrDefault(control.Id) ?? StoredTarget(control);
     private string StoredTarget(IpMenuControl control) => Snapshot.Menu.NudgeQueue?.Values.LastOrDefault(value => value.ControlId == control.Id)?.Target.ToString(CultureInfo.InvariantCulture)

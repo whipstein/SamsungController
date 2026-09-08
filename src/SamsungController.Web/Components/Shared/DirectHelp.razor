@@ -1,0 +1,83 @@
+@implements IDisposable
+@inject NavigationManager Navigation
+
+<aside id="page-help" @key="HelpKey" class="direct-page-help" popover="auto" role="dialog" aria-modal="false" aria-labelledby="page-help-title">
+    <header><h2 id="page-help-title">Help · @Title</h2><button type="button" class="toolbar-button" popovertarget="page-help" popovertargetaction="hide" aria-label="Close help" autofocus>Close ×</button></header>
+    <div class="direct-page-help-content">
+        @if (Page == "menu")
+        {
+            <p>Current values are queried from the TV. Documented commands are ready to use; no menu file, traversal recording, or verification setup is required. Missing values are not replaced with defaults.</p>
+            @if (Section == "white20")
+            {
+                <h3>20-point white balance</h3>
+                <p>All percentages from 5% to 100% have fixed Red, Green, and Blue controls. Turn on the white-balance switch and Apply to enable adjustments. In On Apply mode, each percentage's Apply button sends only that row's pending RGB targets; the top Apply button sends all pending settings.</p>
+            }
+            else if (Section == "color")
+            {
+                <h3>Custom color</h3>
+                <p>Choose Custom in Color space and Apply to enable the fixed Red, Green, Blue, Yellow, Cyan, and Magenta rows, each with its own RGB controls. Inactive Custom color is not automatically enabled by a refresh.</p>
+            }
+            else if (Section == "white2")
+            {
+                <h3>2-point white balance</h3>
+                <p>RGB gains and offsets are grouped in two columns. An update sends all six values together, preserving untouched channels from fresh queries or the last-known readings according to Query first. Missing channels prevent sending; nothing is filled with zero.</p>
+            }
+            else
+            {
+                <h3>Arrange your controls</h3>
+                <p>Drag a box's heading or background to move it. Linked controls move together, including Gamma and its sliders. Sliders, inputs, switches, and buttons retain their normal behavior. With a box focused, use Alt + arrow keys (Option on macOS) to reorder it. Picture, Sound, and System layouts save independently; Reset layout restores only the current section. Arranging boxes sends no TV commands.</p>
+            }
+            <h3>Refresh and availability</h3>
+            <p><strong>Refresh state</strong>, beside Home/Back/Exit, rereads all settings and available calibration rows for the current signal, discards unsent edits, and keeps the connection. Use it after changing HDMI signal, bit depth, picture mode, or making outside changes. Opening a tab does not resume a stopped load.</p>
+            <p><strong>Refresh section</strong> rereads only the selected section and keeps staged targets unless the reported input/picture mode changes. <strong>Reload all rows</strong> is available in 20pt WB and Color. Keep the physical signal unchanged while loading or applying.</p>
+            @if (Section is "white20" or "color")
+            {
+                <p>Row loading visits each selector and restores the original selection without writing RGB values. Apply leaves the last edited percentage/color selected for reuse. RGB targets share a selector but use individual protocol commands, not an atomic three-channel write. All three values and the context are checked after each update group.</p>
+                <p>Explicit Refresh state or a 20pt WB section/row refresh can read values while WB is Off: it temporarily enables WB, reads every interval, then restores the original interval and Off. Initial Connect and tab visits do not enable inactive modes. Read values remain visible but disabled until WB is enabled.</p>
+            }
+            <h3>Apply behavior and number entry</h3>
+            <p><strong>On Apply</strong> stages edits without changing the TV. <strong>Immediately</strong> sends committed adjustments. Dragging a slider or typing alone sends nothing; release the slider or leave the number field to commit. You can keep editing while earlier changes run. Unsent changes combine into the latest target; a command already in flight is unchanged. TV shows the last queried reading; the input shows your latest target.</p>
+            <p>Number fields preserve partial text such as a minus sign. Finish the number before committing. Invalid or out-of-range values remain editable and send no command. Apply or discard pending changes before enabling immediate mode.</p>
+            <h3>Query first and Stop</h3>
+            <p><strong>Query first</strong> defaults to On. Off uses the last successfully read values and skips pre-change queries; Cached is a reminder. Post-change readback remains enabled. Refresh after outside changes. Selector isolation between controllers is unverified; Off assumes nothing else changes the TV. Recovery originals are last-known rather than fresh readings in this mode.</p>
+            <p><strong>Stop</strong> cancels remaining commands, not commands already delivered, and discards unsent adjustments. Stop sends no automatic restoration commands. If a temporary WB read or write is interrupted, follow the visible recovery controls before continuing. Input/picture-mode changes should be applied separately from other pending settings.</p>
+            <p>Limits come from Samsung's command tables and protocol references, not range metadata returned by queries. Gray controls require another setting; hidden controls were rejected or unreported. Refresh reevaluates availability. Each section remembers its scroll position in this browser tab.</p>
+        }
+        else if (Page == "log")
+        {
+            <p>Browse commands sent to the display and replies received. Viewing, filtering, pausing, and exporting this log send no TV commands. Refresh state in the global header is a separate TV operation.</p>
+            <h3>Browse and search</h3>
+            <p>Live session shows the newest retained exchanges first. Pause freezes only your view; logging continues. Resume includes new replies. Saved history includes earlier app runs; use Refresh log to include newly saved exchanges. Search matches methods, messages, and payloads; filter by operation or errors, and expand a row for TX/RX details.</p>
+            <h3>Privacy and export</h3>
+            <p>Tokens are always redacted. Identifier and SHA checkboxes affect displayed payloads and exports, not the private source log. Exports include every matching exchange in the selected source, not just the current page. Live export includes new retained exchanges even while viewing is paused. NDJSON stores one complete request/reply record per line. Review free-text labels before sharing.</p>
+        }
+        else
+        {
+            <h3>Save, pair, and connect</h3>
+            <p>Add a display with its TV address and HTTPS IP Remote port. Saving changes only the local profile. Enable IP Remote in the TV's network expert settings, keep the TV on, select Pair, and accept the approval dialog on the TV. Connect reuses the saved token; Pair again requests new approval.</p>
+            <p>Connect preloads all Menu sections and available calibration rows for the current input/picture mode, then opens Menu. It does not enable inactive modes. Loading can take a while; Stop cancels remaining requests. Missing or unsupported values are not replaced with defaults.</p>
+            <h3>Certificates and connection recovery</h3>
+            <p>Samsung TVs commonly use self-signed certificates. Prefer a trusted SHA-256 fingerprint, or explicitly allow an untrusted certificate for this endpoint only on your trusted LAN.</p>
+            <p>HTTPS keep-alive reuses one connection where supported. The TV may close it; the next request reuses the pairing token. Connected reflects the latest successful check, not continuous monitoring.</p>
+            <p><strong>Reset connection (keep pairing)</strong> closes the local HTTPS connection and checks the saved token with two ordinary queries. It sends no pairing request, batch, setting change, or calibration scan. Cached readings and unsent drafts are cleared; unfinished-operation originals are kept. Use Stop first if busy. A timeout does not prove an invalid token. If reset fails, inspect Communication log; reset cannot restart the TV's IP service or restore revoked permission.</p>
+            <p>On macOS, check Local Network permission for the app running the server (Terminal, editor, or ChatGPT), then restart that app/server after changing permission.</p>
+        }
+        <h3>Header shortcuts and remote</h3>
+        <p>Home, Back, and Exit menu send explicit keys. They do not clear cached settings or guarantee a known menu position. Use Refresh state when you want updated readings. The right-edge double chevron opens the full-height remote without leaving your page. Close help or the remote with its Close button, Escape, or a click outside.</p>
+    </div>
+</aside>
+
+@code {
+    [Parameter] public string Section { get; set; } = "expert";
+    private string Page = "display";
+    private string HelpKey => Page + ":" + Section;
+    private string Title => Page == "menu" ? IpMenuCatalog.Sections.FirstOrDefault(section => section.Id == Section)?.Name ?? "Menu" : Page == "log" ? "Communication log" : "Display";
+    protected override void OnInitialized() { UpdatePage(); Navigation.LocationChanged += LocationChanged; }
+    private void UpdatePage()
+    {
+        var route = Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].Trim('/');
+        Page = route is "menu" or "ip-controls" ? "menu" : route.StartsWith("diagnostics", StringComparison.Ordinal) || route == "ip-commands" ? "log" : "display";
+    }
+    private void LocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs args) => _ = InvokeAsync(() => { UpdatePage(); StateHasChanged(); });
+    public void Dispose() => Navigation.LocationChanged -= LocationChanged;
+}

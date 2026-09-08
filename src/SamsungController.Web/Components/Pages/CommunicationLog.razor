@@ -8,13 +8,13 @@
 @inject IJSRuntime JavaScript
 
 <PageTitle>Communication log · SamsungController</PageTitle>
-<section class="page-heading compact-heading"><div><span class="eyebrow">DIRECT IP · DIAGNOSTICS</span><h1>Communication log</h1><p>Browse commands sent to the display and the replies received. Viewing, filtering, and exporting this log send no TV commands.</p></div></section>
+<section class="page-heading compact-heading"><div><span class="eyebrow">DIRECT IP · DIAGNOSTICS</span><h1>Communication log</h1></div></section>
 @if (Error is not null) { <div class="notice danger" role="alert">@Error</div> }
 @if (Snapshot.StorageWarning is { } storageWarning) { <div class="notice danger">@storageWarning</div> }
 
 <section class="panel direct-panel communication-log">
     <div class="direct-toolbar">
-        <div><h2>@(SavedHistory ? "Saved history" : "Live communication")</h2><p>@(SavedHistory ? "Includes earlier app runs. Refresh to include new exchanges." : Paused ? "View paused. Logging continues; Resume shows new exchanges." : "Completed exchanges appear as replies arrive. Newest first.")</p></div>
+        <div><h2>@(SavedHistory ? "Saved history" : "Live communication")</h2>@if (!SavedHistory && Paused) { <p role="status">View paused · logging continues</p> }</div>
         <div class="direct-actions">
             <button class="toolbar-button" @onclick="LiveAsync" disabled="@Loading">Live session</button>
             <button class="toolbar-button" @onclick="HistoryAsync" disabled="@Loading">Saved history</button>
@@ -28,10 +28,9 @@
         <label class="direct-check"><input type="checkbox" aria-label="Errors only" checked="@ErrorsOnly" @onchange="ErrorsAsync" disabled="@Loading" /> Errors only</label>
     </div>
     <details class="direct-details compact"><summary>Privacy and export</summary>
-        <p>Tokens are always redacted. These options affect both the displayed payloads and downloads, not the private source log.</p>
+        <p>Tokens are always redacted.</p>
         <label class="direct-check"><input type="checkbox" aria-label="Redact device identifiers" checked="@RedactIdentifiers" @onchange="IdentifiersChanged" /> Redact IP, MAC, UUID, and serial numbers</label>
         <label class="direct-check"><input type="checkbox" aria-label="Redact SHA keys" checked="@RedactSha" @onchange="ShaChanged" /> Redact certificate SHA-256 fingerprints</label>
-        <p>Export includes every matching exchange in the selected source, not just this page. Live export includes the latest retained exchanges even when viewing is paused. NDJSON has one complete request/reply record per line. Review free-text labels before sharing.</p>
         <button class="toolbar-button" @onclick="ExportAsync" disabled="@(Loading || Page.Total == 0)">Export filtered log</button>
     </details>
     @if (!SavedHistory && Snapshot.CommunicationCount > Snapshot.Observations.Count)

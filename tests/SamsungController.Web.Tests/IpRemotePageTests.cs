@@ -465,9 +465,12 @@ public sealed class IpRemotePageTests
         public Task<string[]> ButtonTextsWithinAsync(string tag, string label) => Dispatcher.InvokeAsync(() =>
         {
             var frames = LabeledElement(tag, label);
-            return frames.Select((frame, index) => (frame, index))
-                .Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "button")
-                .Select(item => Text(frames.Skip(item.index).Take(item.frame.ElementSubtreeLength)).Trim()).ToArray();
+            return frames.SelectMany((frame, index) => frame.FrameType == RenderTreeFrameType.Element && frame.ElementName == "button"
+                ? new[] { Text(frames.Skip(index).Take(frame.ElementSubtreeLength)).Trim() }
+                : frame.FrameType == RenderTreeFrameType.Markup
+                    ? System.Text.RegularExpressions.Regex.Matches(frame.MarkupContent, @"<button\b[^>]*>([\s\S]*?)</button>")
+                        .Select(match => System.Net.WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Replace(match.Groups[1].Value, "<[^>]+>", "")).Trim())
+                    : []).ToArray();
         });
         public Task AssertAriaButtonPresentAsync(string label, bool expected) => Dispatcher.InvokeAsync(() => Assert.Equal(expected,
             Frames.Select((frame, index) => (frame, index)).Any(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "button"

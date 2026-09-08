@@ -98,7 +98,7 @@ public sealed class IpMenuAvailabilityTests
     {
         await using var header = new IpRemotePageTests.IpPageRenderer(services, typeof(MainLayout));
         await header.StartAsync();
-        await header.ClickAsync("Refresh TV state");
+        await header.ClickAsync("Refresh state");
     }
 
     private static ServiceProvider Services(MenuFixture fixture) => new ServiceCollection().AddLogging().AddSingleton(fixture.Service)

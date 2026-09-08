@@ -7,11 +7,12 @@ namespace SamsungController.Web.Components.Pages;
 public partial class DirectMenu
 {
     [Inject] private IJSRuntime LayoutJavaScript { get; set; } = default!;
+    [CascadingParameter] public Layout.MainLayout? PageLayout { get; set; }
     private ElementReference ExpertLayoutElement;
     private ElementReference AttachedLayoutElement;
     private string? AttachedLayoutSection;
     private ElementReference MenuToolbarElement, MenuContentElement;
-    private bool MenuToolbarAttached, ScrollSectionOnRender;
+    private bool MenuToolbarAttached, ScrollSectionOnRender, SwitchingSection;
     private DotNetObjectReference<DirectMenu>? LayoutReference;
     private bool LayoutAttached, LayoutSaving;
     private string? LayoutFeedback;
@@ -20,23 +21,53 @@ public partial class DirectMenu
     private IEnumerable<IpExpertGroup> VisibleExpertGroups => IpExpertLayout.Ordered(Snapshot.Menu.Preferences.GroupOrder(Section), Section)
         .Where(group => group.Controls.Any(IsVisible));
 
-    private async Task AttachMenuToolbarAsync()
+    private async Task<bool> AttachMenuToolbarAsync()
     {
         try
         {
             if (!MenuToolbarAttached)
             {
-                await LayoutJavaScript.InvokeVoidAsync("samsungMenuToolbar.attach", MenuToolbarElement);
+                var savedSection = await LayoutJavaScript.InvokeAsync<string?>("samsungMenuToolbar.attach", MenuToolbarElement, MenuContentElement, Section);
                 MenuToolbarAttached = true;
+                ScrollSectionOnRender = true;
+                if (savedSection != Section && IpMenuCatalog.Sections.Any(section => section.Id == savedSection))
+                {
+                    Section = savedSection!;
+                    PageLayout?.SetMenuHelpSection(Section);
+                    await InvokeAsync(StateHasChanged);
+                    return true; // Render the remembered section before restoring its position or reading anything.
+                }
             }
             if (ScrollSectionOnRender)
             {
                 ScrollSectionOnRender = false;
-                await LayoutJavaScript.InvokeVoidAsync("samsungMenuToolbar.scrollToContent", MenuToolbarElement, MenuContentElement);
+                await LayoutJavaScript.InvokeVoidAsync("samsungMenuToolbar.restorePosition", MenuToolbarElement, MenuContentElement, Section);
             }
         }
         catch (JSDisconnectedException) { }
         catch (JSException) { }
+        PageLayout?.SetMenuHelpSection(Section);
+        return false;
+    }
+
+    private async Task SelectSectionAsync(string section)
+    {
+        if (section == Section || SwitchingSection || Snapshot.IsBusy || LayoutSaving) return;
+        SwitchingSection = true;
+        try
+        {
+            // Capture before replacing the outgoing DOM. Restore after the next render
+            // so shorter sections cannot overwrite a long section's position.
+            if (MenuToolbarAttached) await LayoutJavaScript.InvokeVoidAsync("samsungMenuToolbar.savePosition", MenuToolbarElement);
+        }
+        catch (JSDisconnectedException) { }
+        catch (JSException) { }
+        finally { SwitchingSection = false; }
+        Section = section;
+        ScrollSectionOnRender = true;
+        LayoutFeedback = null;
+        Error = null;
+        PageLayout?.SetMenuHelpSection(Section);
     }
 
     private async Task AttachExpertLayoutAsync()

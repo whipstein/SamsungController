@@ -4,11 +4,9 @@
 @if (Snapshot.ActiveProfile is not null && Snapshot.HasToken)
 {
     <div class="notice">
-        <div class="direct-actions"><button class="toolbar-button" @onclick="ResetAsync" disabled="@Snapshot.IsBusy">Reset connection (keep pairing)</button></div>
-        <p>Closes the local HTTPS connection and checks the saved token with two ordinary state queries. No pairing request, batch, settings change, or calibration scan. Cached readings and unsent drafts are cleared; saved originals from unfinished operations are kept. Use Stop first if a request is still running.</p>
+        <div class="direct-actions"><button class="toolbar-button" title="Reset the local connection using the saved token; clears cached readings and unsent drafts" @onclick="ResetAsync" disabled="@Snapshot.IsBusy">Reset connection (keep pairing)</button></div>
         @if (Result is not null) { <p role="status">@Result</p> }
         @if (Error is not null) { <p class="direct-unavailable" role="alert">@Error</p> }
-        @if (!Snapshot.Menu.Connected) { <p>A timeout is not proof of an invalid token. If a fresh connection still fails, inspect the Communication log. This resets the app's connection, not the TV's IP service or its permissions.</p> }
     </div>
 }
 

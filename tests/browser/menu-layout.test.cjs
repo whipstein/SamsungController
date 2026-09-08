@@ -48,3 +48,20 @@ test('live command status reserves one compact line to avoid moving controls on 
     assert.match(status, /min-height:18px/);
     assert.doesNotMatch(rule('.direct-live-status:empty'), /display:none/);
 });
+test('Help uses a native dismissible popover with independent scrolling and a fixed close header', () => {
+    const help = fs.readFileSync(path.join(root, 'Components/Shared/DirectHelp.razor'), 'utf8');
+    assert.match(help, /id="page-help".*popover="auto".*role="dialog"/);
+    assert.match(help, /popovertargetaction="hide" aria-label="Close help" autofocus/);
+    assert.match(rule('.direct-page-help'), /max-height:calc\(100dvh - 40px\)/);
+    assert.doesNotMatch(rule('.direct-page-help'), /display:/); // Must not override the native hidden state.
+    assert.match(rule('.direct-page-help:popover-open'), /display:flex/);
+    assert.match(rule('.direct-page-help-content'), /overflow-y:auto/);
+    assert.match(rule('.direct-page-help > header'), /flex-shrink:0/);
+});
+test('Menu keeps one section heading with no duplicate RGB headings or usage blocks', () => {
+    const menu = fs.readFileSync(path.join(root, 'Components/Pages/DirectMenu.razor'), 'utf8');
+    assert.match(menu, /<h1>@SectionName<\/h1>/);
+    assert.doesNotMatch(menu, /20-point RGB adjustments|Custom color RGB adjustments|Adjustment details|After changing HDMI signal/);
+    assert.match(rule('.direct-discard-empty'), /visibility:hidden/); // Reserving space avoids moving sliders during edits.
+    assert.doesNotMatch(rule('.direct-discard-empty'), /display:none/);
+});

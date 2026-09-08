@@ -232,7 +232,7 @@ public sealed class IpMenuConnectionTests
         await renderer.AssertTextAsync("All-settings load is incomplete");
         await using var header = new IpRemotePageTests.IpPageRenderer(services, typeof(MainLayout));
         await header.StartAsync();
-        await header.ClickAsync("Refresh TV state");
+        await header.ClickAsync("Refresh state");
         await renderer.AssertTargetAsync("R Gain value", 7);
         await renderer.AssertTextAbsentAsync("All-settings load is incomplete");
         Assert.NotNull(fixture.Service.GetSnapshot().Menu.SettingsLoadedAt);
