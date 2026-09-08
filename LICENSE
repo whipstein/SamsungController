@@ -1,4 +1,76 @@
-MIT License
+SamsungController License
+MIT + Commons Clause v1.0 with Paid Services Exception v1.0
+
+This file is one combined license, not a choice between licenses. The MIT
+permission grant below is subject to the Commons Clause condition below, as
+modified by the Paid Services Exception. The exception takes precedence over
+that condition only to the extent expressly stated. The entire combined notice
+must be preserved in copies or substantial portions of the Software.
+
+These terms apply to SamsungController versions offered with this license.
+They do not revoke or replace permissions previously granted for copies offered
+under MIT alone. Separately licensed third-party components remain subject to
+their own licenses; this file does not change their terms.
+
+--------------------------------------------------------------------------
+"Commons Clause" License Condition v1.0
+--------------------------------------------------------------------------
+
+The Software is provided to you by the Licensor under the License, as defined
+below, subject to the following condition.
+
+Without limiting other conditions in the License, the grant of rights under
+the License will not include, and the License does not grant to you, the right
+to Sell the Software.
+
+For purposes of the foregoing, "Sell" means practicing any or all of the rights
+granted to you under the License to provide to third parties, for a fee or
+other consideration (including without limitation fees for hosting or
+consulting/ support services related to the Software), a product or service
+whose value derives, entirely or substantially, from the functionality of the
+Software. Any license notice or attribution required by the License must also
+include this Commons Clause License Condition notice.
+
+Software: SamsungController
+License: MIT License reproduced below
+Licensor: Matt Braunstein
+
+--------------------------------------------------------------------------
+SamsungController Paid Services Exception v1.0
+--------------------------------------------------------------------------
+
+Notwithstanding the Commons Clause condition above, you may use and modify the
+Software as a tool in your own business and charge for services you perform
+using it, including display calibration, installation, configuration,
+troubleshooting, training, and consulting or support. This permission applies
+even if the value of those services derives substantially from the Software's
+functionality. Charging for the work, expertise, or results of those services
+does not, by itself, constitute Selling the Software.
+
+This exception does not permit charging for copies of, licenses to, or the
+right to access or use the Software itself, including modified or rebranded
+copies. It does not permit offering the Software itself as a paid hosted or
+subscription application. A charge for such a copy, license, or access is not
+permitted by this exception merely because it is described as a service fee
+or included in a bundle. This does not prohibit using a remotely hosted copy
+yourself as a tool to perform the permitted services.
+
+You may provide a copy of the Software without charge alongside a permitted
+service, provided obtaining that copy and the right to use it are not
+conditioned on purchasing the service or any other product. All required
+notices in this file must accompany that copy. Providing customers with the
+results of your work, such as calibration reports or settings files, does not
+by itself constitute providing the Software.
+
+No publication of your modifications or source code is required by this
+combined license. This does not waive any source-code obligations imposed by
+the separate licenses of third-party components. Except for the permissions
+expressly stated in this exception, the Commons Clause condition remains in
+effect.
+
+--------------------------------------------------------------------------
+MIT License (subject to the condition and exception above)
+--------------------------------------------------------------------------
 
 Copyright (c) 2026 Matt Braunstein
 

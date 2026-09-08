@@ -4,6 +4,19 @@ Control Samsung displays locally using direct HTTPS IP commands. The web interfa
 
 This is the **v1 working branch**, `feature/ip-remote-v1`, version **1.0.0-alpha.1**. The stable published release is still v0.3.0 and has a different interface. This branch is not merged into `main` until explicitly approved.
 
+## License
+
+This revision uses [MIT + Commons Clause v1.0 with a Paid Services Exception](LICENSE),
+not MIT alone. Personal and business use are allowed, including paid TV-calibration
+services. Selling the tool itself, merely rebranding it for sale, or charging for
+access to it as a hosted application is restricted. Publishing your modifications
+is not required; preserve the entire combined license when redistributing.
+
+This is **source-available**, not OSI-approved open-source licensing. See the
+[licensing guide](docs/licensing.md) for examples, the value-added-product boundary,
+and the exception for paid services. Previously published MIT versions, including
+v0.3.0, retain their original permissions. The full `LICENSE` controls.
+
 ## Features
 
 - Display profiles, explicit TV pairing, and saved-token reuse.

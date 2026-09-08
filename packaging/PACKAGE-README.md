@@ -7,6 +7,16 @@ If this is your first time using SamsungController, start with the
 and first launch through pairing, menu setup, display verification, entering
 current values, safely applying changes, macros, upgrades, and troubleshooting.
 
+## License
+
+This package uses **MIT + Commons Clause v1.0 with a Paid Services Exception**,
+not MIT alone. You may use it in a business and charge for services such as TV
+calibration; selling the tool itself or paid access to it is restricted. You do
+not have to publish modifications. Preserve the full included [LICENSE](LICENSE)
+when redistributing. See [licensing examples and scope](docs/licensing.md),
+including the value-added-product boundary. Older packages distributed under
+MIT retain their original terms.
+
 ## Start the web interface
 
 Keep the complete extracted folder together. The launcher starts the local server, waits for it to become ready, and opens `http://127.0.0.1:5050` in the default browser.

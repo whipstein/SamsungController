@@ -553,4 +553,11 @@ Keep the web server on loopback, keep pairing tokens and logs private, and prefe
 - [Architecture and implementation notes](architecture.md)
 - [Research log](research-notes.md)
 
-SamsungController is distributed under the [MIT License](../LICENSE). The Samsung protocol behavior was independently implemented after consulting public traffic conventions and the Samsung portions of [ColorControl](https://github.com/Maassoft/ColorControl); no ColorControl source was copied.
+The v0 releases described in this guide were distributed under the
+[MIT License](https://github.com/whipstein/SamsungController/blob/v0.3.0/LICENSE)
+and retain those permissions. Later working-branch versions use different
+terms; see the [licensing guide](licensing.md) and the license shipped with your
+version. The Samsung protocol behavior was independently implemented after
+consulting public traffic conventions and the Samsung portions of
+[ColorControl](https://github.com/Maassoft/ColorControl); no ColorControl source
+was copied.
