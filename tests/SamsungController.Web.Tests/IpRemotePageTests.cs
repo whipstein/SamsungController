@@ -440,6 +440,24 @@ public sealed class IpRemotePageTests
         });
         public Task AssertDisabledAsync(string label, bool expected) => Dispatcher.InvokeAsync(() => Assert.Equal(expected,
             Button(label).Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "disabled" && frame.AttributeValue is true)));
+        public Task ClickAriaAsync(string label) => Dispatcher.InvokeAsync(async () =>
+        {
+            var button = Frames.Select((frame, index) => (frame, index)).Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "button")
+                .Select(item => Frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray())
+                .Single(item => item.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == label));
+            Assert.DoesNotContain(button, frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "disabled" && frame.AttributeValue is true);
+            await DispatchEventAsync(button.Single(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "onclick").AttributeEventHandlerId, null, new MouseEventArgs());
+        });
+        public Task AssertExpertGroupOrderAsync(IEnumerable<string> expected) => Dispatcher.InvokeAsync(() => Assert.Equal(expected,
+            Frames.Where(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "data-expert-group").Select(frame => frame.AttributeValue?.ToString())));
+        public Task AssertExpertGroupTextAsync(string id, params string[] expected) => Dispatcher.InvokeAsync(() =>
+        {
+            var group = Frames.Select((frame, index) => (frame, index)).Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "section")
+                .Select(item => Frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray())
+                .Single(item => item.Skip(1).TakeWhile(frame => frame.FrameType == RenderTreeFrameType.Attribute)
+                    .Any(frame => frame.AttributeName == "data-expert-group" && frame.AttributeValue?.ToString() == id));
+            foreach (var text in expected) Assert.Contains(text, Text(group), StringComparison.Ordinal);
+        });
         public Task AssertTextAsync(string expected) => Dispatcher.InvokeAsync(() => Assert.Contains(expected, Text(Frames), StringComparison.Ordinal));
         public Task AssertTextAbsentAsync(string text) => Dispatcher.InvokeAsync(() => Assert.DoesNotContain(text, Text(Frames), StringComparison.Ordinal));
         public Task AssertClassPresentAsync(string name, bool expected = true) => Dispatcher.InvokeAsync(() => Assert.Equal(expected,

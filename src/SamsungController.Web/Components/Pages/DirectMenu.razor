@@ -1,6 +1,6 @@
 @page "/menu"
 @page "/ip-controls"
-@implements IDisposable
+@implements IAsyncDisposable
 @using SamsungController.Core.IpRemote
 @inject SamsungIpRemoteService Controller
 
@@ -53,7 +53,34 @@
             { <button class="@(Section == section.Id ? "active" : "")" @onclick="() => SelectSection(section.Id)" disabled="@Snapshot.IsBusy">@section.Name</button> }
         </nav>
     }
-    @if (Section == "white2")
+    @if (Section == "expert")
+    {
+        <section class="direct-expert-layout" @ref="ExpertLayoutElement" data-layout-locked="@(LayoutLocked ? "true" : "false")" aria-label="Arrange Expert settings">
+            <div class="direct-layout-toolbar"><p class="direct-hint" id="expert-layout-help">Drag a box by its <strong>⠿ Move</strong> handle and drop at the highlighted edge. Linked controls move together. The arrow buttons also move boxes. Layout saves automatically; TV settings are unchanged.</p>
+                <button class="toolbar-button" @onclick="ResetExpertLayoutAsync" disabled="@LayoutLocked">Reset layout</button></div>
+            <p class="direct-layout-feedback" role="status">@LayoutFeedback</p>
+            <div class="direct-control-grid direct-expert-grid">
+                @{ var groups = VisibleExpertGroups.ToArray(); }
+                @for (var index = 0; index < groups.Length; index++)
+                {
+                    var group = groups[index];
+                    var position = index;
+                    <section class="direct-expert-group @(group.Controls.Count > 1 ? "linked" : "")" @key="group.Id" data-expert-group="@group.Id" aria-label="@group.Name">
+                        <div class="direct-layout-handlebar">
+                            <button type="button" class="direct-layout-handle" draggable="@(!LayoutLocked ? "true" : "false")" data-layout-handle aria-label="@($"Move {group.Name}")" aria-describedby="expert-layout-help" title="Drag to move this box and its linked controls" disabled="@LayoutLocked">⠿ Move</button>
+                            @if (group.Controls.Count > 1) { <span class="direct-layout-linked" title="@string.Join(", ", group.Controls.Select(control => control.Name))">Linked controls</span> }
+                            <div class="direct-layout-arrows">
+                                <button type="button" aria-label="@($"Move {group.Name} earlier")" title="Move earlier" @onclick="() => MoveExpertGroupStepAsync(group.Id, -1)" disabled="@(LayoutLocked || position == 0)">←</button>
+                                <button type="button" aria-label="@($"Move {group.Name} later")" title="Move later" @onclick="() => MoveExpertGroupStepAsync(group.Id, 1)" disabled="@(LayoutLocked || position == groups.Length - 1)">→</button>
+                            </div>
+                        </div>
+                        <div class="direct-expert-members">@foreach (var control in group.Controls.Where(IsVisible)) { @ControlCard(control) }</div>
+                    </section>
+                }
+            </div>
+        </section>
+    }
+    else if (Section == "white2")
     {
         <div class="direct-white2">
             @foreach (var suffix in new[] { "Gain", "Offset" })
@@ -128,6 +155,7 @@
     protected override async Task OnInitializedAsync() { Controller.Changed += Refresh; await GuardAsync(Controller.InitializeAsync); }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        await AttachExpertLayoutAsync();
         var key = Snapshot.Menu.SessionId + ":" + Section;
         if (Snapshot.Menu.WhiteBalanceRead?.NeedsRestore == true) { AutoReads.Add(key); return; }
         if (Snapshot.Menu.ConnectionLoadAttempted) AutoReads.Add(key); // Do not retry incomplete/unsupported connection reads on tab visits.
@@ -140,11 +168,11 @@
         Snapshot = next; StateHasChanged();
     });
     private void SelectCategory(string category) { Category = category; SelectSection(IpMenuCatalog.Sections.First(section => section.Category == category).Id); }
-    private void SelectSection(string section) { Section = section; Error = null; }
+    private void SelectSection(string section) { if (Section != section) LayoutAttached = false; Section = section; Error = null; }
     private string Target(IpMenuControl control) => Edits.GetValueOrDefault(control.Id) ?? Snapshot.Menu.Pending.GetValueOrDefault(control.Id)?.Target.ToString() ?? Snapshot.Menu.Value(control)?.ToString() ?? "";
     private bool Dirty(IpMenuControl control) => Snapshot.Menu.Pending.ContainsKey(control.Id);
     private string? DisabledReason(IpMenuControl control) => ActionRunning ? "A TV request is running." : Controller.MenuControlDisabledReason(control);
-    private RenderFragment ControlCard(IpMenuControl control) => @<article class="direct-control @(Dirty(control) ? "pending" : "") @(DisabledReason(control) is not null ? "unavailable" : "")" aria-disabled="@(DisabledReason(control) is not null ? "true" : "false")">
+    private RenderFragment ControlCard(IpMenuControl control) => @<article @key="control.Id" class="direct-control @(Dirty(control) ? "pending" : "") @(DisabledReason(control) is not null ? "unavailable" : "")" aria-disabled="@(DisabledReason(control) is not null ? "true" : "false")">
         <div class="direct-control-heading"><h3>@(control.IsIndexed ? control.Field.Split('.').Last() : control.Name)</h3><span class="direct-read-value">TV: @(Snapshot.Menu.Value(control)?.ToString() ?? "Not reported")</span></div>
         @if (control.IsSwitch)
         {
@@ -210,5 +238,4 @@
         catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException or JsonException or OperationCanceledException) { Error = error.Message; }
         finally { Snapshot = Controller.GetSnapshot(); ActionRunning = false; await InvokeAsync(StateHasChanged); }
     }
-    public void Dispose() => Controller.Changed -= Refresh;
 }

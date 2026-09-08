@@ -45,6 +45,32 @@
 .direct-tabs button.active { color:var(--cyan); border-color:var(--cyan); background:var(--cyan-soft); font-weight:650; }
 .direct-tabs.secondary { margin-top:0; padding-bottom:12px; border-bottom:1px solid var(--line); }
 .direct-control-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr)); gap:12px; }
+.direct-expert-grid { align-items:start; }
+.direct-layout-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
+.direct-layout-toolbar p { margin:0; max-width:850px; }
+.direct-layout-toolbar button { flex-shrink:0; }
+.direct-layout-feedback { font-size:13px; color:var(--muted); }
+.direct-layout-feedback:empty { display:none; }
+.direct-expert-group { position:relative; min-width:0; border:1px solid var(--line-strong); border-radius:9px; background:var(--surface); padding:6px; }
+.direct-layout-handlebar { display:flex; align-items:center; gap:8px; padding:0 0 6px; min-width:0; }
+.direct-layout-handle, .direct-layout-arrows button { font:inherit; font-size:13px; font-weight:600; color:var(--muted); background:var(--surface-button); border:1px solid var(--line); border-radius:5px; padding:5px 9px; }
+.direct-layout-handle { cursor:grab; touch-action:manipulation; user-select:none; }
+.direct-layout-handle:active { cursor:grabbing; }
+.direct-layout-handlebar button:disabled { cursor:not-allowed; opacity:.5; }
+.direct-layout-handlebar button:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; }
+.direct-layout-linked { font-size:11px; color:var(--muted); }
+.direct-layout-arrows { display:flex; gap:4px; margin-left:auto; }
+.direct-layout-arrows button { cursor:pointer; }
+.direct-expert-members { display:grid; gap:8px; }
+.direct-expert-group.linked { grid-column:1 / -1; }
+.direct-expert-group.linked .direct-expert-members { grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr)); }
+.direct-expert-group.layout-dragging { opacity:.5; }
+.direct-expert-group.layout-drop-before::before, .direct-expert-group.layout-drop-after::after { content:""; position:absolute; background:var(--cyan); border-radius:3px; pointer-events:none; z-index:1; }
+.direct-expert-group.layout-drop-before::before { left:-7px; top:0; bottom:0; width:4px; }
+.direct-expert-group.layout-drop-after::after { right:-7px; top:0; bottom:0; width:4px; }
+.direct-expert-layout[data-layout-axis="vertical"] .layout-drop-before::before { top:-7px; left:0; right:0; bottom:auto; height:4px; width:auto; }
+.direct-expert-layout[data-layout-axis="vertical"] .layout-drop-after::after { bottom:-7px; left:0; right:0; top:auto; height:4px; width:auto; }
+@media(max-width:700px) { .direct-layout-toolbar { align-items:flex-start; flex-direction:column; } }
 .direct-control { padding:14px; border:1px solid var(--line); border-radius:8px; background:var(--surface-row); min-width:0; }
 .direct-control.pending { border-color:var(--amber); }
 .direct-control.unavailable { background:var(--surface-control); border-style:dashed; }
