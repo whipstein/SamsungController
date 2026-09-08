@@ -300,6 +300,8 @@ public sealed partial class SamsungIpRemoteService
 
     private void EnsureNoPendingPictureTest(bool allowTemporaryWhiteBalanceRead = false)
     {
+        if (GetSnapshot().RgbProbe?.NeedsRecovery == true)
+            throw new InvalidOperationException("Restore/end the pending RGB experiment on Batch / RGB test before sending other commands or changing displays.");
         if (!allowTemporaryWhiteBalanceRead && GetSnapshot().Menu.WhiteBalanceRead?.NeedsRestore == true)
             throw new InvalidOperationException("Restore/check the interrupted 20-point white-balance read on Menu before sending more commands or changing displays.");
         if (GetSnapshot().Menu.Update?.NeedsReview == true)

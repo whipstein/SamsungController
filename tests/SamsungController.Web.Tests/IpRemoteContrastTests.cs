@@ -411,9 +411,18 @@ internal sealed class ContrastDisplay : HttpMessageHandler
     public IEnumerable<int> WritesFor(string control) => Requests.Where(item => item["method"]!.GetValue<string>() == control + "Control")
         .Select(item => item["params"]![control]!.GetValue<int>());
     public Func<JsonObject, CancellationToken, Task<HttpResponseMessage?>>? Override { get; set; }
+    public Func<JsonArray, CancellationToken, Task<HttpResponseMessage>>? BatchOverride { get; set; }
+    public List<JsonArray> Batches { get; } = [];
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        var json = JsonNode.Parse(await request.Content!.ReadAsStringAsync(cancellationToken))!.AsObject();
+        var parsed = JsonNode.Parse(await request.Content!.ReadAsStringAsync(cancellationToken))!;
+        if (parsed is JsonArray batch)
+        {
+            Batches.Add(batch);
+            Assert.All(batch, call => Assert.Equal(ContrastFixture.Token, call!["params"]!["AccessToken"]!.GetValue<string>()));
+            return await (BatchOverride ?? throw new InvalidOperationException("Unexpected batch in simulated TV"))(batch, cancellationToken);
+        }
+        var json = parsed.AsObject();
         Assert.Equal(ContrastFixture.Token, json["params"]!["AccessToken"]!.GetValue<string>());
         Requests.Add(json);
         if (Override is not null && await Override(json, cancellationToken) is { } overridden) return overridden;

@@ -23,8 +23,10 @@ public static class IpCommunicationLog
         if (observation.Exchange.Method == "createAccessToken") return "pairing";
         try
         {
-            return JsonNode.Parse(observation.Exchange.RequestJson)?["params"] is JsonObject parameters
-            && parameters.Any(pair => !pair.Key.Equals("AccessToken", StringComparison.OrdinalIgnoreCase)) ? "write" : "query";
+            var parsed = JsonNode.Parse(observation.Exchange.RequestJson);
+            var calls = parsed is JsonArray batch ? batch.AsEnumerable() : [parsed];
+            return calls.Any(call => call is JsonObject rpc && rpc["params"] is JsonObject parameters
+                && parameters.Any(pair => !pair.Key.Equals("AccessToken", StringComparison.OrdinalIgnoreCase))) ? "write" : "query";
         }
         catch (JsonException) { return "other"; }
     }

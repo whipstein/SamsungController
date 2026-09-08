@@ -35,6 +35,8 @@ public sealed record IpRemoteObservation(IpRemoteProfile UserEnteredContext, str
 
 public sealed record IpRemoteSnapshot
 {
+    public IpReadBatchProbe? ReadBatchProbe { get; init; }
+    public IpRgbProbe? RgbProbe { get; init; }
     public IpMenuSnapshot Menu { get; init; } = new();
     public bool Initialized { get; init; }
     public IReadOnlyList<IpRemoteProfile> Profiles { get; init; } = [];

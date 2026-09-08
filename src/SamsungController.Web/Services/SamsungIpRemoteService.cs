@@ -61,6 +61,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             var batch = await LoadPictureBatchAsync(test).ConfigureAwait(false);
             var commands = await LoadCommandTestsAsync().ConfigureAwait(false);
             var menu = await LoadMenuStateAsync().ConfigureAwait(false);
+            var rgbProbe = await LoadRgbProbeAsync().ConfigureAwait(false);
             Update(state => state with
             {
                 Initialized = true,
@@ -72,7 +73,8 @@ public sealed partial class SamsungIpRemoteService : IDisposable
                 CommandTrial = commands.Current,
                 CommandHistory = commands.History,
                 ControlCapabilities = capabilities,
-                Menu = menu
+                Menu = menu,
+                RgbProbe = rgbProbe
             });
             // Upgrade a locally completed test, never a shared diagnostic report.
             // This only saves private evidence; startup sends no TV requests.
@@ -239,6 +241,8 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             snapshot.CommandHistory,
             snapshot.CatalogQuery,
             snapshot.Menu,
+            snapshot.ReadBatchProbe,
+            snapshot.RgbProbe,
             CommandCatalog = SamsungIpRemoteCommands.All.Select(command => new { command.Method, command.Name, command.Group, command.Parameters, command.CanQuery, command.ReadbackField, command.ReadbackMethod, command.Requirements, command.Notes }),
             Methods = SamsungIpRemoteClient.ReadMethods.Select(method => new
             {

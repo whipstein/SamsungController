@@ -87,6 +87,7 @@
         <section class="direct-indexed" aria-label="@(grid.Section == "white20" ? "All white balance intervals" : "All custom colors")">
             <div class="direct-toolbar"><div><h2>@(grid.Section == "white20" ? "20-point RGB adjustments" : "Custom color RGB adjustments")</h2>
                 <p>@grid.Values.Count fixed rows · each has its own Red, Green, and Blue values.</p></div>
+                @if (grid.Section == "white20") { <a class="toolbar-button" href="diagnostics/batch-rgb">Batch / RGB test</a> }
                 <button class="toolbar-button" @onclick="RefreshAsync" disabled="@(!CanLoadGrid)">@(Snapshot.Menu.GridsRead.ContainsKey(Section) ? "Reload all rows" : "Load all rows")</button></div>
             <p class="direct-hint">Loading reads each row by temporarily selecting it, then restores the original selection. Refresh also reads 20-point WB while Off by temporarily enabling it and restoring Off afterward. Apply addresses edited rows automatically and restores the selector when finished. No RGB value changes during loading. Stop sends no further commands, including restoration; use the recovery controls if a temporary mode change was interrupted.</p>
             @if (grid.Section == "white20" && !Snapshot.Menu.Preferences.ApplyImmediately)
@@ -137,7 +138,7 @@
     private string GridStatus => Snapshot.Menu.SelectorSession is { } session && session.Section == Section ? Snapshot.IsBusy ? Snapshot.Menu.Status : session.Message : "";
     private string? Error;
     private bool ActionRunning;
-    private bool CanWork => Snapshot.Menu.Connected && !Snapshot.IsBusy && !ActionRunning;
+    private bool CanWork => Snapshot.Menu.Connected && !Snapshot.IsBusy && !ActionRunning && Snapshot.RgbProbe?.NeedsRecovery != true;
     private bool CanLoadGrid => CanWork && Snapshot.Menu.Update?.NeedsReview != true && Snapshot.Menu.WhiteBalanceRead?.NeedsRestore != true
         && Snapshot.PictureTest?.RequiresRecovery != true && Snapshot.CommandTrial?.RequiresReview != true;
     private bool CanApply => CanWork && Snapshot.Menu.Pending.Count > 0 && Snapshot.Menu.Update?.NeedsReview != true && Snapshot.Menu.WhiteBalanceRead?.NeedsRestore != true;

@@ -14,7 +14,7 @@ using SamsungController.Core.Devices;
 namespace SamsungController.Core.IpRemote;
 
 /// <summary>A separate HTTPS client with two getters and explicitly allowlisted picture writes.</summary>
-public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpClient? httpClient = null) : ISamsungIpRemoteClient, IDisposable
+public sealed partial class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpClient? httpClient = null) : ISamsungIpRemoteClient, IDisposable
 {
     public static IReadOnlyList<string> ReadMethods { get; } = Array.AsReadOnly(new[] { "getTVStates", "getVideoStates" });
     private const int MaximumResponseBytes = 1024 * 1024;
@@ -62,7 +62,7 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
         return ExecuteAsync(options, method, false, cancellationToken, commandParameters: values, catalogCommand: command);
     }
 
-    private async Task<SamsungIpRemoteExchange> ExecuteAsync(SamsungIpRemoteOptions options, string method, bool pairing, CancellationToken cancellationToken, SamsungIpRemotePictureControl? control = null, int? requestedValue = null, JsonObject? commandParameters = null, SamsungIpRemoteCommand? catalogCommand = null)
+    private async Task<SamsungIpRemoteExchange> ExecuteAsync(SamsungIpRemoteOptions options, string method, bool pairing, CancellationToken cancellationToken, SamsungIpRemotePictureControl? control = null, int? requestedValue = null, JsonObject? commandParameters = null, SamsungIpRemoteCommand? catalogCommand = null, IReadOnlyList<BatchProbeCall>? batch = null)
     {
         var endpoint = options.Endpoint;
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -70,6 +70,9 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
         var started = DateTimeOffset.UtcNow;
         var timer = Stopwatch.StartNew();
         var request = new JsonObject { ["jsonrpc"] = "2.0", ["id"] = id, ["method"] = method };
+        var batchIds = batch?.Select((_, index) => index == 0 ? id : Interlocked.Increment(ref _requestId)).ToArray();
+        JsonNode wireRequest = batch is null ? request : new JsonArray(batch.Select((call, index) => (JsonNode)new JsonObject
+            { ["jsonrpc"] = "2.0", ["id"] = batchIds![index], ["method"] = call.Method }).ToArray());
         string? responseJson = null;
         int? httpStatus = null;
         string? token = null;
@@ -80,7 +83,7 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
         bool? serverClosesConnection = null;
         SamsungIpRemoteExchange Complete(SamsungIpRemoteOutcome outcome, string message, JsonObject? result = null, int? code = null) =>
             new(started, id, method, endpoint.AbsoluteUri, outcome, message,
-                IpRemoteRedactor.Redact(request, token)!.ToJsonString(PrettyJson), responseJson, result,
+                IpRemoteRedactor.Redact(wireRequest, token)!.ToJsonString(PrettyJson), responseJson, result,
                 httpStatus, code, timer.ElapsedMilliseconds, transport?.Fingerprint)
             {
                 Payload = resultPayload?.DeepClone(),
@@ -103,6 +106,13 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
                 if (control is not null) request["params"]![control.Id] = requestedValue!.Value;
                 if (commandParameters is not null)
                     foreach (var item in commandParameters) request["params"]![item.Key] = item.Value?.DeepClone();
+                if (batch is not null)
+                    for (var index = 0; index < batch.Count; index++)
+                    {
+                        var parameters = (JsonObject)batch[index].Parameters.DeepClone();
+                        parameters["AccessToken"] = token;
+                        wireRequest[index]!["params"] = parameters;
+                    }
             }
 
             var client = httpClient;
@@ -117,24 +127,28 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
             using var message = new HttpRequestMessage(HttpMethod.Post, endpoint);
             message.Headers.Connection.Add("keep-alive");
             message.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            message.Content = new StringContent(request.ToJsonString(), Encoding.UTF8, "application/json");
+            message.Content = new StringContent(wireRequest.ToJsonString(), Encoding.UTF8, "application/json");
             using var response = await client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
             httpStatus = (int)response.StatusCode;
             serverClosesConnection = response.Headers.ConnectionClose == true;
             var body = await ReadBoundedResponseAsync(response.Content, timeout.Token).ConfigureAwait(false);
             JsonObject? envelope = null;
             JsonObject? safeEnvelope = null;
+            JsonNode? parsed = null;
+            JsonNode? safeParsed = null;
             try
             {
-                envelope = JsonNode.Parse(body) as JsonObject;
+                parsed = JsonNode.Parse(body);
+                envelope = parsed as JsonObject;
                 // Pairing text is always masked, even an unexpected reply, so a
                 // newly issued credential cannot escape via an error/echo field.
-                safeEnvelope = IpRemoteRedactor.Redact(envelope, token, pairing) as JsonObject;
+                safeParsed = IpRemoteRedactor.Redact(parsed, token, pairing);
+                safeEnvelope = safeParsed as JsonObject;
                 // Preserve only a response ID that we can prove is our own
                 // public request ID. All other pairing strings remain masked.
                 if (safeEnvelope is not null && MatchesRequestId(envelope?["id"], id))
                     safeEnvelope["id"] = envelope!["id"]!.DeepClone();
-                responseJson = safeEnvelope?.ToJsonString(PrettyJson) ?? "[Response is not a JSON object; content omitted for credential safety.]";
+                responseJson = (batch is not null ? safeParsed : safeEnvelope)?.ToJsonString(PrettyJson) ?? "[Response is not a JSON object; content omitted for credential safety.]";
             }
             catch (Exception exception) when (exception is JsonException or ArgumentException or InvalidOperationException)
             {
@@ -144,6 +158,12 @@ public sealed class SamsungIpRemoteClient(ISamsungTokenStore tokenStore, HttpCli
                 return Complete(SamsungIpRemoteOutcome.Unauthorized, "The TV rejected IP Remote authorization. No automatic re-pairing or retries were attempted.");
             if (!response.IsSuccessStatusCode)
                 return Complete(SamsungIpRemoteOutcome.HttpError, $"The TV returned HTTP {httpStatus}. Redirects are not followed.");
+            if (batch is not null)
+            {
+                resultPayload = safeParsed?.DeepClone();
+                var verdict = InspectBatchProbe(parsed, safeParsed, batchIds!, batch);
+                return Complete(verdict.Outcome, verdict.Message, verdict.Results, verdict.Code);
+            }
             if (envelope is null || safeEnvelope is null
                 || envelope["jsonrpc"] is not JsonValue version || !version.TryGetValue<string>(out var protocol) || protocol != "2.0"
                 || !MatchesRequestId(envelope["id"], id))

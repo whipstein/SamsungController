@@ -1,0 +1,86 @@
+@page "/diagnostics/batch-rgb"
+@implements IDisposable
+@inject SamsungIpRemoteService Controller
+@inject IJSRuntime JavaScript
+
+<PageTitle>Batch / RGB test · SamsungController</PageTitle>
+<section class="page-heading compact-heading"><div><span class="eyebrow">EXPERIMENTAL · DIRECT IP</span><h1>Batch / RGB test</h1><p>Evaluate one-request RGB updates without changing normal Menu behavior. Opening this page sends nothing.</p></div></section>
+@if (Error is not null) { <div class="notice danger" role="alert">@Error</div> }
+@if (Snapshot.StorageWarning is { } warning) { <div class="notice danger" role="alert">@warning</div> }
+<section class="panel direct-panel">
+    <div class="direct-toolbar"><h2>1. Read-only batch support</h2><div class="direct-actions"><button class="toolbar-button" @onclick="ReadBatchAsync" disabled="@(!CanWork)">Run read-only batch test</button><button class="toolbar-button danger-action" @onclick="Controller.Cancel" disabled="@(!Snapshot.IsBusy)">Stop</button></div></div>
+    <p>Sends getTVStates and getVideoStates as two JSON-RPC objects in <strong>one HTTP request</strong>. No selector or setting is changed. Replies must include both matching IDs; their order does not matter.</p>
+    @if (!Snapshot.Menu.Connected) { <p class="direct-unavailable">Connect to the display first. Reconnecting an unfinished RGB test skips the normal all-settings load so you can recover here.</p> }
+    @if (Snapshot.ReadBatchProbe is { } batch)
+    { <p role="status"><strong>@(batch.Exchange.IsSuccess ? "Read batch accepted" : "Read batch not verified")</strong> · @batch.Exchange.Timestamp.ToLocalTime().ToString("HH:mm:ss") · @batch.Exchange.Message</p>
+      @if (!Controller.CanProbeRgbBatch && batch.Exchange.IsSuccess) { <p>This result belongs to an earlier connection. Run it again before an RGB batch.</p> } }
+    <p>A successful read batch does not prove write-batch support or atomic execution. An unsupported result does not rule out the separate single-method experiment below.</p>
+</section>
+<section class="panel direct-panel">
+    <h2>2. Prepare one percentage</h2>
+    <p>Enable 20-point white balance in Menu first. Prepare selects only the chosen percentage, saves its current RGB values and the original percentage, and leaves it selected. It does not enable the mode or change RGB values. Finish or restore each test before preparing another.</p>
+    <label>Percentage<select aria-label="RGB test percentage" @bind="Interval" disabled="@(!CanPrepare)">@foreach (var value in Grid.Values) { <option value="@value">@value</option> }</select></label>
+    <button class="toolbar-button" @onclick="PrepareAsync" disabled="@(!CanPrepare)">Prepare RGB test</button>
+    @if (Snapshot.Menu.Pending.Count > 0) { <p>Apply or discard pending Menu changes first.</p> }
+    @if (Snapshot.RgbProbe is { } probe)
+    {
+        <p><strong>Display: @probe.Endpoint · input: @probe.Input · picture mode: @probe.PictureMode · test percentage: @probe.Interval · original percentage: @probe.OriginalInterval</strong></p>
+        <p role="status"><strong>@probe.Stage</strong> · @probe.Message</p>
+        <div class="rgb-probe-table"><table><thead><tr><th>Channel</th><th>Saved original</th><th>Test target</th><th>Independent readback</th><th>Matches target?</th></tr></thead><tbody>
+            @foreach (var field in Grid.Fields)
+            { <tr><th>@field.Split('.').Last()</th><td>@Number(probe.Originals, field)</td><td>@Number(probe.Targets, field)</td><td>@(probe.Readback.GetValueOrDefault(field)?.ToString() ?? "Not reported")</td><td>@(probe.Readback.TryGetValue(field, out var actual) && actual is not null && probe.Targets.TryGetValue(field, out var target) ? actual == target ? "Yes" : "No" : "Unknown")</td></tr> }
+        </tbody></table></div>
+        <p>Every test target differs from its original by one step (+1, or −1 at the upper limit). Changing all three is necessary to detect a request that only applies Red. The saved originals are never filled with defaults.</p>
+        <h2>3. Send one experiment</h2>
+        <label class="direct-check"><input type="checkbox" aria-label="Confirm RGB test conditions" @bind="Confirmed" disabled="@(!CanWork || probe.Stage != IpRgbProbeStage.Prepared)" /> <strong>I checked this display and percentage. Its physical HDMI signal/bit depth and picture mode are unchanged, 20-point WB is On, and I accept the three one-step test changes.</strong></label>
+        <div class="direct-actions">
+            <button class="primary-action" @onclick="() => SendAsync(false)" disabled="@(!CanSend || !Controller.CanProbeRgbBatch)">Test RGB batch — one HTTP request</button>
+            <button class="toolbar-button" @onclick="() => SendAsync(true)" disabled="@(!CanSend)">Test RGB fields — one method</button>
+        </div>
+        <p><strong>RGB batch:</strong> one POST containing RedControl, GreenControl, and BlueControl. The percentage is selected beforehand, never inside the batch, since execution order is not guaranteed. Requires the read-only batch check to pass on this connection.</p>
+        <p><strong>RGB fields:</strong> one WB20P.RedControl request containing WB20P.Red, WB20P.Green, and WB20P.Blue. This is an <strong>unverified parameter experiment</strong>; the TV may reject it or ignore Green/Blue. It can be tested even if arrays are unsupported. No invented method name, automatic retry, or sequential-write fallback is used.</p>
+        <p>Both tests independently query all three channels afterward. Each preparation permits only one send. A timeout or lost connection may leave partial changes; Stop cannot retract a batch already delivered.</p>
+        @if (probe.NeedsRecovery)
+        {
+            <h2>4. Restore / end this test</h2>
+            <p><strong>Keep the original display, HDMI signal/bit depth, and picture mode active.</strong> Restore checks current values, uses known individual channel commands only where needed, then restores the original percentage. Unexpected or unavailable values stop restoration. This is an explicit recovery action, not a hidden fallback.</p>
+            <button class="primary-action" @onclick="RestoreAsync" disabled="@(!CanWork)">Restore originals and original percentage</button>
+            <details class="direct-details"><summary>Manual recovery</summary><p>If automatic restoration cannot proceed, restore the saved values and original percentage with the TV remote first. If no RGB request was attempted, only the percentage needs restoring.</p>
+                <label class="direct-check"><input type="checkbox" aria-label="Confirm manual RGB restoration" @bind="ManuallyRestored" disabled="@Snapshot.IsBusy" /> I restored the original RGB values and percentage on the original display.</label>
+                <button class="toolbar-button" @onclick="CloseAsync" disabled="@(Busy || Snapshot.IsBusy || !ManuallyRestored)">Close manually restored test</button>
+            </details>
+        }
+    }
+</section>
+<section class="panel direct-panel"><h2>5. Share the results</h2><p>Download after restoring each experiment, before preparing the next one. The report includes the read-only result, exact experimental request/reply, saved originals, per-channel readback, and recovery state. Tokens, device identifiers, and certificate SHA fingerprints are redacted. Communication log also contains all preparation, test, readback, and restoration traffic.</p>
+    <div class="direct-actions"><button class="toolbar-button" @onclick="ExportAsync" disabled="@(Busy || Snapshot.IsBusy || Snapshot.ReadBatchProbe is null && Snapshot.RgbProbe is null)">Download batch / RGB report</button><a class="toolbar-button" href="diagnostics">Open Communication log</a><a class="toolbar-button" href="menu">Back to Menu</a></div>
+</section>
+
+@code {
+    private IpRemoteSnapshot Snapshot = new();
+    private string Interval = "50%";
+    private string? Error;
+    private bool Busy, Confirmed, ManuallyRestored;
+    private static IpMenuGrid Grid => IpMenuGrids.ForSection("white20")!;
+    private bool CanWork => Snapshot.Menu.Connected && !Snapshot.IsBusy && !Busy;
+    private bool CanPrepare => CanWork && Snapshot.RgbProbe?.NeedsRecovery != true && Snapshot.Menu.Pending.Count == 0;
+    private bool CanSend => CanWork && Confirmed && Snapshot.RgbProbe is { Stage: IpRgbProbeStage.Prepared } probe
+        && probe.SessionId == Snapshot.Menu.SessionId && DateTimeOffset.UtcNow - probe.PreparedAt <= TimeSpan.FromMinutes(2);
+    protected override async Task OnInitializedAsync() { Controller.Changed += Refresh; await GuardAsync(Controller.InitializeAsync); }
+    private void Refresh() => _ = InvokeAsync(() => { Snapshot = Controller.GetSnapshot(); StateHasChanged(); });
+    private static string Number(IReadOnlyDictionary<string, int> values, string field) => values.TryGetValue(field, out var value) ? value.ToString() : "Not reported";
+    private Task ReadBatchAsync() => GuardAsync(Controller.ProbeReadBatchAsync);
+    private Task PrepareAsync() { Confirmed = false; ManuallyRestored = false; return GuardAsync(() => Controller.PrepareRgbProbeAsync(Interval)); }
+    private Task SendAsync(bool single) => GuardAsync(() => Controller.SendRgbProbeAsync(Snapshot.RgbProbe!.Id, single, Confirmed));
+    private Task RestoreAsync() => GuardAsync(() => Controller.RestoreRgbProbeAsync(Snapshot.RgbProbe!.Id));
+    private Task CloseAsync() => GuardAsync(() => Controller.CloseRgbProbeManuallyAsync(Snapshot.RgbProbe!.Id, ManuallyRestored));
+    private Task ExportAsync() => GuardAsync(async () => await JavaScript.InvokeVoidAsync("samsungController.downloadText", $"samsung-batch-rgb-{DateTime.Now:yyyyMMdd-HHmmss}.json", Controller.ExportReport(true, true)));
+    private async Task GuardAsync(Func<Task> action)
+    {
+        Error = null; Busy = true;
+        try { await action(); }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or NotSupportedException or IOException or UnauthorizedAccessException or JsonException or OperationCanceledException) { Error = error.Message; }
+        finally { Snapshot = Controller.GetSnapshot(); Busy = false; await InvokeAsync(StateHasChanged); }
+    }
+    public void Dispose() => Controller.Changed -= Refresh;
+}

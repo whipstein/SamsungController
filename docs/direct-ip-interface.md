@@ -44,6 +44,8 @@ Preloading moves the initial read cost to Connect; it does not eliminate the mul
 
 ## Communication log
 
+**Batch / RGB test** opens a separate, opt-in [guided protocol experiment](batch-rgb-test.md). It first probes two read methods in one JSON-RPC array, then offers either three 20-point RGB methods in one array or one RedControl method with all three RGB fields. Normal Menu commands are unchanged; no capability is promoted automatically. The diagnostic saves originals in private `ip-remote/rgb-probe.json`, independently reads all three channels, and blocks other writes until explicit restoration/manual closure. Reconnecting an unfinished test skips automatic calibration preload so recovery can proceed without moving its selectors.
+
 Open **Communication log** in the sidebar. This replaces the initial command catalog/picture-test UI; existing bookmarks open the log too. Viewing the log never sends queries or commands to the TV.
 
 1. **Live session** follows completed request/reply exchanges as they arrive. It retains the newest 2,000 exchanges, enough to include the initial calibration preload; an overflow notice points to Saved history. Pause freezes the view without stopping recording or the active TV operation. Paging older live entries also pauses the view.

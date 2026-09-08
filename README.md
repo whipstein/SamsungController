@@ -88,6 +88,8 @@ The app requests HTTPS keep-alive and retains one pooled TCP/TLS connection for 
 
 ## Change settings
 
+To evaluate experimental one-request 20-point white-balance updates, open **Communication log → Batch / RGB test**. The [guided batch/RGB test instructions](docs/batch-rgb-test.md) cover a read-only batch, three RGB commands in one request, and one method containing all three fields, with independent readback and explicit restoration. This does not change normal Menu transport.
+
 1. Open **Menu**. Connection-loaded values are ready without another scan when changing tabs. Use **Refresh TV values** after changing the HDMI signal (including 8-bit/10-bit), picture mode, or an incomplete load. It rereads all settings and available calibration rows using the saved connection, discards unsent edits, and reevaluates hidden/disabled controls. No reconnect or pairing is needed. For a quicker read of just the current tab, choose **Refresh section**. Opening tabs does not restart a stopped load.
 2. Choose Picture, Sound, or System. Picture has separate calibration tabs; 2-point gains and offsets are grouped in two columns.
 3. Adjust a slider, number, switch, or selection. With default **Wait for Apply**, the TV is unchanged; pending targets are distinct from queried current values.

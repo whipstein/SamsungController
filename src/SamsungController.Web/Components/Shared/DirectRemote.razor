@@ -18,7 +18,7 @@
     private IpRemoteSnapshot Snapshot = new();
     private string Key = "play";
     private string? Error;
-    private bool Disabled => !Snapshot.Menu.Connected || Snapshot.IsBusy || Snapshot.Menu.Update?.NeedsReview == true || Snapshot.Menu.WhiteBalanceRead?.NeedsRestore == true;
+    private bool Disabled => !Snapshot.Menu.Connected || Snapshot.IsBusy || Snapshot.RgbProbe?.NeedsRecovery == true || Snapshot.Menu.Update?.NeedsReview == true || Snapshot.Menu.WhiteBalanceRead?.NeedsRestore == true;
     protected override async Task OnInitializedAsync()
     {
         Controller.Changed += Refresh;

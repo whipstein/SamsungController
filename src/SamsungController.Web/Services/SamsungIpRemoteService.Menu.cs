@@ -22,7 +22,7 @@ public sealed partial class SamsungIpRemoteService
         var identity = await MenuQueryAsync(profile, "getDeviceInformation", cancellation).ConfigureAwait(false);
         StoreMenuRead("getDeviceInformation", identity);
         if (IsConnectionFailure(identity.Outcome)) RequireSuccess(identity);
-        if (loadAllSettings) await LoadAllMenuSettingsAsync(profile, cancellation).ConfigureAwait(false);
+        if (loadAllSettings && GetSnapshot().RgbProbe?.NeedsRecovery != true) await LoadAllMenuSettingsAsync(profile, cancellation).ConfigureAwait(false);
     }, needsConnection: false);
 
     public async Task DisconnectMenuAsync()
@@ -75,6 +75,7 @@ public sealed partial class SamsungIpRemoteService
         var snapshot = GetSnapshot(); var menu = snapshot.Menu;
         if (!menu.Connected) return "Connect to the TV first.";
         if (snapshot.IsBusy) return "A TV request is running.";
+        if (snapshot.RgbProbe?.NeedsRecovery == true) return "Restore/end the RGB experiment on Batch / RGB test first.";
         if (menu.Update?.NeedsReview == true) return "Review the interrupted update before applying more changes.";
         if (menu.WhiteBalanceRead?.NeedsRestore == true) return "Restore/check the interrupted 20-point white-balance read before applying changes.";
         return MenuValueDisabledReason(menu, control);

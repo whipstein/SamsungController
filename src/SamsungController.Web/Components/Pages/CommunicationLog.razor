@@ -9,6 +9,7 @@
 
 <PageTitle>Communication log · SamsungController</PageTitle>
 <section class="page-heading compact-heading"><div><span class="eyebrow">DIRECT IP · DIAGNOSTICS</span><h1>Communication log</h1><p>Browse commands sent to the display and the replies received. Viewing, filtering, and exporting this log send no TV commands.</p></div></section>
+<p><a class="toolbar-button" href="diagnostics/batch-rgb">Open Batch / RGB test</a> — read-only batch support check and guarded single-percentage RGB experiments.</p>
 @if (Error is not null) { <div class="notice danger" role="alert">@Error</div> }
 @if (Snapshot.StorageWarning is { } storageWarning) { <div class="notice danger">@storageWarning</div> }
 

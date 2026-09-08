@@ -71,4 +71,8 @@ public interface ISamsungIpRemoteClient
     Task<SamsungIpRemoteExchange> WritePictureControlAsync(SamsungIpRemoteOptions options, string control, int value, CancellationToken cancellationToken = default);
     Task<SamsungIpRemoteExchange> ExecuteCommandAsync(SamsungIpRemoteOptions options, string method, JsonObject parameters, bool query = false, CancellationToken cancellationToken = default)
         => throw new NotSupportedException("This client does not implement the documented command catalog.");
+    Task<SamsungIpRemoteExchange> ProbeReadBatchAsync(SamsungIpRemoteOptions options, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This client does not implement batch experiments.");
+    Task<SamsungIpRemoteExchange> ProbeWhiteBalanceRgbAsync(SamsungIpRemoteOptions options, int red, int green, int blue, bool singleMethod, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This client does not implement RGB experiments.");
 }
