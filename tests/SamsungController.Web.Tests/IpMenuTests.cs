@@ -341,11 +341,37 @@ public sealed class IpMenuTests
         Assert.DoesNotContain("Macros", html, StringComparison.Ordinal);
         Assert.DoesNotContain("Build &amp; Verify", html, StringComparison.Ordinal);
         Assert.DoesNotContain("checks needed", html, StringComparison.Ordinal);
+        Assert.Contains("href=\"menu\"", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("href=\"remote\"", html, StringComparison.Ordinal);
+        Assert.Contains("popovertarget=\"remote-drawer\"", html, StringComparison.Ordinal);
+        Assert.Contains("popover=\"auto\"", html, StringComparison.Ordinal);
+        Assert.Contains("aria-label=\"Close remote\"", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("<h1>Remote</h1>", html, StringComparison.Ordinal);
         var routes = typeof(DirectMenu).Assembly.GetTypes().SelectMany(type => type.GetCustomAttributes(typeof(RouteAttribute), true).Cast<RouteAttribute>().Select(route => route.Template)).ToArray();
         Assert.Equal(routes.Length, routes.Distinct().Count());
         Assert.DoesNotContain("/macros", routes);
         Assert.DoesNotContain("/menu/build", routes);
         Assert.DoesNotContain("/verification", routes);
+        Assert.Contains("/menu", routes);
+        Assert.DoesNotContain("/remote", routes);
+    }
+
+    [Fact]
+    public async Task HiddenRemoteDoesNotQueryAndButtonsSendOnlyTheirExplicitKey()
+    {
+        using var fixture = await MenuFixture.CreateAsync();
+        await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
+        var requests = fixture.Display.Requests.Count;
+        await using var services = new ServiceCollection().AddLogging().AddSingleton(fixture.Service).BuildServiceProvider();
+        await using var renderer = new IpRemotePageTests.IpPageRenderer(services, typeof(Components.Shared.DirectRemote));
+        await renderer.StartAsync();
+        Assert.Equal(requests, fixture.Display.Requests.Count);
+        await renderer.ClickAsync("OK");
+        Assert.Single(fixture.Writes);
+        Assert.Equal("remoteKeyControl", fixture.Writes.Single()["method"]!.ToString());
+        Assert.Equal("enter", fixture.Writes.Single()["params"]!["remoteKey"]!.ToString());
+        await fixture.Service.DisconnectMenuAsync();
+        await renderer.AssertDisabledAsync("OK", true);
     }
 
     private sealed class MenuNavigation : NavigationManager

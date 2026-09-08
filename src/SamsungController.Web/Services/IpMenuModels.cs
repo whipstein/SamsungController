@@ -99,6 +99,7 @@ public sealed record IpMenuSnapshot
 {
     public bool Connected { get; init; }
     public Guid SessionId { get; init; }
+    public long ValuesRevision { get; init; }
     public DateTimeOffset? LastContact { get; init; }
     public DateTimeOffset? SettingsLoadedAt { get; init; }
     public bool ConnectionLoadAttempted { get; init; }

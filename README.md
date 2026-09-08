@@ -10,7 +10,7 @@ This is the **v1 working branch**, `feature/ip-remote-v1`, version **1.0.0-alpha
 - Picture, Sound, and System controls. Picture has Expert settings, 2-point white balance, 20-point white balance, and Color tabs.
 - TV-queried current values with compact sliders, number fields, switches, and selections.
 - Staged Apply or remembered Apply immediately, per-setting readback, progress, and Stop.
-- Direct IP remote buttons, light/dark mode, and a live, searchable, exportable communication log.
+- A right-side slide-out Remote available from every page, light/dark mode, and a live, searchable, exportable communication log.
 - Private local data, redacted reports, and Windows/macOS/Linux support.
 
 Documented settings require **no manual verification**. Support still varies by display, firmware, input, and mode: failed or missing queries are shown, not replaced with defaults. Numeric controls use documented limits; no range-discovery query was found in the protocol references. See [ranges and availability](docs/direct-ip-interface.md#ranges-and-availability).
@@ -82,13 +82,13 @@ Releases include `SHA256SUMS.txt`. Optional integrity checks: macOS `shasum -a 2
 4. For an already paired endpoint select **Connect and open Menu**. Do not pair again merely to reconnect.
 5. The header shows TV-reported input and picture mode. Connect/Disconnect and Stop remain visible on every page.
 
-Connect preloads every Menu section and the catalog's other documented read/list methods for the current input/picture mode. Already-enabled 20-point and Custom color grids load all rows and restore their selectors. Inactive modes are not automatically enabled: those rows remain unavailable until you enable the mode and load them. Loading progress and Stop are available; Menu's connection-preload details report unavailable values. Unsupported fields are never filled with defaults.
+Connect preloads every Menu section and the catalog's other documented read/list methods for the current input/picture mode. Already-enabled 20-point and Custom color grids load all rows and restore their selectors. Inactive modes are not automatically enabled: those rows remain unavailable until you enable the mode and load them. Loading progress and Stop are available; Menu's settings-load details report unavailable values. Unsupported fields are never filled with defaults.
 
 The app requests HTTPS keep-alive and retains one pooled TCP/TLS connection for the selected endpoint, including while idle. Requests reuse your saved token; they do not pair again. The TV can still close its connection, requiring a new TCP/TLS connection on the next request. “Connected” means the latest check succeeded, not continuous TV-state monitoring. The header status tooltip reports whether the last query reused TLS or the TV requested closure. Transport/authentication failures clear Connected; a failed Connect leaves the normal Connect button available.
 
 ## Change settings
 
-1. Open **Menu**. Connection-loaded values are ready without another scan when changing tabs. Use **Refresh TV values** after changes made with another controller or an incomplete load. Opening tabs does not restart a stopped connection preload.
+1. Open **Menu**. Connection-loaded values are ready without another scan when changing tabs. Use **Refresh TV values** after changing the HDMI signal (including 8-bit/10-bit), picture mode, or an incomplete load. It rereads all settings and available calibration rows using the saved connection, discards unsent edits, and reevaluates hidden/disabled controls. No reconnect or pairing is needed. For a quicker read of just the current tab, choose **Refresh section**. Opening tabs does not restart a stopped load.
 2. Choose Picture, Sound, or System. Picture has separate calibration tabs; 2-point gains and offsets are grouped in two columns.
 3. Adjust a slider, number, switch, or selection. With default **Wait for Apply**, the TV is unchanged; pending targets are distinct from queried current values.
 4. Select **Apply N pending** at the top right. Fresh values/context are checked, settings are sent sequentially, and each result is queried. A mismatch stops later settings.
@@ -101,8 +101,13 @@ For **20-point white balance**, turn its mode On and Apply: all percentages from
 
 Direct settings do not navigate TV menus, so there is no return-to-video script or “stay on last adjusted item” option. Header Home, Back, and Exit menu buttons are explicit single keys, not a guaranteed video anchor.
 
+## Slide-out remote
+
+Select **‹ Remote** on the right edge of any page. The remote slides out over the page without navigating away; **Menu** remains a normal page. Use the directional pad, Home/Menu/Back/Exit, volume buttons, or the **More keys** selector. Close with **Close ×**, **Escape**, or a click outside the panel. Opening/closing it sends no TV commands and does not discard Menu edits. Remote keys are disabled while disconnected, while another request is running, or when an interrupted update requires review. **Stop** is available inside the panel too.
+
 ## Diagnostics and troubleshooting
 
+- **All-settings load incomplete / changed signal:** let the external signal settle, then select **Refresh TV values**. This starts a fresh all-settings read, even if the TV reports the same HDMI port and picture-mode name. Keep the signal unchanged while loading. Stop cancels it; tab visits never resume it automatically.
 - **Connection fails:** check TV power, IP Remote, address/port, certificate policy, LAN permissions, VPN/firewall restrictions, and the actual error. Do not repeatedly re-pair unless authorization was rejected.
 - **macOS receives no response:** check System Settings → Privacy & Security → Local Network for the app hosting the process (Terminal, your editor, or ChatGPT when started there). A correct IP and a working browser do not prove the server process has local-network permission. Restart the affected host app/server after changing permission.
 - **Approval accepted but no connection:** verify the token was received/saved; inspect the pairing error. Connect reuses saved tokens.

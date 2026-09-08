@@ -278,7 +278,7 @@ public sealed partial class SamsungIpRemoteService
         SamsungIpRemoteCommands.Get("remoteKeyControl").Validate(new() { ["remoteKey"] = key }, false);
         var exchange = await _client.ExecuteCommandAsync(profile.Connection, "remoteKeyControl", new() { ["remoteKey"] = key }, cancellationToken: cancellation).ConfigureAwait(false);
         await RecordExchangeAsync(profile, "Remote · " + key, exchange).ConfigureAwait(false);
-        UpdateMenu(menu => ClearMenuGridCache(menu) with { Connected = key != "power" && menu.Connected, Readings = new Dictionary<string, IpMenuRead>(), SectionsRead = new Dictionary<string, DateTimeOffset>() });
+        UpdateMenu(menu => ClearMenuGridCache(menu) with { Connected = key != "power" && menu.Connected, Readings = new Dictionary<string, IpMenuRead>(), SectionsRead = new Dictionary<string, DateTimeOffset>(), SettingsLoadedAt = null, LoadWarnings = [], ValuesRevision = menu.ValuesRevision + 1 });
         RequireSuccess(exchange);
         UpdateMenu(menu => menu with { Status = "Sent " + key + ". Refresh Menu for current settings." });
     });
@@ -314,7 +314,7 @@ public sealed partial class SamsungIpRemoteService
     private static IpMenuSnapshot InvalidateMenuControlContext(IpMenuSnapshot menu, IpMenuControl control)
     {
         if (control.ChangesContext)
-            return ClearMenuGridCache(menu) with { Readings = new Dictionary<string, IpMenuRead>(), SectionsRead = new Dictionary<string, DateTimeOffset>(), SettingsLoadedAt = null, LoadWarnings = [] };
+            return ClearMenuGridCache(menu) with { Readings = new Dictionary<string, IpMenuRead>(), SectionsRead = new Dictionary<string, DateTimeOffset>(), SettingsLoadedAt = null, LoadWarnings = [], ValuesRevision = menu.ValuesRevision + 1 };
 
         var methods = IpMenuCatalog.ForSection(control.Section).Select(item => item.Method).ToHashSet(StringComparer.Ordinal);
         return ClearMenuGridCache(menu, control.Section) with
@@ -357,6 +357,8 @@ public sealed partial class SamsungIpRemoteService
             Tv = (JsonObject)tv.Result.DeepClone(),
             Video = video?.Result is { } values ? (JsonObject)values.DeepClone() : changed ? new() : menu.Video,
             SettingsLoadedAt = changed ? null : menu.SettingsLoadedAt,
+            ValuesRevision = changed ? menu.ValuesRevision + 1 : menu.ValuesRevision,
+            Pending = changed ? new Dictionary<string, IpMenuDraft>() : menu.Pending,
             LoadWarnings = changed ? [] : menu.LoadWarnings,
             Readings = changed ? new Dictionary<string, IpMenuRead>() : menu.Readings,
             SectionsRead = changed ? new Dictionary<string, DateTimeOffset>() : menu.SectionsRead

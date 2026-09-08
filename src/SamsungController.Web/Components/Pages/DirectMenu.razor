@@ -13,20 +13,21 @@
 
 <section class="panel direct-panel">
     @if (Snapshot.Menu.Connected && Snapshot.Menu.ConnectionLoadAttempted && Snapshot.Menu.SettingsLoadedAt is null && !Snapshot.IsBusy)
-    { <p class="direct-unavailable">Connection preload did not finish or its context changed. Refresh a section or disconnect and reconnect to try again. Opening a tab will not resume a stopped load.</p> }
+    { <p class="direct-unavailable" role="status">All-settings load is incomplete or the TV context changed. Select Refresh TV values to reload all settings for the current signal—no reconnect needed. Opening a tab does not resume a stopped load.</p> }
     @if (Snapshot.Menu.SettingsLoadedAt is { } loadedAt)
     {
-        <details class="direct-details compact"><summary>Connection preload · @loadedAt.ToLocalTime().ToString("HH:mm:ss") · @(Snapshot.Menu.LoadWarnings.Count == 0 ? "complete" : "some values unavailable")</summary>
+        <details class="direct-details compact"><summary>Settings load · @loadedAt.ToLocalTime().ToString("HH:mm:ss") · @(Snapshot.Menu.LoadWarnings.Count == 0 ? "complete" : "some values unavailable")</summary>
             <p>@Snapshot.Menu.TransportStatus</p>
             @foreach (var warning in Snapshot.Menu.LoadWarnings) { <p class="direct-unavailable">@warning</p> }
             <p><a href="diagnostics">Browse requests and replies →</a></p>
-            <p>Loaded values belong to the current input/picture mode. Inactive or unsupported values are not replaced with defaults. Refresh reads the selected section again.</p>
+            <p>Loaded values belong to the current input/picture mode. Inactive or unsupported values are not replaced with defaults.</p>
         </details>
     }
     <div class="direct-toolbar">
         <div><h2>@(Category == "Picture" ? "Calibration controls" : Category + " controls")</h2><p>@(Snapshot.Menu.SectionsRead.TryGetValue(Section, out var readAt) ? "Read from TV " + readAt.ToLocalTime().ToString("HH:mm:ss") : "Select a section to read its current values.")</p></div>
-        <div class="direct-actions"><button class="toolbar-button" @onclick="RefreshAsync" disabled="@(!CanWork)">Refresh TV values</button><button class="primary-action" @onclick="ApplyAsync" disabled="@(!CanApply)">Apply @Snapshot.Menu.Pending.Count pending</button><button class="toolbar-button danger-action" @onclick="Controller.Cancel" disabled="@(!Snapshot.IsBusy)">Stop</button></div>
+        <div class="direct-actions"><button class="toolbar-button" @onclick="RefreshAllAsync" disabled="@(!CanWork)">Refresh TV values</button><button class="toolbar-button" @onclick="RefreshAsync" disabled="@(!CanWork)">Refresh section</button><button class="primary-action" @onclick="ApplyAsync" disabled="@(!CanApply)">Apply @Snapshot.Menu.Pending.Count pending</button><button class="toolbar-button danger-action" @onclick="Controller.Cancel" disabled="@(!Snapshot.IsBusy)">Stop</button></div>
     </div>
+    <p class="direct-hint">After changing HDMI signal, bit depth, or picture mode, use <strong>Refresh TV values</strong>. It rereads all settings and available calibration rows, discards unsent edits, and keeps your connection. <strong>Refresh section</strong> only rereads this tab. Keep the signal unchanged while loading.</p>
     <details class="direct-details compact"><summary>Update behavior · @(Snapshot.Menu.Preferences.ApplyImmediately ? "Apply immediately" : "Wait for Apply")</summary>
         <label class="direct-check"><input type="checkbox" aria-label="Apply settings immediately" checked="@Snapshot.Menu.Preferences.ApplyImmediately" @onchange="SetImmediateAsync" disabled="@Snapshot.IsBusy" /> Apply immediately when an edit is committed</label>
         <p>Sliders send when released, not on every drag event. Apply or discard pending changes before turning this on. Direct settings do not open menus, so no return-to-video sequence is needed.</p>
@@ -121,7 +122,7 @@
     private void Refresh() => _ = InvokeAsync(() =>
     {
         var next = Controller.GetSnapshot();
-        if (Snapshot.Menu.SessionId != next.Menu.SessionId) Edits.Clear();
+        if (Snapshot.Menu.SessionId != next.Menu.SessionId || Snapshot.Menu.ValuesRevision != next.Menu.ValuesRevision) Edits.Clear();
         Snapshot = next; StateHasChanged();
     });
     private void SelectCategory(string category) { Category = category; SelectSection(IpMenuCatalog.Sections.First(section => section.Category == category).Id); }
@@ -180,6 +181,7 @@
         return IpMenuGrids.ForSection(section) is null ? Controller.RefreshMenuSectionAsync(section) : Controller.RefreshMenuGridAsync(section);
     }
     private Task RefreshAsync() => GuardAsync(async () => { Edits.Clear(); await ReadSectionAsync(Section); });
+    private Task RefreshAllAsync() => GuardAsync(async () => { Edits.Clear(); await Controller.RefreshAllMenuSettingsAsync(); });
     private Task ApplyAsync() => GuardAsync(async () => { await Controller.ApplyMenuAsync(); Edits.Clear(); if (!Controller.GetSnapshot().Menu.SectionsRead.ContainsKey(Section)) await ReadSectionAsync(Section); });
     private Task RefreshAfterModeAsync(IpMenuControl control) => !Controller.GetSnapshot().Menu.SectionsRead.ContainsKey(control.Section) ? ReadSectionAsync(control.Section) : Task.CompletedTask;
     private Task SetImmediateAsync(ChangeEventArgs args) => GuardAsync(() => Controller.SaveMenuPreferencesAsync(args.Value is true));

@@ -1,5 +1,6 @@
 @inherits LayoutComponentBase
 @implements IDisposable
+@using SamsungController.Web.Components.Shared
 @inject SamsungIpRemoteService Controller
 @inject IJSRuntime JavaScript
 @inject NavigationManager Navigation
@@ -10,8 +11,7 @@
         <nav class="main-nav" aria-label="Primary navigation">
             <NavLink href="" Match="NavLinkMatch.All"><span class="nav-glyph">01</span>Display</NavLink>
             <NavLink href="menu"><span class="nav-glyph">02</span>Menu</NavLink>
-            <NavLink href="remote"><span class="nav-glyph">03</span>Remote</NavLink>
-            <NavLink href="diagnostics"><span class="nav-glyph">04</span>Communication log</NavLink>
+            <NavLink href="diagnostics"><span class="nav-glyph">03</span>Communication log</NavLink>
         </nav>
         <div class="sidebar-foot"><span class="local-dot"></span>Local control<small>v@SamsungIpRemoteService.Version</small></div>
     </aside>
@@ -44,6 +44,15 @@
         <article class="page-content">@Body</article>
     </main>
 </div>
+
+<button type="button" class="remote-drawer-tab" popovertarget="remote-drawer" aria-controls="remote-drawer" aria-label="Open remote" title="Open the TV remote without leaving this page">‹ Remote</button>
+<aside id="remote-drawer" class="remote-drawer" popover="auto" role="dialog" aria-modal="false" aria-labelledby="remote-drawer-title">
+    <header class="remote-drawer-heading">
+        <div><span class="eyebrow">DIRECT IP KEYS</span><h2 id="remote-drawer-title">Remote</h2></div>
+        <button type="button" class="toolbar-button" popovertarget="remote-drawer" popovertargetaction="hide" aria-label="Close remote" autofocus>Close ×</button>
+    </header>
+    <DirectRemote />
+</aside>
 
 @code {
     private IpRemoteSnapshot Snapshot = new();
