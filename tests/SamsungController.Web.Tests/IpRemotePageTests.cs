@@ -453,6 +453,10 @@ public sealed class IpRemotePageTests
         });
         public Task AssertElementDisabledAsync(string tag, string label, bool expected) => Dispatcher.InvokeAsync(() => Assert.Equal(expected,
             LabeledElement(tag, label).Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "disabled" && frame.AttributeValue is true)));
+        public Task AssertAriaButtonPresentAsync(string label, bool expected) => Dispatcher.InvokeAsync(() => Assert.Equal(expected,
+            Frames.Select((frame, index) => (frame, index)).Any(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "button"
+                && Frames.Skip(item.index + 1).TakeWhile(frame => frame.FrameType == RenderTreeFrameType.Attribute)
+                    .Any(frame => frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == label))));
         public Task<string[]> ControlStructureAsync(string id) => Dispatcher.InvokeAsync(() =>
         {
             var item = Frames.Select((frame, index) => (frame, index)).Single(item => item.frame.FrameType == RenderTreeFrameType.Element

@@ -39,7 +39,7 @@
     <p class="direct-hint">After changing HDMI signal, bit depth, or picture mode, use <strong>Refresh TV values</strong>. It rereads all settings and available calibration rows, discards unsent edits, and keeps your connection. If 20-point WB is Off, refresh temporarily enables it, reads all intervals, then restores the original interval and Off. <strong>Refresh section</strong> only rereads this tab. Keep the signal unchanged while loading.</p>
     <details class="direct-details compact"><summary>Update behavior · @(Snapshot.Menu.Preferences.ApplyImmediately ? "Apply immediately" : "Wait for Apply")</summary>
         <label class="direct-check"><input type="checkbox" aria-label="Apply settings immediately" checked="@Snapshot.Menu.Preferences.ApplyImmediately" @onchange="SetImmediateAsync" disabled="@Snapshot.IsBusy" /> Apply immediately when an edit is committed</label>
-        <p>With Apply immediately, slider drags, typed values, and +/− remain usable while earlier adjustments run. Releasing a slider or committing a typed value queues its target; dragging and typing alone send nothing. The number shows your latest edit or queued target, and TV shows the last read value. Stop or a failed change discards unsent adjustments. Apply or discard pending changes before turning this on.</p>
+        <p>With Apply immediately, slider drags, typed values, and +/− remain usable while earlier adjustments run. Unsent edits to the same setting combine into the latest target; a command already being sent is unchanged. Pending RGB edits in one percentage block share a selection. Dragging and typing alone send nothing. The number shows your latest edit or queued target, and TV shows the last read value. Stop or a failed change discards unsent adjustments. Apply or discard pending changes before turning this on.</p>
         <button class="toolbar-button" @onclick="Discard" disabled="@(Snapshot.IsBusy || Snapshot.Menu.Pending.Count == 0)">Discard pending changes</button>
     </details>
     <nav class="direct-tabs" aria-label="Top-level settings">
@@ -89,6 +89,8 @@
                 <p>@grid.Values.Count fixed rows · each has its own Red, Green, and Blue values.</p></div>
                 <button class="toolbar-button" @onclick="RefreshAsync" disabled="@(!CanLoadGrid)">@(Snapshot.Menu.GridsRead.ContainsKey(Section) ? "Reload all rows" : "Load all rows")</button></div>
             <p class="direct-hint">Loading reads each row by temporarily selecting it, then restores the original selection. Refresh also reads 20-point WB while Off by temporarily enabling it and restoring Off afterward. Apply addresses edited rows automatically and restores the selector when finished. No RGB value changes during loading. Stop sends no further commands, including restoration; use the recovery controls if a temporary mode change was interrupted.</p>
+            @if (grid.Section == "white20" && !Snapshot.Menu.Preferences.ApplyImmediately)
+            { <p class="direct-hint">Each percentage block has its own Apply button: it sends only that block's pending RGB values. Other blocks and settings stay pending. The Apply button at the top still sends all pending settings.</p> }
             @if (!Snapshot.Menu.GridsRead.ContainsKey(Section))
             { <p class="direct-unavailable">@(GridModeEnabled ? "Load all rows to read their current values." : grid.Section == "white20" ? "Load all rows reads the values while Off, restoring Off afterward. Turn on 20-point white balance above and Apply to enable these controls." : "Choose Custom in Color space above and Apply to enable these controls.")</p> }
             @if (grid.Section == "white20" && Snapshot.Menu.GridsRead.ContainsKey(Section) && !GridModeEnabled)
@@ -97,7 +99,11 @@
             <div class="direct-indexed-rows">
                 @foreach (var value in grid.Values)
                 {
-                    <section class="direct-indexed-row" @key="value"><h3>@value</h3>
+                    <section class="direct-indexed-row" @key="value">
+                        <div class="direct-indexed-heading"><h3>@value</h3>
+                            @if (grid.Section == "white20" && !Snapshot.Menu.Preferences.ApplyImmediately)
+                            { <button class="toolbar-button" aria-label="@($"Apply {value} white balance")" @onclick="() => ApplyRowAsync(grid, value)" disabled="@(!CanApplyRow(grid, value))">Apply @RowPendingCount(grid, value) pending</button> }
+                        </div>
                         <div class="direct-indexed-channels">@foreach (var control in grid.Row(value).Where(IsVisible)) { @ControlCard(control) }</div>
                     </section>
                 }
@@ -135,6 +141,9 @@
     private bool CanLoadGrid => CanWork && Snapshot.Menu.Update?.NeedsReview != true && Snapshot.Menu.WhiteBalanceRead?.NeedsRestore != true
         && Snapshot.PictureTest?.RequiresRecovery != true && Snapshot.CommandTrial?.RequiresReview != true;
     private bool CanApply => CanWork && Snapshot.Menu.Pending.Count > 0 && Snapshot.Menu.Update?.NeedsReview != true && Snapshot.Menu.WhiteBalanceRead?.NeedsRestore != true;
+    private int RowPendingCount(IpMenuGrid grid, string value) => grid.Row(value).Count(Dirty);
+    private bool CanApplyRow(IpMenuGrid grid, string value) => CanApply && RowPendingCount(grid, value) > 0
+        && grid.Row(value).Where(Dirty).All(control => DisabledReason(control) is null);
     private IpMenuGrid? Grid => IpMenuGrids.ForSection(Section);
     private bool GridModeEnabled => Grid is { } grid && Snapshot.Menu.Readings.GetValueOrDefault(grid.ModeMethod)?.Values?[grid.ModeField]?.ToString() == grid.RequiredMode;
     private bool IsVisible(IpMenuControl control) => Dirty(control) || IpMenuAvailability.For(DisplayMenu, control).Visible;
@@ -254,6 +263,11 @@
     private Task RestoreWhiteBalanceAsync() => GuardAsync(Controller.RestoreWhiteBalanceReadAsync);
     private Task CloseWhiteBalanceReviewAsync() => GuardAsync(Controller.CloseWhiteBalanceReadReviewAsync);
     private Task ApplyAsync() => GuardAsync(async () => { await Controller.ApplyMenuAsync(); Edits.Clear(); if (!Controller.GetSnapshot().Menu.SectionsRead.ContainsKey(Section)) await ReadSectionAsync(Section); });
+    private Task ApplyRowAsync(IpMenuGrid grid, string value) => GuardAsync(async () =>
+    {
+        await Controller.ApplyMenuRowAsync(grid.Section, value);
+        foreach (var control in grid.Row(value)) Edits.Remove(control.Id);
+    });
     private Task RefreshAfterModeAsync(IpMenuControl control) => !Controller.GetSnapshot().Menu.SectionsRead.ContainsKey(control.Section) ? ReadSectionAsync(control.Section) : Task.CompletedTask;
     private Task SetImmediateAsync(ChangeEventArgs args) => GuardAsync(() => Controller.SaveMenuPreferencesAsync(args.Value is true));
     private void Discard() { try { Controller.DiscardMenuChanges(); Edits.Clear(); Error = null; } catch (InvalidOperationException error) { Error = error.Message; } }

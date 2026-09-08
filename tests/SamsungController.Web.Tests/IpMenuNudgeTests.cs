@@ -13,7 +13,44 @@ public sealed class IpMenuNudgeTests
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
     [Fact]
-    public async Task AbsoluteValuesAndClicksShareOneOrderedQueueWithoutDuplicateTargets()
+    public async Task FiveMinusClicksSendTheActiveStepThenOneCombinedTarget()
+    {
+        using var fixture = await ReadyAsync();
+        using var hold = HoldFirstWrite(fixture, "contrastControl");
+        var first = fixture.Service.QueueMenuNudgeAsync(Contrast, -1);
+        await hold.Entered.Task.WaitAsync(Timeout);
+        var rest = Enumerable.Range(0, 4).Select(_ => fixture.Service.QueueMenuNudgeAsync(Contrast, -1)).ToArray();
+        Assert.Equal(new[] { 44, 40 }, fixture.Service.GetSnapshot().Menu.NudgeQueue!.Values.Select(value => value.Target));
+        hold.Release.TrySetResult();
+        await Task.WhenAll(rest.Append(first)).WaitAsync(Timeout);
+        await IdleAsync(fixture.Service);
+        Assert.Equal(new[] { 44, 40 }, fixture.Writes.Select(write => write["params"]!["contrast"]!.GetValue<int>()));
+        var step = fixture.Service.GetSnapshot().Menu.Update!.Steps.Single();
+        Assert.Equal(44, step.Original.GetValue<int>());
+        Assert.Equal(40, step.Target.GetValue<int>());
+    }
+
+    [Fact]
+    public async Task EditsDuringPreflightMergeBeforeTheFirstWriteIsHandedOff()
+    {
+        using var fixture = await ReadyAsync();
+        using var hold = HoldRequest(fixture, request => request["method"]!.ToString() == "getVideoStates");
+        var first = fixture.Service.QueueMenuNudgeAsync(Contrast, -1);
+        await hold.Entered.Task.WaitAsync(Timeout);
+        var rest = Enumerable.Range(0, 4).Select(_ => fixture.Service.QueueMenuNudgeAsync(Contrast, -1)).ToArray();
+        Assert.All(rest, task => Assert.Same(first, task));
+        Assert.Empty(fixture.Writes);
+        hold.Release.TrySetResult();
+        await Task.WhenAll(rest.Append(first)).WaitAsync(Timeout);
+        await IdleAsync(fixture.Service);
+        Assert.Equal(new[] { 40 }, fixture.Writes.Select(write => write["params"]!["contrast"]!.GetValue<int>()));
+        var step = fixture.Service.GetSnapshot().Menu.Update!.Steps.Single();
+        Assert.Equal(45, step.Original.GetValue<int>());
+        Assert.Equal(40, step.Target.GetValue<int>());
+    }
+
+    [Fact]
+    public async Task AbsoluteValuesAndClicksMergeUnsentTargetsWithoutChangingTheActiveWrite()
     {
         using var fixture = await ReadyAsync();
         using var hold = HoldFirstWrite(fixture, "contrastControl");
@@ -22,11 +59,12 @@ public sealed class IpMenuNudgeTests
         var second = fixture.Service.QueueMenuValueAsync(Contrast, "40");
         var third = fixture.Service.QueueMenuNudgeAsync(Contrast, 1);
         await fixture.Service.QueueMenuValueAsync(Contrast, "41");
-        Assert.Equal(new[] { 46, 40, 41 }, fixture.Service.GetSnapshot().Menu.NudgeQueue!.Values.Select(value => value.Target));
+        Assert.Same(second, third);
+        Assert.Equal(new[] { 46, 41 }, fixture.Service.GetSnapshot().Menu.NudgeQueue!.Values.Select(value => value.Target));
         hold.Release.TrySetResult();
         await Task.WhenAll(first, second, third).WaitAsync(Timeout);
         await IdleAsync(fixture.Service);
-        Assert.Equal(new[] { 46, 40, 41 }, fixture.Writes.Select(write => write["params"]!["contrast"]!.GetValue<int>()));
+        Assert.Equal(new[] { 46, 41 }, fixture.Writes.Select(write => write["params"]!["contrast"]!.GetValue<int>()));
         Assert.Equal(41, fixture.Display.Contrast);
     }
 
@@ -52,7 +90,7 @@ public sealed class IpMenuNudgeTests
     }
 
     [Fact]
-    public async Task RapidClicksSendEverySuccessiveTargetInOrderAndDoNotInterleaveOtherOperations()
+    public async Task NetZeroUnsentClicksDoNotWriteAndOtherOperationsCannotInterleave()
     {
         using var fixture = await ReadyAsync();
         using var hold = HoldFirstWrite(fixture, "contrastControl");
@@ -60,7 +98,7 @@ public sealed class IpMenuNudgeTests
         await hold.Entered.Task.WaitAsync(Timeout);
         var second = fixture.Service.QueueMenuNudgeAsync(Contrast, 1);
         var third = fixture.Service.QueueMenuNudgeAsync(Contrast, -1);
-        Assert.Equal(new[] { 46, 47, 46 }, fixture.Service.GetSnapshot().Menu.NudgeQueue!.Values.Select(value => value.Target));
+        Assert.Equal(new[] { 46, 46 }, fixture.Service.GetSnapshot().Menu.NudgeQueue!.Values.Select(value => value.Target));
         Assert.Equal(45, fixture.Display.Contrast);
         Assert.Null(fixture.Service.MenuNudgeDisabledReason(IpMenuCatalog.Get(Contrast)));
         await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.RefreshMenuSectionAsync("expert"));
@@ -70,7 +108,7 @@ public sealed class IpMenuNudgeTests
         hold.Release.TrySetResult();
         await Task.WhenAll(first, second, third).WaitAsync(Timeout);
         await IdleAsync(fixture.Service);
-        Assert.Equal(new[] { 46, 47, 46 }, fixture.Writes.Select(write => write["params"]!["contrast"]!.GetValue<int>()));
+        Assert.Equal(new[] { 46 }, fixture.Writes.Select(write => write["params"]!["contrast"]!.GetValue<int>()));
         Assert.Equal(46, fixture.Display.Contrast);
         Assert.Empty(fixture.Service.GetSnapshot().Menu.Pending);
         Assert.DoesNotContain("remoteKeyControl", fixture.Display.Methods);
@@ -194,13 +232,7 @@ public sealed class IpMenuNudgeTests
     public async Task IndexedClicksPreserveRowIdentityAndRestoreSelectors(string section)
     {
         using var fixture = await ReadyAsync();
-        var grid = IpMenuGrids.ForSection(section)!;
-        fixture.Values[grid.ModeField] = grid.RequiredMode;
-        fixture.Values[grid.SelectorField] = grid.Values.Last();
-        foreach (var value in grid.Values)
-            fixture.GridValues[section + "/" + value] = new JsonObject(grid.Fields.Select(field => KeyValuePair.Create<string, JsonNode?>(field, JsonValue.Create(10))));
-        await fixture.Service.RefreshMenuGridAsync(section);
-        fixture.Display.Requests.Clear();
+        var grid = await LoadGridAsync(fixture, section);
         var control = grid.Row(grid.Values[0]).First();
         using var hold = HoldFirstWrite(fixture, control.Method);
         var first = fixture.Service.QueueMenuNudgeAsync(control.Id, 1);
@@ -210,11 +242,72 @@ public sealed class IpMenuNudgeTests
         hold.Release.TrySetResult();
         await Task.WhenAll(first, second, third).WaitAsync(Timeout);
         await IdleAsync(fixture.Service);
-        Assert.Equal(new[] { 11, 12, 20 }, fixture.Writes.Where(write => write["method"]!.ToString() == control.Method).Select(write => write["params"]![control.Field]!.GetValue<int>()));
+        Assert.Equal(new[] { 11, 20 }, fixture.Writes.Where(write => write["method"]!.ToString() == control.Method).Select(write => write["params"]![control.Field]!.GetValue<int>()));
         Assert.Equal(20, fixture.GridValues[section + "/" + grid.Values[0]][control.Field]!.GetValue<int>());
         Assert.Equal(10, fixture.GridValues[section + "/" + grid.Values[1]][control.Field]!.GetValue<int>());
         Assert.Equal(grid.Values.Last(), fixture.Values[grid.SelectorField]!.ToString());
         Assert.Equal("Restored", fixture.Service.GetSnapshot().Menu.SelectorSession!.Status);
+    }
+
+    [Theory]
+    [InlineData("white20")]
+    [InlineData("color")]
+    public async Task UnsentRgbValuesMergeDuringReadsAndShareOneSelectionPerBlock(string section)
+    {
+        using var fixture = await ReadyAsync();
+        var grid = await LoadGridAsync(fixture, section);
+        var row = grid.Row(grid.Values[0]).ToArray();
+        var other = grid.Row(grid.Values[1]).First();
+        using var redHold = HoldFirstWrite(fixture, row[0].Method);
+        var red = fixture.Service.QueueMenuValueAsync(row[0].Id, "11");
+        await redHold.Entered.Task.WaitAsync(Timeout);
+        var green = fixture.Service.QueueMenuValueAsync(row[1].Id, "11");
+        var blue = fixture.Service.QueueMenuValueAsync(row[2].Id, "12");
+        var otherRow = fixture.Service.QueueMenuValueAsync(other.Id, "20");
+        using var greenRead = HoldRequest(fixture, request => request["method"]!.ToString() == row[1].Method && request["params"]!.AsObject().Count == 1);
+        redHold.Release.TrySetResult();
+        await greenRead.Entered.Task.WaitAsync(Timeout);
+        await red.WaitAsync(Timeout);
+        var latestGreen = fixture.Service.QueueMenuValueAsync(row[1].Id, "13");
+        var latestBlue = fixture.Service.QueueMenuValueAsync(row[2].Id, "14");
+        Assert.Same(green, latestGreen);
+        Assert.Same(blue, latestBlue);
+        greenRead.Release.TrySetResult();
+        await Task.WhenAll(green, blue, otherRow).WaitAsync(Timeout);
+        await IdleAsync(fixture.Service);
+        Assert.Equal(new[] { 11, 13, 14, 20 }, fixture.Writes.Where(write => grid.Fields.Any(field => write["method"]!.ToString() == field + "Control"))
+            .Select(write => write["params"]!.AsObject().Single(pair => pair.Key != "AccessToken").Value!.GetValue<int>()));
+        Assert.Equal(new[] { grid.Values[0], grid.Values.Last(), grid.Values[1], grid.Values.Last() }, fixture.Writes
+            .Where(write => write["method"]!.ToString() == grid.SelectorMethod).Select(write => write["params"]![grid.SelectorField]!.ToString()));
+        Assert.Equal(new[] { 11, 13, 14 }, grid.Fields.Select(field => fixture.GridValues[section + "/" + grid.Values[0]][field]!.GetValue<int>()));
+        Assert.Equal(new[] { 20, 10, 10 }, grid.Fields.Select(field => fixture.GridValues[section + "/" + grid.Values[1]][field]!.GetValue<int>()));
+    }
+
+    [Fact]
+    public async Task StopDuringRgbBatchPreservesConfirmedRedAndDropsMergedGreenAndBlue()
+    {
+        using var fixture = await ReadyAsync();
+        var grid = await LoadGridAsync(fixture, "white20");
+        var row = grid.Row("5%").ToArray();
+        using var redHold = HoldFirstWrite(fixture, row[0].Method);
+        var red = fixture.Service.QueueMenuValueAsync(row[0].Id, "11");
+        await redHold.Entered.Task.WaitAsync(Timeout);
+        var green = fixture.Service.QueueMenuValueAsync(row[1].Id, "11");
+        var latestGreen = fixture.Service.QueueMenuValueAsync(row[1].Id, "13");
+        var blue = fixture.Service.QueueMenuValueAsync(row[2].Id, "12");
+        using var greenHold = HoldFirstWrite(fixture, row[1].Method);
+        redHold.Release.TrySetResult();
+        await greenHold.Entered.Task.WaitAsync(Timeout);
+        await red.WaitAsync(Timeout);
+        var requests = fixture.Display.Requests.Count;
+        fixture.Service.Cancel();
+        await Assert.ThrowsAnyAsync<Exception>(() => Task.WhenAll(green, latestGreen, blue).WaitAsync(Timeout));
+        await IdleAsync(fixture.Service);
+        Assert.Equal(requests, fixture.Display.Requests.Count);
+        Assert.Equal(new[] { 11, 10, 10 }, grid.Fields.Select(field => fixture.GridValues["white20/5%"][field]!.GetValue<int>()));
+        Assert.True(red.IsCompletedSuccessfully);
+        Assert.True(fixture.Service.GetSnapshot().Menu.Update!.NeedsReview);
+        Assert.Equal("Stopped", fixture.Service.GetSnapshot().Menu.SelectorSession!.Status);
     }
 
     [Fact]
@@ -248,16 +341,15 @@ public sealed class IpMenuNudgeTests
     }
 
     [Fact]
-    public async Task BoundedQueueRejectsOverflowAndStopSettlesEveryAcceptedClick()
+    public async Task LargeBurstsKeepOnlyOneUnsentTargetAndStopSettlesEveryAcceptedClick()
     {
         using var fixture = await ReadyAsync();
         using var hold = HoldFirstWrite(fixture, "contrastControl");
         var clicks = new List<Task> { fixture.Service.QueueMenuNudgeAsync(Contrast, 1) };
         await hold.Entered.Task.WaitAsync(Timeout);
-        for (var i = 1; i < 256; i++) clicks.Add(fixture.Service.QueueMenuNudgeAsync(Contrast, i % 2 == 0 ? 1 : -1));
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.QueueMenuNudgeAsync(Contrast, 1));
-        Assert.Contains("queue is full", error.Message, StringComparison.Ordinal);
-        Assert.Equal(256, fixture.Service.GetSnapshot().Menu.NudgeQueue!.Values.Count);
+        for (var i = 1; i < 1000; i++) clicks.Add(fixture.Service.QueueMenuNudgeAsync(Contrast, i % 2 == 0 ? 1 : -1));
+        Assert.Equal(2, fixture.Service.GetSnapshot().Menu.NudgeQueue!.Values.Count);
+        Assert.All(clicks.Skip(1), click => Assert.Same(clicks[1], click));
         fixture.Service.Cancel();
         await Assert.ThrowsAnyAsync<Exception>(() => Task.WhenAll(clicks).WaitAsync(Timeout));
         await IdleAsync(fixture.Service);
@@ -334,7 +426,7 @@ public sealed class IpMenuNudgeTests
         await renderer.AssertTargetAsync("Contrast value", 47);
         var third = renderer.ClickAriaButtonAsync("Decrease Contrast");
         await renderer.AssertTargetAsync("Contrast value", 46);
-        await renderer.AssertTextAsync("3 adjustment(s) queued / running");
+        await renderer.AssertTextAsync("2 adjustment(s) queued / running");
         Assert.Equal(structure, await renderer.ControlStructureAsync(Contrast));
         await renderer.AssertDisabledAsync("Stop", false);
         hold.Release.TrySetResult();
@@ -343,7 +435,7 @@ public sealed class IpMenuNudgeTests
         Assert.Equal(structure, await renderer.ControlStructureAsync(Contrast));
         await renderer.AssertElementDisabledAsync("input", "Contrast value", false);
         await renderer.AssertTargetAsync("Contrast value", 46);
-        Assert.Equal(3, fixture.Writes.Count());
+        Assert.Single(fixture.Writes);
     }
 
     [Theory]
@@ -383,7 +475,7 @@ public sealed class IpMenuNudgeTests
         secondHold.Release.TrySetResult();
         await Task.WhenAll(second, third, fourth).WaitAsync(Timeout);
         await IdleAsync(fixture.Service);
-        Assert.Equal(new[] { 46, 40, 38, 37 }, fixture.Writes.Select(write => write["params"]!["contrast"]!.GetValue<int>()));
+        Assert.Equal(new[] { 46, 40, 37 }, fixture.Writes.Select(write => write["params"]!["contrast"]!.GetValue<int>()));
         await renderer.AssertTargetAsync("Contrast value", 37);
         Assert.Equal(structure, await renderer.ControlStructureAsync(Contrast));
     }
@@ -428,6 +520,18 @@ public sealed class IpMenuNudgeTests
         return fixture;
     }
 
+    private static async Task<IpMenuGrid> LoadGridAsync(MenuFixture fixture, string section)
+    {
+        var grid = IpMenuGrids.ForSection(section)!;
+        fixture.Values[grid.ModeField] = grid.RequiredMode;
+        fixture.Values[grid.SelectorField] = grid.Values.Last();
+        foreach (var value in grid.Values)
+            fixture.GridValues[section + "/" + value] = new JsonObject(grid.Fields.Select(field => KeyValuePair.Create<string, JsonNode?>(field, JsonValue.Create(10))));
+        await fixture.Service.RefreshMenuGridAsync(section);
+        fixture.Display.Requests.Clear();
+        return grid;
+    }
+
     private static async Task IdleAsync(SamsungIpRemoteService service)
     {
         var idle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -437,13 +541,16 @@ public sealed class IpMenuNudgeTests
         finally { service.Changed -= Check; }
     }
 
-    private static HeldWrite HoldFirstWrite(MenuFixture fixture, string method)
+    private static HeldWrite HoldFirstWrite(MenuFixture fixture, string method) =>
+        HoldRequest(fixture, request => request["method"]!.ToString() == method && request["params"]!.AsObject().Count > 1);
+
+    private static HeldWrite HoldRequest(MenuFixture fixture, Func<JsonObject, bool> match)
     {
         var hold = new HeldWrite();
         var held = false;
         fixture.Override = async (request, cancellation) =>
         {
-            if (!held && request["method"]!.ToString() == method && request["params"]!.AsObject().Count > 1)
+            if (!held && match(request))
             {
                 held = true;
                 hold.Entered.TrySetResult();

@@ -235,6 +235,70 @@ public sealed class IpMenuGridTests
     }
 
     [Fact]
+    public async Task ApplyingOnePercentagePreservesOtherRowsAndOrdinaryPendingSettings()
+    {
+        using var fixture = await CreateAsync();
+        await fixture.Service.RefreshMenuSectionAsync("expert");
+        await fixture.Service.RefreshMenuGridAsync("white20");
+        fixture.Display.Requests.Clear();
+        var grid = IpMenuGrids.ForSection("white20")!;
+        var row = grid.Row("5%").ToArray();
+        var other = grid.Row("95%").Last();
+        foreach (var control in row) fixture.Service.StageMenuValue(control.Id, "11");
+        fixture.Service.StageMenuValue(row[0].Id, "13"); // Replaces the earlier staged target.
+        fixture.Service.StageMenuValue(other.Id, "12");
+        fixture.Service.StageMenuValue("contrastControl/contrast", "46");
+        var expectedRemaining = fixture.Service.GetSnapshot().Menu.Pending.Where(pair => !row.Any(control => control.Id == pair.Key)).ToDictionary();
+        await fixture.Service.ApplyMenuRowAsync("white20", "5%");
+        Assert.Equal(new[] { 13, 11, 11 }, row.Select(control => fixture.GridValues["white20/5%"][control.Field]!.GetValue<int>()));
+        Assert.Equal(expectedRemaining, fixture.Service.GetSnapshot().Menu.Pending);
+        Assert.Equal("50%", fixture.Values[grid.SelectorField]!.ToString());
+        Assert.Equal(new[] { "5%", "50%" }, fixture.Writes.Where(write => write["method"]!.ToString() == grid.SelectorMethod)
+            .Select(write => write["params"]![grid.SelectorField]!.ToString()));
+        Assert.Equal(3, RgbWrites(fixture).Count());
+        Assert.DoesNotContain(fixture.Writes, write => write["method"]!.ToString() == "contrastControl");
+        Assert.Equal(row.Select(control => control.Id), fixture.Service.GetSnapshot().Menu.Update!.Steps.Select(step => step.ControlId));
+        var count = fixture.Display.Requests.Count;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.ApplyMenuRowAsync("white20", "5%"));
+        await Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.ApplyMenuRowAsync("white20", "7%"));
+        await Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.ApplyMenuRowAsync("expert", "5%"));
+        Assert.Equal(count, fixture.Display.Requests.Count);
+    }
+
+    [Fact]
+    public async Task PercentageApplyButtonsOnlyShowInWaitModeAndApplyOnlyTheirOwnBlock()
+    {
+        using var fixture = await CreateAsync();
+        await fixture.Service.RefreshMenuSectionAsync("expert");
+        await fixture.Service.RefreshMenuGridAsync("white20");
+        fixture.Display.Requests.Clear();
+        await using var services = new ServiceCollection().AddLogging().AddSingleton(fixture.Service)
+            .AddSingleton<IJSRuntime>(new IpRemotePageTests.DownloadJavaScript()).BuildServiceProvider();
+        await using var renderer = new IpRemotePageTests.IpPageRenderer(services, typeof(DirectMenu));
+        await renderer.StartAsync();
+        await renderer.ClickAsync("20-point white balance");
+        foreach (var value in IpMenuGrids.ForSection("white20")!.Values)
+            await renderer.AssertElementDisabledAsync("button", $"Apply {value} white balance", true);
+        await renderer.ChangeAsync("5% Red value", "11", "onchange");
+        await renderer.ChangeAsync("5% Green value", "12", "onchange");
+        await renderer.ChangeAsync("95% Blue value", "13", "onchange");
+        await renderer.AssertElementDisabledAsync("button", "Apply 5% white balance", false);
+        await renderer.AssertElementDisabledAsync("button", "Apply 95% white balance", false);
+        await renderer.ClickAriaButtonAsync("Apply 5% white balance");
+        Assert.Equal(11, fixture.GridValues["white20/5%"]["WB20P.Red"]!.GetValue<int>());
+        Assert.Equal(12, fixture.GridValues["white20/5%"]["WB20P.Green"]!.GetValue<int>());
+        Assert.Equal("95% Blue", IpMenuCatalog.Get(Assert.Single(fixture.Service.GetSnapshot().Menu.Pending).Key).Name);
+        await renderer.AssertElementDisabledAsync("button", "Apply 5% white balance", true);
+        await renderer.AssertElementDisabledAsync("button", "Apply 95% white balance", false);
+        await renderer.ClickAriaButtonAsync("Apply 95% white balance");
+        await renderer.SetCheckboxAsync("Apply settings immediately", true);
+        foreach (var value in IpMenuGrids.ForSection("white20")!.Values)
+            await renderer.AssertAriaButtonPresentAsync($"Apply {value} white balance", false);
+        await renderer.SetCheckboxAsync("Apply settings immediately", false);
+        await renderer.AssertAriaButtonPresentAsync("Apply 5% white balance", true);
+    }
+
+    [Fact]
     public async Task CombinedColorAndWhiteBalanceBatchRestoresBothOriginalSelectors()
     {
         using var fixture = await CreateAsync();

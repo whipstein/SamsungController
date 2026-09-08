@@ -110,7 +110,8 @@ html { scrollbar-gutter:stable; }
 .direct-indexed { margin-top:24px; }
 .direct-indexed-rows { display:grid; gap:10px; }
 .direct-indexed-row { border:1px solid var(--line-strong); border-radius:8px; padding:12px; background:var(--surface); }
-.direct-indexed-row > h3 { margin:0 0 10px; color:var(--cyan); font-size:20px; font-weight:650; }
+.direct-indexed-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
+.direct-indexed-heading > h3 { margin:0; color:var(--cyan); font-size:20px; font-weight:650; }
 .direct-indexed-channels { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
 .direct-indexed-channels .direct-control { padding:10px; }
 .direct-indexed-channels .direct-control-heading { margin-bottom:8px; }

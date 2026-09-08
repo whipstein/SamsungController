@@ -124,11 +124,20 @@ public sealed partial class SamsungIpRemoteService
 
     public Task ApplyMenuAsync() => RunMenuOperationAsync((profile, cancellation) => ApplyMenuCoreAsync(profile, cancellation));
 
-    private async Task ApplyMenuCoreAsync(IpRemoteProfile profile, CancellationToken cancellation, IpMenuDraft[]? queuedDrafts = null)
+    public Task ApplyMenuRowAsync(string section, string value) => RunMenuOperationAsync((profile, cancellation) =>
+    {
+        var grid = IpMenuGrids.ForSection(section) ?? throw new ArgumentException("Unknown calibration grid.");
+        if (!grid.Values.Contains(value, StringComparer.Ordinal)) throw new ArgumentException("Unknown calibration row.");
+        var pending = GetSnapshot().Menu.Pending;
+        var drafts = grid.Row(value).Where(control => pending.ContainsKey(control.Id)).Select(control => pending[control.Id]).ToArray();
+        return ApplyMenuCoreAsync(profile, cancellation, drafts);
+    });
+
+    private async Task ApplyMenuCoreAsync(IpRemoteProfile profile, CancellationToken cancellation, IpMenuDraft[]? queuedDrafts = null, MenuNudgeBatch? queuedBatch = null)
     {
         EnsureMenuWritesAllowed();
         // Keep ordinary edits in insertion order; group indexed edits by section/row so RGB channels share one selection.
-        var drafts = queuedDrafts ?? GetSnapshot().Menu.Pending.Values.OrderBy(draft => IpMenuCatalog.Get(draft.ControlId).IsIndexed ? 1 : 0)
+        var drafts = queuedBatch is not null ? [NextMenuNudge(queuedBatch)!.Draft] : queuedDrafts ?? GetSnapshot().Menu.Pending.Values.OrderBy(draft => IpMenuCatalog.Get(draft.ControlId).IsIndexed ? 1 : 0)
             .ThenBy(draft => IpMenuCatalog.Get(draft.ControlId).IsIndexed ? IpMenuCatalog.Get(draft.ControlId).Section : "", StringComparer.Ordinal)
             .ThenBy(draft => IpMenuCatalog.Get(draft.ControlId).IsIndexed ? Array.IndexOf(IpMenuGrids.ForSection(IpMenuCatalog.Get(draft.ControlId).Section)!.Values.ToArray(), IpMenuCatalog.Get(draft.ControlId).IndexValue) : 0).ToArray();
         if (drafts.Length == 0) throw new InvalidOperationException("No pending settings to apply.");
@@ -139,15 +148,22 @@ public sealed partial class SamsungIpRemoteService
             Input = drafts[0].Input,
             PictureMode = drafts[0].PictureMode,
             StartedAt = _timeProvider.GetUtcNow(),
-            Steps = drafts.Select(draft => new IpMenuUpdateStep(draft.ControlId, draft.Original.DeepClone(), draft.Target.DeepClone())).ToArray()
+            Steps = queuedBatch is not null ? [] : drafts.Select(draft => new IpMenuUpdateStep(draft.ControlId, draft.Original.DeepClone(), draft.Target.DeepClone())).ToArray()
         };
         await SaveMenuUpdateAsync(update).ConfigureAwait(false);
         IpMenuSelectorSession? selectorSession = null;
-        for (var index = 0; index < drafts.Length; index++)
+        for (var index = 0; ; index++)
         {
-            var draft = drafts[index]; var control = IpMenuCatalog.Get(draft.ControlId);
+            var entry = queuedBatch is null ? null : NextMenuNudge(queuedBatch);
+            if (queuedBatch is null ? index >= drafts.Length : entry is null) break;
+            var draft = entry?.Draft ?? drafts[index]; var control = IpMenuCatalog.Get(draft.ControlId);
             try
             {
+                if (entry is not null)
+                {
+                    update = update with { Steps = [.. update.Steps, new(draft.ControlId, draft.Original.DeepClone(), draft.Target.DeepClone())] };
+                    await SaveMenuUpdateAsync(update).ConfigureAwait(false);
+                }
                 cancellation.ThrowIfCancellationRequested();
                 await ReadMenuBaseAsync(profile, cancellation).ConfigureAwait(false);
                 if ((GetSnapshot().Menu.Input ?? "") != draft.Input || (GetSnapshot().Menu.PictureMode ?? "") != draft.PictureMode)
@@ -161,6 +177,11 @@ public sealed partial class SamsungIpRemoteService
                 await ReadMenuPrerequisitesAsync(profile, control, cancellation).ConfigureAwait(false);
                 await ReadMenuControlAsync(profile, control, cancellation).ConfigureAwait(false);
                 var before = GetSnapshot().Menu;
+                if (entry is not null)
+                {
+                    draft = ClaimMenuNudge(queuedBatch!, entry);
+                    update = update with { Steps = update.Steps.Select((step, position) => position == index ? step with { Target = draft.Target.DeepClone() } : step).ToArray() };
+                }
                 if ((before.Input ?? "") != draft.Input || (before.PictureMode ?? "") != draft.PictureMode
                     || !JsonNode.DeepEquals(MenuPrerequisites(before, control), draft.Prerequisites))
                     throw new InvalidOperationException("The TV input, mode, interval or color changed since editing. Refresh and enter the target again.");
@@ -172,6 +193,7 @@ public sealed partial class SamsungIpRemoteService
                     update = MenuStep(update, index, "Already at target");
                     RemoveMenuDraft(draft.ControlId);
                     await SaveMenuUpdateAsync(update).ConfigureAwait(false);
+                    if (entry is not null) CompleteMenuNudge(queuedBatch!, entry);
                     await FinishIndexedGroupAsync().ConfigureAwait(false);
                     continue;
                 }
@@ -240,6 +262,7 @@ public sealed partial class SamsungIpRemoteService
                 // calibration values we have already read from the same display.
                 if (control.RequiresSeparateApply || control.Method is "gammaModeControl" or "autoMotionPlusControl")
                     UpdateMenu(menu => InvalidateMenuControlContext(menu, control));
+                if (entry is not null) CompleteMenuNudge(queuedBatch!, entry);
                 await FinishIndexedGroupAsync().ConfigureAwait(false);
             }
             catch (Exception error) when (error is InvalidOperationException or ArgumentException or OperationCanceledException or IOException or UnauthorizedAccessException or JsonException)
@@ -256,7 +279,8 @@ public sealed partial class SamsungIpRemoteService
             }
             async Task FinishIndexedGroupAsync()
             {
-                if (selectorSession is null || index + 1 < drafts.Length && IpMenuCatalog.Get(drafts[index + 1].ControlId).Section == selectorSession.Section) return;
+                if (selectorSession is null || (queuedBatch is not null ? !queuedBatch.Closed
+                    : index + 1 < drafts.Length && IpMenuCatalog.Get(drafts[index + 1].ControlId).Section == selectorSession.Section)) return;
                 await RestoreMenuSelectorAsync(profile, selectorSession, cancellation).ConfigureAwait(false);
                 selectorSession = null;
             }

@@ -7,6 +7,7 @@ public sealed partial class SamsungIpRemoteService
 {
     private MenuNudgeSession? _menuNudges;
     private const int MaximumQueuedNudges = 256;
+    private const int MaximumIndexedBatchWrites = 256;
 
     // Explicit numeric edits join this queue. Other operations continue to use
     // the normal gate and cannot interleave reads, modes, remote keys or writes.
@@ -22,7 +23,8 @@ public sealed partial class SamsungIpRemoteService
             if (!session.Accepting || _operation?.IsCancellationRequested == true) return "The adjustment queue is stopping.";
             if (!_snapshot.Menu.Connected || _snapshot.Menu.SessionId != session.Baseline.SessionId
                 || _snapshot.Menu.ValuesRevision != session.Baseline.ValuesRevision) return "The TV connection or context changed; the queue is stopping.";
-            if (session.Entries.Count >= MaximumQueuedNudges) return "The adjustment queue is full. Wait for some changes to finish.";
+            if (session.Entries.Count >= MaximumQueuedNudges && !session.Entries.Any(entry => !entry.Sent && entry.Draft.ControlId == control.Id))
+                return "The adjustment queue is full. Wait for some changes to finish.";
             return MenuValueDisabledReason(session.Baseline, control);
         }
     }
@@ -67,10 +69,15 @@ public sealed partial class SamsungIpRemoteService
                 if (start) _menuNudges = null;
                 return Task.CompletedTask;
             }
-            entry = new(new(controlId, JsonValue.Create(target)!, JsonValue.Create(original)!,
-                MenuPrerequisites(session.Baseline, control, forEditing: true), session.Baseline.Input!, session.Baseline.PictureMode!));
+            entry = session.Entries.FirstOrDefault(item => !item.Sent && item.Draft.ControlId == controlId)!;
+            if (entry is null)
+            {
+                entry = new(new(controlId, JsonValue.Create(target)!, JsonValue.Create(original)!,
+                    MenuPrerequisites(session.Baseline, control, forEditing: true), session.Baseline.Input!, session.Baseline.PictureMode!));
+                session.Entries.Add(entry);
+            }
+            else entry.Draft = entry.Draft with { Target = JsonValue.Create(target)! };
             session.Expected[controlId] = target;
-            session.Entries.Add(entry);
             PublishNudgesLocked(session);
         }
         Changed?.Invoke();
@@ -81,30 +88,25 @@ public sealed partial class SamsungIpRemoteService
     private async Task RunMenuNudgesAsync(MenuNudgeSession session)
     {
         Exception? failure = null;
+        MenuNudgeBatch? batch = null;
         try
         {
             await RunMenuOperationAsync(async (profile, cancellation) =>
             {
                 while (true)
                 {
-                    MenuNudgeEntry entry;
                     lock (_sync)
                     {
                         cancellation.ThrowIfCancellationRequested();
                         if (!session.Accepting) throw new OperationCanceledException("Adjustment queue stopped.");
                         if (session.Entries.Count == 0) { session.Accepting = false; break; }
-                        entry = session.Entries[0];
+                        batch = new(session, session.Entries[0]);
                     }
-                    // Each explicit target has the same fresh preflight,
-                    // per-write journal, readback and selector protection as Apply.
-                    await ApplyMenuCoreAsync(profile, cancellation, [entry.Draft]).ConfigureAwait(false);
-                    lock (_sync)
-                    {
-                        session.Entries.RemoveAt(0);
-                        PublishNudgesLocked(session);
-                    }
-                    Changed?.Invoke();
-                    entry.Completion.TrySetResult();
+                    // Pending targets remain replaceable through preflight. Indexed
+                    // RGB targets share a selector session, not an invented bulk RPC.
+                    await ApplyMenuCoreAsync(profile, cancellation, queuedBatch: batch).ConfigureAwait(false);
+                    foreach (var entry in batch.Completed) entry.Completion.TrySetResult();
+                    batch = null;
                 }
             }).ConfigureAwait(false);
         }
@@ -120,7 +122,7 @@ public sealed partial class SamsungIpRemoteService
             lock (_sync)
             {
                 session.Accepting = false;
-                remaining = session.Entries.ToArray();
+                remaining = session.Entries.Concat(batch?.Completed ?? []).ToArray();
                 if (ReferenceEquals(_menuNudges, session))
                 {
                     _menuNudges = null;
@@ -146,6 +148,42 @@ public sealed partial class SamsungIpRemoteService
             new IpMenuQueuedValue(entry.Draft.ControlId, entry.Draft.Target.GetValue<int>())).ToArray(), session.Accepting) }
     };
 
+    private static string MenuNudgeGroup(IpMenuControl control) => control.IsIndexed ? "row:" + control.Section + "/" + control.IndexValue : "control:" + control.Id;
+
+    private MenuNudgeEntry? NextMenuNudge(MenuNudgeBatch batch)
+    {
+        lock (_sync) return batch.Closed ? null : batch.Session.Entries.FirstOrDefault(entry => MenuNudgeGroup(IpMenuCatalog.Get(entry.Draft.ControlId)) == batch.Group);
+    }
+
+    private IpMenuDraft ClaimMenuNudge(MenuNudgeBatch batch, MenuNudgeEntry entry)
+    {
+        lock (_sync)
+        {
+            if (!batch.Session.Accepting || _operation?.IsCancellationRequested == true) throw new OperationCanceledException("Adjustment queue stopped.");
+            // This is the handoff to the durable write journal. Later edits must
+            // not mutate the target we are about to send or its expected readback.
+            entry.Sent = true;
+            return entry.Draft;
+        }
+    }
+
+    private void CompleteMenuNudge(MenuNudgeBatch batch, MenuNudgeEntry entry)
+    {
+        lock (_sync)
+        {
+            batch.Session.Entries.Remove(entry);
+            batch.Completed.Add(entry);
+            // Bound the journal even if edits arrive continuously for one row.
+            batch.Closed = !batch.IsIndexed || batch.Completed.Count >= MaximumIndexedBatchWrites
+                || !batch.Session.Entries.Any(item => MenuNudgeGroup(IpMenuCatalog.Get(item.Draft.ControlId)) == batch.Group);
+            PublishNudgesLocked(batch.Session);
+        }
+        Changed?.Invoke();
+        // Earlier confirmed channels can finish while the group continues. The
+        // last channel waits for selector restoration and the completed journal.
+        if (!batch.Closed) entry.Completion.TrySetResult();
+    }
+
     private sealed class MenuNudgeSession(IpMenuSnapshot baseline)
     {
         public IpMenuSnapshot Baseline { get; } = baseline;
@@ -155,7 +193,16 @@ public sealed partial class SamsungIpRemoteService
     }
     private sealed class MenuNudgeEntry(IpMenuDraft draft)
     {
-        public IpMenuDraft Draft { get; } = draft;
+        public IpMenuDraft Draft { get; set; } = draft;
+        public bool Sent { get; set; }
         public TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+    private sealed class MenuNudgeBatch(MenuNudgeSession session, MenuNudgeEntry first)
+    {
+        public MenuNudgeSession Session { get; } = session;
+        public string Group { get; } = MenuNudgeGroup(IpMenuCatalog.Get(first.Draft.ControlId));
+        public bool IsIndexed { get; } = IpMenuCatalog.Get(first.Draft.ControlId).IsIndexed;
+        public bool Closed { get; set; }
+        public List<MenuNudgeEntry> Completed { get; } = [];
     }
 }
