@@ -500,13 +500,14 @@ public sealed class IpRemotePageTests
             Assert.Equal(new[] { "span", "input", "span" }, group.Skip(1).Where(frame => frame.FrameType == RenderTreeFrameType.Element).Select(frame => frame.ElementName));
             Assert.Equal(minimum + maximum, string.Concat(Text(group).Where(character => !char.IsWhiteSpace(character))));
         });
-        public Task AssertTargetAsync(string label, int expected) => Dispatcher.InvokeAsync(() =>
+        public Task AssertTargetAsync(string label, int expected) => AssertInputValueAsync(label, expected.ToString());
+        public Task AssertInputValueAsync(string label, string expected) => Dispatcher.InvokeAsync(() =>
         {
             var frames = Frames;
             var input = frames.Select((frame, index) => (frame, index)).Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "input")
                 .Select(item => frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray())
                 .Single(item => item.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == label));
-            Assert.Equal(expected.ToString(), input.Single(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "value").AttributeValue?.ToString());
+            Assert.Equal(expected, input.Single(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "value").AttributeValue?.ToString());
         });
         public Task UploadAsync(IBrowserFile file) => Dispatcher.InvokeAsync(async () =>
         {

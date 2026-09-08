@@ -8,7 +8,7 @@ public sealed partial class SamsungIpRemoteService
     private MenuNudgeSession? _menuNudges;
     private const int MaximumQueuedNudges = 256;
 
-    // Only explicit +/- edits join this queue. Other operations continue to use
+    // Explicit numeric edits join this queue. Other operations continue to use
     // the normal gate and cannot interleave reads, modes, remote keys or writes.
     public string? MenuNudgeDisabledReason(IpMenuControl control)
     {
@@ -31,12 +31,27 @@ public sealed partial class SamsungIpRemoteService
     {
         if (delta is not (-1 or 1)) throw new ArgumentException("A slider click must be +1 or -1.");
         var control = IpMenuCatalog.Get(controlId);
+        return QueueMenuAdjustment(control, original => Math.Clamp(original + delta, control.Parameter.Minimum, control.Parameter.Maximum));
+    }
+
+    public Task QueueMenuValueAsync(string controlId, string text)
+    {
+        var control = IpMenuCatalog.Get(controlId);
+        if (control.Parameter.Kind != IpRemoteParameterKind.Integer || control.RequiresSeparateApply)
+            throw new ArgumentException("Only numeric setting adjustments can be queued.");
+        var target = IpMenuCatalog.ParseTarget(control, text).GetValue<int>();
+        return QueueMenuAdjustment(control, _ => target);
+    }
+
+    private Task QueueMenuAdjustment(IpMenuControl control, Func<int, int> requestedTarget)
+    {
+        var controlId = control.Id;
         MenuNudgeSession session;
         MenuNudgeEntry entry;
         var start = false;
         lock (_sync)
         {
-            if (!_snapshot.Menu.Preferences.ApplyImmediately) throw new InvalidOperationException("Use Apply immediately to queue slider clicks.");
+            if (!_snapshot.Menu.Preferences.ApplyImmediately) throw new InvalidOperationException("Use Apply immediately to queue numeric adjustments.");
             if (MenuNudgeDisabledReason(control) is { } reason) throw new InvalidOperationException(reason);
             if (_menuNudges is null)
             {
@@ -46,7 +61,7 @@ public sealed partial class SamsungIpRemoteService
             }
             session = _menuNudges;
             var original = session.Expected.GetValueOrDefault(controlId, session.Baseline.Value(control)!.GetValue<int>());
-            var target = Math.Clamp(original + delta, control.Parameter.Minimum, control.Parameter.Maximum);
+            var target = requestedTarget(original);
             if (target == original)
             {
                 if (start) _menuNudges = null;
@@ -95,7 +110,7 @@ public sealed partial class SamsungIpRemoteService
         }
         catch (Exception error)
         {
-            // Settle every awaiting click; never let a detached queue worker
+            // Settle every awaiting edit; never let a detached queue worker
             // leave a UI event waiting forever after an unexpected failure.
             failure = error;
         }
@@ -113,8 +128,8 @@ public sealed partial class SamsungIpRemoteService
                     {
                         NudgeQueue = null,
                         Status = failure is null ? _snapshot.Menu.Status
-                            : failure is OperationCanceledException ? "Adjustment queue stopped. Unsent clicks were discarded; delivered changes were not undone."
-                            : failure.Message + " Remaining queued clicks were discarded; nothing will resume automatically."
+                            : failure is OperationCanceledException ? "Adjustment queue stopped. Unsent adjustments were discarded; delivered changes were not undone."
+                            : failure.Message + " Remaining queued adjustments were discarded; nothing will resume automatically."
                     } };
                 }
             }

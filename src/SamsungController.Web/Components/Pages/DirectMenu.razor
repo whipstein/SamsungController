@@ -39,7 +39,7 @@
     <p class="direct-hint">After changing HDMI signal, bit depth, or picture mode, use <strong>Refresh TV values</strong>. It rereads all settings and available calibration rows, discards unsent edits, and keeps your connection. If 20-point WB is Off, refresh temporarily enables it, reads all intervals, then restores the original interval and Off. <strong>Refresh section</strong> only rereads this tab. Keep the signal unchanged while loading.</p>
     <details class="direct-details compact"><summary>Update behavior · @(Snapshot.Menu.Preferences.ApplyImmediately ? "Apply immediately" : "Wait for Apply")</summary>
         <label class="direct-check"><input type="checkbox" aria-label="Apply settings immediately" checked="@Snapshot.Menu.Preferences.ApplyImmediately" @onchange="SetImmediateAsync" disabled="@Snapshot.IsBusy" /> Apply immediately when an edit is committed</label>
-        <p>Sliders send when released, not on every drag event. With Apply immediately, keep clicking + or − to queue each successive target in order; the number shows your latest requested target and TV shows the last read value. Stop or a failed change discards unsent clicks. Apply or discard pending changes before turning this on.</p>
+        <p>With Apply immediately, slider drags, typed values, and +/− remain usable while earlier adjustments run. Releasing a slider or committing a typed value queues its target; dragging and typing alone send nothing. The number shows your latest edit or queued target, and TV shows the last read value. Stop or a failed change discards unsent adjustments. Apply or discard pending changes before turning this on.</p>
         <button class="toolbar-button" @onclick="Discard" disabled="@(Snapshot.IsBusy || Snapshot.Menu.Pending.Count == 0)">Discard pending changes</button>
     </details>
     <nav class="direct-tabs" aria-label="Top-level settings">
@@ -162,8 +162,9 @@
     });
     private void SelectCategory(string category) { Category = category; SelectSection(IpMenuCatalog.Sections.First(section => section.Category == category).Id); }
     private void SelectSection(string section) { if (Section != section) LayoutAttached = false; Section = section; Error = null; }
-    private string Target(IpMenuControl control) => Snapshot.Menu.NudgeQueue?.Values.LastOrDefault(value => value.ControlId == control.Id)?.Target.ToString(CultureInfo.InvariantCulture)
-        ?? Edits.GetValueOrDefault(control.Id) ?? Snapshot.Menu.Pending.GetValueOrDefault(control.Id)?.Target.ToString() ?? Snapshot.Menu.Value(control)?.ToString() ?? "";
+    private string Target(IpMenuControl control) => Edits.GetValueOrDefault(control.Id)
+        ?? Snapshot.Menu.NudgeQueue?.Values.LastOrDefault(value => value.ControlId == control.Id)?.Target.ToString(CultureInfo.InvariantCulture)
+        ?? Snapshot.Menu.Pending.GetValueOrDefault(control.Id)?.Target.ToString() ?? Snapshot.Menu.Value(control)?.ToString() ?? "";
     private bool Dirty(IpMenuControl control) => Snapshot.Menu.Pending.ContainsKey(control.Id);
     private string? DisabledReason(IpMenuControl control) => ActionRunning ? "A TV request is running." : Controller.MenuControlDisabledReason(control);
     private string? NudgeDisabledReason(IpMenuControl control) => ActionRunning ? "A TV request is running." : Controller.MenuNudgeDisabledReason(control);
@@ -187,11 +188,11 @@
                 <button aria-label="@($"Decrease {control.Name}")" @onclick="() => NudgeAsync(control, -1)" disabled="@(NudgeDisabledReason(control) is not null || Target(control) == "" || Target(control) == control.Parameter.Minimum.ToString(CultureInfo.InvariantCulture))">−</button>
                 <div class="direct-bounded-slider">
                     <span class="direct-slider-bound" aria-label="@($"{control.Name} minimum")">@control.Parameter.Minimum</span>
-                    <input type="range" aria-label="@($"{control.Name} slider")" min="@control.Parameter.Minimum" max="@control.Parameter.Maximum" step="1" value="@Target(control)" @oninput="args => Preview(control, args)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" disabled="@(DisabledReason(control) is not null)" />
+                    <input type="range" aria-label="@($"{control.Name} slider")" min="@control.Parameter.Minimum" max="@control.Parameter.Maximum" step="1" value="@Target(control)" @oninput="args => Preview(control, args)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" disabled="@(NudgeDisabledReason(control) is not null)" />
                     <span class="direct-slider-bound" aria-label="@($"{control.Name} maximum")">@control.Parameter.Maximum</span>
                 </div>
                 <button aria-label="@($"Increase {control.Name}")" @onclick="() => NudgeAsync(control, 1)" disabled="@(NudgeDisabledReason(control) is not null || Target(control) == "" || Target(control) == control.Parameter.Maximum.ToString(CultureInfo.InvariantCulture))">+</button>
-                <input class="picture-compact-number direct-number-value" aria-label="@($"{control.Name} value")" type="number" min="@control.Parameter.Minimum" max="@control.Parameter.Maximum" step="1" value="@Target(control)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" disabled="@(DisabledReason(control) is not null)" />
+                <input class="picture-compact-number direct-number-value" aria-label="@($"{control.Name} value")" type="number" min="@control.Parameter.Minimum" max="@control.Parameter.Maximum" step="1" value="@Target(control)" @oninput="args => Preview(control, args)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" disabled="@(NudgeDisabledReason(control) is not null)" />
             </div></fieldset>
         }
         else
@@ -207,12 +208,17 @@
         { <details class="direct-control-help"><summary>About this setting</summary><p>@(control.Command.ManagedPictureControl is not null ? "Reads the current value, applies your target directly, then queries the result." : control.Command.Notes.Replace("Experimental; display/input/mode support must be tested. ", "", StringComparison.Ordinal))</p><code>@control.Method</code><p>@control.RangeSource</p></details> }
     </article>;
     private void Preview(IpMenuControl control, ChangeEventArgs args) { Edits[control.Id] = args.Value?.ToString() ?? ""; }
-    private Task CommitAsync(IpMenuControl control, string text) => GuardAsync(async () =>
+    private Task CommitAsync(IpMenuControl control, string text)
     {
-        Edits.Remove(control.Id);
-        Controller.StageMenuValue(control.Id, text);
-        if (Snapshot.Menu.Preferences.ApplyImmediately && Controller.GetSnapshot().Menu.Pending.Count > 0) { await Controller.ApplyMenuAsync(); await RefreshAfterModeAsync(control); }
-    });
+        if (control.Parameter.Kind == IpRemoteParameterKind.Integer && Snapshot.Menu.Preferences.ApplyImmediately)
+            return QueueNumericAsync(control, () => Controller.QueueMenuValueAsync(control.Id, text));
+        return GuardAsync(async () =>
+        {
+            Edits.Remove(control.Id);
+            Controller.StageMenuValue(control.Id, text);
+            if (Snapshot.Menu.Preferences.ApplyImmediately && Controller.GetSnapshot().Menu.Pending.Count > 0) { await Controller.ApplyMenuAsync(); await RefreshAfterModeAsync(control); }
+        });
+    }
     private Task SwitchAsync(IpMenuControl control, ChangeEventArgs args) => CommitAsync(control, control.Parameter.Choices.Single(choice => choice.EndsWith(args.Value is true ? "On" : "Off", StringComparison.OrdinalIgnoreCase)));
     private async Task NudgeAsync(IpMenuControl control, int amount)
     {
@@ -221,10 +227,20 @@
             if (int.TryParse(Target(control), out var value)) await CommitAsync(control, Math.Clamp(value + amount, control.Parameter.Minimum, control.Parameter.Maximum).ToString(CultureInfo.InvariantCulture));
             return;
         }
-        // Do not set ActionRunning: later +/- events must be able to enqueue
+        await QueueNumericAsync(control, () => Controller.QueueMenuNudgeAsync(control.Id, amount));
+    }
+    private async Task QueueNumericAsync(IpMenuControl control, Func<Task> enqueue)
+    {
+        // Do not set ActionRunning: later numeric edits must be able to enqueue
         // while this event awaits its confirmed result. The service owns the gate.
         Error = null;
-        try { await Controller.QueueMenuNudgeAsync(control.Id, amount); }
+        try
+        {
+            var operation = enqueue(); // Validation/enqueue is synchronous; preserve text if rejected.
+            Edits.Remove(control.Id);
+            Snapshot = Controller.GetSnapshot();
+            await operation; // Never clear a newer drag/text preview when this older edit finishes.
+        }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException or JsonException or OperationCanceledException) { Error = error.Message; }
         finally { Snapshot = Controller.GetSnapshot(); await InvokeAsync(StateHasChanged); }
     }

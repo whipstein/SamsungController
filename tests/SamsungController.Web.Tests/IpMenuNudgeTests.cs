@@ -13,6 +13,45 @@ public sealed class IpMenuNudgeTests
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
     [Fact]
+    public async Task AbsoluteValuesAndClicksShareOneOrderedQueueWithoutDuplicateTargets()
+    {
+        using var fixture = await ReadyAsync();
+        using var hold = HoldFirstWrite(fixture, "contrastControl");
+        var first = fixture.Service.QueueMenuValueAsync(Contrast, "46");
+        await hold.Entered.Task.WaitAsync(Timeout);
+        var second = fixture.Service.QueueMenuValueAsync(Contrast, "40");
+        var third = fixture.Service.QueueMenuNudgeAsync(Contrast, 1);
+        await fixture.Service.QueueMenuValueAsync(Contrast, "41");
+        Assert.Equal(new[] { 46, 40, 41 }, fixture.Service.GetSnapshot().Menu.NudgeQueue!.Values.Select(value => value.Target));
+        hold.Release.TrySetResult();
+        await Task.WhenAll(first, second, third).WaitAsync(Timeout);
+        await IdleAsync(fixture.Service);
+        Assert.Equal(new[] { 46, 40, 41 }, fixture.Writes.Select(write => write["params"]!["contrast"]!.GetValue<int>()));
+        Assert.Equal(41, fixture.Display.Contrast);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("-")]
+    [InlineData("50.5")]
+    [InlineData("51")]
+    [InlineData("-1")]
+    public async Task InvalidAbsoluteValuesDoNotAlterTheQueueOrItsNextExpectedValue(string text)
+    {
+        using var fixture = await ReadyAsync();
+        using var hold = HoldFirstWrite(fixture, "contrastControl");
+        var first = fixture.Service.QueueMenuValueAsync(Contrast, "46");
+        await hold.Entered.Task.WaitAsync(Timeout);
+        await Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.QueueMenuValueAsync(Contrast, text));
+        Assert.Single(fixture.Service.GetSnapshot().Menu.NudgeQueue!.Values);
+        var second = fixture.Service.QueueMenuNudgeAsync(Contrast, 1);
+        hold.Release.TrySetResult();
+        await Task.WhenAll(first, second).WaitAsync(Timeout);
+        await IdleAsync(fixture.Service);
+        Assert.Equal(new[] { 46, 47 }, fixture.Writes.Select(write => write["params"]!["contrast"]!.GetValue<int>()));
+    }
+
+    [Fact]
     public async Task RapidClicksSendEverySuccessiveTargetInOrderAndDoNotInterleaveOtherOperations()
     {
         using var fixture = await ReadyAsync();
@@ -49,7 +88,7 @@ public sealed class IpMenuNudgeTests
         using var hold = HoldFirstWrite(fixture, "contrastControl");
         var first = fixture.Service.QueueMenuNudgeAsync(Contrast, 1);
         await hold.Entered.Task.WaitAsync(Timeout);
-        var second = fixture.Service.QueueMenuNudgeAsync(Contrast, 1);
+        var second = fixture.Service.QueueMenuValueAsync(Contrast, "40");
         var third = fixture.Service.QueueMenuNudgeAsync("sharpnessControl/sharpness", 1);
         fixture.Override = (request, _) =>
         {
@@ -85,7 +124,7 @@ public sealed class IpMenuNudgeTests
         using var hold = HoldFirstWrite(fixture, "contrastControl");
         var first = fixture.Service.QueueMenuNudgeAsync(Contrast, 1);
         await hold.Entered.Task.WaitAsync(Timeout);
-        var second = fixture.Service.QueueMenuNudgeAsync(Contrast, 1);
+        var second = fixture.Service.QueueMenuValueAsync(Contrast, "40");
         var count = fixture.Display.Requests.Count;
         fixture.Service.Cancel();
         await Assert.ThrowsAnyAsync<Exception>(() => Task.WhenAll(first, second).WaitAsync(Timeout));
@@ -140,7 +179,7 @@ public sealed class IpMenuNudgeTests
         using var hold = HoldFirstWrite(fixture, "WB2PointControl");
         var first = fixture.Service.QueueMenuNudgeAsync("WB2PointControl/B-Gain", -1);
         await hold.Entered.Task.WaitAsync(Timeout);
-        var second = fixture.Service.QueueMenuNudgeAsync("WB2PointControl/B-Gain", -1);
+        var second = fixture.Service.QueueMenuValueAsync("WB2PointControl/B-Gain", "-50");
         await fixture.Service.QueueMenuNudgeAsync("WB2PointControl/B-Gain", -1);
         hold.Release.TrySetResult();
         await Task.WhenAll(first, second).WaitAsync(Timeout);
@@ -167,11 +206,12 @@ public sealed class IpMenuNudgeTests
         var first = fixture.Service.QueueMenuNudgeAsync(control.Id, 1);
         await hold.Entered.Task.WaitAsync(Timeout);
         var second = fixture.Service.QueueMenuNudgeAsync(control.Id, 1);
+        var third = fixture.Service.QueueMenuValueAsync(control.Id, "20");
         hold.Release.TrySetResult();
-        await Task.WhenAll(first, second).WaitAsync(Timeout);
+        await Task.WhenAll(first, second, third).WaitAsync(Timeout);
         await IdleAsync(fixture.Service);
-        Assert.Equal(new[] { 11, 12 }, fixture.Writes.Where(write => write["method"]!.ToString() == control.Method).Select(write => write["params"]![control.Field]!.GetValue<int>()));
-        Assert.Equal(12, fixture.GridValues[section + "/" + grid.Values[0]][control.Field]!.GetValue<int>());
+        Assert.Equal(new[] { 11, 12, 20 }, fixture.Writes.Where(write => write["method"]!.ToString() == control.Method).Select(write => write["params"]![control.Field]!.GetValue<int>()));
+        Assert.Equal(20, fixture.GridValues[section + "/" + grid.Values[0]][control.Field]!.GetValue<int>());
         Assert.Equal(10, fixture.GridValues[section + "/" + grid.Values[1]][control.Field]!.GetValue<int>());
         Assert.Equal(grid.Values.Last(), fixture.Values[grid.SelectorField]!.ToString());
         Assert.Equal("Restored", fixture.Service.GetSnapshot().Menu.SelectorSession!.Status);
@@ -183,11 +223,13 @@ public sealed class IpMenuNudgeTests
         using var fixture = await ReadyAsync();
         await Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.QueueMenuNudgeAsync(Contrast, 2));
         await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.QueueMenuNudgeAsync("pictureModeControl/pictureMode", 1));
+        await Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.QueueMenuValueAsync("pictureModeControl/pictureMode", "Movie"));
         fixture.Service.StageMenuValue(Contrast, "46");
         await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.QueueMenuNudgeAsync(Contrast, 1));
         fixture.Service.DiscardMenuChanges();
         await fixture.Service.SaveMenuPreferencesAsync(false);
         await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.QueueMenuNudgeAsync(Contrast, 1));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.QueueMenuValueAsync(Contrast, "40"));
         await using var services = Services(fixture);
         await using var renderer = new IpRemotePageTests.IpPageRenderer(services, typeof(DirectMenu));
         await renderer.StartAsync();
@@ -196,6 +238,13 @@ public sealed class IpMenuNudgeTests
         await renderer.AssertTargetAsync("Contrast value", 47);
         Assert.Empty(fixture.Writes);
         Assert.Equal(47, fixture.Service.GetSnapshot().Menu.Pending[Contrast].Target.GetValue<int>());
+        await renderer.ChangeAsync("Contrast slider", "40");
+        await renderer.ChangeAsync("Contrast slider", "40", "onchange");
+        await renderer.ChangeAsync("Contrast value", "38");
+        await renderer.ChangeAsync("Contrast value", "38", "onchange");
+        await renderer.AssertTargetAsync("Contrast value", 38);
+        Assert.Equal(38, fixture.Service.GetSnapshot().Menu.Pending[Contrast].Target.GetValue<int>());
+        Assert.Empty(fixture.Writes);
     }
 
     [Fact]
@@ -279,7 +328,8 @@ public sealed class IpMenuNudgeTests
         var first = renderer.ClickAriaButtonAsync("Increase Contrast");
         await hold.Entered.Task.WaitAsync(Timeout);
         await renderer.AssertElementDisabledAsync("button", "Increase Contrast", false);
-        await renderer.AssertElementDisabledAsync("input", "Contrast value", true);
+        await renderer.AssertElementDisabledAsync("input", "Contrast value", false);
+        await renderer.AssertElementDisabledAsync("input", "Contrast slider", false);
         var second = renderer.ClickAriaButtonAsync("Increase Contrast");
         await renderer.AssertTargetAsync("Contrast value", 47);
         var third = renderer.ClickAriaButtonAsync("Decrease Contrast");
@@ -294,6 +344,76 @@ public sealed class IpMenuNudgeTests
         await renderer.AssertElementDisabledAsync("input", "Contrast value", false);
         await renderer.AssertTargetAsync("Contrast value", 46);
         Assert.Equal(3, fixture.Writes.Count());
+    }
+
+    [Theory]
+    [InlineData("Contrast slider", "Contrast value")]
+    [InlineData("Contrast value", "Contrast slider")]
+    public async Task SliderAndTextEditsStartAndJoinTheQueueAndKeepNewerPreviewsAcrossReplies(string firstInput, string secondInput)
+    {
+        using var fixture = await ReadyAsync();
+        await using var services = Services(fixture);
+        await using var renderer = new IpRemotePageTests.IpPageRenderer(services, typeof(DirectMenu));
+        await renderer.StartAsync();
+        var structure = await renderer.ControlStructureAsync(Contrast);
+        using var firstHold = HoldFirstWrite(fixture, "contrastControl");
+        await renderer.ChangeAsync(firstInput, "46");
+        Assert.Empty(fixture.Writes); // A preview is not a committed adjustment.
+        var first = renderer.ChangeAsync(firstInput, "46", "onchange");
+        await firstHold.Entered.Task.WaitAsync(Timeout);
+        await renderer.AssertElementDisabledAsync("input", "Contrast slider", false);
+        await renderer.AssertElementDisabledAsync("input", "Contrast value", false);
+        await renderer.AssertElementDisabledAsync("button", "Increase Contrast", false);
+        await renderer.ChangeAsync(secondInput, "40");
+        var second = renderer.ChangeAsync(secondInput, "40", "onchange");
+        await renderer.ChangeAsync(firstInput, "38");
+        Assert.Equal(new[] { 46, 40 }, fixture.Service.GetSnapshot().Menu.NudgeQueue!.Values.Select(value => value.Target));
+
+        using var secondHold = HoldFirstWrite(fixture, "contrastControl");
+        firstHold.Release.TrySetResult();
+        await secondHold.Entered.Task.WaitAsync(Timeout);
+        await first.WaitAsync(Timeout); // The first readback must not erase the uncommitted 38.
+        Assert.Equal(46, fixture.Display.Contrast);
+        await renderer.AssertTargetAsync("Contrast value", 38);
+        await renderer.AssertTargetAsync("Contrast slider", 38);
+        var third = renderer.ChangeAsync(firstInput, "38", "onchange");
+        var fourth = renderer.ClickAriaButtonAsync("Decrease Contrast");
+        await renderer.AssertTargetAsync("Contrast value", 37);
+        Assert.Equal(structure, await renderer.ControlStructureAsync(Contrast));
+        secondHold.Release.TrySetResult();
+        await Task.WhenAll(second, third, fourth).WaitAsync(Timeout);
+        await IdleAsync(fixture.Service);
+        Assert.Equal(new[] { 46, 40, 38, 37 }, fixture.Writes.Select(write => write["params"]!["contrast"]!.GetValue<int>()));
+        await renderer.AssertTargetAsync("Contrast value", 37);
+        Assert.Equal(structure, await renderer.ControlStructureAsync(Contrast));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("51")]
+    public async Task InProgressTextSurvivesQueueCompletionAndInvalidCommitDoesNotSend(string text)
+    {
+        using var fixture = await ReadyAsync();
+        await using var services = Services(fixture);
+        await using var renderer = new IpRemotePageTests.IpPageRenderer(services, typeof(DirectMenu));
+        await renderer.StartAsync();
+        using var hold = HoldFirstWrite(fixture, "contrastControl");
+        var first = renderer.ClickAriaButtonAsync("Increase Contrast");
+        await hold.Entered.Task.WaitAsync(Timeout);
+        await renderer.ChangeAsync("Contrast value", text);
+        hold.Release.TrySetResult();
+        await first.WaitAsync(Timeout);
+        await IdleAsync(fixture.Service);
+        await renderer.AssertInputValueAsync("Contrast value", text);
+        await renderer.ChangeAsync("Contrast value", text, "onchange");
+        await renderer.AssertInputValueAsync("Contrast value", text);
+        Assert.Single(fixture.Writes);
+        Assert.Null(fixture.Service.GetSnapshot().Menu.NudgeQueue);
+        await renderer.AssertElementDisabledAsync("input", "Contrast value", false);
+        await renderer.ChangeAsync("Contrast value", "40");
+        await renderer.ChangeAsync("Contrast value", "40", "onchange").WaitAsync(Timeout);
+        await IdleAsync(fixture.Service);
+        Assert.Equal(40, fixture.Display.Contrast);
     }
 
     private static ServiceProvider Services(MenuFixture fixture) => new ServiceCollection().AddLogging().AddSingleton(fixture.Service)
