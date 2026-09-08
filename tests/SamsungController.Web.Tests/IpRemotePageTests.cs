@@ -440,13 +440,18 @@ public sealed class IpRemotePageTests
         });
         public Task AssertDisabledAsync(string label, bool expected) => Dispatcher.InvokeAsync(() => Assert.Equal(expected,
             Button(label).Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "disabled" && frame.AttributeValue is true)));
-        public Task ClickAriaAsync(string label) => Dispatcher.InvokeAsync(async () =>
+        public Task AssertExpertGroupsDraggableAsync() => Dispatcher.InvokeAsync(() =>
         {
-            var button = Frames.Select((frame, index) => (frame, index)).Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "button")
-                .Select(item => Frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray())
-                .Single(item => item.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == label));
-            Assert.DoesNotContain(button, frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "disabled" && frame.AttributeValue is true);
-            await DispatchEventAsync(button.Single(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "onclick").AttributeEventHandlerId, null, new MouseEventArgs());
+            var groups = Frames.Select((frame, index) => (frame, index)).Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "section")
+                .Select(item => Frames.Skip(item.index + 1).TakeWhile(frame => frame.FrameType == RenderTreeFrameType.Attribute).ToArray())
+                .Where(attributes => attributes.Any(frame => frame.AttributeName == "data-expert-group")).ToArray();
+            Assert.NotEmpty(groups);
+            foreach (var attributes in groups)
+            {
+                Assert.Contains(attributes, frame => frame.AttributeName == "draggable" && frame.AttributeValue?.ToString() == "true");
+                Assert.Contains(attributes, frame => frame.AttributeName == "tabindex" && frame.AttributeValue?.ToString() == "0");
+                Assert.Contains(attributes, frame => frame.AttributeName == "aria-keyshortcuts");
+            }
         });
         public Task AssertExpertGroupOrderAsync(IEnumerable<string> expected) => Dispatcher.InvokeAsync(() => Assert.Equal(expected,
             Frames.Where(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "data-expert-group").Select(frame => frame.AttributeValue?.ToString())));

@@ -51,18 +51,15 @@
 .direct-layout-toolbar button { flex-shrink:0; }
 .direct-layout-feedback { font-size:13px; color:var(--muted); }
 .direct-layout-feedback:empty { display:none; }
-.direct-expert-group { position:relative; min-width:0; border:1px solid var(--line-strong); border-radius:9px; background:var(--surface); padding:6px; }
-.direct-layout-handlebar { display:flex; align-items:center; gap:8px; padding:0 0 6px; min-width:0; }
-.direct-layout-handle, .direct-layout-arrows button { font:inherit; font-size:13px; font-weight:600; color:var(--muted); background:var(--surface-button); border:1px solid var(--line); border-radius:5px; padding:5px 9px; }
-.direct-layout-handle { cursor:grab; touch-action:manipulation; user-select:none; }
-.direct-layout-handle:active { cursor:grabbing; }
-.direct-layout-handlebar button:disabled { cursor:not-allowed; opacity:.5; }
-.direct-layout-handlebar button:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; }
-.direct-layout-linked { font-size:11px; color:var(--muted); }
-.direct-layout-arrows { display:flex; gap:4px; margin-left:auto; }
-.direct-layout-arrows button { cursor:pointer; }
+.direct-expert-group { position:relative; min-width:0; border-radius:9px; }
+.direct-expert-layout[data-layout-locked="false"] .direct-expert-group { cursor:grab; user-select:none; }
+.direct-expert-group:focus-visible { outline:2px solid var(--cyan); outline-offset:3px; }
+.direct-expert-group :is(input,textarea,[contenteditable]) { user-select:text; }
+.direct-expert-group :is(button,select,label,summary,input[type=range]) { cursor:pointer; }
+.direct-expert-group :is(button,select,input):disabled { cursor:not-allowed; }
+.direct-expert-group input:not([type=range]):not([type=checkbox]), .direct-expert-group textarea { cursor:text; }
 .direct-expert-members { display:grid; gap:8px; }
-.direct-expert-group.linked { grid-column:1 / -1; }
+.direct-expert-group.linked { grid-column:1 / -1; border:1px solid var(--line-strong); padding:8px; background:var(--surface); }
 .direct-expert-group.linked .direct-expert-members { grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr)); }
 .direct-expert-group.layout-dragging { opacity:.5; }
 .direct-expert-group.layout-drop-before::before, .direct-expert-group.layout-drop-after::after { content:""; position:absolute; background:var(--cyan); border-radius:3px; pointer-events:none; z-index:1; }

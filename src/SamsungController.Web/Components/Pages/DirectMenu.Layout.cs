@@ -25,20 +25,12 @@ public partial class DirectMenu
             await LayoutJavaScript.InvokeVoidAsync("samsungExpertLayout.attach", ExpertLayoutElement, LayoutReference);
         }
         catch (JSDisconnectedException) { }
-        catch (JSException) { LayoutFeedback = "Drag handles could not load. Use the arrow buttons, or reload this page."; await InvokeAsync(StateHasChanged); }
+        catch (JSException) { LayoutFeedback = "Box dragging could not load. Reload this page to rearrange settings."; await InvokeAsync(StateHasChanged); }
     }
 
     [JSInvokable]
     public Task<bool> MoveExpertGroupAsync(string source, string target, bool after) => ChangeExpertLayoutAsync(
         () => Controller.MoveExpertGroupAsync(source, target, after), "Layout saved. Linked controls stay together; nothing was sent to the TV.");
-
-    private Task MoveExpertGroupStepAsync(string id, int offset)
-    {
-        var visible = VisibleExpertGroups.Select(group => group.Id).ToList();
-        var index = visible.IndexOf(id);
-        if (index < 0 || index + offset < 0 || index + offset >= visible.Count) return Task.CompletedTask;
-        return MoveExpertGroupAsync(id, visible[index + offset], offset > 0);
-    }
 
     private Task ResetExpertLayoutAsync() => ChangeExpertLayoutAsync(Controller.ResetExpertLayoutAsync,
         "Default layout restored. TV settings and pending edits are unchanged.");

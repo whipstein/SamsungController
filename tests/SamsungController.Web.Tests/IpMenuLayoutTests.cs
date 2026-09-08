@@ -99,22 +99,26 @@ public sealed class IpMenuLayoutTests
     }
 
     [Fact]
-    public async Task DragCallbackAndArrowButtonsReorderRenderedGroupsKeepEditsAndSendNothing()
+    public async Task WholeBoxDragCallbacksReorderRenderedGroupsKeepEditsAndSendNothing()
     {
         using var fixture = await ReadyAsync();
         var js = new LayoutJavaScript();
         await using var services = Services(fixture, js);
         await using var renderer = new IpRemotePageTests.IpPageRenderer(services, typeof(DirectMenu));
         await renderer.StartAsync();
+        await renderer.AssertExpertGroupsDraggableAsync();
+        await renderer.AssertClassPresentAsync("direct-layout-handlebar", false);
+        await renderer.AssertClassPresentAsync("direct-layout-handle", false);
+        await renderer.AssertClassPresentAsync("direct-layout-arrows", false);
         await renderer.ChangeAsync("Contrast value", "44", "onchange");
         var before = fixture.Service.GetSnapshot().Menu;
         var requests = fixture.Display.Requests.Count;
         Assert.NotNull(js.Page);
         await renderer.Dispatcher.InvokeAsync(async () => Assert.True(await js.Page!.MoveExpertGroupAsync(Gamma, Contrast, false)));
         await renderer.AssertExpertGroupOrderAsync(VisibleOrder(fixture));
-        await renderer.AssertExpertGroupTextAsync(Gamma, "Gamma mode", "BT.1886 adjustment", "ST.2084 adjustment", "HLG adjustment", "Linked controls");
+        await renderer.AssertExpertGroupTextAsync(Gamma, "Gamma mode", "BT.1886 adjustment", "ST.2084 adjustment", "HLG adjustment");
         await renderer.AssertTargetAsync("Contrast value", 44);
-        await renderer.ClickAriaAsync("Move Gamma mode later");
+        await renderer.Dispatcher.InvokeAsync(async () => Assert.True(await js.Page!.MoveExpertGroupAsync(Gamma, Contrast, true)));
         var order = fixture.Service.GetSnapshot().Menu.Preferences.ExpertGroupOrder.ToList();
         Assert.Equal(order.IndexOf(Contrast) + 1, order.IndexOf(Gamma));
         await renderer.AssertExpertGroupOrderAsync(VisibleOrder(fixture));
@@ -176,16 +180,16 @@ public sealed class IpMenuLayoutTests
     }
 
     [Fact]
-    public async Task MissingDragScriptLeavesWorkingArrowAlternativeWithoutRepeatedAttachAttempts()
+    public async Task MissingDragScriptShowsReloadGuidanceWithoutRepeatedAttachAttempts()
     {
         using var fixture = await ReadyAsync();
         var js = new LayoutJavaScript { FailAttach = true };
         await using var services = Services(fixture, js);
         await using var renderer = new IpRemotePageTests.IpPageRenderer(services, typeof(DirectMenu));
         await renderer.StartAsync();
-        await renderer.AssertTextAsync("Drag handles could not load");
-        await renderer.ClickAriaAsync("Move Gamma mode earlier");
-        await renderer.AssertTextAsync("Layout saved");
+        await renderer.AssertTextAsync("Box dragging could not load");
+        await renderer.ClickAsync("Reset layout");
+        await renderer.AssertTextAsync("Default layout restored");
         Assert.Equal(1, js.AttachCalls);
         Assert.Empty(fixture.Writes);
     }

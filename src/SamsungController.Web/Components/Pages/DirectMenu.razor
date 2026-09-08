@@ -56,24 +56,13 @@
     @if (Section == "expert")
     {
         <section class="direct-expert-layout" @ref="ExpertLayoutElement" data-layout-locked="@(LayoutLocked ? "true" : "false")" aria-label="Arrange Expert settings">
-            <div class="direct-layout-toolbar"><p class="direct-hint" id="expert-layout-help">Drag a box by its <strong>⠿ Move</strong> handle and drop at the highlighted edge. Linked controls move together. The arrow buttons also move boxes. Layout saves automatically; TV settings are unchanged.</p>
+            <div class="direct-layout-toolbar"><p class="direct-hint" id="expert-layout-help">Click and drag a box's heading or background to move it. Linked controls move together; sliders and inputs still adjust values. Keyboard: focus a box and use Alt + arrow keys. Layout saves automatically; TV settings are unchanged.</p>
                 <button class="toolbar-button" @onclick="ResetExpertLayoutAsync" disabled="@LayoutLocked">Reset layout</button></div>
             <p class="direct-layout-feedback" role="status">@LayoutFeedback</p>
             <div class="direct-control-grid direct-expert-grid">
-                @{ var groups = VisibleExpertGroups.ToArray(); }
-                @for (var index = 0; index < groups.Length; index++)
+                @foreach (var group in VisibleExpertGroups)
                 {
-                    var group = groups[index];
-                    var position = index;
-                    <section class="direct-expert-group @(group.Controls.Count > 1 ? "linked" : "")" @key="group.Id" data-expert-group="@group.Id" aria-label="@group.Name">
-                        <div class="direct-layout-handlebar">
-                            <button type="button" class="direct-layout-handle" draggable="@(!LayoutLocked ? "true" : "false")" data-layout-handle aria-label="@($"Move {group.Name}")" aria-describedby="expert-layout-help" title="Drag to move this box and its linked controls" disabled="@LayoutLocked">⠿ Move</button>
-                            @if (group.Controls.Count > 1) { <span class="direct-layout-linked" title="@string.Join(", ", group.Controls.Select(control => control.Name))">Linked controls</span> }
-                            <div class="direct-layout-arrows">
-                                <button type="button" aria-label="@($"Move {group.Name} earlier")" title="Move earlier" @onclick="() => MoveExpertGroupStepAsync(group.Id, -1)" disabled="@(LayoutLocked || position == 0)">←</button>
-                                <button type="button" aria-label="@($"Move {group.Name} later")" title="Move later" @onclick="() => MoveExpertGroupStepAsync(group.Id, 1)" disabled="@(LayoutLocked || position == groups.Length - 1)">→</button>
-                            </div>
-                        </div>
+                    <section class="direct-expert-group @(group.Controls.Count > 1 ? "linked" : "")" @key="group.Id" data-expert-group="@group.Id" draggable="@(!LayoutLocked ? "true" : "false")" tabindex="0" aria-label="@group.Name" aria-describedby="expert-layout-help" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight Alt+ArrowUp Alt+ArrowDown">
                         <div class="direct-expert-members">@foreach (var control in group.Controls.Where(IsVisible)) { @ControlCard(control) }</div>
                     </section>
                 }
