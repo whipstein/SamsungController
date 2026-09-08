@@ -167,7 +167,12 @@ public sealed partial class SamsungIpRemoteService : IDisposable
 
     public void Cancel()
     {
-        lock (_sync) _operation?.Cancel();
+        lock (_sync)
+        {
+            if (_menuNudges is { } session) { session.Accepting = false; PublishNudgesLocked(session); }
+            _operation?.Cancel();
+        }
+        Changed?.Invoke();
     }
 
     private async Task RunAsync(bool pairing, IReadOnlyList<string> methods, string label)

@@ -77,6 +77,11 @@ public sealed partial class SamsungIpRemoteService
         if (snapshot.IsBusy) return "A TV request is running.";
         if (menu.Update?.NeedsReview == true) return "Review the interrupted update before applying more changes.";
         if (menu.WhiteBalanceRead?.NeedsRestore == true) return "Restore/check the interrupted 20-point white-balance read before applying changes.";
+        return MenuValueDisabledReason(menu, control);
+    }
+
+    public static string? MenuValueDisabledReason(IpMenuSnapshot menu, IpMenuControl control)
+    {
         if (IpMenuAvailability.For(menu, control) is { Reason: { } unavailable }) return unavailable;
         if (menu.Value(control) is not { } value) return (control.IsIndexed ? menu.IndexedReadings.GetValueOrDefault(control.Id) : menu.Readings.GetValueOrDefault(control.Method)) is { } reading
             ? reading.Outcome == SamsungIpRemoteOutcome.Success ? "Not reported in the TV reply for this display/state." : reading.Message
@@ -117,11 +122,13 @@ public sealed partial class SamsungIpRemoteService
         Changed?.Invoke();
     }
 
-    public Task ApplyMenuAsync() => RunMenuOperationAsync(async (profile, cancellation) =>
+    public Task ApplyMenuAsync() => RunMenuOperationAsync((profile, cancellation) => ApplyMenuCoreAsync(profile, cancellation));
+
+    private async Task ApplyMenuCoreAsync(IpRemoteProfile profile, CancellationToken cancellation, IpMenuDraft[]? queuedDrafts = null)
     {
         EnsureMenuWritesAllowed();
         // Keep ordinary edits in insertion order; group indexed edits by section/row so RGB channels share one selection.
-        var drafts = GetSnapshot().Menu.Pending.Values.OrderBy(draft => IpMenuCatalog.Get(draft.ControlId).IsIndexed ? 1 : 0)
+        var drafts = queuedDrafts ?? GetSnapshot().Menu.Pending.Values.OrderBy(draft => IpMenuCatalog.Get(draft.ControlId).IsIndexed ? 1 : 0)
             .ThenBy(draft => IpMenuCatalog.Get(draft.ControlId).IsIndexed ? IpMenuCatalog.Get(draft.ControlId).Section : "", StringComparer.Ordinal)
             .ThenBy(draft => IpMenuCatalog.Get(draft.ControlId).IsIndexed ? Array.IndexOf(IpMenuGrids.ForSection(IpMenuCatalog.Get(draft.ControlId).Section)!.Values.ToArray(), IpMenuCatalog.Get(draft.ControlId).IndexValue) : 0).ToArray();
         if (drafts.Length == 0) throw new InvalidOperationException("No pending settings to apply.");
@@ -261,7 +268,7 @@ public sealed partial class SamsungIpRemoteService
             Message = warnings == 0 ? "Applied settings and confirmed them by query. No menu navigation or return-to-video keys were needed."
                 : $"Applied settings and confirmed them by independent readback, with {warnings} TV warning(s). See the affected rows and Communication log. No command was retried."
         }).ConfigureAwait(false);
-    });
+    }
 
     private static JsonObject MenuWriteParameters(IpMenuSnapshot before, IpMenuControl control, JsonNode target)
     {

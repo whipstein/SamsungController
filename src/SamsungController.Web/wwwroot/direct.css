@@ -1,3 +1,4 @@
+html { scrollbar-gutter:stable; }
 .direct-header-context { display:flex; gap:28px; align-items:center; flex-wrap:wrap; margin-top:16px; }
 .direct-header-context > div > span { display:block; color:var(--muted); font-size:11px; letter-spacing:.06em; margin-bottom:4px; }
 .direct-header-context strong { font-size:21px; font-weight:650; }
@@ -79,10 +80,17 @@
 .direct-control h3 { font-size:15px; line-height:1.35; margin:0; font-weight:600; }
 .direct-read-value { font-family:inherit; font-weight:600; font-size:16px; line-height:1.4; color:var(--muted); overflow-wrap:anywhere; text-align:right; }
 .direct-panel .direct-choice, .direct-panel .direct-number-value { font-family:inherit; font-size:18px; font-weight:700; line-height:normal; letter-spacing:-.03em; }
-.direct-control .picture-compact-slider { grid-template-columns:27px minmax(100px,1fr) 27px 60px; }
-.direct-bounded-slider { display:grid; grid-template-columns:auto minmax(40px,1fr) auto; align-items:center; gap:6px; min-width:0; }
+.direct-control .picture-compact-slider { grid-template-columns:27px minmax(0,1fr) 27px 76px; }
+.direct-bounded-slider { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:6px; min-width:0; }
 .direct-slider-bound { color:var(--ink); font-size:14px; font-weight:650; font-variant-numeric:tabular-nums; white-space:nowrap; }
-.direct-panel .direct-number-value { text-align:center; padding:6px 2px; }
+.direct-panel input.direct-number-value[type=number] { text-align:center; padding:6px 8px; box-sizing:border-box; width:76px; font-variant-numeric:tabular-nums; appearance:textfield; -moz-appearance:textfield; }
+.direct-number-value::-webkit-inner-spin-button, .direct-number-value::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+.direct-control .direct-read-value { flex:0 0 9ch; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-variant-numeric:tabular-nums; }
+.direct-control .picture-compact-value { font-variant-numeric:tabular-nums; }
+.direct-control .direct-control-status { height:1.5em; line-height:1.5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.direct-live-status, .direct-grid-status { height:1.5em; min-height:1.5em; line-height:1.5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.topbar .direct-live-status { height:36px; min-height:36px; font-size:13px; line-height:18px; padding:8px 10px; margin:10px 0 0; }
+.direct-live-status:empty { background:transparent; border-color:transparent; }
 .direct-control small { display:block; margin-top:8px; color:var(--muted); font-size:12px; }
 .direct-control .direct-pending { color:var(--amber); font-weight:600; }
 .direct-panel .picture-switch-copy strong { color:var(--ink); }

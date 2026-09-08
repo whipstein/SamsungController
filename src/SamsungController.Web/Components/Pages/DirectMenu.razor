@@ -39,7 +39,7 @@
     <p class="direct-hint">After changing HDMI signal, bit depth, or picture mode, use <strong>Refresh TV values</strong>. It rereads all settings and available calibration rows, discards unsent edits, and keeps your connection. If 20-point WB is Off, refresh temporarily enables it, reads all intervals, then restores the original interval and Off. <strong>Refresh section</strong> only rereads this tab. Keep the signal unchanged while loading.</p>
     <details class="direct-details compact"><summary>Update behavior · @(Snapshot.Menu.Preferences.ApplyImmediately ? "Apply immediately" : "Wait for Apply")</summary>
         <label class="direct-check"><input type="checkbox" aria-label="Apply settings immediately" checked="@Snapshot.Menu.Preferences.ApplyImmediately" @onchange="SetImmediateAsync" disabled="@Snapshot.IsBusy" /> Apply immediately when an edit is committed</label>
-        <p>Sliders send when released, not on every drag event. Apply or discard pending changes before turning this on. Direct settings do not open menus, so no return-to-video sequence is needed.</p>
+        <p>Sliders send when released, not on every drag event. With Apply immediately, keep clicking + or − to queue each successive target in order; the number shows your latest requested target and TV shows the last read value. Stop or a failed change discards unsent clicks. Apply or discard pending changes before turning this on.</p>
         <button class="toolbar-button" @onclick="Discard" disabled="@(Snapshot.IsBusy || Snapshot.Menu.Pending.Count == 0)">Discard pending changes</button>
     </details>
     <nav class="direct-tabs" aria-label="Top-level settings">
@@ -93,8 +93,7 @@
             { <p class="direct-unavailable">@(GridModeEnabled ? "Load all rows to read their current values." : grid.Section == "white20" ? "Load all rows reads the values while Off, restoring Off afterward. Turn on 20-point white balance above and Apply to enable these controls." : "Choose Custom in Color space above and Apply to enable these controls.")</p> }
             @if (grid.Section == "white20" && Snapshot.Menu.GridsRead.ContainsKey(Section) && !GridModeEnabled)
             { <p class="direct-hint">All 20-point values are loaded. The original Off mode was preserved; enable 20-point WB to edit them.</p> }
-            @if (Snapshot.Menu.SelectorSession is { } session && session.Section == Section)
-            { <p class="direct-hint" role="status">@(Snapshot.IsBusy ? Snapshot.Menu.Status : session.Message)</p> }
+            <p class="direct-hint direct-grid-status" role="status" title="@GridStatus">@GridStatus</p>
             <div class="direct-indexed-rows">
                 @foreach (var value in grid.Values)
                 {
@@ -127,6 +126,9 @@
     private string Section = "expert", Category = "Picture";
     private readonly Dictionary<string, string> Edits = new(StringComparer.Ordinal);
     private readonly HashSet<string> AutoReads = new(StringComparer.Ordinal);
+    private IpMenuSnapshot? QueueView;
+    private IpMenuSnapshot DisplayMenu => QueueView ?? Snapshot.Menu;
+    private string GridStatus => Snapshot.Menu.SelectorSession is { } session && session.Section == Section ? Snapshot.IsBusy ? Snapshot.Menu.Status : session.Message : "";
     private string? Error;
     private bool ActionRunning;
     private bool CanWork => Snapshot.Menu.Connected && !Snapshot.IsBusy && !ActionRunning;
@@ -135,7 +137,7 @@
     private bool CanApply => CanWork && Snapshot.Menu.Pending.Count > 0 && Snapshot.Menu.Update?.NeedsReview != true && Snapshot.Menu.WhiteBalanceRead?.NeedsRestore != true;
     private IpMenuGrid? Grid => IpMenuGrids.ForSection(Section);
     private bool GridModeEnabled => Grid is { } grid && Snapshot.Menu.Readings.GetValueOrDefault(grid.ModeMethod)?.Values?[grid.ModeField]?.ToString() == grid.RequiredMode;
-    private bool IsVisible(IpMenuControl control) => Dirty(control) || IpMenuAvailability.For(Snapshot.Menu, control).Visible;
+    private bool IsVisible(IpMenuControl control) => Dirty(control) || IpMenuAvailability.For(DisplayMenu, control).Visible;
     private IEnumerable<IpMenuControl> SectionControls => IpMenuCatalog.ForSection(Section)
         .Where(control => Grid is not { } grid || control.Field != grid.SelectorField && !grid.Fields.Contains(control.Field));
     private IEnumerable<IpMenuControl> HiddenControls => SectionControls.Concat(IpMenuCatalog.IndexedControls.Where(control => control.Section == Section)).Where(control => !IsVisible(control));
@@ -153,15 +155,22 @@
     private void Refresh() => _ = InvokeAsync(() =>
     {
         var next = Controller.GetSnapshot();
+        if (next.Menu.NudgeQueue is not null) QueueView ??= Snapshot.Menu.Connected ? Snapshot.Menu : next.Menu;
+        else QueueView = null;
         if (Snapshot.Menu.SessionId != next.Menu.SessionId || Snapshot.Menu.ValuesRevision != next.Menu.ValuesRevision) Edits.Clear();
         Snapshot = next; StateHasChanged();
     });
     private void SelectCategory(string category) { Category = category; SelectSection(IpMenuCatalog.Sections.First(section => section.Category == category).Id); }
     private void SelectSection(string section) { if (Section != section) LayoutAttached = false; Section = section; Error = null; }
-    private string Target(IpMenuControl control) => Edits.GetValueOrDefault(control.Id) ?? Snapshot.Menu.Pending.GetValueOrDefault(control.Id)?.Target.ToString() ?? Snapshot.Menu.Value(control)?.ToString() ?? "";
+    private string Target(IpMenuControl control) => Snapshot.Menu.NudgeQueue?.Values.LastOrDefault(value => value.ControlId == control.Id)?.Target.ToString(CultureInfo.InvariantCulture)
+        ?? Edits.GetValueOrDefault(control.Id) ?? Snapshot.Menu.Pending.GetValueOrDefault(control.Id)?.Target.ToString() ?? Snapshot.Menu.Value(control)?.ToString() ?? "";
     private bool Dirty(IpMenuControl control) => Snapshot.Menu.Pending.ContainsKey(control.Id);
     private string? DisabledReason(IpMenuControl control) => ActionRunning ? "A TV request is running." : Controller.MenuControlDisabledReason(control);
-    private RenderFragment ControlCard(IpMenuControl control) => @<article @key="control.Id" class="direct-control @(Dirty(control) ? "pending" : "") @(DisabledReason(control) is not null ? "unavailable" : "")" aria-disabled="@(DisabledReason(control) is not null ? "true" : "false")">
+    private string? NudgeDisabledReason(IpMenuControl control) => ActionRunning ? "A TV request is running." : Controller.MenuNudgeDisabledReason(control);
+    private string? DisplayReason(IpMenuControl control) => SamsungIpRemoteService.MenuValueDisabledReason(DisplayMenu, control);
+    private string ControlStatus(IpMenuControl control) => Snapshot.Menu.NudgeQueue?.Values.Count(value => value.ControlId == control.Id) is > 0 and var count
+        ? $"{count} adjustment(s) queued / running" : Dirty(control) ? "Pending · not sent" : "";
+    private RenderFragment ControlCard(IpMenuControl control) => @<article @key="control.Id" class="direct-control @(Dirty(control) ? "pending" : "") @(DisplayReason(control) is not null ? "unavailable" : "")" aria-disabled="@((control.Parameter.Kind == IpRemoteParameterKind.Integer ? NudgeDisabledReason(control) : DisabledReason(control)) is not null ? "true" : "false")">
         <div class="direct-control-heading"><h3>@(control.IsIndexed ? control.Field.Split('.').Last() : control.Name)</h3><span class="direct-read-value">TV: @(Snapshot.Menu.Value(control)?.ToString() ?? "Not reported")</span></div>
         @if (control.IsSwitch)
         {
@@ -174,15 +183,15 @@
         else if (control.Parameter.Kind == IpRemoteParameterKind.Integer)
         {
             <div class="picture-compact-value"><strong>@(Target(control).Length > 0 ? Target(control) : "Not reported")</strong></div>
-            <fieldset disabled="@(DisabledReason(control) is not null)"><div class="picture-compact-slider">
-                <button aria-label="@($"Decrease {control.Name}")" @onclick="() => NudgeAsync(control, -1)" disabled="@(Target(control) == "" || Target(control) == control.Parameter.Minimum.ToString(CultureInfo.InvariantCulture))">−</button>
+            <fieldset><div class="picture-compact-slider">
+                <button aria-label="@($"Decrease {control.Name}")" @onclick="() => NudgeAsync(control, -1)" disabled="@(NudgeDisabledReason(control) is not null || Target(control) == "" || Target(control) == control.Parameter.Minimum.ToString(CultureInfo.InvariantCulture))">−</button>
                 <div class="direct-bounded-slider">
                     <span class="direct-slider-bound" aria-label="@($"{control.Name} minimum")">@control.Parameter.Minimum</span>
-                    <input type="range" aria-label="@($"{control.Name} slider")" min="@control.Parameter.Minimum" max="@control.Parameter.Maximum" step="1" value="@Target(control)" @oninput="args => Preview(control, args)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" />
+                    <input type="range" aria-label="@($"{control.Name} slider")" min="@control.Parameter.Minimum" max="@control.Parameter.Maximum" step="1" value="@Target(control)" @oninput="args => Preview(control, args)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" disabled="@(DisabledReason(control) is not null)" />
                     <span class="direct-slider-bound" aria-label="@($"{control.Name} maximum")">@control.Parameter.Maximum</span>
                 </div>
-                <button aria-label="@($"Increase {control.Name}")" @onclick="() => NudgeAsync(control, 1)" disabled="@(Target(control) == "" || Target(control) == control.Parameter.Maximum.ToString(CultureInfo.InvariantCulture))">+</button>
-                <input class="picture-compact-number direct-number-value" aria-label="@($"{control.Name} value")" type="number" min="@control.Parameter.Minimum" max="@control.Parameter.Maximum" step="1" value="@Target(control)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" />
+                <button aria-label="@($"Increase {control.Name}")" @onclick="() => NudgeAsync(control, 1)" disabled="@(NudgeDisabledReason(control) is not null || Target(control) == "" || Target(control) == control.Parameter.Maximum.ToString(CultureInfo.InvariantCulture))">+</button>
+                <input class="picture-compact-number direct-number-value" aria-label="@($"{control.Name} value")" type="number" min="@control.Parameter.Minimum" max="@control.Parameter.Maximum" step="1" value="@Target(control)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" disabled="@(DisabledReason(control) is not null)" />
             </div></fieldset>
         }
         else
@@ -192,8 +201,8 @@
                 @foreach (var choice in control.Parameter.Choices) { <option value="@choice">@choice</option> }
             </select>
         }
-        @if (Dirty(control)) { <small class="direct-pending">Pending · not sent</small> }
-        @if (!Snapshot.IsBusy && (!control.IsIndexed || GridModeEnabled) && DisabledReason(control) is { } reason) { <p class="direct-unavailable">@reason</p> }
+        <small class="direct-control-status direct-pending" role="status">@ControlStatus(control)</small>
+        @if ((!control.IsIndexed || GridModeEnabled) && DisplayReason(control) is { } reason) { <p class="direct-unavailable">@reason</p> }
         @if (!control.IsIndexed)
         { <details class="direct-control-help"><summary>About this setting</summary><p>@(control.Command.ManagedPictureControl is not null ? "Reads the current value, applies your target directly, then queries the result." : control.Command.Notes.Replace("Experimental; display/input/mode support must be tested. ", "", StringComparison.Ordinal))</p><code>@control.Method</code><p>@control.RangeSource</p></details> }
     </article>;
@@ -205,7 +214,20 @@
         if (Snapshot.Menu.Preferences.ApplyImmediately && Controller.GetSnapshot().Menu.Pending.Count > 0) { await Controller.ApplyMenuAsync(); await RefreshAfterModeAsync(control); }
     });
     private Task SwitchAsync(IpMenuControl control, ChangeEventArgs args) => CommitAsync(control, control.Parameter.Choices.Single(choice => choice.EndsWith(args.Value is true ? "On" : "Off", StringComparison.OrdinalIgnoreCase)));
-    private Task NudgeAsync(IpMenuControl control, int amount) => int.TryParse(Target(control), out var value) ? CommitAsync(control, Math.Clamp(value + amount, control.Parameter.Minimum, control.Parameter.Maximum).ToString(CultureInfo.InvariantCulture)) : Task.CompletedTask;
+    private async Task NudgeAsync(IpMenuControl control, int amount)
+    {
+        if (!Snapshot.Menu.Preferences.ApplyImmediately)
+        {
+            if (int.TryParse(Target(control), out var value)) await CommitAsync(control, Math.Clamp(value + amount, control.Parameter.Minimum, control.Parameter.Maximum).ToString(CultureInfo.InvariantCulture));
+            return;
+        }
+        // Do not set ActionRunning: later +/- events must be able to enqueue
+        // while this event awaits its confirmed result. The service owns the gate.
+        Error = null;
+        try { await Controller.QueueMenuNudgeAsync(control.Id, amount); }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException or JsonException or OperationCanceledException) { Error = error.Message; }
+        finally { Snapshot = Controller.GetSnapshot(); await InvokeAsync(StateHasChanged); }
+    }
     private Task ReadSectionAsync(string section)
     {
         AutoReads.Add(Snapshot.Menu.SessionId + ":" + section);

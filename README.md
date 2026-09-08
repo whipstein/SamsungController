@@ -92,8 +92,10 @@ The app requests HTTPS keep-alive and retains one pooled TCP/TLS connection for 
 2. Choose Picture, Sound, or System. Picture has separate calibration tabs; 2-point gains and offsets are grouped in two columns.
 3. Adjust a slider, number, switch, or selection. With default **Wait for Apply**, the TV is unchanged; pending targets are distinct from queried current values.
 4. Select **Apply N pending** at the top right. Fresh values/context are checked, settings are sent sequentially, and each result is queried. A mismatch stops later settings.
-5. Expand **Update behavior** to enable **Apply immediately**. Apply or discard pending edits first. Sliders send on release, not every drag event. This preference survives restart.
+5. Expand **Update behavior** to enable **Apply immediately**. Apply or discard pending edits first. Sliders send on release, not every drag event. Repeated **+ / −** clicks queue successive targets while earlier clicks are still running; each is sent and read back in order. The number shows your latest requested target; **TV:** shows the last queried value. Buttons stay in place, and number fields have no spinner arrows and room for signed values such as −50. This preference survives restart. With **Wait for Apply**, clicks only change the pending target.
 6. Use **Stop** during an operation. Delivered commands are not undone. Last update retains originals and per-setting outcomes. For an uncertain write, inspect/refresh the TV and close its review explicitly before more writes.
+
+Stop, a failed adjustment, or a changed TV context discards unsent queued clicks. Queues are memory-only and never resume after restart; earlier confirmed changes remain on the TV. Other TV actions are blocked while the queue runs. Up to 256 clicks can be outstanding; clicks beyond a control's min/max do not add commands.
 
 Apply input/picture-mode and calibration-mode changes separately from other pending settings. The app does not assume a menu topology or external-signal setting bank.
 

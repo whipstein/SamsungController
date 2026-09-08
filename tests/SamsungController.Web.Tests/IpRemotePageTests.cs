@@ -440,6 +440,26 @@ public sealed class IpRemotePageTests
         });
         public Task AssertDisabledAsync(string label, bool expected) => Dispatcher.InvokeAsync(() => Assert.Equal(expected,
             Button(label).Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "disabled" && frame.AttributeValue is true)));
+        private RenderTreeFrame[] LabeledElement(string tag, string label) => Frames.Select((frame, index) => (frame, index))
+            .Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == tag)
+            .Select(item => Frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray())
+            .Single(item => item.Skip(1).TakeWhile(frame => frame.FrameType == RenderTreeFrameType.Attribute)
+                .Any(frame => frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == label));
+        public Task ClickAriaButtonAsync(string label) => Dispatcher.InvokeAsync(async () =>
+        {
+            var button = LabeledElement("button", label);
+            Assert.DoesNotContain(button, frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "disabled" && frame.AttributeValue is true);
+            await DispatchEventAsync(button.Single(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "onclick").AttributeEventHandlerId, null, new MouseEventArgs());
+        });
+        public Task AssertElementDisabledAsync(string tag, string label, bool expected) => Dispatcher.InvokeAsync(() => Assert.Equal(expected,
+            LabeledElement(tag, label).Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "disabled" && frame.AttributeValue is true)));
+        public Task<string[]> ControlStructureAsync(string id) => Dispatcher.InvokeAsync(() =>
+        {
+            var item = Frames.Select((frame, index) => (frame, index)).Single(item => item.frame.FrameType == RenderTreeFrameType.Element
+                && item.frame.ElementName == "article" && item.frame.ElementKey?.ToString() == id);
+            return Frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).Where(frame => frame.FrameType == RenderTreeFrameType.Element)
+                .Select(frame => frame.ElementName).ToArray();
+        });
         public Task AssertExpertGroupsDraggableAsync() => Dispatcher.InvokeAsync(() =>
         {
             var groups = Frames.Select((frame, index) => (frame, index)).Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "section")

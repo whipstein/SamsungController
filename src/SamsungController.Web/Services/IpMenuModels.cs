@@ -94,6 +94,8 @@ public sealed record IpMenuRead(DateTimeOffset ReadAt, JsonObject? Values, Samsu
     public int? RpcErrorCode { get; init; }
 }
 public sealed record IpMenuDraft(string ControlId, JsonNode Target, JsonNode Original, JsonObject Prerequisites, string Input, string PictureMode);
+public sealed record IpMenuQueuedValue(string ControlId, int Target);
+public sealed record IpMenuNudgeQueue(IReadOnlyList<IpMenuQueuedValue> Values, bool Accepting);
 public sealed record IpMenuPreferences(bool ApplyImmediately = false)
 {
     public IReadOnlyList<string> ExpertGroupOrder { get; init; } = [];
@@ -119,6 +121,7 @@ public sealed record IpMenuSnapshot
     public IReadOnlyDictionary<string, IpMenuDraft> Pending { get; init; } = new Dictionary<string, IpMenuDraft>();
     public IpMenuPreferences Preferences { get; init; } = new();
     public IpMenuUpdate? Update { get; init; }
+    public IpMenuNudgeQueue? NudgeQueue { get; init; }
     public string Status { get; init; } = "Connect to read current TV settings.";
     public string? Input => Tv["inputSource"]?.ToString();
     public string? PictureMode => Tv["pictureMode"]?.ToString();

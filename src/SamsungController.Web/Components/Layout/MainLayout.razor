@@ -40,7 +40,7 @@
             @if (Error is not null) { <p class="topbar-feedback danger" role="alert">@Error</p> }
             @if (Snapshot.StorageWarning is not null) { <p class="topbar-feedback danger" role="alert">@Snapshot.StorageWarning</p> }
             @if (Snapshot.Menu.WhiteBalanceRead?.NeedsRestore == true && !Snapshot.IsBusy) { <p class="topbar-feedback danger" role="alert">20-point WB was temporarily enabled for reading. <a href="menu">Check/restore its original Off mode in Menu</a>.</p> }
-            @if (Snapshot.IsBusy) { <p class="topbar-feedback" role="status">@Snapshot.Menu.Status</p> }
+            <p class="topbar-feedback direct-live-status" role="status" title="@(Snapshot.IsBusy ? Snapshot.Menu.Status : null)">@(Snapshot.IsBusy ? Snapshot.Menu.Status : "")</p>
         </header>
         <article class="page-content">@Body</article>
     </main>
