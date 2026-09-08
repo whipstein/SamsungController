@@ -10,7 +10,21 @@ For installation, all platform launchers, first pairing, and updates, start with
 2. Connect also preloads all 20-point percentages and Custom colors when their modes are already enabled, then opens Menu. These grids move their selector to read every row and restore it; no RGB values or modes change during loading. Inactive modes remain unchanged, with unavailable rows reported in settings-load details. Missing fields remain **Not reported**, not defaults or values imported from a saved profile. Tab changes use the loaded values without restarting incomplete/unsupported reads. Stop cancels the preload; Refresh TV values explicitly starts a new load without reconnecting.
 3. Edit a control. In Wait for Apply mode, only a pending target changes locally. The current-value label still shows the TV reading. Applying unchanged values does not send redundant setters.
 4. Apply sends pending settings sequentially. Each has a saved original/target, a single setter, and an independent readback. Pre-change queries are enabled by default but may be disabled explicitly, as described below. Successful values stay on the TV. There are no verification checkboxes/pass counts, menu keys, auto-return scripts, or automatic rollback.
-5. **Wait for Apply / Apply immediately** are persisted radio buttons in the pinned toolbar at the very top of Menu. Clear/apply pending edits before enabling immediate mode. Number/selection/switch edits send when committed; range drags preview locally and send on release. The category and calibration-group tabs stay visible while scrolling; selecting another tab scrolls to its controls without selecting/focusing a heading.
+5. **On Apply / Immediately** are persisted radio buttons in the compact pinned toolbar at the very top of Menu. Query first and the inline Apply/Stop actions share its wrapping first row. The short **Expert / 2pt WB / 20pt WB / Color** tab labels retain full names in tooltips and accessible labels. Clear/apply pending edits before enabling immediate mode. Number/selection/switch edits send when committed; range drags preview locally and send on release. The category and calibration-group tabs stay visible while scrolling; selecting another tab scrolls to its controls without selecting/focusing a heading.
+
+**Query first** is the compact label for **Query before changes** below. When unchecked,
+the toolbar shows **Cached** as a reminder that writes use last-known values.
+The remote opens using a 24-pixel-wide double-chevron handle in the page's right
+gutter rather than a text tab over the control cards. The drawer itself still
+fills the window height when opened.
+
+Raw numeric entry uses a text field so a partial minus sign is not sanitized to
+an empty value during a re-render. Signed controls use a keyboard that allows
+the minus character. You can clear a positive value, type `-`, then complete
+`-50` without it becoming positive. Typing alone sends nothing; integer/range
+validation still happens on commit. Invalid text stays editable and sends no
+setting change. While a draft is incomplete or out of range, the slider keeps
+its last stored position instead of treating that text as a new numeric value.
 
 **Query before changes** defaults to On and is saved separately from Apply mode. Off skips pre-change current-value, prerequisite, selector, and TV-context queries for normal Menu writes, using the last successfully queried snapshot instead. A selector that must move still uses its ordinary setter and independent confirmation. All post-change readbacks/context checks, range validation, queue merging, and interrupted-write guards remain enabled. Missing baseline values block a write rather than being guessed. Initial connection, refresh, recovery, and diagnostic reads are unaffected. Changing either preference sends no TV commands and is blocked while a TV operation runs.
 

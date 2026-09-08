@@ -429,9 +429,15 @@ public sealed class IpRemotePageTests
             _root = AssignRootComponentId(InstantiateComponent(componentType ?? typeof(IpRemote)));
             await RenderRootComponentAsync(_root, ParameterView.Empty);
         });
-        private RenderTreeFrame[] Button(string label) => Frames.Select((frame, index) => (frame, index))
-            .Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "button")
-            .Select(item => Frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray()).Single(item => Text(item).Trim() == label);
+        private RenderTreeFrame[] Button(string label)
+        {
+            var buttons = Frames.Select((frame, index) => (frame, index))
+                .Where(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "button")
+                .Select(item => Frames.Skip(item.index).Take(item.frame.ElementSubtreeLength).ToArray()).ToArray();
+            var labeled = buttons.Where(item => item.Skip(1).TakeWhile(frame => frame.FrameType == RenderTreeFrameType.Attribute)
+                .Any(frame => frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == label)).ToArray();
+            return labeled.Length > 0 ? labeled.Single() : buttons.Single(item => Text(item).Trim() == label);
+        }
         public Task ClickAsync(string label) => Dispatcher.InvokeAsync(async () =>
         {
             var button = Button(label);
@@ -453,6 +459,9 @@ public sealed class IpRemotePageTests
         });
         public Task AssertElementDisabledAsync(string tag, string label, bool expected) => Dispatcher.InvokeAsync(() => Assert.Equal(expected,
             LabeledElement(tag, label).Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "disabled" && frame.AttributeValue is true)));
+        public Task AssertElementAttributeAsync(string tag, string label, string attribute, string expected) => Dispatcher.InvokeAsync(() => Assert.Equal(expected,
+            LabeledElement(tag, label).Skip(1).TakeWhile(frame => frame.FrameType == RenderTreeFrameType.Attribute)
+                .Single(frame => frame.AttributeName == attribute).AttributeValue?.ToString()));
         public Task AssertAriaButtonPresentAsync(string label, bool expected) => Dispatcher.InvokeAsync(() => Assert.Equal(expected,
             Frames.Select((frame, index) => (frame, index)).Any(item => item.frame.FrameType == RenderTreeFrameType.Element && item.frame.ElementName == "button"
                 && Frames.Skip(item.index + 1).TakeWhile(frame => frame.FrameType == RenderTreeFrameType.Attribute)

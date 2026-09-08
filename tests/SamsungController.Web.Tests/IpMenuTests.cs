@@ -348,6 +348,8 @@ public sealed class IpMenuTests
         Assert.Contains("href=\"menu\"", html, StringComparison.Ordinal);
         Assert.DoesNotContain("href=\"remote\"", html, StringComparison.Ordinal);
         Assert.Contains("popovertarget=\"remote-drawer\"", html, StringComparison.Ordinal);
+        Assert.Contains("aria-label=\"Open remote\"", html, StringComparison.Ordinal);
+        Assert.Contains("<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"", html, StringComparison.Ordinal);
         Assert.Contains("popover=\"auto\"", html, StringComparison.Ordinal);
         Assert.Contains("class=\"remote-drawer-body\"", html, StringComparison.Ordinal);
         Assert.Contains("aria-label=\"Close remote\"", html, StringComparison.Ordinal);

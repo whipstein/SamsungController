@@ -482,6 +482,7 @@ public sealed class IpMenuNudgeTests
 
     [Theory]
     [InlineData("")]
+    [InlineData("-")]
     [InlineData("51")]
     public async Task InProgressTextSurvivesQueueCompletionAndInvalidCommitDoesNotSend(string text)
     {

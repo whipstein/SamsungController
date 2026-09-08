@@ -8,22 +8,22 @@
 <section class="direct-menu-toolbar" aria-label="Menu controls and navigation" @ref="MenuToolbarElement">
     <div class="direct-menu-behavior">
         <fieldset class="direct-apply-mode"><legend>Apply behavior</legend>
-            <label><input type="radio" name="menu-apply-mode" value="wait" aria-label="Wait for Apply" checked="@(!Snapshot.Menu.Preferences.ApplyImmediately)" @onchange="() => SetWaitAsync()" disabled="@Snapshot.IsBusy" /> Wait for Apply</label>
-            <label><input type="radio" name="menu-apply-mode" value="immediate" aria-label="Apply settings immediately" checked="@Snapshot.Menu.Preferences.ApplyImmediately" @onchange="SetImmediateAsync" disabled="@Snapshot.IsBusy" /> Apply immediately</label>
+            <label title="Stage changes until you select Apply"><input type="radio" name="menu-apply-mode" value="wait" aria-label="Wait for Apply" checked="@(!Snapshot.Menu.Preferences.ApplyImmediately)" @onchange="() => SetWaitAsync()" disabled="@Snapshot.IsBusy" /> On Apply</label>
+            <label title="Send each committed adjustment immediately"><input type="radio" name="menu-apply-mode" value="immediate" aria-label="Apply settings immediately" checked="@Snapshot.Menu.Preferences.ApplyImmediately" @onchange="SetImmediateAsync" disabled="@Snapshot.IsBusy" /> Immediately</label>
         </fieldset>
-        <div class="direct-actions"><button class="primary-action" @onclick="ApplyAsync" disabled="@(!CanApply)">Apply @Snapshot.Menu.Pending.Count pending</button><button class="toolbar-button danger-action" @onclick="Controller.Cancel" disabled="@(!Snapshot.IsBusy)">Stop</button></div>
+        <label class="direct-query-option" title="Query before changes: On rechecks current values; Off is faster and uses last known values. Refresh after outside changes. Post-change readback remains enabled."><input type="checkbox" aria-label="Query before changes" checked="@Snapshot.Menu.Preferences.QueryBeforeChange" @onchange="SetQueryBeforeChangeAsync" disabled="@Snapshot.IsBusy" /> Query first <span class="@(!Snapshot.Menu.Preferences.QueryBeforeChange ? "direct-fast-warning" : "")">@(Snapshot.Menu.Preferences.QueryBeforeChange ? "On" : "Cached")</span></label>
+        <div class="direct-actions"><button type="button" class="primary-action" aria-label="@($"Apply {Snapshot.Menu.Pending.Count} pending")" @onclick="ApplyAsync" disabled="@(!CanApply)">Apply (@Snapshot.Menu.Pending.Count)</button><button type="button" class="toolbar-button danger-action" @onclick="Controller.Cancel" disabled="@(!Snapshot.IsBusy)">Stop</button></div>
     </div>
-    <label class="direct-query-option"><input type="checkbox" aria-label="Query before changes" checked="@Snapshot.Menu.Preferences.QueryBeforeChange" @onchange="SetQueryBeforeChangeAsync" disabled="@Snapshot.IsBusy" /> Query before changes <span class="@(!Snapshot.Menu.Preferences.QueryBeforeChange ? "direct-fast-warning" : "")">@(Snapshot.Menu.Preferences.QueryBeforeChange ? "On · recheck current values" : "Off · faster, uses last known values")</span></label>
     <div class="direct-menu-navigation">
         <nav class="direct-tabs" aria-label="Top-level settings">
             @foreach (var category in IpMenuCatalog.Sections.Select(section => section.Category).Distinct())
-            { <button class="@(Category == category ? "active" : "")" @onclick="() => SelectCategory(category)" disabled="@Snapshot.IsBusy">@category</button> }
+            { <button type="button" class="@(Category == category ? "active" : "")" aria-pressed="@(Category == category ? "true" : "false")" @onclick="() => SelectCategory(category)" disabled="@Snapshot.IsBusy">@category</button> }
         </nav>
         @if (Category == "Picture")
         {
             <nav class="direct-tabs secondary" aria-label="Calibration controls">
                 @foreach (var section in IpMenuCatalog.Sections.Where(section => section.Category == Category))
-                { <button class="@(Section == section.Id ? "active" : "")" @onclick="() => SelectSection(section.Id)" disabled="@Snapshot.IsBusy">@section.Name</button> }
+                { <button type="button" class="@(Section == section.Id ? "active" : "")" aria-label="@section.Name" title="@section.Name" aria-pressed="@(Section == section.Id ? "true" : "false")" @onclick="() => SelectSection(section.Id)" disabled="@Snapshot.IsBusy">@SectionLabel(section)</button> }
             </nav>
         }
     </div>
@@ -200,9 +200,13 @@
     });
     private void SelectCategory(string category) { Category = category; SelectSection(IpMenuCatalog.Sections.First(section => section.Category == category).Id); }
     private void SelectSection(string section) { if (Section != section) { LayoutAttached = false; ScrollSectionOnRender = true; } Section = section; Error = null; }
-    private string Target(IpMenuControl control) => Edits.GetValueOrDefault(control.Id)
-        ?? Snapshot.Menu.NudgeQueue?.Values.LastOrDefault(value => value.ControlId == control.Id)?.Target.ToString(CultureInfo.InvariantCulture)
+    private static string SectionLabel(IpMenuSection section) => section.Id switch { "expert" => "Expert", "white2" => "2pt WB", "white20" => "20pt WB", "color" => "Color", _ => section.Name };
+    private string Target(IpMenuControl control) => Edits.GetValueOrDefault(control.Id) ?? StoredTarget(control);
+    private string StoredTarget(IpMenuControl control) => Snapshot.Menu.NudgeQueue?.Values.LastOrDefault(value => value.ControlId == control.Id)?.Target.ToString(CultureInfo.InvariantCulture)
         ?? Snapshot.Menu.Pending.GetValueOrDefault(control.Id)?.Target.ToString() ?? Snapshot.Menu.Value(control)?.ToString() ?? "";
+    // A text draft such as "-" is valid while typing, but not a slider position.
+    private string RangeTarget(IpMenuControl control) => int.TryParse(Target(control), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var value)
+        && value >= control.Parameter.Minimum && value <= control.Parameter.Maximum ? value.ToString(CultureInfo.InvariantCulture) : StoredTarget(control);
     private bool Dirty(IpMenuControl control) => Snapshot.Menu.Pending.ContainsKey(control.Id);
     private string? DisabledReason(IpMenuControl control) => ActionRunning ? "A TV request is running." : Controller.MenuControlDisabledReason(control);
     private string? NudgeDisabledReason(IpMenuControl control) => ActionRunning ? "A TV request is running." : Controller.MenuNudgeDisabledReason(control);
@@ -226,11 +230,12 @@
                 <button aria-label="@($"Decrease {control.Name}")" @onclick="() => NudgeAsync(control, -1)" disabled="@(NudgeDisabledReason(control) is not null || Target(control) == "" || Target(control) == control.Parameter.Minimum.ToString(CultureInfo.InvariantCulture))">−</button>
                 <div class="direct-bounded-slider">
                     <span class="direct-slider-bound" aria-label="@($"{control.Name} minimum")">@control.Parameter.Minimum</span>
-                    <input type="range" aria-label="@($"{control.Name} slider")" min="@control.Parameter.Minimum" max="@control.Parameter.Maximum" step="1" value="@Target(control)" @oninput="args => Preview(control, args)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" disabled="@(NudgeDisabledReason(control) is not null)" />
+                    <input type="range" aria-label="@($"{control.Name} slider")" min="@control.Parameter.Minimum" max="@control.Parameter.Maximum" step="1" value="@RangeTarget(control)" @oninput="args => Preview(control, args)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" disabled="@(NudgeDisabledReason(control) is not null)" />
                     <span class="direct-slider-bound" aria-label="@($"{control.Name} maximum")">@control.Parameter.Maximum</span>
                 </div>
                 <button aria-label="@($"Increase {control.Name}")" @onclick="() => NudgeAsync(control, 1)" disabled="@(NudgeDisabledReason(control) is not null || Target(control) == "" || Target(control) == control.Parameter.Maximum.ToString(CultureInfo.InvariantCulture))">+</button>
-                <input class="picture-compact-number direct-number-value" aria-label="@($"{control.Name} value")" type="number" min="@control.Parameter.Minimum" max="@control.Parameter.Maximum" step="1" value="@Target(control)" @oninput="args => Preview(control, args)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" disabled="@(NudgeDisabledReason(control) is not null)" />
+                @* Native number inputs sanitize a partial minus to empty before Blazor sees it. Keep raw text until commit; the service validates integer bounds. *@
+                <input class="picture-compact-number direct-number-value" aria-label="@($"{control.Name} value")" type="text" inputmode="@(control.Parameter.Minimum < 0 ? "text" : "numeric")" autocomplete="off" spellcheck="false" title="@($"Whole number from {control.Parameter.Minimum} to {control.Parameter.Maximum}")" value="@Target(control)" @oninput="args => Preview(control, args)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" disabled="@(NudgeDisabledReason(control) is not null)" />
             </div></fieldset>
         }
         else
@@ -252,8 +257,8 @@
             return QueueNumericAsync(control, () => Controller.QueueMenuValueAsync(control.Id, text));
         return GuardAsync(async () =>
         {
-            Edits.Remove(control.Id);
             Controller.StageMenuValue(control.Id, text);
+            Edits.Remove(control.Id);
             if (Snapshot.Menu.Preferences.ApplyImmediately && Controller.GetSnapshot().Menu.Pending.Count > 0) { await Controller.ApplyMenuAsync(); await RefreshAfterModeAsync(control); }
         });
     }

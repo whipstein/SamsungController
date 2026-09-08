@@ -142,7 +142,11 @@ public sealed class IpMenuSpeedTests
         await renderer.ChangeAsync("Apply settings immediately", "immediate", "onchange");
         await renderer.AssertRadioAsync("Wait for Apply", false);
         await renderer.AssertRadioAsync("Apply settings immediately", true);
-        await renderer.AssertTextAsync("Off · faster, uses last known values");
+        await renderer.AssertTextAsync("Cached");
+        await renderer.AssertTextAsync("2pt WB");
+        await renderer.AssertTextAsync("20pt WB");
+        await renderer.AssertElementAttributeAsync("button", "Expert settings", "aria-pressed", "true");
+        await renderer.AssertElementAttributeAsync("button", "20-point white balance", "title", "20-point white balance");
         Assert.Empty(fixture.Display.Requests);
         await fixture.RestartAsync();
         Assert.True(fixture.Service.GetSnapshot().Menu.Preferences.ApplyImmediately);
