@@ -2,7 +2,7 @@
 
 Control Samsung displays locally using direct HTTPS IP commands. The web interface reads current settings from the TV, then applies your changes directly—without recording menu paths or counting verification passes.
 
-**v1.0.0 is the default on `main`.** It replaces the v0 menu-traversal GUI with direct IP control. Start with the [step-by-step beginner tutorial](docs/getting-started.md).
+**v1.0.1 is the default on `main`.** It replaces the v0 menu-traversal GUI with direct IP control. Start with the [step-by-step beginner tutorial](docs/getting-started.md).
 
 ## License
 
@@ -146,7 +146,7 @@ Select the small **double-chevron** button on the right edge of any page (toolti
 
 - **All-settings load incomplete / changed signal:** let the external signal settle, then select **Refresh state**. This starts a fresh all-settings read, even if the TV reports the same HDMI port and picture-mode name. Keep the signal unchanged while loading. Stop cancels it; tab visits never resume it automatically.
 - **Connection fails:** try **Reset connection (keep pairing)**, then check TV power, IP Remote, address/port, certificate policy, LAN permissions, VPN/firewall restrictions, and the actual error. No automatic re-pairing occurs. Even after an authorization rejection, Reset can explicitly recheck the saved token on fresh TLS; only successful state replies clear the rejection. If the TV genuinely rejects that token again, renewed approval may still be needed.
-- **macOS receives no response:** check System Settings → Privacy & Security → Local Network for the app hosting the process (Terminal, your editor, or ChatGPT when started there). A correct IP and a working browser do not prove the server process has local-network permission. Restart the affected host app/server after changing permission.
+- **macOS receives no response:** for the installed desktop app, check System Settings → Privacy & Security → Local Network for **SamsungController**. For source execution, check its hosting Terminal/editor instead. A correct IP and a working browser do not prove the server process has permission. Quit and reopen the affected app/server after changing permission. If the v1.0.0 app never appears in the list, install v1.0.1 or newer: it corrects the native app lifetime and duplicate .NET executable UUIDs used for permission attribution. Install one copy in Applications, launch it there, and attempt Connect/Pair to request access. You must approve the macOS prompt yourself; signing/notarization does not grant permission. This is separate from the TV's pairing approval.
 - **Approval accepted but no connection:** verify the token was received/saved; inspect the pairing error. Connect reuses saved tokens.
 - **Gray setting:** a prerequisite is unmet—for example Judder Reduction requires Picture Clarity / Auto Motion Plus set to Custom. Apply that prerequisite to refresh its dependent controls. Rejected/absent controls without an unmet prerequisite are hidden for the current context; Refresh checks them again. Defaults are never used as current values.
 - **Out-of-range value:** correct the inline error; no command is sent for invalid local input. TV rejections stop the operation without retrying, except for the readback-confirmed 2-point case below.

@@ -35,7 +35,8 @@ public sealed class DesktopRuntime : IDisposable
     }
     public static void PrepareBackgroundProcess(int port)
     {
-        if (!OperatingSystem.IsWindows()) _ = CreateSession();
+        if (!OperatingSystem.IsWindows() && !(OperatingSystem.IsMacOS() &&
+            Environment.GetEnvironmentVariable("SAMSUNG_CONTROLLER_BUNDLED_HOST") == "1")) _ = CreateSession();
         var path = Path.Combine(DesktopFiles.DirectoryPath(), port == 5050 ? "server.log" : $"server-{port}.log");
         // Only the background process writes this log; no pipe to the short-lived launcher.
         var options = new FileStreamOptions { Mode = FileMode.Append, Access = FileAccess.Write, Share = FileShare.ReadWrite };

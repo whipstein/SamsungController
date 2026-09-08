@@ -39,6 +39,18 @@ Run the smoke test again on the signed/stapled package and, where available, tes
 
 References: [Microsoft's macOS deployment requirements](https://learn.microsoft.com/dotnet/core/deploying/macos), [Apple's notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow), and [GitHub native runner labels](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
 
+### Mac local-network identity and icons
+
+The native AppKit entry point must remain the bundle's running process. It launches the managed desktop launcher with `--wait-for-exit`, which releases its startup lock before waiting for the server. Reopening the app opens the existing UI; stopping the server ends the launcher and native host. Do not replace the entry point with `exec()` or detach the bundled server into another session. Source/CLI launches retain their normal behavior.
+
+`build.py` gives each of our three .NET apphosts a distinct Mach-O `LC_UUID` before signing. The SDK's shared apphost UUID must not be reused across these executables. Unit tests cover this transformation; Mac package smoke tests verify distinct IDs, the usage description, icon, host lifetime, duplicate startup, and clean exit.
+
+This is a hardened-runtime app, **not an App Sandbox app**. `com.apple.security.network.client`/`server` are sandbox entitlements, not Local Network consent. Keep `NSLocalNetworkUsageDescription` in the main bundle and a stable Developer ID signing identity. Do not enable App Sandbox or add unrelated entitlements as a workaround. See [Apple TN3179](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy).
+
+Local-network permission is **not covered by loopback smoke tests**. Test a Finder-launched installation on a real LAN, preferably in a fresh macOS user account, and verify that SamsungController is named in the consent prompt/System Settings. Do not reset system privacy databases or bypass consent. Multiple installed copies can confuse permission testing; close old builds and use one installation in Applications.
+
+The approved icon source and generated platform assets are in `packaging/icons`. Regenerate with `python3 packaging/icons/generate.py` on macOS; CI uses the committed assets.
+
 ## Publish
 
 1. Verify the tested commit is on main and tag it `v<version>`.

@@ -17,7 +17,7 @@ internal static class DesktopLauncher
             for (var index = 0; index < args.Length; index++)
             {
                 if (args[index] == "--port" && index + 1 < args.Length && int.TryParse(args[++index], out port)) continue;
-                if (args[index] is "--no-browser" or "--stop") continue;
+                if (args[index] is "--no-browser" or "--stop" or "--wait-for-exit") continue;
                 throw new ArgumentException("Usage: SamsungController.App [--port 5050] [--no-browser] [--stop]");
             }
             var address = DesktopFiles.Address(port);
@@ -48,6 +48,15 @@ internal static class DesktopLauncher
                     CheckExisting(status);
                     if (status.ProcessId != server.Id) throw new InvalidOperationException("Another server acquired this port. No processes were stopped. Quit the existing server and retry.");
                     if (showBrowser) Open(address.ToString());
+                    // The native Mac bundle stays alive as the server's responsible
+                    // application. Release the startup lock before waiting so reopen
+                    // and --stop can proceed. Other platforms retain detached startup.
+                    launchLock.Dispose();
+                    if (args.Contains("--wait-for-exit", StringComparer.Ordinal))
+                    {
+                        await server.WaitForExitAsync();
+                        return server.ExitCode;
+                    }
                     return 0;
                 }
                 await Task.Delay(150);

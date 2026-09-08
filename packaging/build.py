@@ -12,6 +12,7 @@ import tarfile
 import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
+from macos.apphost_identity import prepare_apphosts
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = {"osx-arm64": "macos-arm64", "osx-x64": "macos-x64", "win-x64": "windows-x64", "win-arm64": "windows-arm64", "linux-x64": "linux-x64", "linux-arm64": "linux-arm64"}
@@ -48,16 +49,21 @@ def build(rid, output):
     shutil.copytree(ROOT / "samples", folder / "samples")
     (folder / "VERSION.txt").write_text("v" + version + "\n", encoding="utf-8")
     if app:
+        prepare_apphosts(payload)
         (app / "Contents" / "MacOS").mkdir()
         subprocess.run(["xcrun", "clang", "-arch", "arm64" if rid == "osx-arm64" else "x86_64", "-mmacosx-version-min=14.0",
-                        str(ROOT / "packaging/macos/launcher.c"), "-o", str(app / "Contents" / "MacOS" / "SamsungController")], check=True)
+                        "-fobjc-arc", "-Wall", "-Wextra", "-Werror", "-framework", "AppKit",
+                        str(ROOT / "packaging/macos/launcher.m"), "-o", str(app / "Contents" / "MacOS" / "SamsungController")], check=True)
         shutil.copy2(ROOT / "LICENSE", app / "Contents" / "Resources" / "LICENSE")
+        shutil.copy2(ROOT / "packaging/icons/SamsungController.icns", app / "Contents/Resources/SamsungController.icns")
         with (app / "Contents" / "Info.plist").open("wb") as target:
             plistlib.dump({"CFBundleName": "SamsungController", "CFBundleDisplayName": "SamsungController", "CFBundleIdentifier": "com.whipstein.samsungcontroller",
                           "CFBundleExecutable": "SamsungController", "CFBundlePackageType": "APPL", "CFBundleVersion": version, "LSMinimumSystemVersion": "14.0",
                           "CFBundleShortVersionString": version, "LSUIElement": True, "NSHighResolutionCapable": True,
+                          "CFBundleIconFile": "SamsungController.icns",
                           "NSLocalNetworkUsageDescription": "SamsungController connects to your Samsung displays on your local network when you choose Connect."}, target)
     elif rid.startswith("linux-"):
+        shutil.copy2(ROOT / "packaging/icons/SamsungController.png", folder / "SamsungController.png")
         shutil.copy2(ROOT / "packaging/linux/install-shortcut.sh", folder / "install-shortcut.sh")
         (folder / "install-shortcut.sh").chmod(0o755)
     extension = ".tar.gz" if rid.startswith("linux-") else ".zip"

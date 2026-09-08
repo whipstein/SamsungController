@@ -224,11 +224,11 @@ public sealed partial class SamsungIpRemoteClient(ISamsungTokenStore tokenStore,
                 cancellationToken.IsCancellationRequested ? "Request canceled. No follow-up request was sent."
                     : "The TV did not complete the request before the timeout. Check IP Remote, the TV approval dialog, and LAN/VPN access; retry only when ready.");
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException exception)
         {
             return Complete(transport?.RejectedCertificate == true ? SamsungIpRemoteOutcome.CertificateError : SamsungIpRemoteOutcome.TransportError,
                 transport?.RejectedCertificate == true ? "The TV certificate was not trusted. Verify its SHA-256 fingerprint and pin it, or explicitly allow an untrusted certificate for this endpoint only."
-                    : "The HTTPS request failed. Check the IP Remote port, whether the TV is on, and local-network/VPN access.");
+                    : DescribeTransportFailure(exception));
         }
         catch (ResponseTooLargeException)
         {
@@ -245,6 +245,27 @@ public sealed partial class SamsungIpRemoteClient(ISamsungTokenStore tokenStore,
             if (discardTransport) CloseConnection();
             _gate.Release();
         }
+    }
+
+    private static string DescribeTransportFailure(HttpRequestException exception)
+    {
+        // Exception messages can contain endpoints or credentials. Only expose
+        // enum names and a bounded, actionable explanation, never the raw text.
+        SocketException? socket = null;
+        for (Exception? inner = exception; inner is not null; inner = inner.InnerException)
+            if (inner is SocketException found) { socket = found; break; }
+        var detail = socket?.SocketErrorCode switch
+        {
+            SocketError.AccessDenied => "The operating system denied network access. Check firewall and local-network permission.",
+            SocketError.HostUnreachable or SocketError.NetworkUnreachable => "No network route to the display is available. Check local-network permission, VPN LAN access, and routing; this is not an HTTP rejection from the TV.",
+            SocketError.ConnectionRefused => "The display's IP Remote port refused the connection. Check its address, power, IP Remote setting, and port.",
+            SocketError.HostNotFound or SocketError.TryAgain => "The display hostname could not be resolved. Check the hostname or use its current IP address.",
+            SocketError.TimedOut => "The connection timed out. Check display power, IP Remote, and local-network/VPN access.",
+            _ => "The HTTPS request failed. Check the IP Remote port, whether the TV is on, and local-network/VPN access."
+        };
+        if (OperatingSystem.IsMacOS() && socket?.SocketErrorCode is SocketError.AccessDenied or SocketError.HostUnreachable or SocketError.NetworkUnreachable)
+            detail += " For the installed app, allow SamsungController under System Settings → Privacy & Security → Local Network, then quit and reopen it. A source-launched server needs permission for its Terminal/editor instead.";
+        return detail + $" (HTTP transport: {exception.HttpRequestError}" + (socket is null ? ")" : $"; socket: {socket.SocketErrorCode})");
     }
 
     // Reuse TCP/TLS connections, but never reuse a permissive connection after

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Security;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
@@ -330,6 +331,29 @@ public sealed class SamsungIpRemoteClientTests
         var large = await new SamsungIpRemoteClient(PairedTokens(), largeHttp).ReadAsync(Options, "getTVStates");
         Assert.Equal(SamsungIpRemoteOutcome.ProtocolError, large.Outcome);
         Assert.Null(large.ResponseJson);
+    }
+
+    [Theory]
+    [InlineData(SocketError.AccessDenied, "denied network access")]
+    [InlineData(SocketError.HostUnreachable, "not an HTTP rejection")]
+    [InlineData(SocketError.NetworkUnreachable, "not an HTTP rejection")]
+    [InlineData(SocketError.ConnectionRefused, "refused the connection")]
+    [InlineData(SocketError.HostNotFound, "could not be resolved")]
+    [InlineData(SocketError.TimedOut, "timed out")]
+    public async Task SocketFailureExplainsTheCauseWithoutLeakingExceptionTextOrRemovingPairing(SocketError code, string explanation)
+    {
+        var tokens = PairedTokens();
+        using var http = new HttpClient(new RpcHandler((_, _) => throw new HttpRequestException(
+            HttpRequestError.ConnectionError, Token, new IOException("private-detail", new SocketException((int)code)))));
+        using var client = new SamsungIpRemoteClient(tokens, http);
+        var result = await client.ReadAsync(Options, "getTVStates");
+        Assert.Equal(SamsungIpRemoteOutcome.TransportError, result.Outcome);
+        Assert.Null(result.HttpStatus);
+        Assert.Contains(explanation, result.Message);
+        Assert.Contains(code.ToString(), result.Message);
+        Assert.DoesNotContain(Token, JsonSerializer.Serialize(result));
+        Assert.DoesNotContain("private-detail", JsonSerializer.Serialize(result));
+        Assert.True(await client.HasTokenAsync(Options));
     }
 
     [Fact]

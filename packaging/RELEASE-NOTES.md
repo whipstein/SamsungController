@@ -1,4 +1,13 @@
-## SamsungController v1.0.0
+## SamsungController v1.0.1
+
+### Changes in this patch
+
+- Correct macOS Local Network permission attribution: the native signed app remains alive while the server runs, instead of replacing itself with a detached .NET launcher. Published .NET executables now receive distinct Mach-O UUIDs before signing.
+- Add the approved **TV + RGB sliders** icon to the Mac app, Windows executable, and Linux applications-menu shortcut.
+- Show safe transport/socket error classifications so routing/permission failures are distinguishable from TV HTTP rejection. No credentials or raw exception messages are exposed.
+- Preserve existing private profiles, pairing tokens, and settings. No re-pairing or TV-setting changes are performed by this update.
+
+**Mac upgrade:** use **Display → Quit app** before replacing the application. Copy the new app into Applications, open it there, and try Connect/Pair. Approve **SamsungController** if macOS asks for Local Network access. If already listed but disabled, enable it in System Settings → Privacy & Security → Local Network and quit/reopen the app. Loopback package tests do not verify LAN permission or compatibility with a particular display; those require a real installed-app connection test.
 
 Direct IP control is now the default interface on **main**, replacing the v0 menu-traversal workflow.
 
@@ -12,7 +21,7 @@ Direct IP control is now the default interface on **main**, replacing the v0 men
 - Native launchable, self-contained apps for Windows, macOS, and Linux on x64 and Arm64. The local server runs in the background, without a terminal window. Reopen the app to reuse it; **Display → Quit app** stops it.
 - Official macOS release apps are Developer ID signed, notarized, and stapled. Windows binaries are unsigned. Linux packages include an optional desktop-shortcut installer.
 
-Start with the [beginner tutorial](https://github.com/whipstein/SamsungController/blob/v1.0.0/docs/getting-started.md).
+Start with the [beginner tutorial](https://github.com/whipstein/SamsungController/blob/v1.0.1/docs/getting-started.md).
 
 ### Upgrade notes
 

@@ -3,6 +3,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>Exe</OutputType>
     <OutputType Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-'))">WinExe</OutputType>
+    <ApplicationIcon>../../packaging/icons/SamsungController.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../SamsungController.Desktop/SamsungController.Desktop.csproj" /></ItemGroup>
 </Project>

@@ -1,4 +1,4 @@
-# SamsungController v1.0.0
+# SamsungController v1.0.1
 
 This package includes the desktop launcher, local web server, optional CLI, and .NET runtime. No clone, SDK, or terminal window is required.
 

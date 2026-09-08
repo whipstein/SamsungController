@@ -33,6 +33,8 @@ Optional integrity checks against the release's SHA256SUMS.txt:
 4. Allow **Local Network** access when prompted. Official release Mac apps are Developer ID signed, notarized, and stapled; unsigned CI artifacts are for developers, not normal installation.
 5. If it cannot contact your TV, check **System Settings → Privacy & Security → Local Network** for SamsungController. A source-launched server instead needs permission for its hosting Terminal/editor/ChatGPT app.
 
+If SamsungController never appears in that list with v1.0.0, quit the old app and update to **v1.0.1 or later**. Install a single copy in Applications and open it there, then attempt Connect/Pair. The patch corrects permission attribution to the native app and its background server. You still need to click **Allow** in the macOS prompt; Developer ID signing does not grant Local Network permission. Your saved pairing credentials are retained. A separate TV approval may still be required for a display that has not yet paired.
+
 ### Windows
 
 1. Right-click the ZIP and choose **Extract All**.
