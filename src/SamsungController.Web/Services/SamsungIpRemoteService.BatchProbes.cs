@@ -8,15 +8,49 @@ public sealed partial class SamsungIpRemoteService
 {
     private string RgbProbePath => Path.Combine(_directory, "rgb-probe.json");
     private static IpMenuGrid ProbeGrid => IpMenuGrids.ForSection("white20")!;
+    public string? BatchProbeDisabledReason
+    {
+        get
+        {
+            var state = GetSnapshot();
+            if (state.BatchHistoryUnavailable) return "Batch testing is disabled because its saved failure history could not be checked. Ordinary connection recovery remains available.";
+            return state.ActiveProfile is { } profile && state.BatchFailures.TryGetValue(profile.Endpoint, out var failure)
+                ? $"Batch testing is disabled for this display after {failure.Outcome} on {failure.Timestamp.ToLocalTime():g}. Array requests can stall this TV's IP service. Reconnecting or pairing again does not clear this safety block."
+                : null;
+        }
+    }
     public bool CanProbeRgbBatch => GetSnapshot() is { ActiveProfile: { } profile, ReadBatchProbe: { } probe, Menu: { } menu }
-        && probe.Endpoint == profile.Endpoint && probe.SessionId == menu.SessionId && probe.Exchange.IsSuccess;
+        && BatchProbeDisabledReason is null && probe.Endpoint == profile.Endpoint && probe.SessionId == menu.SessionId && probe.Exchange.IsSuccess;
 
     public Task ProbeReadBatchAsync() => RunMenuOperationAsync(async (profile, cancellation) =>
     {
+        if (BatchProbeDisabledReason is { } reason) throw new InvalidOperationException(reason);
         var exchange = await _client.ProbeReadBatchAsync(profile.Connection, cancellation).ConfigureAwait(false);
         await RecordExchangeAsync(profile, "Batch test · read only", exchange).ConfigureAwait(false);
         Update(state => state with { ReadBatchProbe = new(profile.Endpoint, state.Menu.SessionId, exchange) });
     });
+
+    private static IReadOnlyDictionary<string, IpBatchFailure> WithBatchFailure(IReadOnlyDictionary<string, IpBatchFailure> failures, SamsungIpRemoteExchange exchange)
+    {
+        if (exchange.IsSuccess || exchange.Method is not ("batch:getTVStates+getVideoStates" or "batch:WB20P.RGB")
+            || !Enum.IsDefined(exchange.Outcome) || !Uri.TryCreate(exchange.Endpoint, UriKind.Absolute, out var endpoint) || endpoint.Scheme != "https") return failures;
+        return new Dictionary<string, IpBatchFailure>(failures)
+        { [exchange.Endpoint] = new(exchange.Endpoint, exchange.Timestamp, exchange.Method, exchange.Outcome, exchange.RpcErrorCode) };
+    }
+
+    private async Task<IReadOnlyDictionary<string, IpBatchFailure>> LoadBatchFailuresAsync()
+    {
+        IReadOnlyDictionary<string, IpBatchFailure> failures = new Dictionary<string, IpBatchFailure>();
+        try
+        {
+            if (File.Exists(DiagnosticLogPath))
+                await foreach (var entry in ReadLogEntriesAsync(new FileInfo(DiagnosticLogPath).Length, () => { }, CancellationToken.None, batchOnly: true))
+                    failures = WithBatchFailure(failures, entry.Observation.Exchange);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        { Update(state => state with { BatchHistoryUnavailable = true }); }
+        return failures;
+    }
 
     public Task PrepareRgbProbeAsync(string interval) => RunMenuOperationAsync(async (profile, cancellation) =>
     {

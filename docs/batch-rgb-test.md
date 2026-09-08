@@ -2,6 +2,19 @@
 
 This diagnostic evaluates what **your display and current state** accept. It is not a production speed setting. Normal Menu uses its existing documented commands regardless of the outcome.
 
+**Known risk:** read-only JSON-RPC arrays have caused a display's IP connection to stall for the full request timeout rather than returning an unsupported-batch error. Do not repeat a failing batch. Both batch buttons are blocked for endpoints with a failed/interrupted batch in their private diagnostic history; this is recovered on app restart and is not cleared by reconnecting or pairing again. It is a safety block, not a claim that every model or firmware lacks support. The separate single-method RGB experiment remains experimental and is not a recovery procedure.
+
+## Recover after a stalled batch, without requesting new pairing
+
+1. Restart the updated server and refresh the page. Existing failed attempts are recognized from private saved history; you do not need to trigger another failure.
+2. If a request is still running, click **Stop** and wait for it to finish.
+3. On **Display** or **Batch / RGB test**, click **Reset connection (keep pairing)**.
+4. The app discards its HTTPS pool and sends only `getTVStates` followed by `getVideoStates` on a fresh connection, using the existing token and unchanged certificate policy. It does not send `createAccessToken`, a batch, any setting or selector writes, or a full settings scan. No request is automatically replayed.
+5. On success, open Menu and explicitly refresh the values when ready. If an RGB test was unfinished, restore/end it before loading other calibration rows; saved originals remain protected. Cached readings/unsent edits are cleared by connection reset.
+6. If it fails, inspect/export **Communication log → Saved history**, including the failed batch and subsequent single-request attempts. A fresh TLS/authentication failure distinguishes a continuing TV/network problem from simply reusing the old session. A timeout alone is not evidence that the token was revoked. A false `NewTlsHandshake` on a failed exchange means no new handshake completed, not proof a healthy socket was reused.
+
+Reset clears the application's connection, **not the TV's internal IP service**. If that service remains wedged or the TV truly rejects the saved token, this cannot guarantee recovery without TV-side intervention. It does not silently fall back to pairing. Failed transports are also discarded automatically; explicit Connect starts fresh. Experimental batches use an isolated connection which is discarded after completion, success or failure.
+
 The two RGB experiments answer different questions:
 
 | Test | Experimental write on the wire | What independent readback checks |

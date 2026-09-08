@@ -67,7 +67,7 @@
     private Task ToggleConnectionAsync() => GuardAsync(async () =>
     {
         if (Snapshot.Menu.Connected) await Controller.DisconnectMenuAsync();
-        else if (Snapshot.ActiveProfile is null || !Snapshot.HasToken || Snapshot.AuthorizationRejected) Navigation.NavigateTo("/");
+        else if (Snapshot.ActiveProfile is null || !Snapshot.HasToken) Navigation.NavigateTo("/");
         else await Controller.ConnectMenuAsync();
     });
     private Task KeyAsync(string key) => GuardAsync(() => Controller.SendMenuKeyAsync(key));

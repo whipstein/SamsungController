@@ -1,0 +1,35 @@
+@implements IDisposable
+@inject SamsungIpRemoteService Controller
+
+@if (Snapshot.ActiveProfile is not null && Snapshot.HasToken)
+{
+    <div class="notice">
+        <div class="direct-actions"><button class="toolbar-button" @onclick="ResetAsync" disabled="@Snapshot.IsBusy">Reset connection (keep pairing)</button></div>
+        <p>Closes the local HTTPS connection and checks the saved token with two ordinary state queries. No pairing request, batch, settings change, or calibration scan. Cached readings and unsent drafts are cleared; saved originals from unfinished operations are kept. Use Stop first if a request is still running.</p>
+        @if (Result is not null) { <p role="status">@Result</p> }
+        @if (Error is not null) { <p class="direct-unavailable" role="alert">@Error</p> }
+        @if (!Snapshot.Menu.Connected) { <p>A timeout is not proof of an invalid token. If a fresh connection still fails, inspect the Communication log. This resets the app's connection, not the TV's IP service or its permissions.</p> }
+    </div>
+}
+
+@code {
+    private IpRemoteSnapshot Snapshot = new();
+    private string? Error, Result;
+    protected override async Task OnInitializedAsync()
+    {
+        Controller.Changed += Refresh;
+        try { await Controller.InitializeAsync(); }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException or JsonException) { Error = error.Message; }
+        Snapshot = Controller.GetSnapshot();
+    }
+    private void Refresh() => _ = InvokeAsync(() => { Snapshot = Controller.GetSnapshot(); StateHasChanged(); });
+    private async Task ResetAsync()
+    {
+        Error = Result = null;
+        try { await Controller.ResetMenuConnectionAsync(); Result = Controller.GetSnapshot().Menu.Status; }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException or JsonException or OperationCanceledException)
+        { Error = error.Message; }
+        finally { Snapshot = Controller.GetSnapshot(); }
+    }
+    public void Dispose() => Controller.Changed -= Refresh;
+}

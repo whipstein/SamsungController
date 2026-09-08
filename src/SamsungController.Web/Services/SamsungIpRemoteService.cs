@@ -62,6 +62,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             var commands = await LoadCommandTestsAsync().ConfigureAwait(false);
             var menu = await LoadMenuStateAsync().ConfigureAwait(false);
             var rgbProbe = await LoadRgbProbeAsync().ConfigureAwait(false);
+            var batchFailures = await LoadBatchFailuresAsync().ConfigureAwait(false);
             Update(state => state with
             {
                 Initialized = true,
@@ -74,7 +75,8 @@ public sealed partial class SamsungIpRemoteService : IDisposable
                 CommandHistory = commands.History,
                 ControlCapabilities = capabilities,
                 Menu = menu,
-                RgbProbe = rgbProbe
+                RgbProbe = rgbProbe,
+                BatchFailures = batchFailures
             });
             // Upgrade a locally completed test, never a shared diagnostic report.
             // This only saves private evidence; startup sends no TV requests.
@@ -242,6 +244,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             snapshot.CatalogQuery,
             snapshot.Menu,
             snapshot.ReadBatchProbe,
+            snapshot.BatchFailures,
             snapshot.RgbProbe,
             CommandCatalog = SamsungIpRemoteCommands.All.Select(command => new { command.Method, command.Name, command.Group, command.Parameters, command.CanQuery, command.ReadbackField, command.ReadbackMethod, command.Requirements, command.Notes }),
             Methods = SamsungIpRemoteClient.ReadMethods.Select(method => new
@@ -264,6 +267,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
         {
             Observations = current.Observations.Append(observation).TakeLast(2000).ToArray(),
             CommunicationCount = current.CommunicationCount + 1,
+            BatchFailures = WithBatchFailure(current.BatchFailures, exchange),
             Status = exchange.Message,
             HasToken = exchange.Outcome != SamsungIpRemoteOutcome.NotPaired && (pairing && exchange.IsSuccess || current.HasToken),
             AuthorizationRejected = exchange.Outcome == SamsungIpRemoteOutcome.Unauthorized

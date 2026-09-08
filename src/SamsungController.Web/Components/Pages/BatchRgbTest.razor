@@ -1,5 +1,6 @@
 @page "/diagnostics/batch-rgb"
 @implements IDisposable
+@using SamsungController.Web.Components.Shared
 @inject SamsungIpRemoteService Controller
 @inject IJSRuntime JavaScript
 
@@ -7,8 +8,11 @@
 <section class="page-heading compact-heading"><div><span class="eyebrow">EXPERIMENTAL · DIRECT IP</span><h1>Batch / RGB test</h1><p>Evaluate one-request RGB updates without changing normal Menu behavior. Opening this page sends nothing.</p></div></section>
 @if (Error is not null) { <div class="notice danger" role="alert">@Error</div> }
 @if (Snapshot.StorageWarning is { } warning) { <div class="notice danger" role="alert">@warning</div> }
+<ConnectionRecovery />
 <section class="panel direct-panel">
-    <div class="direct-toolbar"><h2>1. Read-only batch support</h2><div class="direct-actions"><button class="toolbar-button" @onclick="ReadBatchAsync" disabled="@(!CanWork)">Run read-only batch test</button><button class="toolbar-button danger-action" @onclick="Controller.Cancel" disabled="@(!Snapshot.IsBusy)">Stop</button></div></div>
+    <div class="direct-toolbar"><h2>1. Read-only batch support</h2><div class="direct-actions"><button class="toolbar-button" @onclick="ReadBatchAsync" disabled="@(!CanWork || Controller.BatchProbeDisabledReason is not null)">Run read-only batch test</button><button class="toolbar-button danger-action" @onclick="Controller.Cancel" disabled="@(!Snapshot.IsBusy)">Stop</button></div></div>
+    @if (Controller.BatchProbeDisabledReason is { } blocked) { <div class="notice danger" role="alert">@blocked The separate one-method RGB experiment does not use a JSON-RPC array; it remains experimental and is not a connection-recovery action.</div> }
+    <p><strong>Warning:</strong> even a read-only array has stalled a display's IP connection instead of returning an unsupported-method error. Failed or interrupted batches block further batch tests for that display, including after restart. Do not rerun a failing batch to recover the connection.</p>
     <p>Sends getTVStates and getVideoStates as two JSON-RPC objects in <strong>one HTTP request</strong>. No selector or setting is changed. Replies must include both matching IDs; their order does not matter.</p>
     @if (!Snapshot.Menu.Connected) { <p class="direct-unavailable">Connect to the display first. Reconnecting an unfinished RGB test skips the normal all-settings load so you can recover here.</p> }
     @if (Snapshot.ReadBatchProbe is { } batch)
@@ -53,7 +57,8 @@
     }
 </section>
 <section class="panel direct-panel"><h2>5. Share the results</h2><p>Download after restoring each experiment, before preparing the next one. The report includes the read-only result, exact experimental request/reply, saved originals, per-channel readback, and recovery state. Tokens, device identifiers, and certificate SHA fingerprints are redacted. Communication log also contains all preparation, test, readback, and restoration traffic.</p>
-    <div class="direct-actions"><button class="toolbar-button" @onclick="ExportAsync" disabled="@(Busy || Snapshot.IsBusy || Snapshot.ReadBatchProbe is null && Snapshot.RgbProbe is null)">Download batch / RGB report</button><a class="toolbar-button" href="diagnostics">Open Communication log</a><a class="toolbar-button" href="menu">Back to Menu</a></div>
+    <p>After restarting, the report includes saved batch-failure summaries. For the original request/reply from an earlier app run, use Communication log → Saved history.</p>
+    <div class="direct-actions"><button class="toolbar-button" @onclick="ExportAsync" disabled="@(Busy || Snapshot.IsBusy || Snapshot.ReadBatchProbe is null && Snapshot.RgbProbe is null && Snapshot.BatchFailures.Count == 0)">Download batch / RGB report</button><a class="toolbar-button" href="diagnostics">Open Communication log</a><a class="toolbar-button" href="menu">Back to Menu</a></div>
 </section>
 
 @code {

@@ -4,6 +4,7 @@ using SamsungController.Core.IpRemote;
 namespace SamsungController.Web.Services;
 
 public sealed record IpReadBatchProbe(string Endpoint, Guid SessionId, SamsungIpRemoteExchange Exchange);
+public sealed record IpBatchFailure(string Endpoint, DateTimeOffset Timestamp, string Method, SamsungIpRemoteOutcome Outcome, int? RpcErrorCode);
 public enum IpRgbProbeStage { Preparing, Prepared, Sending, Observed, Restoring, Restored, ManuallyClosed, Stopped }
 public sealed record IpRgbProbe
 {

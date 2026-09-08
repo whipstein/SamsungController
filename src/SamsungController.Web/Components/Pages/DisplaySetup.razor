@@ -3,6 +3,7 @@
 @page "/ip-remote"
 @implements IDisposable
 @using SamsungController.Core.IpRemote
+@using SamsungController.Web.Components.Shared
 @inject SamsungIpRemoteService Controller
 @inject NavigationManager Navigation
 
@@ -21,7 +22,8 @@
             <button class="primary-action" @onclick="ConnectAsync" disabled="@(!CanConnect)">@(Snapshot.Menu.Connected ? "Open Menu" : "Connect and open Menu")</button>
             <button class="toolbar-button" @onclick="EditDisplay" disabled="@(Snapshot.IsBusy || Snapshot.ActiveProfile is null)">Edit display</button>
         </div>
-        @if (Snapshot.ActiveProfile is not null && (!Snapshot.HasToken || Snapshot.AuthorizationRejected)) { <p>Pair with this display below before connecting.</p> }
+        @if (Snapshot.ActiveProfile is not null && !Snapshot.HasToken) { <p>Pair with this display below before connecting.</p> }
+        @if (Snapshot.AuthorizationRejected) { <p>The last request was unauthorized. Reset the connection to check the saved token before requesting a new pairing.</p> }
     }
     else { <p>No saved IP displays yet. Enter the TV address below.</p> }
     @if (Snapshot.IsBusy) { <p role="status">@Snapshot.Menu.Status</p> }
@@ -31,6 +33,7 @@
         @foreach (var warning in Snapshot.Menu.LoadWarnings) { <p class="direct-unavailable">@warning</p> }
     }
     <p class="direct-hint">HTTPS keep-alive reuses one connection where supported. The TV may close it; the saved pairing token is reused on the next request. Connection loading can take a while; Stop cancels remaining requests.</p>
+    <ConnectionRecovery />
 </section>
 
 @if (ShowEditor)
@@ -60,7 +63,7 @@
 @if (Snapshot.ActiveProfile is not null && !ShowEditor)
 {
     <section class="panel direct-panel">
-        <h2>@(Snapshot.HasToken && !Snapshot.AuthorizationRejected ? "Pairing saved" : "Pair with the TV")</h2>
+        <h2>@(Snapshot.HasToken ? "Pairing saved" : "Pair with the TV")</h2>
         <p>Enable <strong>IP Remote</strong> in the TV's network expert settings. Keep the TV on, then accept its approval dialog. Connect reuses your saved token; pairing again requests a new one.</p>
         <div class="direct-actions"><button class="toolbar-button" @onclick="PairAsync" disabled="@Snapshot.IsBusy">@(Snapshot.HasToken ? "Pair again (TV approval)" : "Pair with TV")</button><button class="toolbar-button" @onclick="Controller.Cancel" disabled="@(!Snapshot.IsBusy)">Cancel request</button></div>
         <p role="status">@Snapshot.Status</p>
@@ -76,7 +79,7 @@
     private int Port = 1516, ReadTimeout = 10, PairTimeout = 60;
     private bool AllowUntrusted, ShowEditor, NewEntry;
     private string? Error;
-    private bool CanConnect => !ShowEditor && !Snapshot.IsBusy && Snapshot.ActiveProfile is not null && Snapshot.HasToken && !Snapshot.AuthorizationRejected;
+    private bool CanConnect => !ShowEditor && !Snapshot.IsBusy && Snapshot.ActiveProfile is not null && Snapshot.HasToken;
     protected override async Task OnInitializedAsync()
     {
         Controller.Changed += Refresh; await GuardAsync(Controller.InitializeAsync);

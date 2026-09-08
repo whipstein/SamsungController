@@ -13,17 +13,33 @@ public sealed partial class SamsungIpRemoteService
         or SamsungIpRemoteOutcome.TransportError or SamsungIpRemoteOutcome.CertificateError or SamsungIpRemoteOutcome.Timeout or SamsungIpRemoteOutcome.HttpError;
     private void UpdateMenu(Func<IpMenuSnapshot, IpMenuSnapshot> change) => Update(state => state with { Menu = change(state.Menu) });
 
-    public Task ConnectMenuAsync(bool loadAllSettings = true) => RunMenuOperationAsync(async (profile, cancellation) =>
+    public Task ConnectMenuAsync(bool loadAllSettings = true) => RunMenuOperationAsync(
+        (profile, cancellation) => OpenMenuConnectionAsync(profile, cancellation, loadAllSettings, recovery: false), needsConnection: false, allowAuthorizationRetry: true);
+
+    public Task ResetMenuConnectionAsync() => RunMenuOperationAsync(
+        (profile, cancellation) => OpenMenuConnectionAsync(profile, cancellation, loadAllSettings: false, recovery: true), needsConnection: false, allowAuthorizationRetry: true);
+
+    private async Task OpenMenuConnectionAsync(IpRemoteProfile profile, CancellationToken cancellation, bool loadAllSettings, bool recovery)
     {
-        UpdateMenu(menu => ResetMenu(menu) with { ConnectionLoadAttempted = loadAllSettings, Status = "Connecting and reading TV values…" });
+        // Explicit Connect/Reset must not reuse a potentially stalled pool.
+        // Credentials, trust policy and unresolved write-recovery records survive.
+        _client.CloseConnection();
+        UpdateMenu(menu => ResetMenu(menu) with { ConnectionLoadAttempted = loadAllSettings,
+            Status = recovery ? "Resetting the HTTPS connection and checking the saved pairing with two ordinary state queries…" : "Connecting and reading TV values…" });
         await ReadMenuBaseAsync(profile, cancellation).ConfigureAwait(false);
-        UpdateMenu(menu => menu with { Connected = true, SessionId = Guid.NewGuid(), Status = "Connected. Current values come from TV queries; documented controls need no verification." });
+        var status = recovery ? "Connection reset succeeded using the saved pairing. Only two state queries were sent; no settings, selectors, or batches. Refresh Menu values when ready."
+            : "Connected. Current values come from TV queries; documented controls need no verification.";
+        // A previous authorization rejection is cleared only after both fresh,
+        // matching replies succeed, never simply because Reset was clicked.
+        Update(state => state with { AuthorizationRejected = false, Status = status,
+            Menu = state.Menu with { Connected = true, SessionId = Guid.NewGuid(), Status = status } });
+        if (recovery) return;
         // Optional identity: failure of a model-specific getter is not a failure of the two base reads.
         var identity = await MenuQueryAsync(profile, "getDeviceInformation", cancellation).ConfigureAwait(false);
         StoreMenuRead("getDeviceInformation", identity);
         if (IsConnectionFailure(identity.Outcome)) RequireSuccess(identity);
         if (loadAllSettings && GetSnapshot().RgbProbe?.NeedsRecovery != true) await LoadAllMenuSettingsAsync(profile, cancellation).ConfigureAwait(false);
-    }, needsConnection: false);
+    }
 
     public async Task DisconnectMenuAsync()
     {
@@ -379,13 +395,14 @@ public sealed partial class SamsungIpRemoteService
         if (GetSnapshot().Menu.Update?.NeedsReview == true) throw new InvalidOperationException("Check the interrupted update before sending more commands.");
     }
 
-    private async Task RunMenuOperationAsync(Func<IpRemoteProfile, CancellationToken, Task> action, bool needsConnection = true)
+    private async Task RunMenuOperationAsync(Func<IpRemoteProfile, CancellationToken, Task> action, bool needsConnection = true, bool allowAuthorizationRetry = false)
     {
         await EnterAsync().ConfigureAwait(false);
         try
         {
             var state = GetSnapshot(); var profile = state.ActiveProfile ?? throw new InvalidOperationException("Choose or save a display first.");
-            if (!state.HasToken || state.AuthorizationRejected) throw new InvalidOperationException("Pair with the display first. Its saved token is reused for Connect.");
+            if (!state.HasToken) throw new InvalidOperationException("Pair with the display first. No saved IP Remote token is available.");
+            if (state.AuthorizationRejected && !allowAuthorizationRetry) throw new InvalidOperationException("The TV rejected the last authorization attempt. Use Reset connection (keep pairing) to explicitly check the saved token on a fresh connection.");
             if (needsConnection && !state.Menu.Connected) throw new InvalidOperationException("Connect to the display first.");
             var cancellation = new CancellationTokenSource(); lock (_sync) _operation = cancellation;
             Update(snapshot => snapshot with { IsBusy = true });

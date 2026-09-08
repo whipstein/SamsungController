@@ -57,7 +57,7 @@ public sealed partial class SamsungIpRemoteService
     }
 
     private async IAsyncEnumerable<IpCommunicationEntry> ReadLogEntriesAsync(long byteLimit, Action skipped,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
+        [EnumeratorCancellation] CancellationToken cancellationToken, bool batchOnly = false)
     {
         await using var stream = new FileStream(DiagnosticLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 65536, FileOptions.Asynchronous | FileOptions.SequentialScan);
         using var line = new MemoryStream();
@@ -77,7 +77,9 @@ public sealed partial class SamsungIpRemoteService
                 Append(buffer.AsSpan(start, index - start));
                 number++;
                 IpRemoteObservation? observation = null;
-                if (!oversized)
+                // Startup quarantine only needs batch records; avoid decoding
+                // and deserializing every calibration read in a large archive.
+                if (!oversized && (!batchOnly || line.GetBuffer().AsSpan(0, (int)line.Length).IndexOf("\"batch:"u8) >= 0))
                 {
                     try
                     {
@@ -89,7 +91,7 @@ public sealed partial class SamsungIpRemoteService
                     catch (JsonException) { }
                 }
                 line.SetLength(0); oversized = false; start = index + 1;
-                if (observation is null) skipped();
+                if (observation is null) { if (!batchOnly) skipped(); }
                 else yield return new(number, observation);
             }
             Append(buffer.AsSpan(start, read - start));

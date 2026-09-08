@@ -81,8 +81,16 @@ public sealed partial class SamsungIpRemoteClient(ISamsungTokenStore tokenStore,
         OwnedTransport? transport = null;
         long initialHandshakes = 0;
         bool? serverClosesConnection = null;
-        SamsungIpRemoteExchange Complete(SamsungIpRemoteOutcome outcome, string message, JsonObject? result = null, int? code = null) =>
-            new(started, id, method, endpoint.AbsoluteUri, outcome, message,
+        // A batch is an isolated experiment; never return its socket to normal
+        // operation. Also discard a failed/ambiguous transport, without replaying
+        // the RPC or touching the saved credential.
+        var discardTransport = batch is not null;
+        SamsungIpRemoteExchange Complete(SamsungIpRemoteOutcome outcome, string message, JsonObject? result = null, int? code = null)
+        {
+            discardTransport |= outcome is SamsungIpRemoteOutcome.Timeout or SamsungIpRemoteOutcome.Canceled
+                or SamsungIpRemoteOutcome.TransportError or SamsungIpRemoteOutcome.CertificateError
+                or SamsungIpRemoteOutcome.ProtocolError or SamsungIpRemoteOutcome.HttpError or SamsungIpRemoteOutcome.Unauthorized;
+            return new(started, id, method, endpoint.AbsoluteUri, outcome, message,
                 IpRemoteRedactor.Redact(wireRequest, token)!.ToJsonString(PrettyJson), responseJson, result,
                 httpStatus, code, timer.ElapsedMilliseconds, transport?.Fingerprint)
             {
@@ -90,6 +98,7 @@ public sealed partial class SamsungIpRemoteClient(ISamsungTokenStore tokenStore,
                 NewTlsHandshake = transport is null ? null : transport.Handshakes != initialHandshakes,
                 ServerClosesConnection = serverClosesConnection
             };
+        }
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(pairing ? options.PairingTimeout : options.RequestTimeout);
         try
@@ -118,6 +127,7 @@ public sealed partial class SamsungIpRemoteClient(ISamsungTokenStore tokenStore,
             var client = httpClient;
             if (client is null)
             {
+                if (batch is not null) CloseConnection();
                 transport = GetTransport(options);
                 initialHandshakes = transport.Handshakes;
                 transport.RejectedCertificate = false;
@@ -232,6 +242,7 @@ public sealed partial class SamsungIpRemoteClient(ISamsungTokenStore tokenStore,
         }
         finally
         {
+            if (discardTransport) CloseConnection();
             _gate.Release();
         }
     }

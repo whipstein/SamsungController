@@ -147,6 +147,50 @@ public sealed class SamsungIpRemoteConnectionTests
         return tokens;
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BatchUsesItsOwnConnectionAndTimeoutRecoveryUsesSameTokenOnFreshTls(bool stall)
+    {
+        await using var tv = new LocalTv();
+        var tokens = Tokens(tv);
+        using var client = new SamsungIpRemoteClient(tokens);
+        Assert.True((await client.ReadAsync(tv.Options, "getTVStates")).IsSuccess);
+        if (stall) tv.BeforeBatchReply = (_, cancellation) => Task.Delay(Timeout.InfiniteTimeSpan, cancellation);
+        var batch = await client.ProbeReadBatchAsync(tv.Options with { RequestTimeout = TimeSpan.FromSeconds(1) });
+        Assert.Equal(stall ? SamsungIpRemoteOutcome.Timeout : SamsungIpRemoteOutcome.Success, batch.Outcome);
+        Assert.True(batch.NewTlsHandshake);
+        Assert.Single(tv.Batches);
+        var recovered = await client.ReadAsync(tv.Options, "getTVStates");
+        Assert.True(recovered.IsSuccess, recovered.Message);
+        Assert.True(recovered.NewTlsHandshake);
+        Assert.Equal(3, tv.Requests.Select(call => call.Connection).Concat(tv.Batches.Select(call => call.Connection)).Distinct().Count());
+        Assert.Equal("test-token", tokens.Values[tv.Options.Endpoint.AbsoluteUri]);
+        Assert.All(tv.Requests, item => Assert.Equal("getTVStates", item.Request["method"]!.ToString()));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProtocolOrAuthorizationFailureDiscardsSocketWithoutRemovingSavedToken(bool unauthorized)
+    {
+        await using var tv = new LocalTv();
+        var tokens = Tokens(tv);
+        using var client = new SamsungIpRemoteClient(tokens);
+        Assert.True((await client.ReadAsync(tv.Options, "getTVStates")).IsSuccess);
+        tv.ReplyOverride = request => new JsonObject { ["jsonrpc"] = "2.0", ["id"] = unauthorized ? request["id"]!.DeepClone() : JsonValue.Create(-1),
+            ["error"] = new JsonObject { ["code"] = -32010, ["message"] = "simulated rejection" } }.ToJsonString();
+        var failed = await client.ReadAsync(tv.Options, "getTVStates");
+        Assert.Equal(unauthorized ? SamsungIpRemoteOutcome.Unauthorized : SamsungIpRemoteOutcome.ProtocolError, failed.Outcome);
+        tv.ReplyOverride = null;
+        var recovered = await client.ReadAsync(tv.Options, "getTVStates");
+        Assert.True(recovered.IsSuccess, recovered.Message);
+        Assert.True(recovered.NewTlsHandshake);
+        Assert.Equal("test-token", tokens.Values[tv.Options.Endpoint.AbsoluteUri]);
+        Assert.Equal(2, tv.Requests.Select(call => call.Connection).Distinct().Count());
+        Assert.All(tv.Requests, item => Assert.Equal("test-token", item.Request["params"]!["AccessToken"]!.ToString()));
+    }
+
     // Exercise the production HTTP handler/TLS pool, not an injected handler.
     // This fixture listens only on loopback and never contacts a real display.
     private sealed class LocalTv : IAsyncDisposable
@@ -159,6 +203,9 @@ public sealed class SamsungIpRemoteConnectionTests
         public SamsungIpRemoteOptions Options { get; }
         public string Pin => _certificate.GetCertHashString(HashAlgorithmName.SHA256);
         public ConcurrentQueue<(int Connection, JsonObject Request)> Requests { get; } = new();
+        public ConcurrentQueue<(int Connection, JsonArray Request)> Batches { get; } = new();
+        public Func<JsonArray, CancellationToken, Task>? BeforeBatchReply { get; set; }
+        public Func<JsonObject, string>? ReplyOverride { get; set; }
         public Func<JsonObject, CancellationToken, Task>? BeforeReply { get; set; }
         public bool CloseAfterResponse { get; init; }
 
@@ -208,10 +255,21 @@ public sealed class SamsungIpRemoteConnectionTests
                     var buffer = new char[length]; // JSON requests use ASCII (non-ASCII is escaped).
                     var read = await reader.ReadBlockAsync(buffer, _stop.Token);
                     Assert.Equal(length, read);
-                    var request = JsonNode.Parse(new string(buffer))!.AsObject();
-                    Requests.Enqueue((connection, request));
-                    if (BeforeReply is { } before) await before(request, _stop.Token);
-                    var body = new JsonObject { ["jsonrpc"] = "2.0", ["id"] = request["id"]!.DeepClone(), ["result"] = new JsonObject { ["volume"] = 10 } }.ToJsonString();
+                    var parsed = JsonNode.Parse(new string(buffer))!;
+                    string body;
+                    if (parsed is JsonArray batch)
+                    {
+                        Batches.Enqueue((connection, batch));
+                        if (BeforeBatchReply is { } beforeBatch) await beforeBatch(batch, _stop.Token);
+                        body = new JsonArray(batch.Select(call => (JsonNode)new JsonObject { ["jsonrpc"] = "2.0", ["id"] = call!["id"]!.DeepClone(), ["result"] = new JsonObject() }).ToArray()).ToJsonString();
+                    }
+                    else
+                    {
+                        var request = parsed.AsObject();
+                        Requests.Enqueue((connection, request));
+                        if (BeforeReply is { } before) await before(request, _stop.Token);
+                        body = ReplyOverride?.Invoke(request) ?? new JsonObject { ["jsonrpc"] = "2.0", ["id"] = request["id"]!.DeepClone(), ["result"] = new JsonObject { ["volume"] = 10 } }.ToJsonString();
+                    }
                     var close = CloseAfterResponse ? "Connection: close\r\n" : "";
                     await stream.WriteAsync(Encoding.UTF8.GetBytes($"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n{close}Content-Length: {Encoding.UTF8.GetByteCount(body)}\r\n\r\n{body}"), _stop.Token);
                     if (CloseAfterResponse) return;
