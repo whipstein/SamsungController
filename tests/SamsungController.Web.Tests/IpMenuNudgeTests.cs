@@ -229,7 +229,7 @@ public sealed class IpMenuNudgeTests
     [Theory]
     [InlineData("white20")]
     [InlineData("color")]
-    public async Task IndexedClicksPreserveRowIdentityAndRestoreSelectors(string section)
+    public async Task IndexedClicksPreserveRowIdentityAndRetainSelectors(string section)
     {
         using var fixture = await ReadyAsync();
         var grid = await LoadGridAsync(fixture, section);
@@ -245,8 +245,8 @@ public sealed class IpMenuNudgeTests
         Assert.Equal(new[] { 11, 20 }, fixture.Writes.Where(write => write["method"]!.ToString() == control.Method).Select(write => write["params"]![control.Field]!.GetValue<int>()));
         Assert.Equal(20, fixture.GridValues[section + "/" + grid.Values[0]][control.Field]!.GetValue<int>());
         Assert.Equal(10, fixture.GridValues[section + "/" + grid.Values[1]][control.Field]!.GetValue<int>());
-        Assert.Equal(grid.Values.Last(), fixture.Values[grid.SelectorField]!.ToString());
-        Assert.Equal("Restored", fixture.Service.GetSnapshot().Menu.SelectorSession!.Status);
+        Assert.Equal(grid.Values[0], fixture.Values[grid.SelectorField]!.ToString());
+        Assert.Equal("Retained", fixture.Service.GetSnapshot().Menu.SelectorSession!.Status);
     }
 
     [Theory]
@@ -277,7 +277,7 @@ public sealed class IpMenuNudgeTests
         await IdleAsync(fixture.Service);
         Assert.Equal(new[] { 11, 13, 14, 20 }, fixture.Writes.Where(write => grid.Fields.Any(field => write["method"]!.ToString() == field + "Control"))
             .Select(write => write["params"]!.AsObject().Single(pair => pair.Key != "AccessToken").Value!.GetValue<int>()));
-        Assert.Equal(new[] { grid.Values[0], grid.Values.Last(), grid.Values[1], grid.Values.Last() }, fixture.Writes
+        Assert.Equal(new[] { grid.Values[0], grid.Values[1] }, fixture.Writes
             .Where(write => write["method"]!.ToString() == grid.SelectorMethod).Select(write => write["params"]![grid.SelectorField]!.ToString()));
         Assert.Equal(new[] { 11, 13, 14 }, grid.Fields.Select(field => fixture.GridValues[section + "/" + grid.Values[0]][field]!.GetValue<int>()));
         Assert.Equal(new[] { 20, 10, 10 }, grid.Fields.Select(field => fixture.GridValues[section + "/" + grid.Values[1]][field]!.GetValue<int>()));

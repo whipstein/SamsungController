@@ -18,13 +18,13 @@ public sealed class IpMenuRgbGroupTests
         var row = grid.Row(grid.Values[0]).ToArray();
         for (var i = 0; i < row.Length; i++) fixture.Service.StageMenuValue(row[i].Id, (11 + i).ToString());
         await fixture.Service.ApplyMenuAsync();
-        Assert.Equal(45, fixture.Display.Requests.Count);
-        Assert.Equal(4, fixture.Display.Methods.Count(method => method == "getTVStates"));
-        Assert.Equal(4, fixture.Display.Methods.Count(method => method == "getVideoStates"));
+        Assert.Equal(36, fixture.Display.Requests.Count);
+        Assert.Equal(2, fixture.Display.Methods.Count(method => method == "getTVStates"));
+        Assert.Equal(2, fixture.Display.Methods.Count(method => method == "getVideoStates"));
         Assert.Equal(3, RgbWrites(fixture, grid).Count());
         Assert.All(RgbWrites(fixture, grid), request => Assert.Equal(2, request["params"]!.AsObject().Count)); // AccessToken + one field, never a multi-field probe.
         Assert.Empty(fixture.Display.Batches);
-        Assert.Equal(grid.Values.Last(), fixture.Values[grid.SelectorField]!.ToString());
+        Assert.Equal(grid.Values[0], fixture.Values[grid.SelectorField]!.ToString());
         Assert.True(Assert.Single(fixture.Service.GetSnapshot().Menu.Update!.RgbGroups).Verified);
         Assert.Equal(new[] { 11, 12, 13 }, grid.Fields.Select(field => fixture.GridValues[section + "/" + grid.Values[0]][field]!.GetValue<int>()));
     }
@@ -198,7 +198,7 @@ public sealed class IpMenuRgbGroupTests
     private static bool IsWrite(JsonObject request, string method) => request["method"]!.ToString() == method && request["params"]!.AsObject().Count > 1;
     private static IEnumerable<JsonObject> RgbWrites(MenuFixture fixture, IpMenuGrid grid) => fixture.Writes.Where(request => grid.Fields.Any(field => IsWrite(request, field + "Control")));
 
-    private static async Task<MenuFixture> ReadyAsync(string section)
+    internal static async Task<MenuFixture> ReadyAsync(string section)
     {
         var fixture = await MenuFixture.CreateAsync();
         var grid = IpMenuGrids.ForSection(section)!;

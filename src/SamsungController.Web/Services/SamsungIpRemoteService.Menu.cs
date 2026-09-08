@@ -161,6 +161,7 @@ public sealed partial class SamsungIpRemoteService
         foreach (var draft in drafts) _ = IpMenuCatalog.ParseTarget(IpMenuCatalog.Get(draft.ControlId), draft.Target.ToString());
         var update = new IpMenuUpdate
         {
+            QueryBeforeChange = GetSnapshot().Menu.Preferences.QueryBeforeChange,
             Endpoint = profile.Endpoint,
             Input = drafts[0].Input,
             PictureMode = drafts[0].PictureMode,
@@ -186,11 +187,14 @@ public sealed partial class SamsungIpRemoteService
                     await SaveMenuUpdateAsync(update).ConfigureAwait(false);
                 }
                 cancellation.ThrowIfCancellationRequested();
-                await ReadMenuBaseAsync(profile, cancellation).ConfigureAwait(false);
+                if (update.QueryBeforeChange) await ReadMenuBaseAsync(profile, cancellation).ConfigureAwait(false);
                 if ((GetSnapshot().Menu.Input ?? "") != draft.Input || (GetSnapshot().Menu.PictureMode ?? "") != draft.PictureMode)
                     throw new InvalidOperationException("The TV input or picture mode changed since editing. Refresh and enter the target again.");
-                await ReadMenuPrerequisitesAsync(profile, control, cancellation).ConfigureAwait(false);
-                await ReadMenuControlAsync(profile, control, cancellation).ConfigureAwait(false);
+                if (update.QueryBeforeChange)
+                {
+                    await ReadMenuPrerequisitesAsync(profile, control, cancellation).ConfigureAwait(false);
+                    await ReadMenuControlAsync(profile, control, cancellation).ConfigureAwait(false);
+                }
                 var before = GetSnapshot().Menu;
                 if (entry is not null)
                 {
@@ -241,7 +245,7 @@ public sealed partial class SamsungIpRemoteService
                             && CompleteWhiteBalancePeersUnchanged(before, rejected, control.Field))
                         {
                             after = rejected;
-                            warning = $"TV returned -32002, but independent readback confirmed {control.Name} = {draft.Target} with the other five white-balance channels and TV context unchanged. No retry was sent; the original error remains in Communication log.";
+                            warning = $"TV returned -32002, but independent readback confirmed {control.Name} = {draft.Target} with the other five white-balance channels and TV context {(update.QueryBeforeChange ? "unchanged" : "matching the last known baseline; pre-change queries were Off")}. No retry was sent; the original error remains in Communication log.";
                         }
                     }
                     if (after is null)
@@ -306,7 +310,8 @@ public sealed partial class SamsungIpRemoteService
         {
             // Partial requests can apply R-Gain and then fail, or reject later
             // channels without applying them. Send the complete six-field value
-            // from this write's fresh preflight, never defaults or pending peers.
+            // from this write's baseline (fresh by default, last known when
+            // pre-change queries are explicitly Off), never defaults/pending peers.
             var values = before.Readings.GetValueOrDefault(control.Method)?.Values;
             foreach (var field in control.Command.Parameters)
             {
@@ -354,14 +359,15 @@ public sealed partial class SamsungIpRemoteService
         finally { _gate.Release(); }
     }
 
-    public async Task SaveMenuPreferencesAsync(bool applyImmediately)
+    public async Task SaveMenuPreferencesAsync(bool applyImmediately, bool? queryBeforeChange = null)
     {
         await EnterAsync().ConfigureAwait(false);
         try
         {
             if (applyImmediately && GetSnapshot().Menu.Pending.Count > 0)
                 throw new InvalidOperationException("Apply or discard pending changes before enabling immediate updates.");
-            var preferences = GetSnapshot().Menu.Preferences with { ApplyImmediately = applyImmediately };
+            var preferences = GetSnapshot().Menu.Preferences with
+            { ApplyImmediately = applyImmediately, QueryBeforeChange = queryBeforeChange ?? GetSnapshot().Menu.Preferences.QueryBeforeChange };
             await SaveMenuFileAsync(MenuPreferencesPath, preferences).ConfigureAwait(false);
             UpdateMenu(menu => menu with { Preferences = preferences });
         }
@@ -562,7 +568,7 @@ public sealed partial class SamsungIpRemoteService
         {
             var grid = IpMenuGrids.ForSection(selector.Section);
             if (grid is null || !grid.Values.Contains(selector.Original) || selector.Message is null) throw new JsonException("Invalid calibration selector journal.");
-            if (selector.Status is not ("Restored" or "Stopped")) selector = selector with { Status = "Stopped", Message = "The previous selector operation was interrupted. Nothing was resumed. Load the grid again to read its current values." };
+            if (selector.Status is not ("Restored" or "Retained" or "Stopped")) selector = selector with { Status = "Stopped", Message = "The previous selector operation was interrupted. Nothing was resumed. Load the grid again to read its current values." };
         }
         var whiteBalanceRead = File.Exists(WhiteBalanceReadPath)
             ? JsonSerializer.Deserialize<IpMenuWhiteBalanceRead>(await File.ReadAllTextAsync(WhiteBalanceReadPath).ConfigureAwait(false)) : null;

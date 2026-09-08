@@ -8,12 +8,33 @@ public partial class DirectMenu
 {
     [Inject] private IJSRuntime LayoutJavaScript { get; set; } = default!;
     private ElementReference ExpertLayoutElement;
+    private ElementReference MenuToolbarElement, MenuContentElement;
+    private bool MenuToolbarAttached, ScrollSectionOnRender;
     private DotNetObjectReference<DirectMenu>? LayoutReference;
     private bool LayoutAttached, LayoutSaving;
     private string? LayoutFeedback;
     private bool LayoutLocked => Snapshot.IsBusy || ActionRunning || LayoutSaving;
     private IEnumerable<IpExpertGroup> VisibleExpertGroups => IpExpertLayout.Ordered(Snapshot.Menu.Preferences.ExpertGroupOrder)
         .Where(group => group.Controls.Any(IsVisible));
+
+    private async Task AttachMenuToolbarAsync()
+    {
+        try
+        {
+            if (!MenuToolbarAttached)
+            {
+                await LayoutJavaScript.InvokeVoidAsync("samsungMenuToolbar.attach", MenuToolbarElement);
+                MenuToolbarAttached = true;
+            }
+            if (ScrollSectionOnRender)
+            {
+                ScrollSectionOnRender = false;
+                await LayoutJavaScript.InvokeVoidAsync("samsungMenuToolbar.scrollToContent", MenuToolbarElement, MenuContentElement);
+            }
+        }
+        catch (JSDisconnectedException) { }
+        catch (JSException) { }
+    }
 
     private async Task AttachExpertLayoutAsync()
     {
@@ -56,6 +77,7 @@ public partial class DirectMenu
         Controller.Changed -= Refresh;
         try
         {
+            if (MenuToolbarAttached) await LayoutJavaScript.InvokeVoidAsync("samsungMenuToolbar.detach", MenuToolbarElement);
             if (LayoutAttached) await LayoutJavaScript.InvokeVoidAsync("samsungExpertLayout.detach", ExpertLayoutElement);
         }
         catch (JSDisconnectedException) { }

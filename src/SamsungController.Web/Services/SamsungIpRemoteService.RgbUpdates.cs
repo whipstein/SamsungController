@@ -37,23 +37,31 @@ public sealed partial class SamsungIpRemoteService
                 if (group is null || group.Value != control.IndexValue)
                 {
                     if (group is not null) await FinishGroupAsync().ConfigureAwait(false);
-                    var current = await ReadMenuGridContextAsync(profile, grid, selector, cancellation).ConfigureAwait(false);
+                    var current = update.QueryBeforeChange
+                        ? await ReadMenuGridContextAsync(profile, grid, selector, cancellation).ConfigureAwait(false)
+                        : CachedMenuSelector(grid);
                     var context = GetSnapshot().Menu;
                     if (context.Input != draft.Input || context.PictureMode != draft.PictureMode)
                         throw new InvalidOperationException("The TV input or picture mode changed since editing. No RGB value or selector was sent for this row.");
                     selector ??= new(grid.Section, profile.Endpoint, context.Input!, context.PictureMode!, current, LastConfirmed: current);
                     await SaveMenuSelectorSessionAsync(selector).ConfigureAwait(false);
+                    // Fast mode must have real, previously queried peers before
+                    // any selector/write. Never fill missing values with defaults.
+                    var readings = update.QueryBeforeChange ? null : CachedMenuRgbValues(grid, control.IndexValue!);
                     await MoveMenuReadSelectorAsync(profile, grid, selector, current, control.IndexValue!, cancellation).ConfigureAwait(false);
-                    var readings = await ReadMenuRgbValuesAsync(profile, grid, control.IndexValue!, cancellation).ConfigureAwait(false);
-                    await ReadMenuPrerequisitesAsync(profile, control, cancellation).ConfigureAwait(false);
+                    if (update.QueryBeforeChange)
+                    {
+                        readings = await ReadMenuRgbValuesAsync(profile, grid, control.IndexValue!, cancellation).ConfigureAwait(false);
+                        await ReadMenuPrerequisitesAsync(profile, control, cancellation).ConfigureAwait(false);
+                    }
                     CheckRgbPrerequisites(control, draft);
-                    var originals = new JsonObject(readings.Select(pair => KeyValuePair.Create<string, JsonNode?>(pair.Key, pair.Value.Values![pair.Key]!.DeepClone())));
+                    var originals = new JsonObject(readings!.Select(pair => KeyValuePair.Create<string, JsonNode?>(pair.Key, pair.Value.Values![pair.Key]!.DeepClone())));
                     group = new(control.IndexValue!, update.RgbGroups.Count, (JsonObject)context.Tv.DeepClone(), (JsonObject)context.Video.DeepClone(), (JsonObject)originals.DeepClone());
                     update = update with { RgbGroups = [.. update.RgbGroups, new(grid.Section, group.Value, originals)] };
                     await SaveMenuUpdateAsync(update).ConfigureAwait(false);
-                    foreach (var rowControl in grid.Row(group.Value)) CacheMenuGridRead(rowControl, readings[rowControl.Field]);
+                    foreach (var rowControl in grid.Row(group.Value)) CacheMenuGridRead(rowControl, readings![rowControl.Field]);
                 }
-                else
+                else if (update.QueryBeforeChange)
                 {
                     // Keep unsent targets mergeable during this fresh channel
                     // baseline read. Its compact mode/selector checks prevent
@@ -109,7 +117,12 @@ public sealed partial class SamsungIpRemoteService
                 index++;
             }
             if (group is not null) await FinishGroupAsync().ConfigureAwait(false);
-            if (selector is not null) await RestoreMenuSelectorAsync(profile, selector, cancellation).ConfigureAwait(false);
+            if (selector is not null && group is not null)
+                await SaveMenuSelectorSessionAsync(selector with
+                {
+                    Requested = group.Value, LastConfirmed = group.Value, Status = "Retained",
+                    Message = $"Left {group.Value} selected. Further edits reuse it unless the requested row or reported selection changes."
+                }).ConfigureAwait(false);
             return (update, index - 1);
         }
         catch (Exception error) when (IsMenuGridError(error))
@@ -147,6 +160,32 @@ public sealed partial class SamsungIpRemoteService
         var menu = GetSnapshot().Menu;
         if (menu.Input != draft.Input || menu.PictureMode != draft.PictureMode || !JsonNode.DeepEquals(MenuPrerequisites(menu, control), draft.Prerequisites))
             throw new InvalidOperationException("The TV mode, interval or color changed since editing. No further RGB value was sent.");
+    }
+
+    private string CachedMenuSelector(IpMenuGrid grid)
+    {
+        var menu = GetSnapshot().Menu;
+        var mode = menu.Readings.GetValueOrDefault(grid.ModeMethod);
+        var selected = menu.Readings.GetValueOrDefault(grid.SelectorMethod);
+        var value = selected?.Values?[grid.SelectorField]?.ToString();
+        if (mode?.Outcome != SamsungIpRemoteOutcome.Success || mode.Values?[grid.ModeField]?.ToString() != grid.RequiredMode
+            || selected?.Outcome != SamsungIpRemoteOutcome.Success || value is null || !grid.Values.Contains(value))
+            throw new InvalidOperationException("A queried calibration mode and selector are required. Refresh this section; no selector or RGB value was sent.");
+        return value;
+    }
+
+    private Dictionary<string, IpMenuRead> CachedMenuRgbValues(IpMenuGrid grid, string value)
+    {
+        var menu = GetSnapshot().Menu;
+        var readings = new Dictionary<string, IpMenuRead>();
+        foreach (var control in grid.Row(value))
+        {
+            var reading = menu.IndexedReadings.GetValueOrDefault(control.Id);
+            if (reading?.Outcome != SamsungIpRemoteOutcome.Success || !UsableOriginal(control.Parameter, reading.Values?[control.Field]))
+                throw new InvalidOperationException($"{value} {control.Name}: a previously queried RGB value is required. Refresh this section; no default was substituted.");
+            readings[control.Field] = reading;
+        }
+        return readings;
     }
 
     private async Task<Dictionary<string, IpMenuRead>> ReadMenuRgbValuesAsync(IpRemoteProfile profile, IpMenuGrid grid, string value, CancellationToken cancellation)

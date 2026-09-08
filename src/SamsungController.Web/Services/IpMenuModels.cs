@@ -98,6 +98,7 @@ public sealed record IpMenuQueuedValue(string ControlId, int Target);
 public sealed record IpMenuNudgeQueue(IReadOnlyList<IpMenuQueuedValue> Values, bool Accepting);
 public sealed record IpMenuPreferences(bool ApplyImmediately = false)
 {
+    public bool QueryBeforeChange { get; init; } = true;
     public IReadOnlyList<string> ExpertGroupOrder { get; init; } = [];
 }
 public sealed record IpMenuSnapshot
@@ -163,6 +164,7 @@ public sealed record IpMenuRgbGroup(string Section, string Value, JsonObject Ori
     bool WriteAttempted = false, bool Verified = false, bool ReviewClosed = false);
 public sealed record IpMenuUpdate
 {
+    public bool QueryBeforeChange { get; init; } = true;
     public Guid Id { get; init; } = Guid.NewGuid();
     public string Endpoint { get; init; } = "";
     public string Input { get; init; } = "";

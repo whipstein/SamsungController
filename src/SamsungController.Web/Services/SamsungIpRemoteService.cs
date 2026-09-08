@@ -254,7 +254,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
                     && item.Exchange.Method == method)?.Exchange,
                 WriteCapability = "See ControlCapabilities for the guarded picture workflows and CommandHistory for parameter/context-specific command tests. Acknowledgment or user confirmation without field readback is not read/write verification."
             }),
-            Unresolved = new[] { "No documented range-discovery query found; Menu limits are documented, not queried", "Display/mode support varies; optional diagnostic history is not a Menu access requirement", "Calibration grids select/query each interval/color and restore selectors on success; Stop never sends late restoration commands" }
+            Unresolved = new[] { "No documented range-discovery query found; Menu limits are documented, not queried", "Display/mode support varies; optional diagnostic history is not a Menu access requirement", "Read scans restore selectors; RGB edits retain the last selected row. Selector isolation between controllers is unverified. Pre-change queries are optional; post-change readback remains enabled." }
         }, JsonOptions);
         if (redactCertificateFingerprints) json = IpRemoteReportRedactor.RedactCertificateFingerprints(json);
         return ProtocolMessageFormatter.FormatJson(json, revealSensitive: false, revealDeviceIdentifiers: !redactIdentifiers);

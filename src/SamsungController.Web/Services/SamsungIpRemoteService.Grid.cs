@@ -37,13 +37,14 @@ public sealed partial class SamsungIpRemoteService
             if (temporaryWhiteBalanceRead)
                 await SaveWhiteBalanceReadAsync(GetSnapshot().Menu.WhiteBalanceRead! with { OriginalInterval = session.Original }).ConfigureAwait(false);
             var current = session.Original;
+            var pendingReadings = new Dictionary<string, IpMenuRead>();
             for (var index = 0; index < grid.Values.Count; index++)
             {
                 var value = grid.Values[index];
                 UpdateMenu(menu => menu with { Status = $"Reading {value} · row {index + 1} of {grid.Values.Count}. RGB values are unchanged." });
-                // The previous row's final context check is this row's preflight.
-                // Only selector writes happen here. RGB Apply keeps its full,
-                // independent pre/post-write checks in MoveMenuSelectorAsync.
+                // Read-only scan: verify the selector on every row, but share
+                // global context/mode checks across at most four rows. Do not
+                // publish these readings until that group has been checked.
                 await MoveMenuReadSelectorAsync(profile, grid, session, current, value, cancellation).ConfigureAwait(false);
                 var readings = new Dictionary<string, IpMenuRead>();
                 foreach (var control in grid.Row(value))
@@ -53,11 +54,23 @@ public sealed partial class SamsungIpRemoteService
                     if (IsConnectionFailure(exchange.Outcome)) RequireSuccess(exchange);
                     readings[control.Id] = GetSnapshot().Menu.Readings[control.Method];
                 }
-                // Do not label a response as belonging to a row if another controller moved its selector/context.
-                current = await ReadMenuGridContextAsync(profile, grid, session, cancellation, readingGrid: true).ConfigureAwait(false);
+                var checkContext = (index + 1) % 4 == 0 || index + 1 == grid.Values.Count;
+                if (checkContext)
+                    current = await ReadMenuGridContextAsync(profile, grid, session, cancellation, readingGrid: true).ConfigureAwait(false);
+                else
+                {
+                    var selected = await MenuQueryAsync(profile, grid.SelectorMethod, cancellation).ConfigureAwait(false);
+                    StoreMenuRead(grid.SelectorMethod, selected); RequireSuccess(selected);
+                    current = selected.Result?[grid.SelectorField]?.ToString() ?? "";
+                }
                 if (current != value)
                     throw new InvalidOperationException("The interval/color changed during the read. Load the grid again; no RGB setting was sent.");
-                UpdateMenu(menu => menu with { IndexedReadings = menu.IndexedReadings.Concat(readings).ToDictionary() });
+                foreach (var reading in readings) pendingReadings.Add(reading.Key, reading.Value);
+                if (checkContext)
+                {
+                    UpdateMenu(menu => menu with { IndexedReadings = menu.IndexedReadings.Concat(pendingReadings).ToDictionary() });
+                    pendingReadings.Clear();
+                }
             }
             await RestoreMenuSelectorAsync(profile, session, cancellation).ConfigureAwait(false);
             var completed = $"Read all {grid.Values.Count} rows in {Stopwatch.GetElapsedTime(started).TotalSeconds:F1}s. Original selector {session.Original} restored; RGB values unchanged.";

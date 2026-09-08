@@ -180,7 +180,7 @@ public sealed partial class SamsungIpRemoteService
         }
         Changed?.Invoke();
         // Earlier confirmed channels can finish while the group continues. The
-        // last channel waits for selector restoration and the completed journal.
+        // last channel waits for final row/context verification and the journal.
         if (!batch.Closed) entry.Completion.TrySetResult();
     }
 

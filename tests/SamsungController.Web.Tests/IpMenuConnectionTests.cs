@@ -280,7 +280,8 @@ public sealed class IpMenuConnectionTests
         Assert.Equal(originalInput, fixture.Service.GetSnapshot().Menu.Input);
         Assert.Null(fixture.Service.GetSnapshot().Menu.SettingsLoadedAt);
         Assert.Empty(fixture.Service.GetSnapshot().Menu.IndexedReadings);
-        Assert.Empty(fixture.Writes);
+        Assert.Equal(3, fixture.Writes.Count()); // The first row was already selected; bounded scan stops at row four.
+        Assert.All(fixture.Writes, request => Assert.Equal("WB20P.IntervalControl", request["method"]!.ToString()));
     }
 
     [Fact]

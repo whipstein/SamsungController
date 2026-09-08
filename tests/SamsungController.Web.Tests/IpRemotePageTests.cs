@@ -549,6 +549,12 @@ public sealed class IpRemotePageTests
                 .Single(item => item.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "aria-label" && frame.AttributeValue?.ToString() == label));
             Assert.Equal(expected, input.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "checked" && frame.AttributeValue is true));
         });
+        public Task AssertRadioAsync(string label, bool expected) => Dispatcher.InvokeAsync(() =>
+        {
+            var input = LabeledElement("input", label);
+            Assert.Contains(input, frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "type" && frame.AttributeValue?.ToString() == "radio");
+            Assert.Equal(expected, input.Any(frame => frame.FrameType == RenderTreeFrameType.Attribute && frame.AttributeName == "checked" && frame.AttributeValue is true));
+        });
         private RenderTreeFrame[] ControlSelect()
         {
             var frames = Frames;
