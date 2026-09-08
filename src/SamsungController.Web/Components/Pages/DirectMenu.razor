@@ -89,7 +89,7 @@
                 <p>@grid.Values.Count fixed rows · each has its own Red, Green, and Blue values.</p></div>
                 @if (grid.Section == "white20") { <a class="toolbar-button" href="diagnostics/batch-rgb">Batch / RGB test</a> }
                 <button class="toolbar-button" @onclick="RefreshAsync" disabled="@(!CanLoadGrid)">@(Snapshot.Menu.GridsRead.ContainsKey(Section) ? "Reload all rows" : "Load all rows")</button></div>
-            <p class="direct-hint">Loading reads each row by temporarily selecting it, then restores the original selection. Refresh also reads 20-point WB while Off by temporarily enabling it and restoring Off afterward. Apply addresses edited rows automatically and restores the selector when finished. No RGB value changes during loading. Stop sends no further commands, including restoration; use the recovery controls if a temporary mode change was interrupted.</p>
+            <p class="direct-hint">Loading reads each row by temporarily selecting it, then restores the original selection. Refresh also reads 20-point WB while Off by temporarily enabling it and restoring Off afterward. Apply groups each row's pending RGB edits: individual commands and readbacks share full context checks at row boundaries, with mode/selector checks between colors. All three colors are checked before leaving the row, then the selector is restored on success. Keep the physical signal stable and avoid adjustments from another controller during Apply. No RGB value changes during loading. Stop sends no further commands, including restoration; use the recovery controls if a temporary mode change was interrupted.</p>
             @if (grid.Section == "white20" && !Snapshot.Menu.Preferences.ApplyImmediately)
             { <p class="direct-hint">Each percentage block has its own Apply button: it sends only that block's pending RGB values. Other blocks and settings stay pending. The Apply button at the top still sends all pending settings.</p> }
             @if (!Snapshot.Menu.GridsRead.ContainsKey(Section))
@@ -120,6 +120,21 @@
         <div class="direct-toolbar"><h2>Last update · @update.Status</h2><span>@update.StartedAt.ToLocalTime().ToString("HH:mm:ss")</span></div><p>@update.Endpoint · @update.Input · @update.PictureMode</p><p role="status">@update.Message</p>
         <div class="direct-update-rows">@foreach (var step in update.Steps)
         { <div><strong>@IpMenuCatalog.Get(step.ControlId).Name</strong><span>@step.Original → @step.Target</span><span>@step.Status@if (step.Warning is { } warning) { <small class="direct-update-warning">@warning</small> }</span></div> }</div>
+        @if (update.RgbGroups.Count > 0)
+        {
+            <details open="@update.NeedsReview">
+                <summary>Saved RGB originals</summary>
+                <p>Values queried before each row's changes, including untouched colors. These are recovery references, not current TV values; nothing is restored automatically.</p>
+                @foreach (var group in update.RgbGroups)
+                {
+                    var savedGrid = IpMenuGrids.ForSection(group.Section)!;
+                    <h3>@(group.Section == "white20" ? "20-point white balance" : "Custom color") · @group.Value</h3>
+                    <p>@(group.Verified ? "Final row/context check passed." : group.ReviewClosed ? "Checked manually; not automatically verified." : group.WriteAttempted ? "Final row/context check incomplete — check all three colors." : "No RGB write attempted.")</p>
+                    <div class="direct-update-rows">@foreach (var control in savedGrid.Row(group.Value))
+                    { <div><strong>@control.Name</strong><span>Original @group.Originals[control.Field]</span></div> }</div>
+                }
+            </details>
+        }
         @if (update.NeedsReview)
         {
             <p class="direct-error">A delivered command may have changed the TV. Refresh/read the actual values and check the display. Stop does not undo delivered commands.</p>

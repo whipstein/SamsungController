@@ -157,6 +157,10 @@ public sealed record IpMenuWhiteBalanceRead(string Endpoint, string Input, strin
     string? OriginalInterval = null, bool NeedsRestore = true, string Message = "20-point white balance was Off; temporarily enabling it to read all rows.");
 
 public sealed record IpMenuUpdateStep(string ControlId, JsonNode Original, JsonNode Target, string Status = "Pending", string? Warning = null);
+// Preserve untouched peers too: the final row check can detect collateral RGB
+// changes even when only one channel was requested. No automatic rollback.
+public sealed record IpMenuRgbGroup(string Section, string Value, JsonObject Originals,
+    bool WriteAttempted = false, bool Verified = false, bool ReviewClosed = false);
 public sealed record IpMenuUpdate
 {
     public Guid Id { get; init; } = Guid.NewGuid();
@@ -165,7 +169,9 @@ public sealed record IpMenuUpdate
     public string PictureMode { get; init; } = "";
     public DateTimeOffset StartedAt { get; init; }
     public IReadOnlyList<IpMenuUpdateStep> Steps { get; init; } = [];
+    public IReadOnlyList<IpMenuRgbGroup> RgbGroups { get; init; } = [];
     public string Status { get; init; } = "Running";
     public string Message { get; init; } = "";
-    public bool NeedsReview => Steps.Any(step => step.Status is "Sending" or "Uncertain");
+    public bool NeedsReview => Steps.Any(step => step.Status is "Sending" or "Uncertain")
+        || RgbGroups.Any(group => group.WriteAttempted && !group.Verified && !group.ReviewClosed);
 }

@@ -168,12 +168,16 @@ public sealed partial class SamsungIpRemoteService
             Steps = queuedBatch is not null ? [] : drafts.Select(draft => new IpMenuUpdateStep(draft.ControlId, draft.Original.DeepClone(), draft.Target.DeepClone())).ToArray()
         };
         await SaveMenuUpdateAsync(update).ConfigureAwait(false);
-        IpMenuSelectorSession? selectorSession = null;
         for (var index = 0; ; index++)
         {
             var entry = queuedBatch is null ? null : NextMenuNudge(queuedBatch);
             if (queuedBatch is null ? index >= drafts.Length : entry is null) break;
             var draft = entry?.Draft ?? drafts[index]; var control = IpMenuCatalog.Get(draft.ControlId);
+            if (control.IsIndexed)
+            {
+                (update, index) = await ApplyMenuRgbSectionAsync(profile, cancellation, update, drafts, index, queuedBatch).ConfigureAwait(false);
+                continue;
+            }
             try
             {
                 if (entry is not null)
@@ -185,12 +189,6 @@ public sealed partial class SamsungIpRemoteService
                 await ReadMenuBaseAsync(profile, cancellation).ConfigureAwait(false);
                 if ((GetSnapshot().Menu.Input ?? "") != draft.Input || (GetSnapshot().Menu.PictureMode ?? "") != draft.PictureMode)
                     throw new InvalidOperationException("The TV input or picture mode changed since editing. Refresh and enter the target again.");
-                if (control.IsIndexed)
-                {
-                    var grid = IpMenuGrids.ForSection(control.Section)!;
-                    selectorSession ??= await BeginMenuSelectorSessionAsync(profile, grid, cancellation).ConfigureAwait(false);
-                    await MoveMenuSelectorAsync(profile, grid, selectorSession, control.IndexValue!, cancellation).ConfigureAwait(false);
-                }
                 await ReadMenuPrerequisitesAsync(profile, control, cancellation).ConfigureAwait(false);
                 await ReadMenuControlAsync(profile, control, cancellation).ConfigureAwait(false);
                 var before = GetSnapshot().Menu;
@@ -211,7 +209,6 @@ public sealed partial class SamsungIpRemoteService
                     RemoveMenuDraft(draft.ControlId);
                     await SaveMenuUpdateAsync(update).ConfigureAwait(false);
                     if (entry is not null) CompleteMenuNudge(queuedBatch!, entry);
-                    await FinishIndexedGroupAsync().ConfigureAwait(false);
                     continue;
                 }
                 var parameters = MenuWriteParameters(before, control, draft.Target);
@@ -280,11 +277,9 @@ public sealed partial class SamsungIpRemoteService
                 if (control.RequiresSeparateApply || control.Method is "gammaModeControl" or "autoMotionPlusControl")
                     UpdateMenu(menu => InvalidateMenuControlContext(menu, control));
                 if (entry is not null) CompleteMenuNudge(queuedBatch!, entry);
-                await FinishIndexedGroupAsync().ConfigureAwait(false);
             }
             catch (Exception error) when (error is InvalidOperationException or ArgumentException or OperationCanceledException or IOException or UnauthorizedAccessException or JsonException)
             {
-                if (selectorSession is not null) await StopMenuSelectorSessionAsync(error.Message).ConfigureAwait(false);
                 update = MenuStep(update, index, update.Steps[index].Status == "Sending" ? "Uncertain" : update.Steps[index].Status == "Pending" ? "Not sent" : update.Steps[index].Status)
                     with
                 { Status = "Stopped", Message = error.Message + " No retry or rollback was sent. Earlier confirmed changes remain on the TV." };
@@ -293,13 +288,6 @@ public sealed partial class SamsungIpRemoteService
                 catch (Exception storageError) when (storageError is IOException or UnauthorizedAccessException)
                 { Update(state => state with { StorageWarning = "Could not save the update result. Keep the originals shown here and check the TV." }); }
                 throw;
-            }
-            async Task FinishIndexedGroupAsync()
-            {
-                if (selectorSession is null || (queuedBatch is not null ? !queuedBatch.Closed
-                    : index + 1 < drafts.Length && IpMenuCatalog.Get(drafts[index + 1].ControlId).Section == selectorSession.Section)) return;
-                await RestoreMenuSelectorAsync(profile, selectorSession, cancellation).ConfigureAwait(false);
-                selectorSession = null;
             }
         }
         var warnings = update.Steps.Count(step => step.Warning is not null);
@@ -357,6 +345,7 @@ public sealed partial class SamsungIpRemoteService
             await SaveMenuUpdateAsync(update with
             {
                 Steps = update.Steps.Select(step => step.Status is "Sending" or "Uncertain" ? step with { Status = "Checked manually" } : step).ToArray(),
+                RgbGroups = update.RgbGroups.Select(group => group with { ReviewClosed = true }).ToArray(),
                 Status = "Closed",
                 Message = "User checked the TV. No command, restoration or verification was sent. Refresh before more edits."
             }).ConfigureAwait(false);
@@ -550,6 +539,15 @@ public sealed partial class SamsungIpRemoteService
         if (update is not null)
         {
             if (update.Steps is null || update.Steps.Count > IpMenuCatalog.AllControls.Count()) throw new JsonException("Invalid direct menu update journal.");
+            if (update.RgbGroups is null || update.RgbGroups.Count > IpMenuGrids.All.Sum(grid => grid.Values.Count))
+                throw new JsonException("Invalid RGB group journal.");
+            foreach (var group in update.RgbGroups)
+            {
+                var grid = group is null ? null : IpMenuGrids.ForSection(group.Section);
+                if (grid is null || !grid.Values.Contains(group!.Value) || group.Originals is null || group.Originals.Count != grid.Fields.Count
+                    || grid.Row(group.Value).Any(control => !UsableOriginal(control.Parameter, group.Originals[control.Field])))
+                    throw new JsonException("Invalid RGB group originals. Preserve the journal and check the TV manually.");
+            }
             foreach (var step in update.Steps)
             {
                 if (step is null || !IpMenuCatalog.AllControls.Any(control => control.Id == step.ControlId) || step.Target is null || step.Original is null
