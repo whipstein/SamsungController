@@ -1,6 +1,6 @@
 # SamsungController v0 user guide (archived interface)
 
-This guide describes the v0.3 menu-key workflow, which is no longer exposed by the v1 working-branch web interface. For v1 installation and usage, see the [current README](../README.md) and [direct IP guide](direct-ip-interface.md). Existing v0 user files and CLI features are preserved. The early v1 preview paragraph below records the pre-cutover stage, not the current UI.
+This guide describes the v0.3 menu-key workflow, which is no longer exposed by the v1 default web interface on `main`. For v1 installation and usage, see the [current README](../README.md) and [direct IP guide](direct-ip-interface.md). Existing v0 user files and CLI features are preserved. The early v1 preview paragraph below records the pre-cutover stage, not the current UI.
 
 SamsungController is a local, cross-platform controller for modern Samsung/Tizen TVs. It can pair with a TV over the LAN, send remote-control keys, run repeatable YAML macros, adjust visually verified menu controls, and capture Samsung WebSocket traffic for troubleshooting or protocol research.
 

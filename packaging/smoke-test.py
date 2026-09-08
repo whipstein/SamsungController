@@ -17,6 +17,8 @@ options = parser.parse_args()
 manifest = json.loads(options.manifest.read_text())
 payload = Path(manifest["payload"])
 app = payload / ("SamsungController.App.exe" if os.name == "nt" else "SamsungController.App")
+if manifest.get("app"):
+    app = Path(manifest["app"]) / "Contents/MacOS/SamsungController"
 cli = payload / ("samsungctl.exe" if os.name == "nt" else "samsungctl")
 with socket.socket() as reservation:
     reservation.bind(("127.0.0.1", 0))

@@ -45,9 +45,9 @@ On Linux:
 On macOS (after copying to Applications):
 
 ```sh
-/Applications/SamsungController.app/Contents/MacOS/SamsungController.App --stop
-/Applications/SamsungController.app/Contents/MacOS/samsungctl help
-cd /Applications/SamsungController.app/Contents/MacOS
+/Applications/SamsungController.app/Contents/Resources/server/SamsungController.App --stop
+/Applications/SamsungController.app/Contents/Resources/server/samsungctl help
+cd /Applications/SamsungController.app/Contents/Resources/server
 ./SamsungController.Web
 ```
 

@@ -214,6 +214,15 @@ public sealed class SamsungIpRemoteConnectionTests
             using var key = RSA.Create(2048);
             _certificate = new CertificateRequest("CN=test-tv", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1)
                 .CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddMinutes(10));
+            if (OperatingSystem.IsWindows())
+            {
+                // Schannel cannot use the ephemeral key produced by CreateSelfSigned.
+                // Reimport this throwaway fixture certificate with a temporary key that
+                // is removed on Dispose (not PersistKeySet). No trust-store changes.
+                // https://learn.microsoft.com/dotnet/core/extensions/sslstream-troubleshooting
+                using var ephemeral = _certificate;
+                _certificate = X509CertificateLoader.LoadPkcs12(ephemeral.Export(X509ContentType.Pkcs12), null);
+            }
             _listener.Start();
             Options = new() { Host = "127.0.0.1", Port = ((IPEndPoint)_listener.LocalEndpoint).Port, AllowUntrustedCertificate = true, RequestTimeout = TimeSpan.FromSeconds(5) };
             _accept = AcceptAsync();

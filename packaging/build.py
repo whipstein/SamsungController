@@ -37,7 +37,7 @@ def build(rid, output):
     folder = Path(tempfile.mkdtemp(prefix=rid + "-", dir=staging)) / "SamsungController"
     folder.mkdir()
     app = folder / "SamsungController.app" if rid.startswith("osx-") else None
-    payload = app / "Contents" / "MacOS" if app else folder
+    payload = app / "Contents" / "Resources" / "server" if app else folder
     payload.mkdir(parents=True, exist_ok=True)
     for project in ["Web", "Cli", "App"]:
         subprocess.run(["dotnet", "publish", str(ROOT / "src" / ("SamsungController." + project)), "--configuration", "Release", "--runtime", rid,
@@ -48,11 +48,13 @@ def build(rid, output):
     shutil.copytree(ROOT / "samples", folder / "samples")
     (folder / "VERSION.txt").write_text("v" + version + "\n", encoding="utf-8")
     if app:
-        (app / "Contents" / "Resources").mkdir()
+        (app / "Contents" / "MacOS").mkdir()
+        subprocess.run(["xcrun", "clang", "-arch", "arm64" if rid == "osx-arm64" else "x86_64", "-mmacosx-version-min=14.0",
+                        str(ROOT / "packaging/macos/launcher.c"), "-o", str(app / "Contents" / "MacOS" / "SamsungController")], check=True)
         shutil.copy2(ROOT / "LICENSE", app / "Contents" / "Resources" / "LICENSE")
         with (app / "Contents" / "Info.plist").open("wb") as target:
             plistlib.dump({"CFBundleName": "SamsungController", "CFBundleDisplayName": "SamsungController", "CFBundleIdentifier": "com.whipstein.samsungcontroller",
-                          "CFBundleExecutable": "SamsungController.App", "CFBundlePackageType": "APPL", "CFBundleVersion": version,
+                          "CFBundleExecutable": "SamsungController", "CFBundlePackageType": "APPL", "CFBundleVersion": version, "LSMinimumSystemVersion": "14.0",
                           "CFBundleShortVersionString": version, "LSUIElement": True, "NSHighResolutionCapable": True,
                           "NSLocalNetworkUsageDescription": "SamsungController connects to your Samsung displays on your local network when you choose Connect."}, target)
     elif rid.startswith("linux-"):

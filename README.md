@@ -87,7 +87,7 @@ Platform notes:
 
 Port 5050 is loopback-only. Stop any old foreground server occupying it before launching the app. Background logs and startup errors live under `desktop/` in the [private data folder](#private-data-command-line-and-updates). The launcher does not kill unrelated processes.
 
-For an optional terminal shutdown, run `SamsungController.App --stop` (add `.exe` on Windows). On macOS the executable is inside `/Applications/SamsungController.app/Contents/MacOS/`. Running `SamsungController.Web` directly preserves foreground-server mode; Ctrl+C stops it. The separate `samsungctl` CLI remains available.
+For an optional terminal shutdown, run `SamsungController.App --stop` (add `.exe` on Windows). On macOS the executable is inside `/Applications/SamsungController.app/Contents/Resources/server/`. Running `SamsungController.Web` directly preserves foreground-server mode; Ctrl+C stops it. The separate `samsungctl` CLI remains available.
 
 Releases include `SHA256SUMS.txt`. Optional integrity checks: macOS `shasum -a 256 <archive>`, Linux `sha256sum <archive>`, PowerShell `Get-FileHash <archive> -Algorithm SHA256`.
 
@@ -175,7 +175,7 @@ The CLI remains independent of the new web UI:
 dotnet run --project src/SamsungController.Cli -- --help
 ```
 
-Packaged binaries are `samsungctl` (macOS/Linux) and `samsungctl.exe` (Windows); run with `--help` in a terminal. The Mac binary is inside `/Applications/SamsungController.app/Contents/MacOS/`. The [v0 CLI guide](docs/v0-user-guide.md#use-the-command-line-interface) covers retained WebSocket/key/macro commands, not the direct-IP web settings API.
+Packaged binaries are `samsungctl` (macOS/Linux) and `samsungctl.exe` (Windows); run with `--help` in a terminal. The Mac binary is inside `/Applications/SamsungController.app/Contents/Resources/server/`. The [v0 CLI guide](docs/v0-user-guide.md#use-the-command-line-interface) covers retained WebSocket/key/macro commands, not the direct-IP web settings API.
 
 To update source: stop the server, preserve edits, `git pull --ff-only`, then restore/build/run again. To update packages: stop the old copy, extract the new version into a separate folder, and launch it. Back up private data before moving between major versions. Restart the server and refresh the browser. The source default is now `main`; see the [release-maintainer guide](docs/releasing.md) for packaging, signing, notarization, and publication.
 

@@ -2,6 +2,7 @@
 """Sign a staged Mac app using Keychain; optionally notarize, staple, and rearchive."""
 import argparse
 import json
+import plistlib
 from pathlib import Path
 import subprocess
 import sys
@@ -20,8 +21,10 @@ app = Path(manifest["app"])
 if not app.is_dir() or app.suffix != ".app":
     raise SystemExit("Manifest does not identify an existing app bundle.")
 entitlements = Path(__file__).with_name("entitlements.plist")
+with (app / "Contents/Info.plist").open("rb") as file:
+    entrypoint = app / "Contents/MacOS" / plistlib.load(file)["CFBundleExecutable"]
 for item in sorted(app.rglob("*")):
-    if not item.is_file() or item.is_symlink():
+    if not item.is_file() or item.is_symlink() or item == entrypoint:
         continue
     kind = subprocess.check_output(["file", "-b", str(item)], text=True)
     if "Mach-O" not in kind:
@@ -30,7 +33,7 @@ for item in sorted(app.rglob("*")):
     if "executable" in kind:
         command += ["--entitlements", str(entitlements)]
     subprocess.run(command + [str(item)], check=True)
-subprocess.run(["codesign", "--force", "--timestamp", "--options", "runtime", "--entitlements", str(entitlements), "--sign", options.identity, str(app)], check=True)
+subprocess.run(["codesign", "--force", "--timestamp", "--options", "runtime", "--sign", options.identity, str(app)], check=True)
 subprocess.run(["codesign", "--verify", "--deep", "--strict", "--verbose=2", str(app)], check=True)
 if options.keychain_profile:
     with tempfile.TemporaryDirectory(prefix="samsung-notarize-") as temporary:
