@@ -31,10 +31,11 @@
             <div class="direct-header-context">
                 <div><span>INPUT · TV REPORTED</span><strong>@(Snapshot.Menu.Connected ? Snapshot.Menu.Input ?? "Not reported" : "—")</strong></div>
                 <div><span>PICTURE MODE · TV REPORTED</span><strong>@(Snapshot.Menu.Connected ? Snapshot.Menu.PictureMode ?? "Not reported" : "—")</strong></div>
-                <div class="direct-header-keys">
+                <div class="direct-header-keys" role="group" aria-label="TV shortcuts">
                     <button class="toolbar-button" @onclick='() => KeyAsync("firstScreen")' disabled="@(!CanSend)">Home</button>
                     <button class="toolbar-button" @onclick='() => KeyAsync("return")' disabled="@(!CanSend)">Back</button>
                     <button class="toolbar-button" @onclick='() => KeyAsync("exit")' disabled="@(!CanSend)">Exit menu</button>
+                    <button type="button" class="toolbar-button" title="Reload every section and available calibration row for the current signal; discards unsent edits" @onclick="RefreshAllAsync" disabled="@(!CanRefreshAll)">Refresh TV state</button>
                 </div>
             </div>
             @if (Error is not null) { <p class="topbar-feedback danger" role="alert">@Error</p> }
@@ -61,6 +62,7 @@
     private string? Error;
     private bool ThemeBusy;
     private bool CanSend => Snapshot.Menu.Connected && !Snapshot.IsBusy && Snapshot.RgbProbe?.NeedsRecovery != true && Snapshot.Menu.Update?.NeedsReview != true && Snapshot.Menu.WhiteBalanceRead?.NeedsRestore != true;
+    private bool CanRefreshAll => CanSend && Snapshot.PictureTest?.RequiresRecovery != true && Snapshot.CommandTrial?.RequiresReview != true;
     protected override async Task OnInitializedAsync()
     { Controller.Changed += Refresh; await GuardAsync(Controller.InitializeAsync); }
     private void Refresh() => _ = InvokeAsync(() => { Snapshot = Controller.GetSnapshot(); StateHasChanged(); });
@@ -71,6 +73,7 @@
         else await Controller.ConnectMenuAsync();
     });
     private Task KeyAsync(string key) => GuardAsync(() => Controller.SendMenuKeyAsync(key));
+    private Task RefreshAllAsync() => GuardAsync(Controller.RefreshAllMenuSettingsAsync);
     private async Task ToggleThemeAsync()
     {
         ThemeBusy = true;

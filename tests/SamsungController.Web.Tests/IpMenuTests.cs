@@ -381,7 +381,7 @@ public sealed class IpMenuTests
         await renderer.AssertDisabledAsync("OK", true);
     }
 
-    private sealed class MenuNavigation : NavigationManager
+    internal sealed class MenuNavigation : NavigationManager
     {
         public MenuNavigation() => Initialize("http://localhost/", "http://localhost/menu");
         protected override void NavigateToCore(string uri, bool forceLoad) => Uri = ToAbsoluteUri(uri).ToString();

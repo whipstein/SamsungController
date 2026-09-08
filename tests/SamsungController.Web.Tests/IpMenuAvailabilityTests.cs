@@ -1,6 +1,8 @@
 using System.Net;
+using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
+using SamsungController.Web.Components.Layout;
 using SamsungController.Web.Components.Pages;
 using SamsungController.Web.Services;
 
@@ -26,7 +28,7 @@ public sealed class IpMenuAvailabilityTests
         await renderer.AssertInputPresentAsync(control.Name, false);
         await renderer.AssertTextAsync("controls hidden because their queries were rejected");
         fixture.Override = null;
-        await renderer.ClickAsync("Refresh TV values");
+        await RefreshTvStateAsync(services);
         await renderer.AssertInputPresentAsync(control.Name, true);
         fixture.AssertOnlyWhiteBalanceReadWrites();
     }
@@ -56,7 +58,7 @@ public sealed class IpMenuAvailabilityTests
         fixture.Override = null;
         fixture.Values["gammaMode"] = "HLG";
         fixture.Values["autoMotionPlus"] = "Custom";
-        await renderer.ClickAsync("Refresh TV values");
+        await RefreshTvStateAsync(services);
         Assert.Null(fixture.Service.MenuControlDisabledReason(IpMenuCatalog.Get("gamma.HLGControl/gamma.HLG")));
         fixture.AssertOnlyWhiteBalanceReadWrites();
     }
@@ -92,6 +94,14 @@ public sealed class IpMenuAvailabilityTests
         Assert.Equal(45, fixture.Value("contrastControl/contrast")!.GetValue<int>());
     }
 
+    private static async Task RefreshTvStateAsync(ServiceProvider services)
+    {
+        await using var header = new IpRemotePageTests.IpPageRenderer(services, typeof(MainLayout));
+        await header.StartAsync();
+        await header.ClickAsync("Refresh TV state");
+    }
+
     private static ServiceProvider Services(MenuFixture fixture) => new ServiceCollection().AddLogging().AddSingleton(fixture.Service)
+        .AddSingleton<NavigationManager>(new IpMenuTests.MenuNavigation())
         .AddSingleton<IJSRuntime>(new IpRemotePageTests.DownloadJavaScript()).BuildServiceProvider();
 }

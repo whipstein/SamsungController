@@ -145,7 +145,7 @@ public sealed class IpMenuSpeedTests
         await renderer.AssertTextAsync("Cached");
         await renderer.AssertTextAsync("2pt WB");
         await renderer.AssertTextAsync("20pt WB");
-        await renderer.AssertElementAttributeAsync("button", "Expert settings", "aria-pressed", "true");
+        await renderer.AssertElementAttributeAsync("button", "Picture", "aria-pressed", "true");
         await renderer.AssertElementAttributeAsync("button", "20-point white balance", "title", "20-point white balance");
         Assert.Empty(fixture.Display.Requests);
         await fixture.RestartAsync();
@@ -193,7 +193,7 @@ public sealed class IpMenuSpeedTests
         {
             await renderer.StartAsync();
             await renderer.ClickAsync("20-point white balance");
-            await renderer.ClickAsync("Expert settings");
+            await renderer.ClickAsync("Picture");
             Assert.Single(javascript.Calls, call => call == "samsungMenuToolbar.attach");
             Assert.Equal(2, javascript.Calls.Count(call => call == "samsungMenuToolbar.scrollToContent"));
             Assert.DoesNotContain("samsungMenuToolbar.detach", javascript.Calls);

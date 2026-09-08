@@ -8,13 +8,16 @@ public partial class DirectMenu
 {
     [Inject] private IJSRuntime LayoutJavaScript { get; set; } = default!;
     private ElementReference ExpertLayoutElement;
+    private ElementReference AttachedLayoutElement;
+    private string? AttachedLayoutSection;
     private ElementReference MenuToolbarElement, MenuContentElement;
     private bool MenuToolbarAttached, ScrollSectionOnRender;
     private DotNetObjectReference<DirectMenu>? LayoutReference;
     private bool LayoutAttached, LayoutSaving;
     private string? LayoutFeedback;
     private bool LayoutLocked => Snapshot.IsBusy || ActionRunning || LayoutSaving;
-    private IEnumerable<IpExpertGroup> VisibleExpertGroups => IpExpertLayout.Ordered(Snapshot.Menu.Preferences.ExpertGroupOrder)
+    private bool HasArrangedLayout => IpExpertLayout.SupportsSection(Section);
+    private IEnumerable<IpExpertGroup> VisibleExpertGroups => IpExpertLayout.Ordered(Snapshot.Menu.Preferences.GroupOrder(Section), Section)
         .Where(group => group.Controls.Any(IsVisible));
 
     private async Task AttachMenuToolbarAsync()
@@ -38,27 +41,39 @@ public partial class DirectMenu
 
     private async Task AttachExpertLayoutAsync()
     {
-        if (Section != "expert" || LayoutAttached) return;
+        if (LayoutAttached && AttachedLayoutSection != Section)
+        {
+            try { await LayoutJavaScript.InvokeVoidAsync("samsungExpertLayout.detach", AttachedLayoutElement); }
+            catch (JSDisconnectedException) { }
+            catch (JSException) { }
+            LayoutAttached = false;
+            AttachedLayoutSection = null;
+        }
+        if (!HasArrangedLayout || LayoutAttached) return;
         LayoutReference ??= DotNetObjectReference.Create(this);
+        AttachedLayoutElement = ExpertLayoutElement;
+        AttachedLayoutSection = Section;
         LayoutAttached = true;
         try
         {
-            await LayoutJavaScript.InvokeVoidAsync("samsungExpertLayout.attach", ExpertLayoutElement, LayoutReference);
+            await LayoutJavaScript.InvokeVoidAsync("samsungExpertLayout.attach", AttachedLayoutElement, LayoutReference);
         }
         catch (JSDisconnectedException) { }
         catch (JSException) { LayoutFeedback = "Box dragging could not load. Reload this page to rearrange settings."; await InvokeAsync(StateHasChanged); }
     }
 
     [JSInvokable]
-    public Task<bool> MoveExpertGroupAsync(string source, string target, bool after) => ChangeExpertLayoutAsync(
-        () => Controller.MoveExpertGroupAsync(source, target, after), "Layout saved. Linked controls stay together; nothing was sent to the TV.");
+    public Task<bool> MoveMenuGroupAsync(string section, string source, string target, bool after) => section != Section
+        ? Task.FromResult(false) // A delayed drag callback must never reorder a newly selected section.
+        : ChangeExpertLayoutAsync(() => Controller.MoveMenuGroupAsync(section, source, target, after),
+            "Layout saved. Linked controls stay together; nothing was sent to the TV.");
 
-    private Task ResetExpertLayoutAsync() => ChangeExpertLayoutAsync(Controller.ResetExpertLayoutAsync,
+    private Task ResetExpertLayoutAsync() => ChangeExpertLayoutAsync(() => Controller.ResetMenuLayoutAsync(Section),
         "Default layout restored. TV settings and pending edits are unchanged.");
 
     private async Task<bool> ChangeExpertLayoutAsync(Func<Task> change, string message)
     {
-        if (Section != "expert" || LayoutLocked) return false;
+        if (!HasArrangedLayout || LayoutLocked) return false;
         LayoutSaving = true;
         try
         {
@@ -78,7 +93,7 @@ public partial class DirectMenu
         try
         {
             if (MenuToolbarAttached) await LayoutJavaScript.InvokeVoidAsync("samsungMenuToolbar.detach", MenuToolbarElement);
-            if (LayoutAttached) await LayoutJavaScript.InvokeVoidAsync("samsungExpertLayout.detach", ExpertLayoutElement);
+            if (LayoutAttached) await LayoutJavaScript.InvokeVoidAsync("samsungExpertLayout.detach", AttachedLayoutElement);
         }
         catch (JSDisconnectedException) { }
         catch (JSException) { }

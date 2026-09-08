@@ -166,7 +166,7 @@ public sealed class IpMenuWhiteBalancePayloadTests
         await renderer.AssertTextAsync("The controls remain available");
         await renderer.AssertTextAbsentAsync("I checked the TV — close interrupted update");
         await renderer.AssertDisabledAsync("Refresh section", false);
-        await renderer.AssertDisabledAsync("Expert settings", false);
+        await renderer.AssertDisabledAsync("Picture", false);
         Assert.False(fixture.Service.GetSnapshot().IsBusy);
         Assert.Null(fixture.Service.MenuControlDisabledReason(IpMenuCatalog.Get("WB2PointControl/G-Gain")));
         await renderer.ClickAsync("Discard pending changes");

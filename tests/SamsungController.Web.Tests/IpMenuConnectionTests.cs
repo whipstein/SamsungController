@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
 using SamsungController.Core.IpRemote;
 using SamsungController.Web.Components.Pages;
+using SamsungController.Web.Components.Layout;
 using SamsungController.Web.Services;
 
 namespace SamsungController.Web.Tests;
@@ -229,7 +230,9 @@ public sealed class IpMenuConnectionTests
         await renderer.ClickAsync("2-point white balance");
         Assert.Equal(stoppedAt, fixture.Display.Requests.Count);
         await renderer.AssertTextAsync("All-settings load is incomplete");
-        await renderer.ClickAsync("Refresh TV values");
+        await using var header = new IpRemotePageTests.IpPageRenderer(services, typeof(MainLayout));
+        await header.StartAsync();
+        await header.ClickAsync("Refresh TV state");
         await renderer.AssertTargetAsync("R Gain value", 7);
         await renderer.AssertTextAbsentAsync("All-settings load is incomplete");
         Assert.NotNull(fixture.Service.GetSnapshot().Menu.SettingsLoadedAt);
@@ -304,5 +307,6 @@ public sealed class IpMenuConnectionTests
     }
 
     private static ServiceProvider Services(MenuFixture fixture) => new ServiceCollection().AddLogging().AddSingleton(fixture.Service)
+        .AddSingleton<Microsoft.AspNetCore.Components.NavigationManager>(new IpMenuTests.MenuNavigation())
         .AddSingleton<IJSRuntime>(new IpRemotePageTests.DownloadJavaScript()).BuildServiceProvider();
 }

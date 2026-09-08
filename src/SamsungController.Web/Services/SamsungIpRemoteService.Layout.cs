@@ -2,12 +2,16 @@ namespace SamsungController.Web.Services;
 
 public sealed partial class SamsungIpRemoteService
 {
-    public Task MoveExpertGroupAsync(string source, string target, bool after) => SaveExpertLayoutAsync(
-        preferences => IpExpertLayout.Move(preferences.ExpertGroupOrder, source, target, after));
+    public Task MoveExpertGroupAsync(string source, string target, bool after) => MoveMenuGroupAsync("expert", source, target, after);
 
-    public Task ResetExpertLayoutAsync() => SaveExpertLayoutAsync(_ => IpExpertLayout.Normalize(null));
+    public Task ResetExpertLayoutAsync() => ResetMenuLayoutAsync("expert");
 
-    private async Task SaveExpertLayoutAsync(Func<IpMenuPreferences, IReadOnlyList<string>> arrange)
+    public Task MoveMenuGroupAsync(string section, string source, string target, bool after) => SaveMenuLayoutAsync(section,
+        preferences => IpExpertLayout.Move(preferences.GroupOrder(section), source, target, after, section));
+
+    public Task ResetMenuLayoutAsync(string section) => SaveMenuLayoutAsync(section, _ => IpExpertLayout.Normalize(null, section));
+
+    private async Task SaveMenuLayoutAsync(string section, Func<IpMenuPreferences, IReadOnlyList<string>> arrange)
     {
         // Uses only private UI preferences: no connection, TV query, draft change,
         // setting write, or value-cache invalidation is involved.
@@ -16,8 +20,8 @@ public sealed partial class SamsungIpRemoteService
         {
             var preferences = GetSnapshot().Menu.Preferences;
             var order = arrange(preferences);
-            if (order.SequenceEqual(preferences.ExpertGroupOrder, StringComparer.Ordinal)) return;
-            preferences = preferences with { ExpertGroupOrder = order };
+            if (order.SequenceEqual(preferences.GroupOrder(section), StringComparer.Ordinal)) return;
+            preferences = preferences.WithGroupOrder(section, order);
             await SaveMenuFileAsync(MenuPreferencesPath, preferences).ConfigureAwait(false);
             UpdateMenu(menu => menu with { Preferences = preferences });
         }

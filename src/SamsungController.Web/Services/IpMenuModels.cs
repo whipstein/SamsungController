@@ -22,12 +22,13 @@ public static class IpMenuCatalog
 {
     public static IReadOnlyList<IpMenuSection> Sections { get; } = Array.AsReadOnly(new[]
     {
-        new IpMenuSection("expert", "Expert settings", "Picture"),
+        // Keep the stored section ID so existing readings and Picture layouts survive.
+        new IpMenuSection("expert", "Picture", "Picture"),
         new IpMenuSection("white2", "2-point white balance", "Picture"),
         new IpMenuSection("white20", "20-point white balance", "Picture"),
         new IpMenuSection("color", "Color", "Picture"),
         new IpMenuSection("sound", "Sound", "Sound"),
-        new IpMenuSection("system", "Inputs, panel & power saving", "System")
+        new IpMenuSection("system", "System", "System")
     });
 
     public static IReadOnlyList<IpMenuControl> Controls { get; } = Array.AsReadOnly(Build().ToArray());
@@ -100,6 +101,20 @@ public sealed record IpMenuPreferences(bool ApplyImmediately = false)
 {
     public bool QueryBeforeChange { get; init; } = true;
     public IReadOnlyList<string> ExpertGroupOrder { get; init; } = [];
+    public IReadOnlyList<string> SoundGroupOrder { get; init; } = [];
+    public IReadOnlyList<string> SystemGroupOrder { get; init; } = [];
+    public IReadOnlyList<string> GroupOrder(string section) => section switch
+    {
+        "expert" => ExpertGroupOrder, "sound" => SoundGroupOrder, "system" => SystemGroupOrder,
+        _ => throw new ArgumentException("This section does not support arranging boxes.")
+    };
+    public IpMenuPreferences WithGroupOrder(string section, IReadOnlyList<string> order) => section switch
+    {
+        "expert" => this with { ExpertGroupOrder = order },
+        "sound" => this with { SoundGroupOrder = order },
+        "system" => this with { SystemGroupOrder = order },
+        _ => throw new ArgumentException("This section does not support arranging boxes.")
+    };
 }
 public sealed record IpMenuSnapshot
 {

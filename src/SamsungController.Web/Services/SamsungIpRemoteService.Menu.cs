@@ -540,7 +540,12 @@ public sealed partial class SamsungIpRemoteService
     private async Task<IpMenuSnapshot> LoadMenuStateAsync()
     {
         var preferences = File.Exists(MenuPreferencesPath) ? JsonSerializer.Deserialize<IpMenuPreferences>(await File.ReadAllTextAsync(MenuPreferencesPath).ConfigureAwait(false)) ?? new() : new();
-        preferences = preferences with { ExpertGroupOrder = IpExpertLayout.Normalize(preferences.ExpertGroupOrder) };
+        preferences = preferences with
+        {
+            ExpertGroupOrder = IpExpertLayout.Normalize(preferences.ExpertGroupOrder),
+            SoundGroupOrder = IpExpertLayout.Normalize(preferences.SoundGroupOrder, "sound"),
+            SystemGroupOrder = IpExpertLayout.Normalize(preferences.SystemGroupOrder, "system")
+        };
         var update = File.Exists(MenuUpdatePath) ? JsonSerializer.Deserialize<IpMenuUpdate>(await File.ReadAllTextAsync(MenuUpdatePath).ConfigureAwait(false)) : null;
         if (update is not null)
         {

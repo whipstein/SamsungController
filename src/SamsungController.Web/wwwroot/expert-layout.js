@@ -4,6 +4,8 @@ window.samsungExpertLayout = (() => {
     const bindings = new WeakMap();
     function attach(root, receiver) {
         if (!root || bindings.has(root)) return;
+        const section = root.dataset.layoutSection;
+        if (!section) return;
         let source = null, marked = null, pending = false, suppressed = null, interactiveOrigin = false;
         const locked = () => pending || root.dataset.layoutLocked === "true";
         const interactive = target => !!target?.closest?.("input, select, textarea, button, a, label, summary, [contenteditable]:not([contenteditable='false']), [role='button'], [role='switch'], [role='slider'], [role='textbox']");
@@ -79,11 +81,11 @@ window.samsungExpertLayout = (() => {
         }
         async function saveMove(id, targetId, after) {
             pending = true;
-            try { await receiver.invokeMethodAsync("MoveExpertGroupAsync", id, targetId, after); }
+            try { await receiver.invokeMethodAsync("MoveMenuGroupAsync", section, id, targetId, after); }
             catch (error) {
                 // No optimistic DOM move to undo. The app's reconnect banner handles
                 // circuit loss; ordinary save errors are shown by the .NET callback.
-                console.warn("Expert layout was not saved; retry after reconnecting.", error);
+                console.warn("Section layout was not saved; retry after reconnecting.", error);
             }
             finally { pending = false; }
         }

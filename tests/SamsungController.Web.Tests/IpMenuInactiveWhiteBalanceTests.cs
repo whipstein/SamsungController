@@ -40,7 +40,7 @@ public sealed class IpMenuInactiveWhiteBalanceTests
         await renderer.StartAsync();
         await renderer.ClickAsync("20-point white balance");
         Assert.Empty(fixture.Writes);
-        await renderer.ClickAsync("Load all rows");
+        await renderer.ClickAsync("Reload all rows");
         AssertComplete(fixture);
         await renderer.AssertCheckboxAsync("20-point white balance enabled", false);
         await renderer.AssertTargetAsync("5% Red value", 1);

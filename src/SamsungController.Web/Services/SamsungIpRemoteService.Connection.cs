@@ -95,7 +95,7 @@ public sealed partial class SamsungIpRemoteService
         {
             var current = GetSnapshot().Menu;
             if (current.ValuesRevision != original.ValuesRevision || current.Input != original.Input || current.PictureMode != original.PictureMode)
-                throw new InvalidOperationException("The TV input/picture mode changed during loading. Wait for the signal to settle, then select Refresh TV values to reload all settings. No further selectors were sent; reconnecting is not required.");
+                throw new InvalidOperationException("The TV input/picture mode changed during loading. Wait for the signal to settle, then select Refresh TV state in the top header to reload all settings. No further selectors were sent; reconnecting is not required.");
         }
     }
 }

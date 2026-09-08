@@ -6,10 +6,10 @@ const path = require("node:path");
 const vm = require("node:vm");
 const script = fs.readFileSync(path.join(__dirname, "../../src/SamsungController.Web/wwwroot/expert-layout.js"), "utf8");
 
-function setup(columns = "350px 350px", invoke) {
+function setup(columns = "350px 350px", invoke, section = "expert") {
     const calls = [], warnings = [], listeners = new Map();
     const root = {
-        dataset: { layoutLocked: "false" },
+        dataset: { layoutLocked: "false", layoutSection: section },
         contains: node => node?.root === root,
         querySelector: () => ({}),
         querySelectorAll: () => [source.element, target.element],
@@ -65,6 +65,22 @@ test("whole cards and headings drag the entire group; sliders and external paylo
     assert.equal(f.source.element.classes.has("layout-dragging"), true);
 });
 
+for (const section of ["sound", "system"]) test(`${section} moves keep the originating section even after a tab change`, async () => {
+    const f = setup("350px", undefined, section);
+    f.root.dataset.layoutSection = "expert";
+    f.send("dragstart");
+    await f.send("drop", f.event(f.target.element));
+    assert.deepEqual(f.calls, [["MoveMenuGroupAsync", section, "contrastControl/contrast", "gammaModeControl/gammaMode", false]]);
+    f.api.detach(f.root);
+    assert.equal(f.listeners.size, 0);
+});
+
+test("a layout without a section identity never attaches drag handlers", () => {
+    const f = setup("350px", undefined, null);
+    assert.equal(f.listeners.size, 0);
+    assert.equal(f.calls.length, 0);
+});
+
 for (const [columns, x, y, after, axis] of [
     ["350px 350px", 110, 590, false, "horizontal"],
     ["350px 350px", 390, 210, true, "horizontal"],
@@ -80,7 +96,7 @@ for (const [columns, x, y, after, axis] of [
     assert.equal(f.root.dataset.layoutAxis, axis);
     assert.equal(f.target.element.classes.has(after ? "layout-drop-after" : "layout-drop-before"), true);
     await f.send("drop", event);
-    assert.deepEqual(f.calls, [["MoveExpertGroupAsync", "contrastControl/contrast", "gammaModeControl/gammaMode", after]]);
+    assert.deepEqual(f.calls, [["MoveMenuGroupAsync", "expert", "contrastControl/contrast", "gammaModeControl/gammaMode", after]]);
     assert.equal(f.source.element.classes.size, 0);
     assert.equal(f.target.element.classes.size, 0);
 });
@@ -221,7 +237,7 @@ for (const key of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]) test(`Alt
     const card = keyboard(current.element);
     await f.send("keydown", card);
     assert.equal(card.prevented, true);
-    assert.deepEqual(f.calls, [["MoveExpertGroupAsync", current.element.dataset.expertGroup,
+    assert.deepEqual(f.calls, [["MoveMenuGroupAsync", "expert", current.element.dataset.expertGroup,
         (backwards ? f.source : f.target).element.dataset.expertGroup, !backwards]]);
 });
 

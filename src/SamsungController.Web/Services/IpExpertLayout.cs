@@ -5,29 +5,34 @@ public sealed record IpExpertGroup(string Id, string Name, IReadOnlyList<IpMenuC
 /// <summary>Presentation-only ordering. Dependencies move with their prerequisite, including hidden controls.</summary>
 public static class IpExpertLayout
 {
-    public static IReadOnlyList<IpExpertGroup> Groups { get; } = BuildGroups();
+    private static readonly IReadOnlyDictionary<string, IReadOnlyList<IpExpertGroup>> SectionGroups =
+        new[] { "expert", "sound", "system" }.ToDictionary(section => section, BuildGroups, StringComparer.Ordinal);
+    public static bool SupportsSection(string section) => SectionGroups.ContainsKey(section);
+    public static IReadOnlyList<IpExpertGroup> Groups => ForSection("expert");
+    public static IReadOnlyList<IpExpertGroup> ForSection(string section) => SectionGroups.TryGetValue(section, out var groups)
+        ? groups : throw new ArgumentException("This section does not support arranging boxes.");
 
-    public static IReadOnlyList<string> Normalize(IEnumerable<string>? saved) => Array.AsReadOnly(
-        (saved ?? []).Where(id => Groups.Any(group => group.Id == id)).Distinct(StringComparer.Ordinal)
-            .Concat(Groups.Select(group => group.Id)).Distinct(StringComparer.Ordinal).ToArray());
+    public static IReadOnlyList<string> Normalize(IEnumerable<string>? saved, string section = "expert") => Array.AsReadOnly(
+        (saved ?? []).Where(id => ForSection(section).Any(group => group.Id == id)).Distinct(StringComparer.Ordinal)
+            .Concat(ForSection(section).Select(group => group.Id)).Distinct(StringComparer.Ordinal).ToArray());
 
-    public static IEnumerable<IpExpertGroup> Ordered(IEnumerable<string>? saved) =>
-        Normalize(saved).Select(id => Groups.Single(group => group.Id == id));
+    public static IEnumerable<IpExpertGroup> Ordered(IEnumerable<string>? saved, string section = "expert") =>
+        Normalize(saved, section).Select(id => ForSection(section).Single(group => group.Id == id));
 
-    public static IReadOnlyList<string> Move(IEnumerable<string>? saved, string source, string target, bool after)
+    public static IReadOnlyList<string> Move(IEnumerable<string>? saved, string source, string target, bool after, string section = "expert")
     {
-        var order = Normalize(saved).ToList();
+        var order = Normalize(saved, section).ToList();
         if (!order.Contains(source, StringComparer.Ordinal) || !order.Contains(target, StringComparer.Ordinal))
-            throw new ArgumentException("Choose an Expert settings box or linked group to move.");
+            throw new ArgumentException("Choose a box or linked group from the current section to move.");
         if (source == target) return order.AsReadOnly();
         order.Remove(source);
         order.Insert(order.IndexOf(target) + (after ? 1 : 0), source);
         return order.AsReadOnly();
     }
 
-    private static IReadOnlyList<IpExpertGroup> BuildGroups()
+    private static IReadOnlyList<IpExpertGroup> BuildGroups(string section)
     {
-        var controls = IpMenuCatalog.ForSection("expert").ToArray();
+        var controls = IpMenuCatalog.ForSection(section).ToArray();
         var neighbors = controls.ToDictionary(control => control.Id, _ => new HashSet<string>(StringComparer.Ordinal));
         foreach (var control in controls)
             foreach (var requirement in control.Command.Requirements)

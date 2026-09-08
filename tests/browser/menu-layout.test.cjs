@@ -10,9 +10,10 @@ function rule(selector) {
     return css.slice(start, css.indexOf('}', start));
 }
 // Layout contracts only; these do not replace rendered browser verification.
-test('pinned actions override the global full-width primary button and do not stack Stop', () => {
+test('pinned actions remain compact and wrap on narrow screens without full-width buttons', () => {
     const actions = rule('.direct-menu-toolbar .direct-actions');
-    assert.match(actions, /flex-wrap:nowrap/);
+    assert.match(actions, /flex-wrap:wrap/);
+    assert.match(actions, /max-width:100%/);
     assert.match(actions, /margin:0 0 0 auto/);
     const buttons = rule('.direct-menu-toolbar .direct-actions button');
     assert.match(buttons, /width:auto/);

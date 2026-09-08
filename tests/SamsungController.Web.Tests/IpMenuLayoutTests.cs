@@ -114,11 +114,11 @@ public sealed class IpMenuLayoutTests
         var before = fixture.Service.GetSnapshot().Menu;
         var requests = fixture.Display.Requests.Count;
         Assert.NotNull(js.Page);
-        await renderer.Dispatcher.InvokeAsync(async () => Assert.True(await js.Page!.MoveExpertGroupAsync(Gamma, Contrast, false)));
+        await renderer.Dispatcher.InvokeAsync(async () => Assert.True(await js.Page!.MoveMenuGroupAsync("expert", Gamma, Contrast, false)));
         await renderer.AssertExpertGroupOrderAsync(VisibleOrder(fixture));
         await renderer.AssertExpertGroupTextAsync(Gamma, "Gamma mode", "BT.1886 adjustment", "ST.2084 adjustment", "HLG adjustment");
         await renderer.AssertTargetAsync("Contrast value", 44);
-        await renderer.Dispatcher.InvokeAsync(async () => Assert.True(await js.Page!.MoveExpertGroupAsync(Gamma, Contrast, true)));
+        await renderer.Dispatcher.InvokeAsync(async () => Assert.True(await js.Page!.MoveMenuGroupAsync("expert", Gamma, Contrast, true)));
         var order = fixture.Service.GetSnapshot().Menu.Preferences.ExpertGroupOrder.ToList();
         Assert.Equal(order.IndexOf(Contrast) + 1, order.IndexOf(Gamma));
         await renderer.AssertExpertGroupOrderAsync(VisibleOrder(fixture));
@@ -133,7 +133,7 @@ public sealed class IpMenuLayoutTests
         Assert.Equal(requests, fixture.Display.Requests.Count);
         await renderer.ClickAsync("2-point white balance");
         await renderer.AssertTextAbsentAsync("Reset layout");
-        await renderer.ClickAsync("Expert settings");
+        await renderer.ClickAsync("Picture");
         Assert.Equal(2, js.AttachCalls);
         await renderer.AssertExpertGroupOrderAsync(VisibleOrder(fixture));
     }
@@ -172,7 +172,7 @@ public sealed class IpMenuLayoutTests
         // Occupy the scratch filename with a directory in the temporary fixture.
         Directory.CreateDirectory(Path.Combine(Path.GetDirectoryName(fixture.JournalPath)!, "menu-preferences.json.tmp"));
         var requests = fixture.Display.Requests.Count;
-        await renderer.Dispatcher.InvokeAsync(async () => Assert.False(await js.Page!.MoveExpertGroupAsync(Gamma, Contrast, false)));
+        await renderer.Dispatcher.InvokeAsync(async () => Assert.False(await js.Page!.MoveMenuGroupAsync("expert", Gamma, Contrast, false)));
         Assert.Equal(original, fixture.Service.GetSnapshot().Menu.Preferences);
         await renderer.AssertTextAsync("Layout was not saved:");
         await renderer.AssertExpertGroupOrderAsync(VisibleOrder(fixture));
