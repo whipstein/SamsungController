@@ -2,6 +2,8 @@
 
 This diagnostic evaluates what **your display and current state** accept. It is not a production speed setting. Normal Menu uses its existing documented commands regardless of the outcome.
 
+The experimental buttons have been removed from Menu and Communication log. This page is retained for historical diagnostics and unresolved-test recovery, not as a required setup or performance-tuning step. An unfinished RGB experiment still exposes its recovery link in the header.
+
 **Known risk:** read-only JSON-RPC arrays have caused a display's IP connection to stall for the full request timeout rather than returning an unsupported-batch error. Do not repeat a failing batch. Both batch buttons are blocked for endpoints with a failed/interrupted batch in their private diagnostic history; this is recovered on app restart and is not cleared by reconnecting or pairing again. It is a safety block, not a claim that every model or firmware lacks support. The separate single-method RGB experiment remains experimental and is not a recovery procedure.
 
 ## Recover after a stalled batch, without requesting new pairing
@@ -28,7 +30,7 @@ The second payload is deliberately **experimental, not documented as a combined 
 
 1. Rebuild/restart the updated server and connect normally. Open **Menu → Picture → 20-point white balance** and enable 20-point mode if necessary.
 2. Finish or discard pending Menu edits. Keep the same display, physical HDMI signal, bit depth, and picture mode throughout a test and its restoration. Do not operate another remote/controller during the test.
-3. Open **Communication log → Batch / RGB test**, or the same link in Menu's 20-point section. Opening the page sends nothing. The direct URL is `/diagnostics/batch-rgb` on your local controller.
+3. For an explicit diagnostic or unfinished recovery, use `/diagnostics/batch-rgb` on your local controller (or the header's recovery link, when shown). Opening the page sends nothing; normal Menu and Communication log no longer advertise it.
 
 ## A. Check read-only batch support
 

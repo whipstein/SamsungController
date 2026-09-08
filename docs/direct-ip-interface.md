@@ -48,7 +48,7 @@ Preloading moves the initial read cost to Connect; it does not eliminate the mul
 
 ## Communication log
 
-**Batch / RGB test** opens a separate, opt-in [guided protocol experiment](batch-rgb-test.md). It first probes two read methods in one JSON-RPC array, then offers either three 20-point RGB methods in one array or one RedControl method with all three RGB fields. Normal Menu commands are unchanged; no capability is promoted automatically. The diagnostic saves originals in private `ip-remote/rgb-probe.json`, independently reads all three channels, and blocks other writes until explicit restoration/manual closure. Reconnecting an unfinished test skips automatic calibration preload so recovery can proceed without moving its selectors.
+The experimental **Batch / RGB test** buttons have been removed from Menu and Communication log. Normal RGB updates use the verified single-channel methods. The [diagnostic page and recovery guide](batch-rgb-test.md) remain available by direct URL for historical experiments and unfinished recovery records; a recovery link still appears in the header if an RGB experiment needs restoration/manual closure. Reconnecting an unfinished test skips automatic calibration preload so recovery can proceed without moving its selectors. Removing the buttons does not discard saved originals or permit new writes before recovery is resolved.
 
 Open **Communication log** in the sidebar. This replaces the initial command catalog/picture-test UI; existing bookmarks open the log too. Viewing the log never sends queries or commands to the TV.
 

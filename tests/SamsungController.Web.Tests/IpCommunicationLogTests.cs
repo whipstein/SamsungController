@@ -97,6 +97,7 @@ public sealed class IpCommunicationLogTests
         await using var renderer = new IpRemotePageTests.IpPageRenderer(services, typeof(CommunicationLog));
         await renderer.StartAsync();
         await renderer.AssertTextAsync("Communication log");
+        await renderer.AssertTextAbsentAsync("Batch / RGB test");
         await renderer.AssertTextAbsentAsync("Prepare command");
         await renderer.ClickAsync("Saved history");
         await renderer.AssertTextAsync("2 matching exchanges");

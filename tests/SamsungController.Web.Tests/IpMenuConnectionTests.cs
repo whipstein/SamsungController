@@ -67,6 +67,7 @@ public sealed class IpMenuConnectionTests
         await using var renderer = new IpRemotePageTests.IpPageRenderer(services, typeof(DirectMenu));
         await renderer.StartAsync();
         await renderer.ClickAsync("20-point white balance");
+        await renderer.AssertTextAbsentAsync("Batch / RGB test");
         await renderer.AssertTargetAsync("5% Red value", 0);
         await renderer.ClickAsync("Color");
         await renderer.AssertTargetAsync("Red Red value", 0);
