@@ -62,6 +62,20 @@ with tempfile.TemporaryDirectory(prefix="samsung-desktop-smoke-") as temporary:
             try:
                 with request("/_app/status") as response:
                     if json.load(response)["managed"]:
+                        # HTTP readiness can precede the launcher's next poll. On a
+                        # fast runner the test could otherwise complete and stop the
+                        # server while that launcher still considers it "starting".
+                        # Wait for its startup lock to be released, not an arbitrary
+                        # delay. The real browser is opened only after this point.
+                        import fcntl
+                        lock = Path(temporary) / "desktop" / ("launch-" + str(port) + ".lock")
+                        with lock.open("rb") as startup:
+                            try:
+                                fcntl.flock(startup, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                            except BlockingIOError:
+                                time.sleep(0.05)
+                                continue
+                            fcntl.flock(startup, fcntl.LOCK_UN)
                         return process
             except (urllib.error.URLError, TimeoutError):
                 time.sleep(0.15)
