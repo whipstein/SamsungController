@@ -1,5 +1,13 @@
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Hosting;
+using Microsoft.JSInterop;
 using SamsungController.Desktop;
+using SamsungController.Web.Components.Layout;
+using SamsungController.Web.Components.Pages;
+using SamsungController.Web.Components.Shared;
 using SamsungController.Web.Services;
 
 namespace SamsungController.Web.Tests;
@@ -92,6 +100,67 @@ public sealed class DesktopRuntimeTests
         await runtime.QuitAsync(fixture.Service);
         Assert.True(lifetime.ApplicationStopping.IsCancellationRequested);
         Assert.Empty(fixture.Display.Requests);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("menu")]
+    [InlineData("diagnostics")]
+    public async Task DesktopQuitIsInTheTopmostGlobalHeaderOnEveryPage(string route)
+    {
+        using var folder = new TemporaryFolder();
+        using var lifetime = new TestLifetime();
+        using var fixture = await MenuFixture.CreateAsync();
+        using var runtime = new DesktopRuntime(true, 55123, folder.Path, lifetime);
+        await using var services = PageServices(fixture, runtime, route);
+        await using var renderer = new HtmlRenderer(services, services.GetRequiredService<ILoggerFactory>());
+        var html = await renderer.Dispatcher.InvokeAsync(async () => (await renderer.RenderComponentAsync<MainLayout>()).ToHtmlString());
+        var firstRow = html[..html.IndexOf("direct-header-context", StringComparison.Ordinal)];
+        Assert.Contains(">Quit app</button>", firstRow);
+        Assert.True(firstRow.IndexOf(">Stop</button>", StringComparison.Ordinal) < firstRow.IndexOf(">Quit app</button>", StringComparison.Ordinal));
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(html, ">Quit app</button>"));
+        var display = await renderer.Dispatcher.InvokeAsync(async () => (await renderer.RenderComponentAsync<DisplaySetup>()).ToHtmlString());
+        Assert.DoesNotContain(">Quit app</button>", display);
+        Assert.Empty(fixture.Display.Requests);
+    }
+
+    [Fact]
+    public async Task ForegroundHeaderDoesNotOfferQuitAndDisconnectedDesktopButtonStillWorks()
+    {
+        using var folder = new TemporaryFolder();
+        using var lifetime = new TestLifetime();
+        using var fixture = await MenuFixture.CreateAsync();
+        using var foreground = new DesktopRuntime(false, 55123, folder.Path, lifetime);
+        await using (var services = PageServices(fixture, foreground, ""))
+        await using (var renderer = new HtmlRenderer(services, services.GetRequiredService<ILoggerFactory>()))
+        {
+            var html = await renderer.Dispatcher.InvokeAsync(async () => (await renderer.RenderComponentAsync<MainLayout>()).ToHtmlString());
+            Assert.DoesNotContain(">Quit app</button>", html);
+        }
+        using var background = new DesktopRuntime(true, 55123, folder.Path, lifetime);
+        await using var desktopServices = PageServices(fixture, background, "diagnostics");
+        await using var page = new IpRemotePageTests.IpPageRenderer(desktopServices, typeof(DesktopAppControls));
+        await page.StartAsync();
+        Assert.False(fixture.Service.GetSnapshot().Menu.Connected);
+        await page.AssertDisabledAsync("Quit app", false);
+        await page.ClickAsync("Quit app");
+        await page.AssertDisabledAsync("Quit app", true);
+        Assert.True(lifetime.ApplicationStopping.IsCancellationRequested);
+        Assert.Empty(fixture.Display.Requests);
+    }
+
+    private static ServiceProvider PageServices(MenuFixture fixture, DesktopRuntime runtime, string route) => new ServiceCollection()
+        .AddLogging().AddSingleton(fixture.Service).AddSingleton(runtime).AddSingleton<IJSRuntime>(new NoJavaScript())
+        .AddSingleton<NavigationManager>(new PageNavigation(route)).BuildServiceProvider();
+    private sealed class PageNavigation : NavigationManager
+    {
+        public PageNavigation(string route) => Initialize("http://localhost/", "http://localhost/" + route);
+        protected override void NavigateToCore(string uri, bool forceLoad) { Uri = ToAbsoluteUri(uri).ToString(); NotifyLocationChanged(false); }
+    }
+    private sealed class NoJavaScript : IJSRuntime
+    {
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) => ValueTask.FromResult(default(TValue)!);
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args) => ValueTask.FromResult(default(TValue)!);
     }
 
     private sealed class TemporaryFolder : IDisposable

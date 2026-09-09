@@ -26,6 +26,7 @@
                     <div class="connection-pill @(Snapshot.Menu.Connected ? "connected" : "disconnected")" title="@Snapshot.Menu.TransportStatus"><span></span>@(Snapshot.Menu.Connected ? "Connected" : "Disconnected")</div>
                     <button class="topbar-connection-button" @onclick="ToggleConnectionAsync" disabled="@Snapshot.IsBusy">@(Snapshot.Menu.Connected ? "Disconnect" : "Connect")</button>
                     <button class="toolbar-button danger-action" @onclick="Controller.Cancel" disabled="@(!Snapshot.IsBusy)">Stop</button>
+                    <DesktopAppControls />
                 </div>
             </div>
             <div class="direct-header-context">

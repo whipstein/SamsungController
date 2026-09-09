@@ -4,9 +4,9 @@
 
 @if (Runtime is { Enabled: true })
 {
-    <div class="direct-actions">
+    <div class="desktop-app-controls">
         <button type="button" class="toolbar-button" title="Stop the background server. Closing the browser alone leaves it running." @onclick="QuitAsync" disabled="@(Quitting || Controller.GetSnapshot().IsBusy)">Quit app</button>
-        @if (Message is not null) { <span role="status">@Message</span> }
+        @if (Message is not null) { <span class="desktop-app-controls-message" role="status">@Message</span> }
     </div>
 }
 

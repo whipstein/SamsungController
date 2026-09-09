@@ -1,4 +1,4 @@
-# SamsungController v1.0.1
+# SamsungController v1.0.2
 
 This package includes the desktop launcher, local web server, optional CLI, and .NET runtime. No clone, SDK, or terminal window is required.
 
@@ -12,7 +12,7 @@ Read [README.md](README.md) or the [step-by-step tutorial](docs/getting-started.
 
 Choose arm64 for Apple silicon/Arm64 computers or x64 for Intel/AMD. Linux requires the normal .NET 10 native OS dependencies and a graphical browser; `xdg-open` opens the browser automatically.
 
-The app starts its server at **http://127.0.0.1:5050** and opens your browser. It runs in the background with no terminal window. Opening the app again reuses the same running instance. **Closing the browser does not stop the server.** Use **Display → Quit app** when done; stop any active TV operation first. No login service or automatic startup is installed.
+The app starts its server at **http://127.0.0.1:5050** and opens your browser. It runs in the background with no terminal window. Opening the app again reuses the same running instance. **Closing the browser does not stop the server.** Use **Quit app** at the very top, beside **Stop**, on any page when done; stop any active TV operation first. No login service or automatic startup is installed.
 
 If the browser does not open, enter the URL manually. Background startup errors are recorded in your private configuration directory under `desktop/last-launch-error.txt`; server output is in `desktop/server.log`. Port 5050 must not be occupied by an old foreground server or another application.
 

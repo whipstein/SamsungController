@@ -34,8 +34,10 @@ jobs:
         run: python packaging/build.py --rid ${{ matrix.rid }}
       - name: Smoke-test native packaged application
         run: python packaging/smoke-test.py --manifest artifacts/dist/build-${{ matrix.rid }}.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
+          # Keep the named artifact container expected by the release download step.
+          archive: true
           name: SamsungController-${{ matrix.package }}
           path: |
             artifacts/dist/*.zip
@@ -51,7 +53,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts/dist
           merge-multiple: true

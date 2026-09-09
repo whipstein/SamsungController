@@ -55,7 +55,7 @@ For all platforms, the interface is **http://127.0.0.1:5050**. The server runs i
 
 - Closing a browser tab does **not** stop the server.
 - Open SamsungController again to return to the interface.
-- To stop the server, go to **Display → Quit app**.
+- To stop the server, use **Quit app** at the very top, beside **Stop**, on any page.
 - If a TV operation is running, press **Stop** and review any unfinished-operation notice before quitting.
 - The app does not start automatically at login. Your saved data is retained when you quit.
 - An old foreground server may already occupy port 5050. Stop it in its original terminal before starting the packaged app; the launcher will not kill unrelated processes.

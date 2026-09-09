@@ -2,7 +2,7 @@
 
 Control Samsung displays locally using direct HTTPS IP commands. The web interface reads current settings from the TV, then applies your changes directly—without recording menu paths or counting verification passes.
 
-**v1.0.1 is the default on `main`.** It replaces the v0 menu-traversal GUI with direct IP control. Start with the [step-by-step beginner tutorial](docs/getting-started.md).
+**v1.0.2 is the default on `main`.** It replaces the v0 menu-traversal GUI with direct IP control. Start with the [step-by-step beginner tutorial](docs/getting-started.md).
 
 ## License
 
@@ -77,7 +77,7 @@ The [Releases page](https://github.com/whipstein/SamsungController/releases/late
 1. Download the correct archive and extract it completely. Copy the Mac app to Applications; keep Windows/Linux binaries together in the extracted folder.
 2. Double-click the app. It starts the local server **in the background**, waits for it, and opens the browser. No terminal window is needed.
 3. If the browser does not open, visit `http://127.0.0.1:5050`. Reopening the app reuses the running instance.
-4. **Closing the browser leaves the server running.** Use **Display → Quit app** to stop it; stop any active TV operation first. No login/startup service is installed.
+4. **Closing the browser leaves the server running.** Use **Quit app** at the very top, beside **Stop**, on any page; stop any active TV operation first. No login/startup service is installed.
 
 Platform notes:
 

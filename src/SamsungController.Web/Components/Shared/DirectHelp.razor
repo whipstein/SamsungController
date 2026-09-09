@@ -54,14 +54,14 @@
         else
         {
             <h3>Save, pair, and connect</h3>
-            <p>The downloadable app runs its local server in the background; closing the browser leaves it running. Reopen the app to return here. Use Quit app on Display to stop it. Stop any running TV operation first. It does not install a login/startup service.</p>
+            <p>The downloadable app runs its local server in the background; closing the browser leaves it running. Reopen the app to return here. Use Quit app at the very top, beside Stop, on any page to stop it. Stop any running TV operation first. It does not install a login/startup service.</p>
             <p>Add a display with its TV address and HTTPS IP Remote port. Saving changes only the local profile. Enable IP Remote in the TV's network expert settings, keep the TV on, select Pair, and accept the approval dialog on the TV. Connect reuses the saved token; Pair again requests new approval.</p>
             <p>Connect preloads all Menu sections and available calibration rows for the current input/picture mode, then opens Menu. It does not enable inactive modes. Loading can take a while; Stop cancels remaining requests. Missing or unsupported values are not replaced with defaults.</p>
             <h3>Certificates and connection recovery</h3>
             <p>Samsung TVs commonly use self-signed certificates. Prefer a trusted SHA-256 fingerprint, or explicitly allow an untrusted certificate for this endpoint only on your trusted LAN.</p>
             <p>HTTPS keep-alive reuses one connection where supported. The TV may close it; the next request reuses the pairing token. Connected reflects the latest successful check, not continuous monitoring.</p>
             <p><strong>Reset connection (keep pairing)</strong> closes the local HTTPS connection and checks the saved token with two ordinary queries. It sends no pairing request, batch, setting change, or calibration scan. Cached readings and unsent drafts are cleared; unfinished-operation originals are kept. Use Stop first if busy. A timeout does not prove an invalid token. If reset fails, inspect Communication log; reset cannot restart the TV's IP service or restore revoked permission.</p>
-            <p>On macOS, check Local Network permission for the app running the server (Terminal, editor, or ChatGPT), then restart that app/server after changing permission.</p>
+            <p>On macOS, check Local Network permission for SamsungController when using the installed app, or its hosting Terminal/editor when running from source, then quit and reopen that app/server after changing permission. A certificate-trust error means the display was reached; use Edit display → Certificate trust and timeouts to configure a verified SHA-256 fingerprint or explicitly allow that endpoint's untrusted certificate on your trusted LAN. Changing network permission cannot fix a certificate-trust error.</p>
         }
         <h3>Header shortcuts and remote</h3>
         <p>Home, Back, and Exit menu send explicit keys. They do not clear cached settings or guarantee a known menu position. Use Refresh state when you want updated readings. The right-edge double chevron opens the full-height remote without leaving your page. Close help or the remote with its Close button, Escape, or a click outside.</p>
