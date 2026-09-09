@@ -149,6 +149,9 @@ public sealed record IpMenuGrid(string Section, string ModeField, string Require
 {
     public string SelectorMethod => SelectorField + "Control";
     public string ModeMethod => ModeField + "Control";
+    // Explicit neutral targets from the bundled display definitions, not
+    // model-specific factory calibration values inferred from a TV query.
+    public int NominalValue => Section switch { "white20" => 0, "color" => 50, _ => throw new ArgumentException("Unknown calibration grid.") };
     public IEnumerable<IpMenuControl> Row(string value) => IpMenuCatalog.IndexedControls.Where(control => control.Section == Section && control.IndexValue == value);
 }
 

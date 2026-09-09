@@ -230,6 +230,8 @@ Stop, a failed adjustment, or a changed TV context discards unsent queued adjust
 
 Each 20pt percentage block and Custom color block has **RGB together − / +** buttons to adjust that block's Red, Green, and Blue by one while preserving their differences. They follow **On Apply / Immediately**, use the latest pending/queued values, and combine unsent clicks. Both buttons require all three channels to be available with valid numbers. If any channel reaches a limit, that direction is disabled for the group instead of clamping channels separately. Other blocks are unchanged.
 
+Use **Reset all** in the pinned toolbar on **20pt WB** or **Color** to reset the entire section's RGB values: **0** at every white-balance percentage (60 values), or **50** for every Custom color channel (18 values). These are nominal targets, not display-specific factory calibration queried from the TV. A confirmation shows the scope: **Stage reset** in On Apply mode changes only pending edits; **Reset now** in Immediately mode sends the section's reset with normal readback checks. Other settings and pending edits are preserved, and the WB switch/color-space mode is not changed. All rows must be loaded and enabled first. Stop or a failure during an immediate reset discards its remaining unsent targets without undoing delivered changes. This does not invoke a full picture/factory reset.
+
 Number boxes preserve partial edits such as `-` while you type a negative value.
 Complete the whole number before leaving the field to commit it. Invalid or
 out-of-range text stays editable and sends nothing to the TV.

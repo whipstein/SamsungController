@@ -64,6 +64,8 @@ public partial class DirectMenu
         catch (JSException) { }
         finally { SwitchingSection = false; }
         Section = section;
+        ResetSection = null;
+        ResetFeedback = null;
         ScrollSectionOnRender = true;
         LayoutFeedback = null;
         Error = null;

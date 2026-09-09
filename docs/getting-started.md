@@ -168,6 +168,7 @@ Choose **Picture**, **2pt WB**, **20pt WB**, **Color**, **Sound**, or **System**
 - Color presents fixed RGB controls for every color. Choose Custom in Color space and Apply to enable them.
 - Each 20pt percentage and Color block has **RGB together − / +** to adjust its three channels by one while preserving their differences. It follows On Apply / Immediately. If any channel reaches a limit, that direction is disabled for the group.
 - Apply leaves the last used percentage/color selected. Loading rows restores the original selector.
+- **Reset all** resets every RGB value in the selected calibration section to nominal: **0** for 20pt WB or **50** for Custom color. Confirm **Stage reset** to review before Apply, or **Reset now** in Immediately mode. All rows must be loaded and enabled. It replaces this section's unsent edits but leaves other settings and the WB/color-space mode unchanged; it is not a picture/factory reset.
 - Do not apply an input/picture-mode change together with dependent calibration changes.
 
 ## 8. Refresh deliberately

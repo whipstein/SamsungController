@@ -15,6 +15,8 @@
         <div class="direct-actions">
             <button type="button" class="toolbar-button" @onclick="RefreshAsync" disabled="@(!(Grid is null ? CanWork : CanLoadGrid))">Refresh section</button>
             <button type="button" class="toolbar-button" title="@(Grid is null ? "Available only in 20pt WB and Color" : "Reload all values in this section's fixed RGB rows")" @onclick="ReloadRowsAsync" disabled="@(Grid is null || !CanLoadGrid)">Reload all rows</button>
+            @if (Grid is { } resetGrid)
+            { <button type="button" class="toolbar-button danger-action" title="@(ResetDisabledReason ?? $"Reset all RGB values in this section to {resetGrid.NominalValue}")" @onclick="AskReset" disabled="@(ResetDisabledReason is not null)">Reset all</button> }
             <button type="button" class="primary-action" aria-label="@($"Apply {Snapshot.Menu.Pending.Count} pending")" @onclick="ApplyAsync" disabled="@(!CanApply)">Apply (@Snapshot.Menu.Pending.Count)</button>
             <button type="button" class="toolbar-button danger-action" @onclick="Controller.Cancel" disabled="@(!Snapshot.IsBusy)">Stop</button>
         </div>
@@ -25,6 +27,16 @@
             { <button type="button" class="@(Section == section.Id ? "active" : "")" aria-label="@section.Name" title="@section.Name" aria-pressed="@(Section == section.Id ? "true" : "false")" @onclick="() => SelectSectionAsync(section.Id)" disabled="@(Snapshot.IsBusy || LayoutSaving || SwitchingSection)">@SectionLabel(section)</button> }
         </nav>
     </div>
+    @if (ResetSection == Section && Grid is { } confirmGrid)
+    {
+        <section class="direct-reset-confirmation" aria-label="Confirm calibration reset">
+            <strong>Reset all @(confirmGrid.Section == "white20" ? "20pt white balance" : "Custom color") values?</strong>
+            <p>All @(confirmGrid.Values.Count * confirmGrid.Fields.Count) RGB values will target <strong>@confirmGrid.NominalValue</strong>. This replaces unsent edits in this section only, not other settings or the mode switch/dropdown.</p>
+            <p>@(Snapshot.Menu.Preferences.ApplyImmediately ? "Confirmation sends the reset to the TV now. Stop cancels unsent changes, but does not undo delivered ones." : "Confirmation stages the reset only. The TV stays unchanged until you select Apply.")</p>
+            <div class="direct-actions"><button type="button" class="toolbar-button danger-action" @onclick="ConfirmResetAsync" disabled="@(ResetDisabledReason is not null)">@(Snapshot.Menu.Preferences.ApplyImmediately ? "Reset now" : "Stage reset")</button><button type="button" class="toolbar-button" @onclick="CancelReset">Cancel reset</button></div>
+        </section>
+    }
+    @if (ResetFeedback is not null) { <p class="direct-reset-feedback" role="status">@ResetFeedback</p> }
 </section>
 @if (Error is not null) { <div class="notice danger" role="alert">@Error</div> }
 @if (!Snapshot.Menu.Connected) { <div class="notice"><strong>Display disconnected</strong><span>Connect to read current settings.</span><a href="/">Choose display →</a></div> }
@@ -160,6 +172,9 @@
     private IpMenuSnapshot DisplayMenu => QueueView ?? Snapshot.Menu;
     private string GridStatus => Snapshot.Menu.SelectorSession is { } session && session.Section == Section ? Snapshot.IsBusy ? Snapshot.Menu.Status : session.Message : "";
     private string? Error;
+    private string? ResetSection, ResetFeedback;
+    private string? ResetDisabledReason => !CanWork ? "Stop or finish the current TV operation, or connect to the display first."
+        : Grid is null ? "Select 20pt WB or Color." : Controller.MenuGridResetDisabledReason(Section);
     private bool ActionRunning;
     private bool CanWork => Snapshot.Menu.Connected && !Snapshot.IsBusy && !ActionRunning && Snapshot.RgbProbe?.NeedsRecovery != true;
     private bool CanLoadGrid => CanWork && Snapshot.Menu.Update?.NeedsReview != true && Snapshot.Menu.WhiteBalanceRead?.NeedsRestore != true
@@ -189,6 +204,9 @@
     private void Refresh() => _ = InvokeAsync(() =>
     {
         var next = Controller.GetSnapshot();
+        if (next.IsBusy || Snapshot.Menu.SessionId != next.Menu.SessionId || Snapshot.Menu.ValuesRevision != next.Menu.ValuesRevision
+            || Snapshot.Menu.Preferences.ApplyImmediately != next.Menu.Preferences.ApplyImmediately)
+        { ResetSection = null; ResetFeedback = null; }
         if (next.Menu.NudgeQueue is not null) QueueView ??= Snapshot.Menu.Connected ? Snapshot.Menu : next.Menu;
         else QueueView = null;
         if (Snapshot.Menu.SessionId != next.Menu.SessionId || Snapshot.Menu.ValuesRevision != next.Menu.ValuesRevision) Edits.Clear();
@@ -244,9 +262,10 @@
         @if (!control.IsIndexed)
         { <details class="direct-control-help"><summary>About this setting</summary><p>@(control.Command.ManagedPictureControl is not null ? "Applies your target directly, then queries the result. Query before changes controls whether a fresh baseline is read first." : control.Command.Notes.Replace("Experimental; display/input/mode support must be tested. ", "", StringComparison.Ordinal))</p><code>@control.Method</code><p>@control.RangeSource</p></details> }
     </article>;
-    private void Preview(IpMenuControl control, ChangeEventArgs args) { Edits[control.Id] = args.Value?.ToString() ?? ""; }
+    private void Preview(IpMenuControl control, ChangeEventArgs args) { ResetFeedback = null; ResetSection = null; Edits[control.Id] = args.Value?.ToString() ?? ""; }
     private Task CommitAsync(IpMenuControl control, string text)
     {
+        ResetFeedback = null; ResetSection = null;
         if (control.Parameter.Kind == IpRemoteParameterKind.Integer && Snapshot.Menu.Preferences.ApplyImmediately)
             return QueueNumericAsync(control, () => Controller.QueueMenuValueAsync(control.Id, text));
         return GuardAsync(async () =>
@@ -259,6 +278,7 @@
     private Task SwitchAsync(IpMenuControl control, ChangeEventArgs args) => CommitAsync(control, control.Parameter.Choices.Single(choice => choice.EndsWith(args.Value is true ? "On" : "Off", StringComparison.OrdinalIgnoreCase)));
     private async Task NudgeAsync(IpMenuControl control, int amount)
     {
+        ResetFeedback = null; ResetSection = null;
         if (!Snapshot.Menu.Preferences.ApplyImmediately)
         {
             if (int.TryParse(Target(control), out var value)) await CommitAsync(control, Math.Clamp(value + amount, control.Parameter.Minimum, control.Parameter.Maximum).ToString(CultureInfo.InvariantCulture));
@@ -276,7 +296,7 @@
     {
         // Do not set ActionRunning: later numeric edits must be able to enqueue
         // while this event awaits its confirmed result. The service owns the gate.
-        Error = null;
+        Error = null; ResetFeedback = null; ResetSection = null;
         try
         {
             var operation = enqueue(); // Validation/enqueue is synchronous; preserve text if rejected.
@@ -294,6 +314,23 @@
     }
     private Task RefreshAsync() => GuardAsync(async () => { Edits.Clear(); if (Section == "white20") await Controller.RefreshInactiveWhiteBalanceAsync(); else await ReadSectionAsync(Section); });
     private Task ReloadRowsAsync() => Grid is null ? Task.CompletedTask : RefreshAsync();
+    private void AskReset() { ResetSection = Section; ResetFeedback = null; }
+    private void CancelReset() { ResetSection = null; }
+    private Task ConfirmResetAsync()
+    {
+        if (ResetSection != Section || Grid is null) return Task.CompletedTask;
+        var grid = Grid;
+        var immediate = Snapshot.Menu.Preferences.ApplyImmediately;
+        ResetSection = null;
+        return GuardAsync(async () =>
+        {
+            var count = await Controller.ResetMenuGridAsync(grid.Section);
+            foreach (var control in grid.Values.SelectMany(grid.Row)) Edits.Remove(control.Id);
+            ResetFeedback = count == 0 ? $"All RGB values in this section are already {grid.NominalValue}. Nothing was sent."
+                : immediate ? $"Reset {count} RGB values to {grid.NominalValue} and confirmed by readback."
+                : $"Staged {count} RGB values at {grid.NominalValue}. Select Apply to send them, or Discard to cancel.";
+        });
+    }
     private Task RestoreWhiteBalanceAsync() => GuardAsync(Controller.RestoreWhiteBalanceReadAsync);
     private Task CloseWhiteBalanceReviewAsync() => GuardAsync(Controller.CloseWhiteBalanceReadReviewAsync);
     private Task ApplyAsync() => GuardAsync(async () => { await Controller.ApplyMenuAsync(); Edits.Clear(); if (!Controller.GetSnapshot().Menu.SectionsRead.ContainsKey(Section)) await ReadSectionAsync(Section); });
@@ -303,10 +340,10 @@
         foreach (var control in grid.Row(value)) Edits.Remove(control.Id);
     });
     private Task RefreshAfterModeAsync(IpMenuControl control) => !Controller.GetSnapshot().Menu.SectionsRead.ContainsKey(control.Section) ? ReadSectionAsync(control.Section) : Task.CompletedTask;
-    private Task SetImmediateAsync(ChangeEventArgs args) => GuardAsync(() => Controller.SaveMenuPreferencesAsync(args.Value is true || args.Value?.ToString() == "immediate"));
-    private Task SetWaitAsync() => GuardAsync(() => Controller.SaveMenuPreferencesAsync(false));
+    private Task SetImmediateAsync(ChangeEventArgs args) { CancelReset(); return GuardAsync(() => Controller.SaveMenuPreferencesAsync(args.Value is true || args.Value?.ToString() == "immediate")); }
+    private Task SetWaitAsync() { CancelReset(); return GuardAsync(() => Controller.SaveMenuPreferencesAsync(false)); }
     private Task SetQueryBeforeChangeAsync(ChangeEventArgs args) => GuardAsync(() => Controller.SaveMenuPreferencesAsync(Snapshot.Menu.Preferences.ApplyImmediately, args.Value is true));
-    private void Discard() { try { Controller.DiscardMenuChanges(); Edits.Clear(); Error = null; } catch (InvalidOperationException error) { Error = error.Message; } }
+    private void Discard() { try { Controller.DiscardMenuChanges(); Edits.Clear(); Error = null; ResetFeedback = null; ResetSection = null; } catch (InvalidOperationException error) { Error = error.Message; } }
     private Task CloseReviewAsync() => GuardAsync(Controller.CloseMenuUpdateReviewAsync);
     private async Task GuardAsync(Func<Task> action)
     {
