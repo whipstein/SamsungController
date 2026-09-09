@@ -64,8 +64,18 @@ with tempfile.TemporaryDirectory(prefix="samsung-installer-test-") as temporary:
             assert result.returncode != 0, "Setup must refuse to modify a running application"
 
     def uninstall(succeeds=True):
-        result = subprocess.run([str(installed / "unins000.exe"), *common, f"/LOG={root / 'uninstall.log'}"], env=environment, timeout=90)
+        # Inno's uninstaller launches a temporary copy and can return before that
+        # child releases its files/log. PowerShell -Wait waits for the whole tree.
+        script = "$p=Start-Process -FilePath $env:SAMSUNG_TEST_UNINSTALLER -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',('/LOG=\"'+$env:SAMSUNG_TEST_UNINSTALL_LOG+'\"')) -Wait -PassThru; exit $p.ExitCode"
+        result = subprocess.run(["powershell.exe", "-NoProfile", "-Command", script],
+            env={**environment, "SAMSUNG_TEST_UNINSTALLER": str(installed / "unins000.exe"),
+                 "SAMSUNG_TEST_UNINSTALL_LOG": str(root / "uninstall.log")}, timeout=90)
         assert (result.returncode == 0) == succeeds, "Uninstall must refuse while the app is running and succeed after Quit"
+        if succeeds:
+            deadline = time.monotonic() + 20
+            while (installed / "unins000.exe").exists() and time.monotonic() < deadline:
+                time.sleep(0.1)
+            assert not (installed / "unins000.exe").exists(), "Uninstaller did not finish cleaning up"
 
     def verify_files():
         for original in source.rglob("*"):
@@ -78,7 +88,9 @@ with tempfile.TemporaryDirectory(prefix="samsung-installer-test-") as temporary:
             script = "$s=(New-Object -ComObject WScript.Shell).CreateShortcut($env:SAMSUNG_TEST_SHORTCUT); $s.TargetPath"
             target = subprocess.check_output(["powershell.exe", "-NoProfile", "-Command", script], text=True,
                 env={**environment, "SAMSUNG_TEST_SHORTCUT": str(shortcut)}).strip()
-            assert Path(target) == installed / LAUNCHER, "Shortcut must use the browser-opening launcher"
+            # Windows resolves RUNNER~1 in TEMP to its long name in .lnk targets.
+            # Compare actual files, not equivalent but differently spelled paths.
+            assert Path(target).samefile(installed / LAUNCHER), f"Shortcut must use the browser-opening launcher: {target}"
 
     setup("install")
     try:

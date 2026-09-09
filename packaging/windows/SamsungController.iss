@@ -32,6 +32,10 @@ RestartApplications=no
 ; Never interrupt an adjustment or forcibly terminate a server to update files.
 AppMutex=Local\SamsungController.Server.Running
 
+[Messages]
+SetupAppRunningError=%1 is still running.%n%nUse Quit app at the top of its webpage, then click OK to continue. Closing the browser alone does not stop the server. Click Cancel to leave Setup.
+UninstallAppRunningError=%1 is still running.%n%nUse Quit app at the top of its webpage, then click OK to continue. Closing the browser alone does not stop the server. Click Cancel to leave Uninstall.
+
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; Flags: unchecked
 

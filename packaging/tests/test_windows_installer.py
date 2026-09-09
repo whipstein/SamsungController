@@ -67,6 +67,7 @@ class WindowsInstallerTests(unittest.TestCase):
         self.assertIn("CloseApplications=no", script)
         self.assertIn("RestartApplications=no", script)
         self.assertIn(r"AppMutex=Local\SamsungController.Server.Running", script)
+        self.assertIn("Use Quit app at the top of its webpage", script)
         self.assertNotIn("[UninstallDelete]", script)
         self.assertNotIn("[InstallDelete]", script)
         self.assertNotIn("[UninstallRun]", script)
