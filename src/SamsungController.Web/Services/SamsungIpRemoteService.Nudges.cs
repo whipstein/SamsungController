@@ -47,42 +47,56 @@ public sealed partial class SamsungIpRemoteService
 
     private Task QueueMenuAdjustment(IpMenuControl control, Func<int, int> requestedTarget)
     {
-        var controlId = control.Id;
-        MenuNudgeSession session;
-        MenuNudgeEntry entry;
-        var start = false;
+        MenuNudgeSession? start;
+        Task completion;
         lock (_sync)
         {
-            if (!_snapshot.Menu.Preferences.ApplyImmediately) throw new InvalidOperationException("Use Apply immediately to queue numeric adjustments.");
             if (MenuNudgeDisabledReason(control) is { } reason) throw new InvalidOperationException(reason);
-            if (_menuNudges is null)
-            {
-                EnsureMenuWritesAllowed();
-                _menuNudges = new(_snapshot.Menu);
-                start = true;
-            }
-            session = _menuNudges;
-            var original = session.Expected.GetValueOrDefault(controlId, session.Baseline.Value(control)!.GetValue<int>());
-            var target = requestedTarget(original);
-            if (target == original)
-            {
-                if (start) _menuNudges = null;
-                return Task.CompletedTask;
-            }
-            entry = session.Entries.FirstOrDefault(item => !item.Sent && item.Draft.ControlId == controlId)!;
+            (completion, start) = QueueMenuTargetsLocked([(control, requestedTarget(MenuNudgeOriginal(control)))]);
+        }
+        Changed?.Invoke();
+        if (start is not null) _ = RunMenuNudgesAsync(start);
+        return completion;
+    }
+
+    private int MenuNudgeOriginal(IpMenuControl control) => _menuNudges is { } session
+        ? session.Expected.GetValueOrDefault(control.Id, session.Baseline.Value(control)!.GetValue<int>())
+        : _snapshot.Menu.Value(control)!.GetValue<int>();
+
+    // All targets are validated/enqueued before starting the worker. A grouped
+    // click therefore cannot send red before green/blue have even been accepted.
+    private (Task Completion, MenuNudgeSession? Start) QueueMenuTargetsLocked(IReadOnlyList<(IpMenuControl Control, int Target)> targets)
+    {
+        if (!_snapshot.Menu.Preferences.ApplyImmediately) throw new InvalidOperationException("Use Apply immediately to queue numeric adjustments.");
+        foreach (var (control, _) in targets)
+            if (MenuNudgeDisabledReason(control) is { } reason) throw new InvalidOperationException(reason);
+        var changes = targets.Where(item => item.Target != MenuNudgeOriginal(item.Control)).ToArray();
+        if (changes.Length == 0) return (Task.CompletedTask, null);
+        var session = _menuNudges ?? new MenuNudgeSession(_snapshot.Menu);
+        if (session.Entries.Count + changes.Count(item => !session.Entries.Any(entry => !entry.Sent && entry.Draft.ControlId == item.Control.Id)) > MaximumQueuedNudges)
+            throw new InvalidOperationException("The adjustment queue is full. Wait for some changes to finish.");
+        if (_menuNudges is null) EnsureMenuWritesAllowed();
+        var drafts = changes.Select(item => new IpMenuDraft(item.Control.Id, JsonValue.Create(item.Target)!, JsonValue.Create(MenuNudgeOriginal(item.Control))!,
+            MenuPrerequisites(session.Baseline, item.Control, forEditing: true), session.Baseline.Input!, session.Baseline.PictureMode!)).ToArray();
+        var start = _menuNudges is null ? session : null;
+        _menuNudges = session;
+        var completions = new List<Task>();
+        foreach (var draft in drafts)
+        {
+            var controlId = draft.ControlId;
+            var target = draft.Target.GetValue<int>();
+            var entry = session.Entries.FirstOrDefault(item => !item.Sent && item.Draft.ControlId == controlId);
             if (entry is null)
             {
-                entry = new(new(controlId, JsonValue.Create(target)!, JsonValue.Create(original)!,
-                    MenuPrerequisites(session.Baseline, control, forEditing: true), session.Baseline.Input!, session.Baseline.PictureMode!));
+                entry = new(draft);
                 session.Entries.Add(entry);
             }
             else entry.Draft = entry.Draft with { Target = JsonValue.Create(target)! };
             session.Expected[controlId] = target;
-            PublishNudgesLocked(session);
+            completions.Add(entry.Completion.Task);
         }
-        Changed?.Invoke();
-        if (start) _ = RunMenuNudgesAsync(session);
-        return entry.Completion.Task;
+        PublishNudgesLocked(session);
+        return (completions.Count == 1 ? completions[0] : Task.WhenAll(completions), start);
     }
 
     private async Task RunMenuNudgesAsync(MenuNudgeSession session)

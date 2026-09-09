@@ -509,6 +509,149 @@ public sealed class IpMenuNudgeTests
         Assert.Equal(40, fixture.Display.Contrast);
     }
 
+    [Theory]
+    [InlineData("white20", false)]
+    [InlineData("white20", true)]
+    [InlineData("color", false)]
+    [InlineData("color", true)]
+    public async Task TogetherButtonsFollowApplyModeAndCoalesceWhileQueued(string section, bool immediate)
+    {
+        using var fixture = await ReadyAsync();
+        var grid = await LoadGridAsync(fixture, section);
+        var row = grid.Row(grid.Values[0]).ToArray();
+        await fixture.Service.SaveMenuPreferencesAsync(immediate);
+        await using var services = Services(fixture);
+        await using var renderer = new IpRemotePageTests.IpPageRenderer(services, typeof(DirectMenu));
+        await renderer.StartAsync();
+        await renderer.ClickAriaButtonAsync(IpMenuCatalog.Sections.Single(item => item.Id == section).Name);
+        using var hold = HoldFirstWrite(fixture, row[0].Method);
+        var increase = $"Increase {grid.Values[0]} RGB together";
+        var first = renderer.ClickAriaButtonAsync(increase);
+        if (immediate)
+        {
+            await hold.Entered.Task.WaitAsync(Timeout);
+            Assert.Equal(3, fixture.Service.GetSnapshot().Menu.NudgeQueue!.Values.Count);
+        }
+        else await first;
+        await renderer.AssertElementDisabledAsync("button", increase, false);
+        foreach (var control in row) await renderer.AssertTargetAsync(control.Name + " value", 11);
+        var rest = Enumerable.Range(0, 4).Select(_ => renderer.ClickAriaButtonAsync(increase)).ToArray();
+        foreach (var control in row) await renderer.AssertTargetAsync(control.Name + " value", 15);
+        if (immediate) Assert.Equal(4, fixture.Service.GetSnapshot().Menu.NudgeQueue!.Values.Count);
+        hold.Release.TrySetResult();
+        await Task.WhenAll(rest.Append(first)).WaitAsync(Timeout);
+        await IdleAsync(fixture.Service);
+        if (immediate)
+        {
+            Assert.All(grid.Fields, field => Assert.Equal(15, fixture.GridValues[section + "/" + grid.Values[0]][field]!.GetValue<int>()));
+            Assert.Equal(new[] { 11, 15 }, fixture.Writes.Where(request => request["method"]!.ToString() == row[0].Method).Select(request => request["params"]![row[0].Field]!.GetValue<int>()));
+            Assert.Single(fixture.Writes, request => request["method"]!.ToString() == row[1].Method);
+            Assert.Single(fixture.Writes, request => request["method"]!.ToString() == row[2].Method);
+            Assert.Single(fixture.Writes, request => request["method"]!.ToString() == grid.SelectorMethod);
+            Assert.Empty(fixture.Display.Batches);
+            Assert.True(Assert.Single(fixture.Service.GetSnapshot().Menu.Update!.RgbGroups).Verified);
+        }
+        else
+        {
+            Assert.Empty(fixture.Writes);
+            Assert.Equal(3, fixture.Service.GetSnapshot().Menu.Pending.Count);
+            Assert.All(fixture.Service.GetSnapshot().Menu.Pending.Values, draft => Assert.Equal(15, draft.Target.GetValue<int>()));
+        }
+        Assert.All(grid.Fields, field => Assert.Equal(10, fixture.GridValues[section + "/" + grid.Values[1]][field]!.GetValue<int>()));
+    }
+
+    [Theory]
+    [InlineData("white20")]
+    [InlineData("color")]
+    public async Task TogetherPreservesDraftDifferencesAndLeavesOtherRowsPending(string section)
+    {
+        using var fixture = await ReadyAsync();
+        var grid = await LoadGridAsync(fixture, section);
+        var row = grid.Row(grid.Values[0]).ToArray();
+        var other = grid.Row(grid.Values[1]).First();
+        await fixture.Service.SaveMenuPreferencesAsync(false);
+        fixture.Service.StageMenuValue(row[1].Id, "12");
+        fixture.Service.StageMenuValue(other.Id, "20");
+        await using var services = Services(fixture);
+        await using var renderer = new IpRemotePageTests.IpPageRenderer(services, typeof(DirectMenu));
+        await renderer.StartAsync();
+        await renderer.ClickAriaButtonAsync(IpMenuCatalog.Sections.Single(item => item.Id == section).Name);
+        var increase = $"Increase {grid.Values[0]} RGB together";
+        var decrease = $"Decrease {grid.Values[0]} RGB together";
+        await renderer.ChangeAsync(row[0].Name + " value", "-");
+        await renderer.AssertElementDisabledAsync("button", increase, true);
+        await renderer.AssertElementDisabledAsync("button", decrease, true);
+        await renderer.ChangeAsync(row[0].Name + " value", row[0].Parameter.Maximum.ToString());
+        await renderer.AssertElementDisabledAsync("button", increase, true);
+        await renderer.AssertElementDisabledAsync("button", decrease, false);
+        await renderer.ChangeAsync(row[0].Name + " value", "8");
+        await renderer.ClickAriaButtonAsync(decrease);
+        Assert.Equal(new[] { 7, 11, 9 }, row.Select(control => fixture.Service.GetSnapshot().Menu.Pending[control.Id].Target.GetValue<int>()));
+        Assert.Empty(fixture.Writes);
+        await fixture.Service.ApplyMenuRowAsync(section, grid.Values[0]);
+        Assert.Equal(other.Id, Assert.Single(fixture.Service.GetSnapshot().Menu.Pending).Key);
+        Assert.Equal(new[] { 7, 11, 9 }, grid.Fields.Select(field => fixture.GridValues[section + "/" + grid.Values[0]][field]!.GetValue<int>()));
+    }
+
+    [Theory]
+    [InlineData("white20", false, -1)]
+    [InlineData("white20", false, 1)]
+    [InlineData("white20", true, -1)]
+    [InlineData("white20", true, 1)]
+    [InlineData("color", false, -1)]
+    [InlineData("color", false, 1)]
+    [InlineData("color", true, -1)]
+    [InlineData("color", true, 1)]
+    public async Task TogetherRejectsWholeClickAtAnyChannelLimit(string section, bool immediate, int delta)
+    {
+        using var fixture = await ReadyAsync();
+        var grid = await LoadGridAsync(fixture, section);
+        var blue = grid.Row(grid.Values[0]).Last();
+        await fixture.Service.SaveMenuPreferencesAsync(immediate);
+        var drafts = new Dictionary<string, string> { [blue.Id] = (delta < 0 ? blue.Parameter.Minimum : blue.Parameter.Maximum).ToString() };
+        Assert.Contains("limit", fixture.Service.MenuRowNudgeDisabledReason(section, grid.Values[0], delta, drafts));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.NudgeMenuRowAsync(section, grid.Values[0], delta, drafts));
+        Assert.Empty(fixture.Display.Requests);
+        Assert.Empty(fixture.Service.GetSnapshot().Menu.Pending);
+        Assert.Null(fixture.Service.GetSnapshot().Menu.NudgeQueue);
+        Assert.Null(fixture.Service.MenuRowNudgeDisabledReason(section, grid.Values[0], -delta, drafts));
+    }
+
+    [Theory]
+    [InlineData("white20", "mode")]
+    [InlineData("color", "mode")]
+    [InlineData("white20", "missing")]
+    [InlineData("color", "missing")]
+    public async Task TogetherRequiresEveryChannelToBeAvailable(string section, string unavailable)
+    {
+        using var fixture = await ReadyAsync();
+        var grid = await LoadGridAsync(fixture, section);
+        if (unavailable == "mode") fixture.Values[grid.ModeField] = section == "white20" ? "Off" : "Auto";
+        else fixture.GridValues[section + "/" + grid.Values[0]][grid.Fields[2]] = null;
+        await fixture.Service.RefreshMenuGridAsync(section);
+        fixture.Display.Requests.Clear();
+        Assert.NotNull(fixture.Service.MenuRowNudgeDisabledReason(section, grid.Values[0], 1));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.NudgeMenuRowAsync(section, grid.Values[0], 1));
+        Assert.Empty(fixture.Display.Requests);
+        Assert.Null(fixture.Service.GetSnapshot().Menu.NudgeQueue);
+    }
+
+    [Fact]
+    public async Task StopSettlesEveryChannelOfTogetherClicks()
+    {
+        using var fixture = await ReadyAsync();
+        var grid = await LoadGridAsync(fixture, "white20");
+        using var hold = HoldFirstWrite(fixture, grid.Row("5%").First().Method);
+        var first = fixture.Service.NudgeMenuRowAsync("white20", "5%", 1);
+        await hold.Entered.Task.WaitAsync(Timeout);
+        var second = fixture.Service.NudgeMenuRowAsync("white20", "5%", 1);
+        fixture.Service.Cancel();
+        await Assert.ThrowsAnyAsync<Exception>(() => Task.WhenAll(first, second).WaitAsync(Timeout));
+        await IdleAsync(fixture.Service);
+        Assert.True(first.IsFaulted && second.IsFaulted);
+        Assert.Null(fixture.Service.GetSnapshot().Menu.NudgeQueue);
+    }
+
     private static ServiceProvider Services(MenuFixture fixture) => new ServiceCollection().AddLogging().AddSingleton(fixture.Service)
         .AddSingleton<IJSRuntime>(new IpRemotePageTests.DownloadJavaScript()).BuildServiceProvider();
 

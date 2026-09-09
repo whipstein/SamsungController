@@ -166,6 +166,7 @@ Choose **Picture**, **2pt WB**, **20pt WB**, **Color**, **Sound**, or **System**
 - 2pt WB groups RGB gains and offsets into two columns.
 - 20pt WB presents all percentage blocks together. Enable its switch and Apply before editing. On Apply mode includes an Apply button for each percentage.
 - Color presents fixed RGB controls for every color. Choose Custom in Color space and Apply to enable them.
+- Each 20pt percentage and Color block has **RGB together − / +** to adjust its three channels by one while preserving their differences. It follows On Apply / Immediately. If any channel reaches a limit, that direction is disabled for the group.
 - Apply leaves the last used percentage/color selected. Loading rows restores the original selector.
 - Do not apply an input/picture-mode change together with dependent calibration changes.
 

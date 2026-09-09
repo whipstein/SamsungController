@@ -144,8 +144,12 @@ html { scrollbar-gutter:stable; }
 .direct-indexed { margin-top:24px; }
 .direct-indexed-rows { display:grid; gap:10px; }
 .direct-indexed-row { border:1px solid var(--line-strong); border-radius:8px; padding:12px; background:var(--surface); }
-.direct-indexed-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
+.direct-indexed-heading { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
 .direct-indexed-heading > h3 { margin:0; color:var(--cyan); font-size:20px; font-weight:650; }
+.direct-indexed-actions { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+.direct-rgb-nudge { display:flex; align-items:center; gap:6px; white-space:nowrap; }
+.direct-rgb-nudge > span { font-size:13px; font-weight:600; margin-right:2px; }
+.direct-rgb-nudge > button { width:36px; min-height:36px; padding:4px; font-size:20px; line-height:1; }
 .direct-indexed-channels { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
 .direct-indexed-channels .direct-control { padding:10px; }
 .direct-indexed-channels .direct-control-heading { margin-bottom:8px; }

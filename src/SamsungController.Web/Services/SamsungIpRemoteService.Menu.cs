@@ -115,18 +115,26 @@ public sealed partial class SamsungIpRemoteService
         var control = IpMenuCatalog.Get(controlId);
         var target = IpMenuCatalog.ParseTarget(control, text);
         lock (_sync)
+            StageMenuValuesLocked([(control, target)]);
+        Changed?.Invoke();
+    }
+
+    // Validate into a private copy before publishing any part of a grouped edit.
+    private void StageMenuValuesLocked(IReadOnlyList<(IpMenuControl Control, JsonNode Target)> targets)
+    {
+        var menu = _snapshot.Menu;
+        var pending = new Dictionary<string, IpMenuDraft>(menu.Pending);
+        foreach (var (control, target) in targets)
         {
+            var controlId = control.Id;
             if (MenuControlDisabledReason(control) is { } reason) throw new InvalidOperationException(reason);
-            var menu = _snapshot.Menu;
-            var pending = new Dictionary<string, IpMenuDraft>(menu.Pending);
             if (control.RequiresSeparateApply && pending.Keys.Any(id => id != controlId)
                 || pending.Values.Any(draft => draft.ControlId != controlId && IpMenuCatalog.Get(draft.ControlId).RequiresSeparateApply))
                 throw new InvalidOperationException("Apply or discard other pending changes before changing the input, mode, interval or color selector.");
             if (EquivalentCommandValue(menu.Value(control), target)) pending.Remove(controlId);
             else pending[controlId] = new(controlId, target, menu.Value(control)!.DeepClone(), MenuPrerequisites(menu, control, forEditing: true), menu.Input ?? "", menu.PictureMode ?? "");
-            _snapshot = _snapshot with { Menu = menu with { Pending = pending } };
         }
-        Changed?.Invoke();
+        _snapshot = _snapshot with { Menu = menu with { Pending = pending } };
     }
 
     public void DiscardMenuChanges()

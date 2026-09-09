@@ -228,6 +228,8 @@ Stop, a failed adjustment, or a changed TV context discards unsent queued adjust
 
 **Query first** (Query before changes) is also in the pinned toolbar and defaults to On. Turn it Off for faster adjustments using the last successfully read values, including untouched 2-point/RGB channels; the toolbar shows **Cached** as a reminder. No pre-change values or context are reread; a moved selector is still confirmed, and post-change readback/context checks remain enabled. Missing values never become defaults. Off assumes no other changes: refresh after using a remote, changing the signal, or making outside adjustments. Whether selectors are isolated between controllers is unverified. Saved recovery originals are labeled as last known values when pre-change queries were Off. Both preferences survive restart; neither changes the TV when toggled.
 
+Each 20pt percentage block and Custom color block has **RGB together − / +** buttons to adjust that block's Red, Green, and Blue by one while preserving their differences. They follow **On Apply / Immediately**, use the latest pending/queued values, and combine unsent clicks. Both buttons require all three channels to be available with valid numbers. If any channel reaches a limit, that direction is disabled for the group instead of clamping channels separately. Other blocks are unchanged.
+
 Number boxes preserve partial edits such as `-` while you type a negative value.
 Complete the whole number before leaving the field to commit it. Invalid or
 out-of-range text stays editable and sends nothing to the TV.

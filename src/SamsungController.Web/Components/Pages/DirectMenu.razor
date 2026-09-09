@@ -99,8 +99,18 @@
                 {
                     <section class="direct-indexed-row" @key="value">
                         <div class="direct-indexed-heading"><h3>@value</h3>
+                            <div class="direct-indexed-actions">
+                                <div class="direct-rgb-nudge" role="group" aria-label="@($"Adjust {value} RGB together")">
+                                    <span>RGB together</span>
+                                    @foreach (var delta in new[] { -1, 1 })
+                                    {
+                                        var reason = RowNudgeDisabledReason(grid, value, delta);
+                                        <button type="button" class="toolbar-button" aria-label="@($"{(delta < 0 ? "Decrease" : "Increase")} {value} RGB together")" title="@(reason ?? "Adjust Red, Green, and Blue together by one, preserving their differences")" @onclick="() => NudgeRowAsync(grid, value, delta)" disabled="@(reason is not null)">@(delta < 0 ? "−" : "+")</button>
+                                    }
+                                </div>
                             @if (grid.Section == "white20" && !Snapshot.Menu.Preferences.ApplyImmediately)
                             { <button class="toolbar-button" aria-label="@($"Apply {value} white balance")" @onclick="() => ApplyRowAsync(grid, value)" disabled="@(!CanApplyRow(grid, value))">Apply @RowPendingCount(grid, value) pending</button> }
+                            </div>
                         </div>
                         <div class="direct-indexed-channels">@foreach (var control in grid.Row(value).Where(IsVisible)) { @ControlCard(control) }</div>
                     </section>
@@ -257,6 +267,12 @@
         await QueueNumericAsync(control, () => Controller.QueueMenuNudgeAsync(control.Id, amount));
     }
     private async Task QueueNumericAsync(IpMenuControl control, Func<Task> enqueue)
+        => await QueueNumericAsync([control], enqueue);
+    private string? RowNudgeDisabledReason(IpMenuGrid grid, string value, int delta) => ActionRunning ? "A TV request is running."
+        : Controller.MenuRowNudgeDisabledReason(grid.Section, value, delta, Edits);
+    private Task NudgeRowAsync(IpMenuGrid grid, string value, int delta) => QueueNumericAsync(grid.Row(value),
+        () => Controller.NudgeMenuRowAsync(grid.Section, value, delta, Edits));
+    private async Task QueueNumericAsync(IEnumerable<IpMenuControl> controls, Func<Task> enqueue)
     {
         // Do not set ActionRunning: later numeric edits must be able to enqueue
         // while this event awaits its confirmed result. The service owns the gate.
@@ -264,7 +280,7 @@
         try
         {
             var operation = enqueue(); // Validation/enqueue is synchronous; preserve text if rejected.
-            Edits.Remove(control.Id);
+            foreach (var control in controls) Edits.Remove(control.Id);
             Snapshot = Controller.GetSnapshot();
             await operation; // Never clear a newer drag/text preview when this older edit finishes.
         }
