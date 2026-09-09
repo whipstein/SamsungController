@@ -10,6 +10,7 @@ internal static class DesktopLauncher
 {
     public static async Task<int> RunAsync(string[] args)
     {
+        using var installationGuard = DesktopFiles.AcquireWindowsInstallationGuard();
         var showBrowser = !args.Contains("--no-browser", StringComparer.Ordinal);
         try
         {
@@ -18,7 +19,7 @@ internal static class DesktopLauncher
             {
                 if (args[index] == "--port" && index + 1 < args.Length && int.TryParse(args[++index], out port)) continue;
                 if (args[index] is "--no-browser" or "--stop" or "--wait-for-exit") continue;
-                throw new ArgumentException("Usage: SamsungController.App [--port 5050] [--no-browser] [--stop]");
+                throw new ArgumentException("Usage: launcher [--port 5050] [--no-browser] [--stop]");
             }
             var address = DesktopFiles.Address(port);
             using var client = new HttpClient(new SocketsHttpHandler { UseProxy = false, AllowAutoRedirect = false }) { BaseAddress = address, Timeout = TimeSpan.FromSeconds(2) };
@@ -27,8 +28,7 @@ internal static class DesktopLauncher
             var existing = await ProbeAsync(client);
             if (existing is not null)
             {
-                CheckExisting(existing);
-                if (showBrowser) Open(address.ToString());
+                DesktopBrowser.OpenReady(existing, address, showBrowser, Open);
                 return 0;
             }
             var executable = Path.Combine(AppContext.BaseDirectory, "SamsungController.Web" + (OperatingSystem.IsWindows() ? ".exe" : ""));
@@ -45,9 +45,7 @@ internal static class DesktopLauncher
                 var status = await ProbeAsync(client);
                 if (status is not null)
                 {
-                    CheckExisting(status);
-                    if (status.ProcessId != server.Id) throw new InvalidOperationException("Another server acquired this port. No processes were stopped. Quit the existing server and retry.");
-                    if (showBrowser) Open(address.ToString());
+                    DesktopBrowser.OpenReady(status, address, showBrowser, Open, server.Id);
                     // The native Mac bundle stays alive as the server's responsible
                     // application. Release the startup lock before waiting so reopen
                     // and --stop can proceed. Other platforms retain detached startup.
@@ -77,11 +75,6 @@ internal static class DesktopLauncher
             }
             return 1;
         }
-    }
-    private static void CheckExisting(DesktopStatus status)
-    {
-        if (status.Product != DesktopFiles.Product || !status.Managed || status.Version != DesktopFiles.Version)
-            throw new InvalidOperationException("A different or foreground server is already using this address. Close it before starting this application. No process was stopped.");
     }
     private static async Task<FileStream> LockAsync(int port)
     {

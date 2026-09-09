@@ -1,6 +1,13 @@
-## SamsungController v1.0.5
+## SamsungController v1.0.6
 
 ### Changes in this patch
+
+- Windows now includes **per-user setup.exe installers** for x64 and Arm64 alongside the portable ZIPs. Setup adds a Start-menu entry, offers a desktop shortcut, and can launch the app when finished. Uninstall keeps saved profiles, pairing credentials, and settings.
+- The portable Windows launcher is now **00 - Start SamsungController Server.exe**, first among files when sorted by name. It starts the server in the background and automatically opens the default browser after readiness. The optional foreground server and CLI remain available.
+- Setup and Uninstall refuse while the new-version launcher/server is running; no adjustment is interrupted or process forcibly terminated. Quit older versions manually before upgrading.
+- Added automated coverage for browser opening, portable launcher naming, and native Windows install/upgrade/uninstall. Updated setup and usage guidance. No separate .NET runtime or administrator privileges are required for the Windows packages.
+
+### Included from v1.0.5
 
 - **Reset all** in the pinned toolbar on **20pt WB** and **Color** resets the entire section's RGB values to nominal: **0** at every white-balance percentage (60 values), or **50** for every Custom color channel (18 values). These are explicit nominal targets, not display-specific factory calibration or a full picture/factory reset.
 - The confirmation offers **Stage reset** in **On Apply** mode (no TV writes until Apply) or **Reset now** in **Immediately** mode. It replaces the selected section's unsent edits while preserving unrelated settings and pending edits. The white-balance switch and color-space mode are not changed.
@@ -46,7 +53,7 @@ Direct IP control is now the default interface on **main**, replacing the v0 men
 - Native launchable, self-contained apps for Windows, macOS, and Linux on x64 and Arm64. The local server runs in the background, without a terminal window. Reopen the app to reuse it; **Quit app** at the top stops it.
 - Official macOS release apps are Developer ID signed, notarized, and stapled. Windows binaries are unsigned. Linux packages include an optional desktop-shortcut installer.
 
-Start with the [beginner tutorial](https://github.com/whipstein/SamsungController/blob/v1.0.5/docs/getting-started.md).
+Start with the [beginner tutorial](https://github.com/whipstein/SamsungController/blob/v1.0.6/docs/getting-started.md).
 
 ### Upgrade notes
 
@@ -59,7 +66,7 @@ Support varies by TV, firmware, input, and mode. Unreported values are not defau
 ### Downloads
 
 - macOS: open the DMG, drag **SamsungController.app** onto **Applications**, eject, then launch from Applications. Do not run from the mounted image.
-- Windows: extract the ZIP and open **SamsungController.App.exe**.
+- Windows: run the **setup.exe** installer and use the Start-menu shortcut, or extract the portable ZIP and open **00 - Start SamsungController Server.exe**.
 - Linux: extract the tar.gz and run **SamsungController.App**; optionally run `install-shortcut.sh`.
 - arm64 is for Apple silicon/Arm64; x64 is for Intel/AMD.
 - Verify archives against **SHA256SUMS.txt**. No Git clone or separate .NET runtime is required.

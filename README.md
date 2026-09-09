@@ -2,7 +2,7 @@
 
 Control Samsung displays locally using direct HTTPS IP commands. The web interface reads current settings from the TV, then applies your changes directly—without recording menu paths or counting verification passes.
 
-**v1.0.5 is the default on `main`.** It replaces the v0 menu-traversal GUI with direct IP control. Start with the [step-by-step beginner tutorial](docs/getting-started.md).
+**v1 direct IP control is the default on `main`.** It replaces the v0 menu-traversal GUI. Start with the [step-by-step beginner tutorial](docs/getting-started.md).
 
 > **IP Remote must be enabled on the display before pairing or connecting.** Also turn **Power On with Mobile** on in the same TV menu. Keep the display on and its physical remote nearby.
 
@@ -34,8 +34,8 @@ publish the local server or TV control ports to the internet.
 
 ## Quick start: launch, use, stop
 
-1. **Install:** download your OS/processor's app from [Releases](https://github.com/whipstein/SamsungController/releases/latest). On Mac, open the **DMG**, drag the app onto **Applications**, then eject the DMG. On Windows/Linux, extract the whole archive.
-2. **Launch:** open **SamsungController** from Applications (Mac), `SamsungController.App.exe` (Windows), or `SamsungController.App` (Linux). Allow Local Network access if asked. Your browser opens automatically.
+1. **Install:** download your OS/processor's app from [Releases](https://github.com/whipstein/SamsungController/releases/latest). On Mac, open the **DMG**, drag the app onto **Applications**, then eject the DMG. On Windows, run the **setup.exe** installer or extract the whole portable ZIP. On Linux, extract the whole archive.
+2. **Launch:** open **SamsungController** from Applications (Mac) or the Start menu (installed Windows), `00 - Start SamsungController Server.exe` (portable Windows), or `SamsungController.App` (Linux). Allow Local Network access if asked. Your browser opens automatically.
 3. **Pair once:** follow [First connection](#first-connection) below. **IP Remote must be enabled on the display.**
 4. **Use:** open a Menu tab, edit a value, then click **Apply**. Use **Refresh state** after changes made elsewhere.
 5. **Stop:** click **Stop** to cancel unsent commands. Click **Quit app** at the top to stop the background server. Closing the browser alone does not stop it. Source/foreground users press **Ctrl+C** in their terminal instead.
@@ -134,16 +134,18 @@ dotnet test SamsungController.sln --no-restore --disable-build-servers -m:1
 
 The [Releases page](https://github.com/whipstein/SamsungController/releases/latest) provides self-contained desktop apps. Follow the [beginner tutorial](docs/getting-started.md) from download through pairing, calibration, troubleshooting, and updates.
 
-| Computer | Archive suffix | App after extracting |
+| Computer | Download suffix | Start the app |
 | --- | --- | --- |
 | Apple silicon Mac | `macos-arm64.dmg` | `SamsungController.app` |
 | Intel Mac | `macos-x64.dmg` | `SamsungController.app` |
-| Intel/AMD Windows | `windows-x64.zip` | `SamsungController.App.exe` |
-| Windows on Arm | `windows-arm64.zip` | `SamsungController.App.exe` |
+| Intel/AMD Windows | `windows-x64-setup.exe` or `windows-x64.zip` | Start-menu **SamsungController**, or portable `00 - Start SamsungController Server.exe` |
+| Windows on Arm | `windows-arm64-setup.exe` or `windows-arm64.zip` | Start-menu **SamsungController**, or portable `00 - Start SamsungController Server.exe` |
 | Intel/AMD Linux | `linux-x64.tar.gz` | `SamsungController.App` |
 | Arm64 Linux | `linux-arm64.tar.gz` | `SamsungController.App` |
 
-1. Download the correct package. On Mac, open the DMG, drag **SamsungController.app** onto the **Applications** shortcut, and eject the DMG. Launch from Applications, not the mounted image. On Windows/Linux, extract completely and keep the files together.
+Windows installers and the clearly named portable launcher are available starting with **v1.0.6**. In v1.0.5 and earlier, the portable launcher is named `SamsungController.App.exe`.
+
+1. Download the correct package. On Mac, open the DMG, drag **SamsungController.app** onto the **Applications** shortcut, and eject the DMG. Launch from Applications, not the mounted image. On Windows, run **setup.exe** or extract the portable ZIP completely. On Linux, extract completely. Keep portable-package files together.
 2. Double-click the app. It starts the local server **in the background**, waits for it, and opens the browser. No terminal window is needed.
 3. If the browser does not open, visit `http://127.0.0.1:5050`. Reopening the app reuses the running instance.
 4. **Closing the browser leaves the server running.** Use **Quit app** at the very top, beside **Stop**, on any page; stop any active TV operation first. No login/startup service is installed.
@@ -151,12 +153,14 @@ The [Releases page](https://github.com/whipstein/SamsungController/releases/late
 Platform notes:
 
 - **macOS:** Official release apps are Developer ID signed, notarized, and stapled. Allow Local Network access when prompted. CI artifacts are unsigned until the maintainer completes signing; use the published release for normal installation.
-- **Windows:** Use Extract All first. Windows binaries are not Authenticode-signed; SmartScreen may warn. Verify the official source before allowing execution.
+- **Windows installer:** Run the matching `windows-x64-setup.exe` or `windows-arm64-setup.exe`. It installs for your user in `%LOCALAPPDATA%\Programs\SamsungController`, adds a Start-menu entry, and optionally adds a desktop shortcut. Leave **Start SamsungController and open the webpage** checked to launch after installation. No administrator rights, .NET installation, service, or login-startup entry is needed. Quit the app before upgrading or uninstalling. Use Windows **Settings → Apps → Installed apps → SamsungController → Uninstall**; private profiles and settings are retained.
+- **Windows portable:** Use **Extract All**, then double-click **00 - Start SamsungController Server.exe**. The `00` prefix places it first among files when sorting by name. It starts the background server and opens your default browser once ready. Do not double-click `SamsungController.Web.exe` for everyday use; that is the optional foreground server. Portable here means no installer, not that credentials travel with the folder: both distributions share your normal private data directory.
+- **Windows security:** The installer and app are not Authenticode-signed; SmartScreen may warn. Verify the official source and checksum before allowing execution.
 - **Linux:** Enable execution in file properties if needed. Run `./install-shortcut.sh` for an optional applications-menu entry. A graphical browser and the normal [.NET native Linux dependencies](https://learn.microsoft.com/dotnet/core/install/linux) are required. `xdg-open` opens the browser automatically; otherwise enter the local URL yourself.
 
 Port 5050 is loopback-only. Stop any old foreground server occupying it before launching the app. Background logs and startup errors live under `desktop/` in the [private data folder](#private-data-command-line-and-updates). The launcher does not kill unrelated processes.
 
-For an optional terminal shutdown, run `SamsungController.App --stop` (add `.exe` on Windows). On macOS the executable is inside `/Applications/SamsungController.app/Contents/Resources/server/`. Running `SamsungController.Web` directly preserves foreground-server mode; Ctrl+C stops it. The separate `samsungctl` CLI remains available.
+For an optional terminal shutdown on Windows, run `& '.\00 - Start SamsungController Server.exe' --stop` in PowerShell from the installed/extracted folder. On Linux, use `./SamsungController.App --stop`. On macOS the executable is inside `/Applications/SamsungController.app/Contents/Resources/server/`. Add `--no-browser` when deliberately running headless. Running `SamsungController.Web` directly preserves foreground-server mode; Ctrl+C stops it. The separate `samsungctl` CLI remains available.
 
 Releases include `SHA256SUMS.txt`. Optional integrity checks: macOS `shasum -a 256 <archive>`, Linux `sha256sum <archive>`, PowerShell `Get-FileHash <archive> -Algorithm SHA256`.
 
@@ -289,6 +293,6 @@ dotnet run --project src/SamsungController.Cli -- --help
 
 Packaged binaries are `samsungctl` (macOS/Linux) and `samsungctl.exe` (Windows); run with `--help` in a terminal. The Mac binary is inside `/Applications/SamsungController.app/Contents/Resources/server/`. The [v0 CLI guide](docs/v0-user-guide.md#use-the-command-line-interface) covers retained WebSocket/key/macro commands, not the direct-IP web settings API.
 
-To update source: stop the server, preserve edits, `git pull --ff-only`, then restore/build/run again. To update packages: stop the old copy, extract the new version into a separate folder, and launch it. Back up private data before moving between major versions. Restart the server and refresh the browser. The source default is now `main`; see the [release-maintainer guide](docs/releasing.md) for packaging, signing, notarization, and publication.
+To update source: stop the server, preserve edits, `git pull --ff-only`, then restore/build/run again. To update packages: stop the old copy, run the new Windows installer, replace the Mac app, or extract a new portable package into a separate folder, then launch it. Back up private data before moving between major versions. Restart the server and refresh the browser. The source default is now `main`; see the [release-maintainer guide](docs/releasing.md) for packaging, signing, notarization, and publication.
 
 For contributors: [development roadmap](docs/development-roadmap.md), [direct-interface design](docs/direct-ip-interface.md), and [preserved v0 menu-file format](docs/menu-definition-file-format.md).

@@ -12,6 +12,10 @@ public static class DesktopFiles
     public const string Product = "SamsungController";
     public const string StatusRoute = "/_app/status";
     public const string StopRoute = "/_app/stop";
+    public const string WindowsServerMutex = @"Local\SamsungController.Server.Running";
+    // Merely hold a handle for the process lifetime; this is an installer guard,
+    // not a lock preventing multiple servers on deliberately different ports.
+    public static Mutex? AcquireWindowsInstallationGuard() => OperatingSystem.IsWindows() ? new Mutex(false, WindowsServerMutex) : null;
     public static string Version => typeof(DesktopFiles).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0];
     public static Uri Address(int port) => port is >= 1024 and <= 65535 ? new($"http://127.0.0.1:{port}") : throw new ArgumentOutOfRangeException(nameof(port), "Choose a port from 1024 to 65535.");
     public static string ConfigurationDirectory()

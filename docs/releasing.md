@@ -1,6 +1,6 @@
 # Building and releasing desktop apps
 
-The release tooling produces self-contained native launchers and servers for six OS/processor combinations. User data is never included. The optional CLI is retained. Update `Directory.Build.props`, release notes, and user guides before building.
+The release tooling produces self-contained native launchers and servers for six OS/processor combinations: two Mac DMGs, two Windows portable ZIPs plus two Windows installers, and two Linux tar.gz archives. User data is never included. The optional CLI is retained. Update `Directory.Build.props`, release notes, and user guides before building.
 
 ## Build and test
 
@@ -13,6 +13,39 @@ python3 packaging/smoke-test.py --manifest artifacts/dist/build-osx-arm64.json
 Use `osx-x64`, `win-x64`, `win-arm64`, `linux-x64`, or `linux-arm64` for other packages. Smoke tests require a matching OS/architecture. They start only an isolated loopback server with temporary configuration, check static assets, duplicate launch, unauthorized shutdown, CLI, quit, and restart; they never contact a TV or open the browser.
 
 The **Release packages** GitHub workflow builds and smoke-tests on native runners. A tag run creates an **unpublished draft**. Its macOS artifacts are not yet signed/notarized; CI never publishes them automatically. Private Apple credentials remain on the signing Mac, not in the repository or GitHub artifacts.
+
+## Windows portable packages and installers
+
+`build.py --rid win-x64` / `--rid win-arm64` builds both the existing portable ZIP
+and a `windows-<architecture>-setup.exe` from exactly the same staged files.
+The Windows launcher is named `00 - Start SamsungController Server.exe`; only
+the apphost filename changes, not its embedded managed DLL/runtime references.
+Native smoke tests run this exact launcher from a working directory containing
+spaces, test duplicate launch and shutdown, and retain the optional CLI.
+
+Maintainers need [Inno Setup](https://jrsoftware.org/isdl.php) 6.7.3 or newer on
+Windows. Set `SAMSUNG_INNO_COMPILER` to `ISCC.exe` or put it on PATH. End users do
+not need Inno Setup, the .NET SDK, or a separate runtime. CI installs the pinned
+6.7.3 compiler from its official GitHub release after checking its SHA-256.
+For ZIP-only cross-builds on macOS/Linux, add `--portable-only`.
+
+The [per-user installer](https://jrsoftware.org/ishelp/topic_setup_privilegesrequired.htm)
+adds Start-menu/optional desktop shortcuts and a Windows uninstall entry. It
+does not add services, firewall rules, auto-login startup, or private settings.
+Its finish-page launch uses the same browser-opening launcher. A shared
+[AppMutex](https://jrsoftware.org/ishelp/topic_setup_appmutex.htm) held by the
+launcher and server refuses install/uninstall during a live session, including
+custom ports and foreground servers. CloseApplications and RestartApplications
+are disabled; no forced termination is used. Users must quit old v1.0.5-or-earlier
+servers manually, since those releases predate the mutex.
+
+`packaging/windows/verify-installer.py --manifest artifacts/dist/build-win-x64.json`
+runs only on disposable native Windows CI runners. It refuses existing installs,
+installs to a temporary directory, checks shortcut targets and payload hashes,
+tests installed startup, blocked live upgrade/uninstall, normal upgrade,
+uninstall, and retention of user-created/private files. CI runs it on both x64
+and Arm64 before uploading either package. Windows apps/installers remain
+unsigned until a Windows code-signing identity is separately configured.
 
 ## Mac signing and notarization
 
@@ -75,7 +108,7 @@ The approved icon source and generated platform assets are in `packaging/icons`.
 1. Verify the tested commit is on main and tag it `v<version>`.
 2. Wait for all six package smoke tests and normal CI to succeed.
 3. Replace both Mac draft-release DMG assets with the signed, notarized, stapled DMGs. Never publish unsigned CI Mac images.
-4. Generate `SHA256SUMS.txt` from the **final** six packages (two DMGs, two Windows ZIPs, two Linux tar.gz files) and upload it.
+4. Generate `SHA256SUMS.txt` from the **final** eight packages (two DMGs, two Windows ZIPs, two Windows setup EXEs, two Linux tar.gz files) and upload it.
 5. Verify release notes, signatures, notarization, architecture labels, and checksums; publish the draft as the latest stable release.
 
 The background server listens only on `127.0.0.1`. Launcher `--stop` uses a random per-instance token in an owner-private file; it never terminates a process based only on a PID. Foreground servers and unrelated listeners are not stopped. Source execution via `SamsungController.Web` stays foreground. The launcher does not install a boot/login service.

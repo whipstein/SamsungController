@@ -14,6 +14,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 from macos.apphost_identity import prepare_apphosts
 from macos.dmg import create_dmg
+from windows.installer import prepare_launcher, build_installer
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = {"osx-arm64": "macos-arm64", "osx-x64": "macos-x64", "win-x64": "windows-x64", "win-arm64": "windows-arm64", "linux-x64": "linux-x64", "linux-arm64": "linux-arm64"}
@@ -32,7 +33,7 @@ def archive(folder, destination):
                 bundle.write(item, item.relative_to(folder.parent))
 
 
-def build(rid, output):
+def build(rid, output, portable_only=False):
     version = ET.parse(ROOT / "Directory.Build.props").findtext(".//Version")
     staging = ROOT / "artifacts" / "package-builds"
     staging.mkdir(parents=True, exist_ok=True)
@@ -63,6 +64,8 @@ def build(rid, output):
                           "CFBundleShortVersionString": version, "LSUIElement": True, "NSHighResolutionCapable": True,
                           "CFBundleIconFile": "SamsungController.icns",
                           "NSLocalNetworkUsageDescription": "SamsungController connects to your Samsung displays on your local network when you choose Connect."}, target)
+    elif rid.startswith("win-"):
+        prepare_launcher(payload)
     elif rid.startswith("linux-"):
         shutil.copy2(ROOT / "packaging/icons/SamsungController.png", folder / "SamsungController.png")
         shutil.copy2(ROOT / "packaging/linux/install-shortcut.sh", folder / "install-shortcut.sh")
@@ -75,6 +78,8 @@ def build(rid, output):
     else:
         archive(folder, destination)
     manifest = {"rid": rid, "version": version, "folder": str(folder), "payload": str(payload), "app": str(app) if app else None, "archive": str(destination)}
+    if rid.startswith("win-") and not portable_only:
+        manifest["installer"] = str(build_installer(folder, output, version, rid))
     (output / ("build-" + rid + ".json")).write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(json.dumps(manifest, indent=2))
     return manifest
@@ -84,5 +89,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--rid", choices=PACKAGES, required=True)
     parser.add_argument("--output", type=Path, default=ROOT / "artifacts/dist")
+    parser.add_argument("--portable-only", action="store_true", help="Skip the Windows installer (for cross-building ZIPs without Inno Setup)")
     options = parser.parse_args()
-    build(options.rid, options.output.resolve())
+    build(options.rid, options.output.resolve(), options.portable_only)

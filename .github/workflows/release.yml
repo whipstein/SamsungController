@@ -30,6 +30,12 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.x'
+      - name: Install pinned Windows installer compiler
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./packaging/windows/install-inno.ps1
+      - name: Packaging unit tests
+        run: python -m unittest discover -s packaging/tests
       - name: Build self-contained application
         run: python packaging/build.py --rid ${{ matrix.rid }}
       - name: Smoke-test native packaged application
@@ -37,6 +43,9 @@ jobs:
       - name: Test Mac disk image and isolated installation
         if: runner.os == 'macOS'
         run: python packaging/macos/verify-dmg.py --manifest artifacts/dist/build-${{ matrix.rid }}.json
+      - name: Test Windows install, upgrade, and uninstall
+        if: runner.os == 'Windows'
+        run: python packaging/windows/verify-installer.py --manifest artifacts/dist/build-${{ matrix.rid }}.json
       - uses: actions/upload-artifact@v7
         with:
           # Keep the named artifact container expected by the release download step.
@@ -46,6 +55,7 @@ jobs:
             artifacts/dist/*.zip
             artifacts/dist/*.dmg
             artifacts/dist/*.tar.gz
+            artifacts/dist/*-setup.exe
           if-no-files-found: error
 
   draft-release:
@@ -72,9 +82,9 @@ jobs:
           # DMGs with signed/notarized/stapled builds before publishing.
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
-            gh release upload "$RELEASE_TAG" artifacts/dist/*.dmg artifacts/dist/*.zip artifacts/dist/*.tar.gz --clobber
+            gh release upload "$RELEASE_TAG" artifacts/dist/*.dmg artifacts/dist/*.zip artifacts/dist/*.tar.gz artifacts/dist/*-setup.exe --clobber
           else
-            gh release create "$RELEASE_TAG" artifacts/dist/*.dmg artifacts/dist/*.zip artifacts/dist/*.tar.gz \
+            gh release create "$RELEASE_TAG" artifacts/dist/*.dmg artifacts/dist/*.zip artifacts/dist/*.tar.gz artifacts/dist/*-setup.exe \
               --draft --verify-tag --title "SamsungController $RELEASE_TAG" \
               --notes-file packaging/RELEASE-NOTES.md
           fi

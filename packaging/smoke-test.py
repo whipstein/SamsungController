@@ -6,18 +6,20 @@ import os
 import plistlib
 from pathlib import Path
 import socket
+import struct
 import subprocess
 import tempfile
 import time
 import urllib.error
 import urllib.request
+from windows.installer import LAUNCHER
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--manifest", type=Path, required=True)
 options = parser.parse_args()
 manifest = json.loads(options.manifest.read_text())
 payload = Path(manifest["payload"])
-app = payload / ("SamsungController.App.exe" if os.name == "nt" else "SamsungController.App")
+app = payload / (LAUNCHER if os.name == "nt" else "SamsungController.App")
 if manifest.get("app"):
     app = Path(manifest["app"]) / "Contents/MacOS/SamsungController"
 cli = payload / ("samsungctl.exe" if os.name == "nt" else "samsungctl")
@@ -38,7 +40,15 @@ if manifest.get("app"):
         offset = uuid_offset(data)
         identifiers.append(data[offset:offset + 16])
     assert len(set(identifiers)) == 4, "Local Network identities must not collide"
-elif os.name != "nt":
+elif os.name == "nt":
+    data = app.read_bytes()
+    pe = struct.unpack_from("<I", data, 0x3c)[0]
+    assert data[pe:pe + 4] == b"PE\0\0"
+    assert struct.unpack_from("<H", data, pe + 4)[0] == (0xaa64 if manifest["rid"] == "win-arm64" else 0x8664)
+    assert struct.unpack_from("<H", data, pe + 24 + 68)[0] == 2, "Everyday launcher must use the Windows GUI subsystem (no console window)"
+    assert app.name == LAUNCHER and not (payload / "SamsungController.App.exe").exists()
+    assert (payload / "SamsungController.App.dll").is_file(), "Renamed apphost must retain its embedded DLL target"
+else:
     assert (payload / "SamsungController.png").stat().st_size > 1000
 
 

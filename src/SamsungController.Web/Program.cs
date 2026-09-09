@@ -2,6 +2,7 @@ using SamsungController.Web.Components;
 using SamsungController.Web.Services;
 using SamsungController.Desktop;
 
+using var installationGuard = DesktopFiles.AcquireWindowsInstallationGuard();
 var desktop = DesktopRuntime.ParseArguments(args);
 if (desktop.Enabled) DesktopRuntime.PrepareBackgroundProcess(desktop.Port);
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions

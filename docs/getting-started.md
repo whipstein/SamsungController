@@ -28,8 +28,8 @@ Open the [official Releases page](https://github.com/whipstein/SamsungController
 | --- | --- |
 | Apple silicon Mac | macos-arm64.dmg |
 | Intel Mac | macos-x64.dmg |
-| Intel/AMD Windows | windows-x64.zip |
-| Windows on Arm | windows-arm64.zip |
+| Intel/AMD Windows | windows-x64-setup.exe (installer) or windows-x64.zip (portable) |
+| Windows on Arm | windows-arm64-setup.exe (installer) or windows-arm64.zip (portable) |
 | Intel/AMD Linux | linux-x64.tar.gz |
 | Arm64 Linux | linux-arm64.tar.gz |
 
@@ -60,10 +60,24 @@ If SamsungController never appears in that list with v1.0.0, quit the old app an
 
 ### Windows
 
-1. Right-click the ZIP and choose **Extract All**.
-2. Put the extracted SamsungController folder in a stable location.
-3. Double-click **SamsungController.App.exe**. Do not run inside ZIP preview or move the executable away from its companion files.
-4. Windows binaries are unsigned. If SmartScreen warns, verify the download came from the official repository before allowing it.
+**Installer (recommended, v1.0.6 onward):**
+
+1. Download and double-click the matching **windows-x64-setup.exe** or **windows-arm64-setup.exe**.
+2. Follow Setup. The default location is `%LOCALAPPDATA%\Programs\SamsungController`; installation is for your user and needs no administrator rights.
+3. Optionally select **Create a desktop shortcut**.
+4. Leave **Start SamsungController and open the webpage** checked, then click **Finish**.
+5. Next time, open **SamsungController** from the Start menu or your desktop shortcut. The server starts in the background and the webpage opens when ready.
+
+**Portable ZIP (no installation):**
+
+1. Right-click the ZIP and choose **Extract All** into a stable location.
+2. Double-click **00 - Start SamsungController Server.exe**, the first file when sorting by name. In older v1.0.5 packages this was named **SamsungController.App.exe**.
+3. Wait for the webpage to open automatically. Do not run inside ZIP preview or move the executable away from its companion files.
+4. Use this launcher instead of **SamsungController.Web.exe**, which starts the optional foreground server without the normal browser-opening workflow.
+
+Both options include .NET and reuse the same saved settings. Windows binaries and installers are unsigned. If SmartScreen warns, verify the download and checksum against the official repository before allowing it. If no webpage opens, visit **http://127.0.0.1:5050** and check that Windows has a default web browser configured.
+
+**Update or uninstall:** choose **Quit app** first, then run the new installer. Setup and Uninstall refuse while a new-version server is running, instead of interrupting TV adjustments. Uninstall via **Windows Settings → Apps → Installed apps → SamsungController**. Your private settings and pairing credentials are retained. Portable users can extract an update into a new folder after quitting the old copy.
 
 ### Linux
 
@@ -199,7 +213,7 @@ If the desktop app fails before the browser opens, inspect `desktop/last-launch-
 1. Stop TV operations, then **Quit app**. Stop any old foreground server with Ctrl+C.
 2. Back up the private configuration folder.
 3. Download the new official package for your OS/processor.
-4. Replace the macOS app, or extract Windows/Linux into a new stable folder. Do not overwrite a running installation.
+4. Replace the macOS app, run the new Windows installer, or extract a Windows/Linux portable package into a new stable folder. Do not overwrite a running installation.
 5. Reopen the app and connect to the saved display.
 6. If using the Linux menu shortcut, rerun the shortcut installer from the new folder.
 7. Hard-refresh the browser if old styling remains cached.

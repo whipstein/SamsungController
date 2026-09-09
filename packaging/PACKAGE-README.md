@@ -16,7 +16,8 @@ Read [README.md](README.md) or the [step-by-step tutorial](docs/getting-started.
 ## Start the app
 
 - **macOS:** Open the **DMG**, drag **SamsungController.app** onto **Applications**, then eject the disk image. Launch the app from Applications. Both the official release DMG and app are signed, notarized, and stapled; temporary CI artifacts are not. Allow Local Network access when prompted.
-- **Windows:** Extract the entire ZIP and double-click **SamsungController.App.exe**. Keep all extracted files together. Windows binaries are not Authenticode-signed; SmartScreen may warn. Only allow an archive downloaded from the official release.
+- **Windows installer:** Run the matching **setup.exe**, follow Setup, and leave **Start SamsungController and open the webpage** checked. Next time use **SamsungController** in the Start menu or the optional desktop shortcut. Installation is per-user, with no administrator rights or separate .NET installation.
+- **Windows portable:** Extract the entire ZIP and double-click **00 - Start SamsungController Server.exe**, first among files when sorted by name. Keep all extracted files together. This launcher starts the server in the background and automatically opens the webpage once ready. Do not use **SamsungController.Web.exe** for everyday startup. Windows installers and binaries are not Authenticode-signed; verify the official source/checksum before allowing a SmartScreen warning.
 - **Linux:** Extract the entire tar.gz and run **SamsungController.App**. If needed, allow executing it in file properties. Run `./install-shortcut.sh` once for an optional applications-menu shortcut; keep the extracted folder at that location.
 
 Choose arm64 for Apple silicon/Arm64 computers or x64 for Intel/AMD. Linux requires the normal .NET 10 native OS dependencies and a graphical browser; `xdg-open` opens the browser automatically.
@@ -45,7 +46,7 @@ Already paired using Allow untrusted? **Trust this display and connect** pins th
 On Windows, use PowerShell in the extracted folder:
 
 ```powershell
-.\SamsungController.App.exe --stop
+& '.\00 - Start SamsungController Server.exe' --stop
 .\samsungctl.exe help
 .\SamsungController.Web.exe
 ```
@@ -71,7 +72,7 @@ Running **SamsungController.Web** directly is the optional foreground-server mod
 
 ## Update and privacy
 
-Quit the app before replacing it. Install the new archive/app; do not overwrite a running installation. Profiles, credentials, preferences, and logs remain in the normal per-user configuration directory outside the package. Back up that directory before major updates.
+Quit the app before replacing it. Install the new archive/app; do not overwrite a running installation. The Windows installer refuses to install/uninstall while a new-version server is running. Installed Windows apps can be removed via **Settings → Apps → Installed apps → SamsungController**. Profiles, credentials, preferences, and logs remain in the normal per-user configuration directory outside the package and are retained on uninstall. The portable ZIP and installer share that directory; portable does not mean credentials are stored in the ZIP folder. Back up that directory before major updates.
 
 The server binds to this computer only. Never expose it or the TV's control service to the internet. Do not distribute personal tokens, profiles, or raw logs. Use the Communication log export's redaction controls.
 
