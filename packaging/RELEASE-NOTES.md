@@ -1,6 +1,14 @@
-## SamsungController v1.0.3
+## SamsungController v1.0.4
 
 ### Changes in this patch
+
+- **RGB together − / +** in every 20pt white-balance percentage and Custom color block adjusts that block's Red, Green, and Blue by one while preserving their differences. Other blocks are unchanged.
+- Group adjustments follow **On Apply / Immediately**, use the latest pending/queued values, and combine unsent clicks through the existing shared-selector update path. An in-flight command is never changed; protocol writes/readbacks remain per channel.
+- All three channels must be available and contain valid numbers. If any channel reaches a limit, that direction is disabled for the group rather than clamping individual channels. Stop discards unsent changes without undoing delivered ones.
+- Updated contextual Help, README, and beginner tutorial. The new controls passed automated regression tests and user verification in a local signed/notarized Mac test build before this release.
+- Rebuilt self-contained packages for Windows, macOS, and Linux on x64 and Arm64. Both Mac apps and DMGs are signed, notarized, and stapled.
+
+### Included from v1.0.3
 
 - **IP Remote must be enabled on the display**, along with Power On with Mobile. Setup now makes this prerequisite explicit.
 - Short, one-action-per-step pairing instructions with model-specific paths for S95F, smart Odyssey G95SC, and compatible recent/older Samsung TVs.
@@ -30,7 +38,7 @@ Direct IP control is now the default interface on **main**, replacing the v0 men
 - Native launchable, self-contained apps for Windows, macOS, and Linux on x64 and Arm64. The local server runs in the background, without a terminal window. Reopen the app to reuse it; **Quit app** at the top stops it.
 - Official macOS release apps are Developer ID signed, notarized, and stapled. Windows binaries are unsigned. Linux packages include an optional desktop-shortcut installer.
 
-Start with the [beginner tutorial](https://github.com/whipstein/SamsungController/blob/v1.0.3/docs/getting-started.md).
+Start with the [beginner tutorial](https://github.com/whipstein/SamsungController/blob/v1.0.4/docs/getting-started.md).
 
 ### Upgrade notes
 
