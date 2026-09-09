@@ -2,7 +2,7 @@
 
 Control Samsung displays locally using direct HTTPS IP commands. The web interface reads current settings from the TV, then applies your changes directly—without recording menu paths or counting verification passes.
 
-**v1.0.4 is the default on `main`.** It replaces the v0 menu-traversal GUI with direct IP control. Start with the [step-by-step beginner tutorial](docs/getting-started.md).
+**v1.0.5 is the default on `main`.** It replaces the v0 menu-traversal GUI with direct IP control. Start with the [step-by-step beginner tutorial](docs/getting-started.md).
 
 > **IP Remote must be enabled on the display before pairing or connecting.** Also turn **Power On with Mobile** on in the same TV menu. Keep the display on and its physical remote nearby.
 

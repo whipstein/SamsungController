@@ -1,6 +1,14 @@
-## SamsungController v1.0.4
+## SamsungController v1.0.5
 
 ### Changes in this patch
+
+- **Reset all** in the pinned toolbar on **20pt WB** and **Color** resets the entire section's RGB values to nominal: **0** at every white-balance percentage (60 values), or **50** for every Custom color channel (18 values). These are explicit nominal targets, not display-specific factory calibration or a full picture/factory reset.
+- The confirmation offers **Stage reset** in **On Apply** mode (no TV writes until Apply) or **Reset now** in **Immediately** mode. It replaces the selected section's unsent edits while preserving unrelated settings and pending edits. The white-balance switch and color-space mode are not changed.
+- All rows must be loaded and enabled before resetting. Immediate resets use the existing verified RGB update/readback path; **Stop** or a failure discards remaining unsent reset targets without undoing delivered changes.
+- Updated contextual Help, README, and beginner tutorial. Added 22 regression cases covering nominal targets, staging, immediate writes, confirmation/cancel, incomplete rows, failure, and Stop.
+- Rebuilt self-contained packages for Windows, macOS, and Linux on x64 and Arm64. Both Mac apps and DMGs are signed, notarized, and stapled.
+
+### Included from v1.0.4
 
 - **RGB together − / +** in every 20pt white-balance percentage and Custom color block adjusts that block's Red, Green, and Blue by one while preserving their differences. Other blocks are unchanged.
 - Group adjustments follow **On Apply / Immediately**, use the latest pending/queued values, and combine unsent clicks through the existing shared-selector update path. An in-flight command is never changed; protocol writes/readbacks remain per channel.
@@ -38,7 +46,7 @@ Direct IP control is now the default interface on **main**, replacing the v0 men
 - Native launchable, self-contained apps for Windows, macOS, and Linux on x64 and Arm64. The local server runs in the background, without a terminal window. Reopen the app to reuse it; **Quit app** at the top stops it.
 - Official macOS release apps are Developer ID signed, notarized, and stapled. Windows binaries are unsigned. Linux packages include an optional desktop-shortcut installer.
 
-Start with the [beginner tutorial](https://github.com/whipstein/SamsungController/blob/v1.0.4/docs/getting-started.md).
+Start with the [beginner tutorial](https://github.com/whipstein/SamsungController/blob/v1.0.5/docs/getting-started.md).
 
 ### Upgrade notes
 
