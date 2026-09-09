@@ -1,4 +1,5 @@
 import importlib.util
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -11,6 +12,7 @@ spec.loader.exec_module(dmg)
 
 
 class DmgTests(unittest.TestCase):
+    @unittest.skipIf(os.name == "nt", "DMG staging uses macOS/POSIX symlinks; native Mac CI verifies the image")
     def test_builds_image_with_app_applications_link_and_simple_instructions(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
