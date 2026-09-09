@@ -2,7 +2,9 @@
 
 Control Samsung displays locally using direct HTTPS IP commands. The web interface reads current settings from the TV, then applies your changes directly—without recording menu paths or counting verification passes.
 
-**v1.0.2 is the default on `main`.** It replaces the v0 menu-traversal GUI with direct IP control. Start with the [step-by-step beginner tutorial](docs/getting-started.md).
+**v1.0.3 is the default on `main`.** It replaces the v0 menu-traversal GUI with direct IP control. Start with the [step-by-step beginner tutorial](docs/getting-started.md).
+
+> **IP Remote must be enabled on the display before pairing or connecting.** Also turn **Power On with Mobile** on in the same TV menu. Keep the display on and its physical remote nearby.
 
 ## Requirements
 
@@ -32,18 +34,17 @@ publish the local server or TV control ports to the internet.
 
 ## Quick start: launch, use, stop
 
-1. **Install:** download your OS/processor's app from [Releases](https://github.com/whipstein/SamsungController/releases/latest), not GitHub's “Source code” archive. Extract the entire package. On Mac, move `SamsungController.app` to Applications; on Windows/Linux keep the extracted folder together.
-2. **Launch:** double-click `SamsungController.app` (Mac), `SamsungController.App.exe` (Windows), or `SamsungController.App` (Linux). Allow Local Network access if prompted. It starts a background server and opens [http://127.0.0.1:5050](http://127.0.0.1:5050); enter that URL manually if needed. No terminal is required. For a source checkout instead, follow [Install and run from source](#install-and-run-from-source) below.
-3. **Set up:** enable IP Remote on the TV. On **Display → Add display**, enter its name and IP address, keep HTTPS port **1516** unless your display requires another, and **Save display**. Leave advanced certificate settings unchanged for guided setup.
-4. **Trust and pair:** select **Trust this display and pair**. Review the address and certificate, check the confirmation box, then **Confirm trust and pair**. Accept the separate approval dialog **on the TV**. The app pins the certificate, saves the token, reads current settings, and opens Menu. For an already-paired display, **Trust this display and connect** keeps its existing token. See [certificate trust](#certificate-trust-and-pairing) for the first-use security caveat.
-5. **Use:** choose a Menu tab. Start with **On Apply**: edit a value, then select **Apply (N)**. **TV:** shows the last queried value. Use **Refresh state** after outside changes. **Help** beside it explains the current page. On future launches select the saved display and **Connect and open Menu**; do not pair again just to reconnect.
-6. **Stop:** **Stop** cancels remaining TV commands; it does not undo delivered changes. To exit a packaged app, finish/review any active operation, then **Quit app** at the very top beside Stop. Closing the browser alone leaves the background server running. For a source/foreground server, use **Ctrl+C** in its terminal instead. Opening the desktop app again returns to the running instance; no login service is installed.
+1. **Install:** download your OS/processor's app from [Releases](https://github.com/whipstein/SamsungController/releases/latest). On Mac, open the **DMG**, drag the app onto **Applications**, then eject the DMG. On Windows/Linux, extract the whole archive.
+2. **Launch:** open **SamsungController** from Applications (Mac), `SamsungController.App.exe` (Windows), or `SamsungController.App` (Linux). Allow Local Network access if asked. Your browser opens automatically.
+3. **Pair once:** follow [First connection](#first-connection) below. **IP Remote must be enabled on the display.**
+4. **Use:** open a Menu tab, edit a value, then click **Apply**. Use **Refresh state** after changes made elsewhere.
+5. **Stop:** click **Stop** to cancel unsent commands. Click **Quit app** at the top to stop the background server. Closing the browser alone does not stop it. Source/foreground users press **Ctrl+C** in their terminal instead.
 
-The guided trust buttons described here are available in the current source;
-the published v1.0.2 package predates them. Older packages use the manual
-**Edit display → Certificate trust and timeouts** fields until an updated package
-is released. See the [full tutorial](docs/getting-started.md) for platform-specific
-installation, troubleshooting, updates, and optional command-line use.
+**Help** explains the current page. **README**, beside Help, opens this guide in a
+new tab and works offline, including the tutorial and approval picture. External
+vendor links still require internet. If the browser does not open, visit
+[http://127.0.0.1:5050](http://127.0.0.1:5050). For source builds, use
+[Install and run from source](#install-and-run-from-source).
 
 ## License
 
@@ -57,6 +58,9 @@ This is **source-available**, not OSI-approved open-source licensing. See the
 [licensing guide](docs/licensing.md) for examples, the value-added-product boundary,
 and the exception for paid services. Previously published MIT versions, including
 v0.3.0, retain their original permissions. The full `LICENSE` controls.
+
+Bundled third-party components and illustrations retain their own terms; see
+[third-party notices](docs/third-party-notices.md).
 
 ## Features
 
@@ -75,10 +79,34 @@ The old menu builder, verification pages, and macro editor are hidden; their fil
 
 1. Put the computer and TV on the same trusted local network and turn the TV on.
 2. Find the TV's IP address. A DHCP reservation helps keep it stable. The app does not scan for TVs.
-3. Enable **IP Remote** in the TV's network expert settings, if available. Menu placement varies by display.
+3. **Enable IP Remote on the display. It is required.** Turn **Power On with Mobile** on too. See the [model-specific menu paths](#where-to-enable-ip-remote).
 4. Use a current browser on the computer running SamsungController.
 
 Direct IP uses HTTPS, normally port **1516**; some older displays use **1515**. It is separate from WebSocket ports 8001/8002 and uses its own token. Do not expose the controller or TV endpoint to the internet.
+
+### Where to enable IP Remote
+
+Use the **display's physical remote**, not the app. Open Settings / All Settings,
+then follow the row that matches your display. In **Network → Expert Settings**,
+turn **Power On with Mobile** on, then **IP Remote** on. Accept the TV's enable
+warning if one appears.
+
+| Display / menu generation | Path on the display |
+| --- | --- |
+| **S95F (2025)** | Settings → All Settings → **Connections** → Network → Expert Settings → IP Remote |
+| **Odyssey OLED G9 G95SC**, including **LS49CG954SNXZA** | Menu → Settings → All Settings → **Connection** → Network → Expert Settings → IP Remote |
+| Other recent compatible Samsung TVs, including supported OLED/QLED/The Frame models with the Connection menu | Settings → All Settings → **Connection** (or Connections) → Network → Expert Settings → IP Remote |
+| Compatible **2021 and older** Samsung smart TVs | Settings → **General** → Network → Expert Settings → IP Remote |
+
+Samsung documents the newer and older layouts in its [IP-control worksheet](https://image-us.samsung.com/SamsungUS/samsungbusiness/tv-ci-resources/Samsung-IP-Control.pdf#page=1).
+The model-specific rows use Samsung's [S95F e-manual](https://downloadcenter.samsung.com/content/UM/202511/20251114042045001/BN81-27185A-670_EUG_ROPATSCF_NA_ENG-US_251022.0.pdf)
+and [G95SC support/e-manual downloads](https://www.samsung.com/ca/support/model/LS49CG954SNXZA/).
+Menu names can change with firmware and region; use your display's e-Manual
+search for **IP Remote** if its layout differs. Do not confuse it with **Cable
+Box IP Remote**, Remote Access, or screen mirroring. Some non-smart Odyssey
+models and other Samsung displays do not offer this protocol. If IP Remote is
+missing, check the exact model's manual; do not use service-menu codes or assume
+that sharing a model-family name guarantees support.
 
 ## Install and run from source
 
@@ -108,14 +136,14 @@ The [Releases page](https://github.com/whipstein/SamsungController/releases/late
 
 | Computer | Archive suffix | App after extracting |
 | --- | --- | --- |
-| Apple silicon Mac | `macos-arm64.zip` | `SamsungController.app` |
-| Intel Mac | `macos-x64.zip` | `SamsungController.app` |
+| Apple silicon Mac | `macos-arm64.dmg` | `SamsungController.app` |
+| Intel Mac | `macos-x64.dmg` | `SamsungController.app` |
 | Intel/AMD Windows | `windows-x64.zip` | `SamsungController.App.exe` |
 | Windows on Arm | `windows-arm64.zip` | `SamsungController.App.exe` |
 | Intel/AMD Linux | `linux-x64.tar.gz` | `SamsungController.App` |
 | Arm64 Linux | `linux-arm64.tar.gz` | `SamsungController.App` |
 
-1. Download the correct archive and extract it completely. Copy the Mac app to Applications; keep Windows/Linux binaries together in the extracted folder.
+1. Download the correct package. On Mac, open the DMG, drag **SamsungController.app** onto the **Applications** shortcut, and eject the DMG. Launch from Applications, not the mounted image. On Windows/Linux, extract completely and keep the files together.
 2. Double-click the app. It starts the local server **in the background**, waits for it, and opens the browser. No terminal window is needed.
 3. If the browser does not open, visit `http://127.0.0.1:5050`. Reopening the app reuses the running instance.
 4. **Closing the browser leaves the server running.** Use **Quit app** at the very top, beside **Stop**, on any page; stop any active TV operation first. No login/startup service is installed.
@@ -134,11 +162,25 @@ Releases include `SHA256SUMS.txt`. Optional integrity checks: macOS `shasum -a 2
 
 ## First connection
 
-1. On **Display**, choose a saved display. Existing IP Remote preview profiles and tokens are reused. For a new TV, choose **Add display**, enter its address/name and port, then **Save display**. Saving sends nothing to the TV.
-2. Select **Trust this display and pair**. This retrieves the certificate without sending an HTTP request, token, or TV command. Review the address and fingerprint, check the confirmation box, and select **Confirm trust and pair**.
-3. Accept the approval dialog **on the TV**. The certificate is pinned before pairing, Allow untrusted is turned Off, and successful pairing saves the token, reads the TV, and opens Menu. If pairing times out, the pin remains saved: use **Pair with TV** to retry.
-4. For an already paired endpoint select **Connect and open Menu**. Do not pair again merely to reconnect.
-5. The header shows TV-reported input and picture mode. Connect/Disconnect and Stop remain visible on every page.
+1. **On the TV:** turn on **Power On with Mobile** and **IP Remote** ([where to find them](#where-to-enable-ip-remote)).
+2. **In the app:** click **Display → Add display**.
+3. Enter the display name and IP address. Leave the port at **1516** unless your model requires another.
+4. Click **Save display**. Leave the advanced certificate fields unchanged.
+5. Click **Trust this display and pair**.
+6. Check the address and certificate, tick the confirmation box, then click **Confirm trust and pair**.
+7. **On the TV:** select **Allow** using the physical remote's Select/Enter button.
+8. Wait for Menu to open and current values to load.
+
+![Samsung IP Remote approval dialog with Allow selected](docs/images/samsung-ip-remote-allow.png)
+
+Actual example from Samsung's [IP-control worksheet, page 2](https://image-us.samsung.com/SamsungUS/samsungbusiness/tv-ci-resources/Samsung-IP-Control.pdf#page=2).
+Your model's appearance may differ. Choose **Allow**, not Deny or Close.
+
+**Missed the prompt?** Wait for the request to finish, then click **Pair with TV**
+and watch the TV. **Already paired?** Use **Connect and open Menu** next time.
+For a saved display using Allow untrusted, **Trust this display and connect**
+keeps its token. Trust is first-use confirmation, not independent proof of the
+display's identity; see [certificate trust](#certificate-trust-and-pairing).
 
 Connect preloads every Menu section and the catalog's other documented read/list methods for the current input/picture mode. Already-enabled 20-point and Custom color grids load all rows and restore their selectors. Connect does not automatically enable inactive modes. Use the explicit Refresh buttons described below to also read 20-point values while Off. Loading progress and Stop are available; Menu's settings-load details report unavailable values. Unsupported fields are never filled with defaults.
 

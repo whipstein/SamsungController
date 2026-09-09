@@ -13,6 +13,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
 from macos.apphost_identity import prepare_apphosts
+from macos.dmg import create_dmg
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = {"osx-arm64": "macos-arm64", "osx-x64": "macos-x64", "win-x64": "windows-x64", "win-arm64": "windows-arm64", "linux-x64": "linux-x64", "linux-arm64": "linux-arm64"}
@@ -66,10 +67,13 @@ def build(rid, output):
         shutil.copy2(ROOT / "packaging/icons/SamsungController.png", folder / "SamsungController.png")
         shutil.copy2(ROOT / "packaging/linux/install-shortcut.sh", folder / "install-shortcut.sh")
         (folder / "install-shortcut.sh").chmod(0o755)
-    extension = ".tar.gz" if rid.startswith("linux-") else ".zip"
+    extension = ".dmg" if app else ".tar.gz" if rid.startswith("linux-") else ".zip"
     output.mkdir(parents=True, exist_ok=True)
     destination = output / ("SamsungController-v" + version + "-" + PACKAGES[rid] + extension)
-    archive(folder, destination)
+    if app:
+        create_dmg(app, destination)
+    else:
+        archive(folder, destination)
     manifest = {"rid": rid, "version": version, "folder": str(folder), "payload": str(payload), "app": str(app) if app else None, "archive": str(destination)}
     (output / ("build-" + rid + ".json")).write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(json.dumps(manifest, indent=2))

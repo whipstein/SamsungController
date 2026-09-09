@@ -10,6 +10,13 @@
     <IntermediateOutputPath Condition="'$(OS)' != 'Windows_NT'">$(BaseIntermediateOutputPath)$(Configuration)/$(TargetFramework)/</IntermediateOutputPath>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Markdig" Version="1.3.2" />
+    <EmbeddedResource Include="../../README.md" LogicalName="UserGuide/README.md" />
+    <EmbeddedResource Include="../../LICENSE" LogicalName="UserGuide/LICENSE" />
+    <EmbeddedResource Include="../../docs/**/*.md" LogicalName="UserGuide/docs/%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../../docs/images/*.png" LogicalName="UserGuide/docs/images/%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../SamsungController.Desktop/SamsungController.Desktop.csproj" />
     <ProjectReference Include="../SamsungController.Automation/SamsungController.Automation.csproj" />
     <ProjectReference Include="../SamsungController.Core/SamsungController.Core.csproj" />

@@ -33,7 +33,26 @@ python3 packaging/macos/sign-notarize.py \
   --keychain-profile SamsungController
 ```
 
-The script signs every nested Mach-O, then the app bundle, with hardened runtime and the .NET JIT entitlement. It verifies the signature, submits through the existing Keychain profile, requires an **Accepted** result, staples/validates the ticket, performs Gatekeeper assessment, and recreates the final ZIP. Omitting the profile performs signing only; **that output is not ready for publication**. Credentials/private keys are never exported.
+The script signs every nested Mach-O, then the app bundle, with hardened runtime and the .NET JIT entitlement. It notarizes the app via a temporary ZIP, requires **Accepted**, staples/validates its ticket, and checks Gatekeeper. It then builds the **DMG** containing the stapled app, an Applications shortcut, and INSTALL.txt. The DMG is signed, separately notarized, stapled, and assessed too. Both app and container retain offline tickets. Omitting the profile performs signing only; **that output is not ready for publication**. Credentials/private keys are never exported.
+
+Verify the final disk image and a temporary installed copy:
+
+```sh
+python3 packaging/macos/verify-dmg.py \
+  --manifest artifacts/dist/build-osx-arm64.json --require-notarization
+```
+
+This mounts only the specified image read-only without opening Finder, checks the
+Applications shortcut and both signatures/tickets, copies the app into a temporary
+installation, ejects the image, and runs the existing loopback smoke test against
+that copy. It never writes to `/Applications`, uses personal configuration, or
+contacts a TV. CI runs the same installation check without requiring signatures
+before handing its unsigned DMG to the maintainer.
+
+DMG creation uses the macOS-provided `hdiutil` and `ditto`; no extra DMG creator,
+Finder automation permission, administrator installer, or Python package is needed.
+The README/tutorial and approval illustration are embedded in the web assembly,
+so moving only the app to Applications does not lose its offline documentation.
 
 Run the smoke test again on the signed/stapled package and, where available, test opening a quarantined download in Finder. Keep the notarization submission IDs for audit/troubleshooting. Do not remove quarantine as a substitute for notarization.
 
@@ -55,8 +74,8 @@ The approved icon source and generated platform assets are in `packaging/icons`.
 
 1. Verify the tested commit is on main and tag it `v<version>`.
 2. Wait for all six package smoke tests and normal CI to succeed.
-3. Replace both Mac draft-release ZIP assets with the signed, notarized, stapled ZIPs. Never publish the unsigned CI Mac archives.
-4. Generate `SHA256SUMS.txt` from the **final** six archives and upload it.
+3. Replace both Mac draft-release DMG assets with the signed, notarized, stapled DMGs. Never publish unsigned CI Mac images.
+4. Generate `SHA256SUMS.txt` from the **final** six packages (two DMGs, two Windows ZIPs, two Linux tar.gz files) and upload it.
 5. Verify release notes, signatures, notarization, architecture labels, and checksums; publish the draft as the latest stable release.
 
 The background server listens only on `127.0.0.1`. Launcher `--stop` uses a random per-instance token in an owner-private file; it never terminates a process based only on a PID. Foreground servers and unrelated listeners are not stopped. Source execution via `SamsungController.Web` stays foreground. The launcher does not install a boot/login service.

@@ -1,11 +1,13 @@
-## SamsungController v1.0.2
+## SamsungController v1.0.3
 
 ### Changes in this patch
 
-- Move **Quit app** to the very top, beside **Stop**, on every page. It remains available when disconnected; stop active TV operations before quitting.
-- Allow the top-row controls to wrap on narrow windows and update the in-app help and user guides.
-- Upgrade the release workflow to Node.js 24-native artifact upload/download actions, removing the deprecated Node.js 20 action warning on new runs.
-- Clarify certificate-trust failures: they mean the display was reached. Configure trust under **Display → Edit display → Certificate trust and timeouts**; this release does not change certificate policy or pairing credentials automatically.
+- **IP Remote must be enabled on the display**, along with Power On with Mobile. Setup now makes this prerequisite explicit.
+- Short, one-action-per-step pairing instructions with model-specific paths for S95F, smart Odyssey G95SC, and compatible recent/older Samsung TVs.
+- Actual **Allow** dialog photo from Samsung's IP-control worksheet, with attribution; also available on the pairing page. This third-party illustration is not relicensed under the software license.
+- **Trust this display and pair** inspects the certificate before sending a token or command. Confirmation pins it and pairs. Already-paired displays can pin/connect without new approval; changed certificates require explicit replacement approval. Trust is first-use confirmation, not independent identity verification.
+- **README** beside Help opens the included guide in a new tab. README, tutorial, and approval photo work offline. Packaged apps include .NET; source builds require the .NET 10 SDK.
+- macOS now uses drag-to-Applications **DMG installers**, for Apple silicon and Intel. Both app and disk image are signed, notarized, and stapled; Windows/Linux keep their self-contained ZIP/tar.gz formats.
 
 ### Included from v1.0.1
 
@@ -28,7 +30,7 @@ Direct IP control is now the default interface on **main**, replacing the v0 men
 - Native launchable, self-contained apps for Windows, macOS, and Linux on x64 and Arm64. The local server runs in the background, without a terminal window. Reopen the app to reuse it; **Quit app** at the top stops it.
 - Official macOS release apps are Developer ID signed, notarized, and stapled. Windows binaries are unsigned. Linux packages include an optional desktop-shortcut installer.
 
-Start with the [beginner tutorial](https://github.com/whipstein/SamsungController/blob/v1.0.2/docs/getting-started.md).
+Start with the [beginner tutorial](https://github.com/whipstein/SamsungController/blob/v1.0.3/docs/getting-started.md).
 
 ### Upgrade notes
 
@@ -40,7 +42,7 @@ Support varies by TV, firmware, input, and mode. Unreported values are not defau
 
 ### Downloads
 
-- macOS: extract the ZIP and copy **SamsungController.app** to Applications.
+- macOS: open the DMG, drag **SamsungController.app** onto **Applications**, eject, then launch from Applications. Do not run from the mounted image.
 - Windows: extract the ZIP and open **SamsungController.App.exe**.
 - Linux: extract the tar.gz and run **SamsungController.App**; optionally run `install-shortcut.sh`.
 - arm64 is for Apple silicon/Arm64; x64 is for Intel/AMD.

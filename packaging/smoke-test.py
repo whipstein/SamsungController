@@ -95,6 +95,21 @@ with tempfile.TemporaryDirectory(prefix="samsung-desktop-smoke-") as temporary:
         with request("/") as response:
             html = response.read().decode()
         assert "SamsungController" in html and "Choose your display" in html
+        assert 'href="readme"' in html
+        with request("/readme") as response:
+            guide = response.read().decode()
+        assert "IP Remote must be enabled" in guide and "guide-markdown" in guide
+        assert "Confirm trust and pair" in guide
+        with request("/readme/docs/getting-started.md") as response:
+            assert "Save and pair a display" in response.read().decode()
+        with request("/guide-assets/docs/images/samsung-ip-remote-allow.png") as response:
+            assert response.read().startswith(b"\x89PNG\r\n\x1a\n")
+        for forbidden in ["/guide-assets/README.md", "/guide-assets/ip-remote/profiles.json"]:
+            try:
+                request(forbidden)
+                raise AssertionError("Non-image or private path was exposed")
+            except urllib.error.HTTPError as error:
+                assert error.code == 404
         with request("/direct.css") as response:
             assert "direct-page-help" in response.read().decode()
         # A second app launch opens the existing instance, rather than starting another.

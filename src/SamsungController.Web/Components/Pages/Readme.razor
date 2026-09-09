@@ -1,0 +1,21 @@
+@page "/readme"
+@page "/readme/{*DocumentPath}"
+
+<PageTitle>README · SamsungController</PageTitle>
+<section class="panel direct-panel guide-panel">
+    <div class="direct-toolbar">
+        <h1>User guide</h1>
+        <div class="direct-actions"><a class="toolbar-button" href="/readme">README</a><a class="toolbar-button" href="/readme/docs/getting-started.md">Step-by-step guide</a><a class="toolbar-button" href="/">Back to app</a></div>
+    </div>
+    <p>Included with v@SamsungIpRemoteService.Version. Reading this guide sends no TV commands. Close this browser tab to return to your controls.</p>
+    @if (Content is null)
+    { <div class="notice warning" role="alert">This document is not included. Choose README or Step-by-step guide above.</div> }
+    else
+    { <div class="guide-markdown">@((MarkupString)Content)</div> }
+</section>
+
+@code {
+    [Parameter] public string? DocumentPath { get; set; }
+    private string? Content;
+    protected override void OnParametersSet() => Content = UserGuide.Render(DocumentPath);
+}

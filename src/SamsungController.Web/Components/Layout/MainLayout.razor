@@ -38,6 +38,7 @@
                     <button class="toolbar-button" @onclick='() => KeyAsync("exit")' disabled="@(!CanSend)">Exit menu</button>
                     <button type="button" class="toolbar-button" title="Reload every section and available calibration row for the current signal; discards unsent edits" @onclick="RefreshAllAsync" disabled="@(!CanRefreshAll)">Refresh state</button>
                     <button type="button" class="toolbar-button" popovertarget="page-help" aria-controls="page-help" aria-haspopup="dialog" title="Help for this page">Help</button>
+                    <a class="toolbar-button" href="readme" target="_blank" rel="noopener" title="Open the included README in a new tab; works offline">README</a>
                 </div>
             </div>
             @if (Error is not null) { <p class="topbar-feedback danger" role="alert">@Error</p> }

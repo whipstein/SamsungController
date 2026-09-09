@@ -1,0 +1,16 @@
+.guide-panel { max-width:1100px; margin-inline:auto; }
+.guide-markdown { color:var(--ink); font-size:16px; line-height:1.65; overflow-wrap:anywhere; }
+.guide-markdown ::deep h1 { font-size:30px; margin-block:1.2em .6em; }
+.guide-markdown ::deep h2 { font-size:24px; margin-block:1.6em .6em; }
+.guide-markdown ::deep h3 { font-size:20px; margin-block:1.4em .5em; }
+.guide-markdown ::deep :is(h1,h2,h3,h4) { scroll-margin-top:240px; }
+.guide-markdown ::deep p { color:var(--ink); }
+.guide-markdown ::deep a { color:var(--cyan); text-decoration:underline; }
+.guide-markdown ::deep img { max-width:min(100%,560px); height:auto; border-radius:8px; }
+.guide-markdown ::deep table { display:block; max-width:100%; overflow-x:auto; border-collapse:collapse; margin-block:1em; }
+.guide-markdown ::deep :is(th,td) { padding:10px 12px; border:1px solid var(--line-strong); text-align:left; vertical-align:top; }
+.guide-markdown ::deep th { background:var(--surface-control); }
+.guide-markdown ::deep pre { overflow-x:auto; padding:16px; border-radius:8px; background:var(--surface-control); white-space:pre; }
+.guide-markdown ::deep :not(pre)>code { background:var(--surface-control); padding:2px 4px; border-radius:3px; }
+.guide-markdown ::deep li { margin-block:7px; }
+.guide-markdown ::deep blockquote { border-left:4px solid var(--cyan); padding-left:16px; margin-left:0; }

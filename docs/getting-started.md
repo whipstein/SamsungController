@@ -17,9 +17,8 @@ and pair once → Connect and open Menu → edit values → Apply → Stop if ne
 Quit app. Closing the browser only hides the interface. A source server instead
 runs in its terminal and stops with Ctrl+C.
 
-The guided **Trust this display** buttons are in the current source; the published
-v1.0.2 package predates them. Older packages still use the advanced manual
-certificate fields until a newer package is published.
+**IP Remote must be enabled on the display.** Turn on **Power On with Mobile**
+in the same menu before pairing. Keep the physical remote nearby to approve access.
 
 ## 1. Choose your download
 
@@ -27,8 +26,8 @@ Open the [official Releases page](https://github.com/whipstein/SamsungController
 
 | Computer | Package suffix |
 | --- | --- |
-| Apple silicon Mac | macos-arm64.zip |
-| Intel Mac | macos-x64.zip |
+| Apple silicon Mac | macos-arm64.dmg |
+| Intel Mac | macos-x64.dmg |
 | Intel/AMD Windows | windows-x64.zip |
 | Windows on Arm | windows-arm64.zip |
 | Intel/AMD Linux | linux-x64.tar.gz |
@@ -46,11 +45,16 @@ Optional integrity checks against the release's SHA256SUMS.txt:
 
 ### macOS
 
-1. Double-click the downloaded ZIP to extract it.
-2. Drag **SamsungController.app** into Applications. Do not separate its bundle contents.
-3. Double-click the app. It starts the local server and opens the default browser.
-4. Allow **Local Network** access when prompted. Official release Mac apps are Developer ID signed, notarized, and stapled; unsigned CI artifacts are for developers, not normal installation.
-5. If it cannot contact your TV, check **System Settings → Privacy & Security → Local Network** for SamsungController. A source-launched server instead needs permission for its hosting Terminal/editor/ChatGPT app.
+1. Double-click the downloaded **DMG**.
+2. Drag **SamsungController.app** onto the **Applications** shortcut in that window.
+3. Eject the SamsungController disk image in Finder.
+4. Open **Applications → SamsungController**. It starts the server and opens your browser.
+5. Allow **Local Network** access when prompted. Official release DMGs and apps are signed, notarized, and stapled. No .NET install or administrator installer script is needed.
+6. If it cannot contact your TV, check **System Settings → Privacy & Security → Local Network** for SamsungController. Source builds need permission for their hosting Terminal/editor instead.
+
+Do not run the app from inside the mounted DMG. When updating, quit the old copy
+before replacing it in Applications. If macOS asks for permission to copy into
+Applications, approve the normal Finder prompt yourself.
 
 If SamsungController never appears in that list with v1.0.0, quit the old app and update to **v1.0.1 or later**. Install a single copy in Applications and open it there, then attempt Connect/Pair. The patch corrects permission attribution to the native app and its background server. You still need to click **Allow** in the macOS prompt; Developer ID signing does not grant Local Network permission. Your saved pairing credentials are retained. A separate TV approval may still be required for a display that has not yet paired.
 
@@ -83,19 +87,37 @@ For all platforms, the interface is **http://127.0.0.1:5050**. The server runs i
 
 1. Turn the TV on and put it on the same trusted LAN as your computer.
 2. Find its IP address in the network settings. A DHCP reservation avoids address changes.
-3. Enable **IP Remote** in the TV's network expert settings, if supported.
+3. **Enable IP Remote. This is required.** Turn **Power On with Mobile** on first.
 4. Use the direct HTTPS port, normally **1516** (some older displays use 1515). This is not the older WebSocket interface on ports 8001/8002.
 5. Do not expose either the TV service or SamsungController to the internet.
+
+**Where is it?** See the [model-specific paths](../README.md#where-to-enable-ip-remote):
+S95F uses **Connections → Network → Expert Settings**; the smart Odyssey G95SC
+uses **Connection → Network → Expert Settings**; compatible older TVs use
+**General → Network → Expert Settings**. These are under Settings / All Settings.
+Firmware and region can change labels. Search your exact model's e-Manual for
+IP Remote if needed. **Cable Box IP Remote is a different setting.**
 
 ## 5. Save and pair a display
 
 1. On **Display**, select **Add display**.
-2. Enter a useful name/model, TV address, and HTTPS IP Remote port.
-3. Leave **Certificate trust and timeouts** unchanged for guided setup; manual pin entry is still available there for advanced use.
-4. Save the profile. Saving alone sends no TV commands.
-5. Select **Trust this display and pair**. The app retrieves the certificate using a separate TLS-only connection: no HTTP request, saved token, or TV command is sent. Review the displayed address and SHA-256 fingerprint, check the confirmation box, and select **Confirm trust and pair**. The review expires after five minutes; editing/selecting a profile or Cancel clears it.
-6. Accept the separate approval dialog **on the TV**. The app pins the certificate and turns Allow untrusted Off **before** pairing. It saves the returned token, connects, reads settings, and opens Menu. If approval times out, the pin remains saved: use **Pair with TV** to retry and watch the TV screen.
-7. On later visits, choose the saved display and **Connect and open Menu**. Do not pair again simply to reconnect.
+2. Enter the display name and IP address. Normally leave port **1516**.
+3. Click **Save display**. Leave advanced certificate settings unchanged.
+4. Click **Trust this display and pair**.
+5. Check the address and certificate. Tick the confirmation box.
+6. Click **Confirm trust and pair**.
+7. **On the TV**, select **Allow** with its physical remote.
+8. Wait for Menu to open and current settings to load.
+
+![Samsung IP Remote approval dialog — choose Allow](images/samsung-ip-remote-allow.png)
+
+Example from [Samsung's IP-control worksheet, page 2](https://image-us.samsung.com/SamsungUS/samsungbusiness/tv-ci-resources/Samsung-IP-Control.pdf#page=2).
+Appearance varies by model. This approval is on the TV, separate from the app's
+certificate confirmation and macOS Local Network prompt.
+
+**Missed it?** After the request finishes, click **Pair with TV** and watch for
+the TV prompt again. **Next launch:** select the saved display and **Connect and
+open Menu**. Do not pair again simply to reconnect.
 
 If you used the v1 preview, its profiles/tokens are reused. A v0 WebSocket token is not a v1 HTTPS token.
 
@@ -125,7 +147,7 @@ Choose **Picture**, **2pt WB**, **20pt WB**, **Color**, **Sound**, or **System**
 
 - The tabs and Apply controls stay pinned while scrolling.
 - Each tab remembers its position, including after leaving Menu or reloading in the same browser tab.
-- **Help**, beside **Refresh state**, explains the current page/section.
+- **Help**, beside **Refresh state**, explains the current page/section. **README** beside Help opens the included manual in a new tab; it and this tutorial work offline.
 - Picture, Sound, and System boxes can be dragged by their background/heading. Linked controls move together. Reset layout affects only the current section.
 - The right-edge double chevron opens the remote without leaving the page.
 

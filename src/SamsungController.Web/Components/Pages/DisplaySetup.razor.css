@@ -1,3 +1,5 @@
+.pairing-example { display:block; max-width:min(100%,460px); height:auto; border-radius:8px; }
+
 .certificate-fingerprint {
     display: block;
     overflow-wrap: anywhere;

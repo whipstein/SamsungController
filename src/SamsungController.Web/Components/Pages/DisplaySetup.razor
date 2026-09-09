@@ -39,7 +39,8 @@
 {
     <section class="panel direct-panel">
         <h2>@(NewEntry ? "Add display" : "Edit display")</h2>
-        <p>Enable IP Remote on the TV, enter its address, then save. Next, use Trust this display to check its certificate and pair. You do not need to copy a token.</p>
+        <p><strong>IP Remote must be enabled on the display.</strong> Turn Power On with Mobile on too. <a href="/readme/README.md#where-to-enable-ip-remote" target="_blank" rel="noopener">Where to find these settings</a>.</p>
+        <p>Enter the name and TV address below, then Save display.</p>
         <fieldset disabled="@Snapshot.IsBusy" class="direct-fields">
             <label>Display name / model<input aria-label="Display name" @bind="Name" placeholder="Samsung display" /></label>
             <label>TV address<input aria-label="TV address" @bind="Host" placeholder="192.168.1.100" autocomplete="off" /></label>
@@ -63,6 +64,14 @@
 {
     <section class="panel direct-panel">
         <h2>@(Snapshot.HasToken ? "Pairing saved" : "Pair with the TV")</h2>
+        @if (!Snapshot.HasToken)
+        {
+            <ol><li>Enable <strong>IP Remote</strong> on the TV.</li><li>Click <strong>Trust this display and pair</strong> below.</li><li>Confirm the certificate, then select <strong>Allow on the TV</strong> with its physical remote.</li></ol>
+            <details class="direct-details"><summary>Show the TV approval example</summary>
+                <img src="/guide-assets/docs/images/samsung-ip-remote-allow.png" alt="Samsung IP Remote dialog with Allow highlighted" class="pairing-example" />
+                <p>Example from <a href="https://image-us.samsung.com/SamsungUS/samsungbusiness/tv-ci-resources/Samsung-IP-Control.pdf#page=2" target="_blank" rel="noopener">Samsung's IP-control guide</a>. Your screen may differ. Choose Allow, not Deny or Close.</p>
+            </details>
+        }
         @if (Snapshot.ActiveProfile.Connection.NormalizedCertificatePin is not null)
         { <p><strong>Certificate pinned.</strong> Connections must match the saved fingerprint.</p> }
         else if (Snapshot.ActiveProfile.Connection.AllowUntrustedCertificate)

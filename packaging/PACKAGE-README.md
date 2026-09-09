@@ -15,7 +15,7 @@ Read [README.md](README.md) or the [step-by-step tutorial](docs/getting-started.
 
 ## Start the app
 
-- **macOS:** Extract the ZIP, then drag **SamsungController.app** to Applications. Double-click it. Official release Mac apps are Developer ID signed, notarized, and stapled; temporary CI artifacts are not. Allow Local Network access when prompted.
+- **macOS:** Open the **DMG**, drag **SamsungController.app** onto **Applications**, then eject the disk image. Launch the app from Applications. Both the official release DMG and app are signed, notarized, and stapled; temporary CI artifacts are not. Allow Local Network access when prompted.
 - **Windows:** Extract the entire ZIP and double-click **SamsungController.App.exe**. Keep all extracted files together. Windows binaries are not Authenticode-signed; SmartScreen may warn. Only allow an archive downloaded from the official release.
 - **Linux:** Extract the entire tar.gz and run **SamsungController.App**. If needed, allow executing it in file properties. Run `./install-shortcut.sh` once for an optional applications-menu shortcut; keep the extracted folder at that location.
 
@@ -27,12 +27,16 @@ If the browser does not open, enter the URL manually. Background startup errors 
 
 ## Pair and use
 
-1. Turn on the TV, put both devices on the same trusted LAN, and enable the TV's **IP Remote** setting.
-2. Add its address on Display. Direct HTTPS IP Remote normally uses **1516**, not WebSocket ports 8001/8002.
-3. **Save display**, leaving advanced certificate settings unchanged. Select **Trust this display and pair**: review the address and SHA-256 fingerprint, check the confirmation box, then **Confirm trust and pair**. Accept the separate approval dialog **on the TV**. This pins the certificate, turns Allow untrusted Off, saves the token, reads settings, and opens Menu. Later use **Connect and open Menu**, not Pair again.
-4. Choose a Menu tab and edit queried values. **On Apply** stages targets; **Immediately** sends committed adjustments.
-5. Use **Refresh state** after outside changes. Help beside it explains the current page. Stop cancels remaining commands, not changes already delivered.
-6. When finished, **Quit app** at the very top beside Stop. Closing the browser alone does not stop the server. Reopen the desktop app to return to it.
+1. **On the TV:** enable **Power On with Mobile** and **IP Remote**. IP Remote must be enabled before pairing. Keep both devices on the same trusted LAN.
+2. **In the app:** click **Display → Add display**. Enter its name and IP address; normally use port **1516**.
+3. Click **Save display**, then **Trust this display and pair**.
+4. Check the address and certificate. Tick the confirmation box and click **Confirm trust and pair**.
+5. **On the TV:** select **Allow** with its physical remote.
+6. Wait for Menu, edit a value, then click **Apply**. Use **Refresh state** after outside changes.
+7. Click **Stop** to cancel unsent commands; click **Quit app** at the top to stop the server. Closing the browser alone leaves it running.
+
+The **README** button beside Help opens the included guide offline, with a TV
+approval photo and [model-specific IP Remote paths](README.md#where-to-enable-ip-remote).
 
 Already paired using Allow untrusted? **Trust this display and connect** pins the certificate and reuses your saved token without new TV approval. Certificate inspection sends no HTTP request, token, or TV command. It is **trust on first use**: check the address and trusted LAN, and independently compare the fingerprint if available. A changed certificate is never trusted automatically; it requires explicit replacement approval. Canceling the review saves nothing. A failed pairing leaves the pin saved so you can retry with Pair with TV. See [trust details](README.md#certificate-trust-and-pairing).
 

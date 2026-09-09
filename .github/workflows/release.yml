@@ -34,6 +34,9 @@ jobs:
         run: python packaging/build.py --rid ${{ matrix.rid }}
       - name: Smoke-test native packaged application
         run: python packaging/smoke-test.py --manifest artifacts/dist/build-${{ matrix.rid }}.json
+      - name: Test Mac disk image and isolated installation
+        if: runner.os == 'macOS'
+        run: python packaging/macos/verify-dmg.py --manifest artifacts/dist/build-${{ matrix.rid }}.json
       - uses: actions/upload-artifact@v7
         with:
           # Keep the named artifact container expected by the release download step.
@@ -41,6 +44,7 @@ jobs:
           name: SamsungController-${{ matrix.package }}
           path: |
             artifacts/dist/*.zip
+            artifacts/dist/*.dmg
             artifacts/dist/*.tar.gz
           if-no-files-found: error
 
@@ -65,12 +69,12 @@ jobs:
         run: |
           set -euo pipefail
           # CI never publishes unsigned Mac apps. Maintainers replace both Mac
-          # archives with signed/notarized/stapled builds before publishing.
+          # DMGs with signed/notarized/stapled builds before publishing.
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
-            gh release upload "$RELEASE_TAG" artifacts/dist/*.zip artifacts/dist/*.tar.gz --clobber
+            gh release upload "$RELEASE_TAG" artifacts/dist/*.dmg artifacts/dist/*.zip artifacts/dist/*.tar.gz --clobber
           else
-            gh release create "$RELEASE_TAG" artifacts/dist/*.zip artifacts/dist/*.tar.gz \
+            gh release create "$RELEASE_TAG" artifacts/dist/*.dmg artifacts/dist/*.zip artifacts/dist/*.tar.gz \
               --draft --verify-tag --title "SamsungController $RELEASE_TAG" \
               --notes-file packaging/RELEASE-NOTES.md
           fi

@@ -31,6 +31,8 @@ app.UseWhen(context => !context.Request.Path.StartsWithSegments("/_app"), branch
     branch.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true));
 app.UseAntiforgery();
 app.MapStaticAssets();
+app.MapGet("/guide-assets/{**name}", (string name) => UserGuide.Image(name) is { } bytes
+    ? Results.File(bytes, "image/png") : Results.NotFound());
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 app.Services.GetRequiredService<DesktopRuntime>().MapEndpoints(app);
