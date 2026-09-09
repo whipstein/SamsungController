@@ -227,7 +227,7 @@ public sealed partial class SamsungIpRemoteClient(ISamsungTokenStore tokenStore,
         catch (HttpRequestException exception)
         {
             return Complete(transport?.RejectedCertificate == true ? SamsungIpRemoteOutcome.CertificateError : SamsungIpRemoteOutcome.TransportError,
-                transport?.RejectedCertificate == true ? "The TV certificate was not trusted. Verify its SHA-256 fingerprint and pin it, or explicitly allow an untrusted certificate for this endpoint only."
+                transport?.RejectedCertificate == true ? "The TV certificate was not trusted. On Display, use Trust this display to review its SHA-256 fingerprint. A saved pin is never replaced automatically; changing pairing tokens or network permission cannot fix certificate trust."
                     : DescribeTransportFailure(exception));
         }
         catch (ResponseTooLargeException)

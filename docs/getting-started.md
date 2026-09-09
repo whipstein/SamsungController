@@ -2,6 +2,25 @@
 
 This guide describes the **v1 direct-IP application**, now the default on main. For historical menu-key workflows, see [the v0 guide](v0-user-guide.md).
 
+## Requirements and quick start
+
+For a **downloaded app**, the .NET runtime is included: no .NET SDK/runtime install,
+Git, Python, Node.js, Samsung SDK, or IDE is required. For **source builds**, install
+the **.NET 10 SDK** (not the runtime alone); see [source setup](../README.md#install-and-run-from-source).
+Both need a current browser with JavaScript and a Samsung display supporting HTTPS
+IP Remote, on the same trusted local network. Allow Local Network/VPN LAN access.
+macOS needs 14 or newer; see the [requirements table](../README.md#requirements)
+for Windows/Linux dependencies and processor selection.
+
+**Everyday workflow:** launch the app → Display → select/add a display → trust
+and pair once → Connect and open Menu → edit values → Apply → Stop if needed →
+Quit app. Closing the browser only hides the interface. A source server instead
+runs in its terminal and stops with Ctrl+C.
+
+The guided **Trust this display** buttons are in the current source; the published
+v1.0.2 package predates them. Older packages still use the advanced manual
+certificate fields until a newer package is published.
+
 ## 1. Choose your download
 
 Open the [official Releases page](https://github.com/whipstein/SamsungController/releases/latest).
@@ -72,13 +91,27 @@ For all platforms, the interface is **http://127.0.0.1:5050**. The server runs i
 
 1. On **Display**, select **Add display**.
 2. Enter a useful name/model, TV address, and HTTPS IP Remote port.
-3. Open **Certificate trust and timeouts**. Prefer a trusted SHA-256 fingerprint. Alternatively, explicitly allow the TV's self-signed certificate for this endpoint only on your trusted LAN.
+3. Leave **Certificate trust and timeouts** unchanged for guided setup; manual pin entry is still available there for advanced use.
 4. Save the profile. Saving alone sends no TV commands.
-5. Select **Pair with TV** and watch the TV for its approval dialog.
-6. Accept on the TV. The app saves the token, connects, reads settings, and opens Menu.
+5. Select **Trust this display and pair**. The app retrieves the certificate using a separate TLS-only connection: no HTTP request, saved token, or TV command is sent. Review the displayed address and SHA-256 fingerprint, check the confirmation box, and select **Confirm trust and pair**. The review expires after five minutes; editing/selecting a profile or Cancel clears it.
+6. Accept the separate approval dialog **on the TV**. The app pins the certificate and turns Allow untrusted Off **before** pairing. It saves the returned token, connects, reads settings, and opens Menu. If approval times out, the pin remains saved: use **Pair with TV** to retry and watch the TV screen.
 7. On later visits, choose the saved display and **Connect and open Menu**. Do not pair again simply to reconnect.
 
 If you used the v1 preview, its profiles/tokens are reused. A v0 WebSocket token is not a v1 HTTPS token.
+
+**Already paired with Allow untrusted?** Select **Trust this display and connect**,
+review and confirm. The app keeps the existing token and does not ask the TV to
+approve again. On future visits simply Connect.
+
+**What am I trusting?** This is trust on first use, not independently verified
+identity. Check that the IP belongs to your display on a trusted LAN; compare its
+fingerprint through another trusted source if available. The pin identifies the
+display to the app; the token identifies the app to the display. Neither is an
+OS permission, and no certificate/token needs to be entered on the TV manually.
+Future certificate mismatches stop requests. Review shows the old/new fingerprints
+with a distinct replacement confirmation. Investigate before approving; the app
+never replaces a pin silently. Cancel leaves the old trust intact. Fingerprints
+are visible during this review; diagnostic exports redact them by default.
 
 ## 6. Let the initial read finish
 

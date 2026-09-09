@@ -101,6 +101,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             {
                 Profiles = profiles,
                 ActiveProfile = profile,
+                CertificateReview = null,
                 DirectPictureReading = null,
                 WorkspaceReading = null,
                 HasToken = hasToken,
@@ -132,6 +133,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             Update(state => state with
             {
                 ActiveProfile = profile,
+                CertificateReview = null,
                 DirectPictureReading = null,
                 WorkspaceReading = null,
                 HasToken = hasToken,
@@ -175,11 +177,13 @@ public sealed partial class SamsungIpRemoteService : IDisposable
         {
             if (_menuNudges is { } session) { session.Accepting = false; PublishNudgesLocked(session); }
             _operation?.Cancel();
+            _snapshot = _snapshot with { CertificateReview = null };
+            _certificateReviewProfile = null;
         }
         Changed?.Invoke();
     }
 
-    private async Task RunAsync(bool pairing, IReadOnlyList<string> methods, string label)
+    private async Task RunAsync(bool pairing, IReadOnlyList<string> methods, string label, Guid? trustReviewId = null, bool confirmReplacement = false)
     {
         if (methods.Any(method => !SamsungIpRemoteClient.ReadMethods.Contains(method, StringComparer.Ordinal)))
             throw new InvalidOperationException("Only the two approved read methods are available.");
@@ -188,10 +192,18 @@ public sealed partial class SamsungIpRemoteService : IDisposable
         {
             var state = GetSnapshot();
             var profile = state.ActiveProfile ?? throw new InvalidOperationException("Save a profile first.");
-            if (!pairing && (!state.HasToken || state.AuthorizationRejected))
-                throw new InvalidOperationException("Pair explicitly before querying this endpoint. No request was sent.");
             var cancellation = new CancellationTokenSource();
             lock (_sync) _operation = cancellation;
+            if (trustReviewId is { } reviewId)
+            {
+                Update(current => current with { IsBusy = true });
+                profile = await ConfirmCertificateLockedAsync(reviewId, confirmReplacement).ConfigureAwait(false);
+                cancellation.Token.ThrowIfCancellationRequested();
+                // Pin an already paired display without requesting a replacement token.
+                if (state.HasToken && !state.AuthorizationRejected) return;
+            }
+            if (!pairing && (!state.HasToken || state.AuthorizationRejected))
+                throw new InvalidOperationException("Pair explicitly before querying this endpoint. No request was sent.");
             Update(current => current with
             {
                 IsBusy = true,

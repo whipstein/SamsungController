@@ -39,6 +39,7 @@
 {
     <section class="panel direct-panel">
         <h2>@(NewEntry ? "Add display" : "Edit display")</h2>
+        <p>Enable IP Remote on the TV, enter its address, then save. Next, use Trust this display to check its certificate and pair. You do not need to copy a token.</p>
         <fieldset disabled="@Snapshot.IsBusy" class="direct-fields">
             <label>Display name / model<input aria-label="Display name" @bind="Name" placeholder="Samsung display" /></label>
             <label>TV address<input aria-label="TV address" @bind="Host" placeholder="192.168.1.100" autocomplete="off" /></label>
@@ -46,6 +47,7 @@
             <label>Firmware note (optional)<input @bind="Firmware" /></label>
         </fieldset>
         <details class="direct-details"><summary>Certificate trust and timeouts</summary>
+            <p>Normally leave these unchanged and use the guided trust option after saving. Manual fingerprints are for advanced setup. Allow untrusted skips display identity checking unless a pin is present.</p>
             <fieldset disabled="@Snapshot.IsBusy" class="direct-fields">
                 <label>Certificate SHA-256<input aria-label="Display certificate SHA-256" @bind="Pin" autocomplete="off" /></label>
                 <label class="direct-check"><input type="checkbox" aria-label="Allow untrusted display certificate" @bind="AllowUntrusted" /> Allow an untrusted certificate for this endpoint only</label>
@@ -61,6 +63,33 @@
 {
     <section class="panel direct-panel">
         <h2>@(Snapshot.HasToken ? "Pairing saved" : "Pair with the TV")</h2>
+        @if (Snapshot.ActiveProfile.Connection.NormalizedCertificatePin is not null)
+        { <p><strong>Certificate pinned.</strong> Connections must match the saved fingerprint.</p> }
+        else if (Snapshot.ActiveProfile.Connection.AllowUntrustedCertificate)
+        { <p class="notice warning">Display identity is not checked. Use Trust this display below to save its certificate and turn Allow untrusted off.</p> }
+        else
+        { <p>Samsung displays commonly use self-signed certificates. Use the guided trust option before pairing.</p> }
+        <div class="direct-actions"><button class="primary-action" @onclick="InspectCertificateAsync" disabled="@Snapshot.IsBusy">@TrustAction</button></div>
+        @if (Snapshot.CertificateReview is { } review)
+        {
+            <section class="notice @(review.ReplacesCertificate ? "danger" : "info")" aria-label="Review display certificate">
+                <h3>@(review.ReplacesCertificate ? "Warning: display certificate changed" : "Confirm this display")</h3>
+                <p>Address: <strong>@review.Endpoint</strong></p>
+                <p>Observed certificate SHA-256:</p><code class="certificate-fingerprint">@review.CertificateSha256</code>
+                @if (review.ReplacesCertificate)
+                {
+                    <p>Previously trusted SHA-256:</p><code class="certificate-fingerprint">@review.PreviousCertificateSha256</code>
+                    <p>A changed certificate could mean a different display, a reset, or an intercepted connection. Check the address and network before replacing it. The existing pin has not been changed.</p>
+                }
+                <p>This is trust on first use, not independent proof of identity. Confirm the address belongs to your display on a trusted local network; compare the fingerprint through a separate trusted source if available. This check sent no token or TV command. Confirmation saves this exact certificate for this app only.</p>
+                <label class="direct-check"><input type="checkbox" aria-label="Confirm display certificate trust" @bind="TrustConfirmed" disabled="@Snapshot.IsBusy" /> @(review.ReplacesCertificate ? "I checked this display and approve replacing its saved certificate." : "I checked this display and trust this certificate.")</label>
+                <div class="direct-actions">
+                    <button class="primary-action" @onclick="ConfirmTrustAsync" disabled="@(Snapshot.IsBusy || !TrustConfirmed)">@(ReusesPairing ? "Confirm trust and connect" : "Confirm trust and pair")</button>
+                    <button class="toolbar-button" @onclick="Controller.Cancel" disabled="@Snapshot.IsBusy">Cancel trust</button>
+                </div>
+                <p>@(ReusesPairing ? "Your existing token will be reused; no new approval is requested unless the TV rejects it." : "After confirming, watch the TV and accept its pairing approval dialog.")</p>
+            </section>
+        }
         <div class="direct-actions"><button class="toolbar-button" @onclick="PairAsync" disabled="@Snapshot.IsBusy">@(Snapshot.HasToken ? "Pair again (TV approval)" : "Pair with TV")</button><button class="toolbar-button" @onclick="Controller.Cancel" disabled="@(!Snapshot.IsBusy)">Cancel request</button></div>
         <p role="status">@Snapshot.Status</p>
         @if (Snapshot.Menu.Readings.GetValueOrDefault("getDeviceInformation")?.Values is { } identity)
@@ -75,17 +104,27 @@
     private int Port = 1516, ReadTimeout = 10, PairTimeout = 60;
     private bool AllowUntrusted, ShowEditor, NewEntry;
     private string? Error;
+    private bool TrustConfirmed;
+    private Guid? ReviewId;
+    private bool ReusesPairing => Snapshot.HasToken && !Snapshot.AuthorizationRejected;
+    private string TrustAction => ReusesPairing ? "Trust this display and connect" : "Trust this display and pair";
     private bool CanConnect => !ShowEditor && !Snapshot.IsBusy && Snapshot.ActiveProfile is not null && Snapshot.HasToken;
     protected override async Task OnInitializedAsync()
     {
         Controller.Changed += Refresh; await GuardAsync(Controller.InitializeAsync);
         if (Snapshot.Profiles.Count == 0) NewDisplay();
     }
-    private void Refresh() => _ = InvokeAsync(() => { Snapshot = Controller.GetSnapshot(); StateHasChanged(); });
+    private void ReadSnapshot()
+    {
+        Snapshot = Controller.GetSnapshot();
+        if (ReviewId != Snapshot.CertificateReview?.Id) { TrustConfirmed = false; ReviewId = Snapshot.CertificateReview?.Id; }
+    }
+    private void Refresh() => _ = InvokeAsync(() => { ReadSnapshot(); StateHasChanged(); });
     private void NewDisplay() { LoadDraft(new()); NewEntry = true; ShowEditor = true; }
     private void EditDisplay() { if (Snapshot.ActiveProfile is { } profile) { LoadDraft(profile); NewEntry = false; ShowEditor = true; } }
     private void LoadDraft(IpRemoteProfile profile)
     {
+        if (Snapshot.CertificateReview is not null) Controller.Cancel();
         BaseProfile = profile; Host = profile.Connection.Host; Name = profile.Model; Firmware = profile.Firmware; Port = profile.Connection.Port;
         Pin = profile.Connection.CertificateSha256 ?? ""; AllowUntrusted = profile.Connection.AllowUntrustedCertificate;
         ReadTimeout = (int)profile.Connection.RequestTimeout.TotalSeconds; PairTimeout = (int)profile.Connection.PairingTimeout.TotalSeconds; Error = null;
@@ -99,6 +138,19 @@
     });
     private Task SelectAsync(ChangeEventArgs args) => GuardAsync(async () => { await Controller.SelectProfileAsync(args.Value?.ToString() ?? ""); ShowEditor = false; });
     private Task ConnectAsync() => GuardAsync(async () => { if (!Snapshot.Menu.Connected) await Controller.ConnectMenuAsync(); Navigation.NavigateTo("menu"); });
+    private Task InspectCertificateAsync() => GuardAsync(Controller.InspectDisplayCertificateAsync);
+    private Task ConfirmTrustAsync() => GuardAsync(async () =>
+    {
+        if (!TrustConfirmed || Snapshot.CertificateReview is not { } review) throw new InvalidOperationException("Review and confirm the certificate first.");
+        var reuse = ReusesPairing;
+        await Controller.TrustDisplayAndPairAsync(review.Id, review.ReplacesCertificate);
+        if (!reuse)
+        {
+            var result = Controller.GetSnapshot().Observations.LastOrDefault()?.Exchange;
+            if (result?.IsSuccess != true) throw new InvalidOperationException(result?.Message ?? "Pairing did not complete. The certificate remains pinned; try Pair with TV again.");
+        }
+        await Controller.ConnectMenuAsync(); Navigation.NavigateTo("menu");
+    });
     private Task PairAsync() => GuardAsync(async () =>
     {
         await Controller.PairAsync();
@@ -111,7 +163,7 @@
         Error = null;
         try { await action(); }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException or JsonException or OperationCanceledException) { Error = error.Message; }
-        finally { Snapshot = Controller.GetSnapshot(); }
+        finally { ReadSnapshot(); }
     }
     public void Dispose() => Controller.Changed -= Refresh;
 }

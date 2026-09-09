@@ -15,6 +15,63 @@ namespace SamsungController.Core.Tests;
 public sealed class SamsungIpRemoteConnectionTests
 {
     [Fact]
+    public async Task CertificateInspectionSendsNoHttpAndDoesNotChangeTrustOrCredentials()
+    {
+        await using var tv = new LocalTv();
+        var tokens = Tokens(tv);
+        using var client = new SamsungIpRemoteClient(tokens);
+        var options = tv.Options with { AllowUntrustedCertificate = false };
+        var inspection = await client.InspectCertificateAsync(options);
+        Assert.True(inspection.IsSuccess, inspection.Message);
+        Assert.Equal(tv.Pin, inspection.CertificateSha256);
+        Assert.Equal(options.Endpoint.AbsoluteUri, inspection.Endpoint);
+        Assert.Empty(tv.Requests);
+        Assert.Empty(tv.Batches);
+        Assert.Equal(0, tokens.LoadCount);
+        Assert.Equal("test-token", tokens.Values[options.Endpoint.AbsoluteUri]);
+        // Inspecting is NOT acceptance, and cannot warm a permissive HTTP pool.
+        Assert.Equal(SamsungIpRemoteOutcome.CertificateError, (await client.ReadAsync(options, "getTVStates")).Outcome);
+        Assert.Empty(tv.Requests);
+        var reply = await client.ReadAsync(options with { CertificateSha256 = inspection.CertificateSha256 }, "getTVStates");
+        Assert.True(reply.IsSuccess, reply.Message);
+        Assert.True(reply.NewTlsHandshake);
+        Assert.Single(tv.Requests);
+    }
+
+    [Fact]
+    public async Task CertificateChangedAfterInspectionRejectsPairingBeforeAnyHttp()
+    {
+        await using var first = new LocalTv();
+        await using var replacement = new LocalTv();
+        using var client = new SamsungIpRemoteClient(Tokens(first));
+        var inspection = await client.InspectCertificateAsync(first.Options);
+        first.UseCertificateFrom(replacement);
+        var reply = await client.PairAsync(first.Options with { CertificateSha256 = inspection.CertificateSha256, AllowUntrustedCertificate = false });
+        Assert.Equal(SamsungIpRemoteOutcome.CertificateError, reply.Outcome);
+        Assert.Empty(first.Requests);
+        Assert.Empty(replacement.Requests);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CertificateInspectionHonorsTimeoutAndCancellation(bool cancel)
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var options = new SamsungIpRemoteOptions { Host = "127.0.0.1", Port = ((IPEndPoint)listener.LocalEndpoint).Port,
+            RequestTimeout = TimeSpan.FromMilliseconds(cancel ? 5000 : 100) };
+        using var client = new SamsungIpRemoteClient(new SamsungIpRemoteClientTests.MemoryTokens());
+        using var cancellation = new CancellationTokenSource();
+        var pending = client.InspectCertificateAsync(options, cancellation.Token);
+        using var peer = await listener.AcceptTcpClientAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        if (cancel) cancellation.Cancel();
+        var result = await pending;
+        Assert.Equal(cancel ? SamsungIpRemoteOutcome.Canceled : SamsungIpRemoteOutcome.Timeout, result.Outcome);
+        Assert.Null(result.CertificateSha256);
+    }
+
+    [Fact]
     public async Task ReusesTlsConnectionButLoadsCredentialsAndHonorsTimeoutPerRequest()
     {
         await using var tv = new LocalTv();
@@ -198,6 +255,8 @@ public sealed class SamsungIpRemoteConnectionTests
         private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
         private readonly CancellationTokenSource _stop = new(TimeSpan.FromSeconds(20));
         private readonly X509Certificate2 _certificate;
+        private X509Certificate2? _replacementCertificate;
+        public void UseCertificateFrom(LocalTv replacement) => _replacementCertificate = replacement._certificate;
         private readonly Task _accept;
         private readonly List<Task> _connections = [];
         public SamsungIpRemoteOptions Options { get; }
@@ -247,7 +306,7 @@ public sealed class SamsungIpRemoteConnectionTests
             await using var stream = new SslStream(client.GetStream());
             try
             {
-                await stream.AuthenticateAsServerAsync(new SslServerAuthenticationOptions { ServerCertificate = _certificate }, _stop.Token);
+                await stream.AuthenticateAsServerAsync(new SslServerAuthenticationOptions { ServerCertificate = _replacementCertificate ?? _certificate }, _stop.Token);
                 using var reader = new StreamReader(stream, Encoding.UTF8, leaveOpen: true);
                 while (await reader.ReadLineAsync(_stop.Token) is { } start)
                 {

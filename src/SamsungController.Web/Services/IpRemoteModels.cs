@@ -35,6 +35,7 @@ public sealed record IpRemoteObservation(IpRemoteProfile UserEnteredContext, str
 
 public sealed record IpRemoteSnapshot
 {
+    public IpCertificateReview? CertificateReview { get; init; }
     public IpReadBatchProbe? ReadBatchProbe { get; init; }
     public IReadOnlyDictionary<string, IpBatchFailure> BatchFailures { get; init; } = new Dictionary<string, IpBatchFailure>();
     public bool BatchHistoryUnavailable { get; init; }

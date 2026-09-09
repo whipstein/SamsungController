@@ -4,6 +4,47 @@ Control Samsung displays locally using direct HTTPS IP commands. The web interfa
 
 **v1.0.2 is the default on `main`.** It replaces the v0 menu-traversal GUI with direct IP control. Start with the [step-by-step beginner tutorial](docs/getting-started.md).
 
+## Requirements
+
+| Requirement | Downloaded desktop app | Running from source |
+| --- | --- | --- |
+| .NET | Included; **no SDK or runtime installation needed** | **[.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)**; the runtime alone is insufficient |
+| Git | Not needed | Needed only for cloning/pulling; a downloaded source ZIP also works |
+| Browser | A current Safari, Edge, Chrome, or Firefox with JavaScript enabled | Same |
+| Python / Node.js / IDE | Not needed | Not needed to build/run the web app; Python 3 is used only by the optional packaging scripts |
+| Display/network | Samsung display supporting **HTTPS IP Remote**, powered on, with IP Remote enabled; computer and display on the same trusted LAN | Same |
+
+Choose the package/SDK for your computer's processor: Arm64 or Intel/AMD x64.
+macOS requires **14 or newer**. Windows and Linux must support .NET 10;
+Linux self-contained apps still need the distribution's native dependencies
+(including its supported OpenSSL and ICU libraries). Check Microsoft's
+[Windows](https://learn.microsoft.com/dotnet/core/install/windows),
+[macOS](https://learn.microsoft.com/dotnet/core/install/macos), and
+[Linux distribution requirements](https://learn.microsoft.com/dotnet/core/install/linux).
+`xdg-open` is optional on Linux for automatically opening the browser; without it,
+open the local URL yourself. No Samsung SDK, SmartThings account/API key, or
+manually copied pairing token is required by this app. Not every Samsung TV or
+monitor supports this protocol, and supported settings vary by model/firmware.
+
+Allow the app (or hosting Terminal/editor for source builds) to access your local
+network. Check VPN **Allow LAN connections** and firewall restrictions. Do not
+publish the local server or TV control ports to the internet.
+
+## Quick start: launch, use, stop
+
+1. **Install:** download your OS/processor's app from [Releases](https://github.com/whipstein/SamsungController/releases/latest), not GitHub's “Source code” archive. Extract the entire package. On Mac, move `SamsungController.app` to Applications; on Windows/Linux keep the extracted folder together.
+2. **Launch:** double-click `SamsungController.app` (Mac), `SamsungController.App.exe` (Windows), or `SamsungController.App` (Linux). Allow Local Network access if prompted. It starts a background server and opens [http://127.0.0.1:5050](http://127.0.0.1:5050); enter that URL manually if needed. No terminal is required. For a source checkout instead, follow [Install and run from source](#install-and-run-from-source) below.
+3. **Set up:** enable IP Remote on the TV. On **Display → Add display**, enter its name and IP address, keep HTTPS port **1516** unless your display requires another, and **Save display**. Leave advanced certificate settings unchanged for guided setup.
+4. **Trust and pair:** select **Trust this display and pair**. Review the address and certificate, check the confirmation box, then **Confirm trust and pair**. Accept the separate approval dialog **on the TV**. The app pins the certificate, saves the token, reads current settings, and opens Menu. For an already-paired display, **Trust this display and connect** keeps its existing token. See [certificate trust](#certificate-trust-and-pairing) for the first-use security caveat.
+5. **Use:** choose a Menu tab. Start with **On Apply**: edit a value, then select **Apply (N)**. **TV:** shows the last queried value. Use **Refresh state** after outside changes. **Help** beside it explains the current page. On future launches select the saved display and **Connect and open Menu**; do not pair again just to reconnect.
+6. **Stop:** **Stop** cancels remaining TV commands; it does not undo delivered changes. To exit a packaged app, finish/review any active operation, then **Quit app** at the very top beside Stop. Closing the browser alone leaves the background server running. For a source/foreground server, use **Ctrl+C** in its terminal instead. Opening the desktop app again returns to the running instance; no login service is installed.
+
+The guided trust buttons described here are available in the current source;
+the published v1.0.2 package predates them. Older packages use the manual
+**Edit display → Certificate trust and timeouts** fields until an updated package
+is released. See the [full tutorial](docs/getting-started.md) for platform-specific
+installation, troubleshooting, updates, and optional command-line use.
+
 ## License
 
 This revision uses [MIT + Commons Clause v1.0 with a Paid Services Exception](LICENSE),
@@ -19,7 +60,7 @@ v0.3.0, retain their original permissions. The full `LICENSE` controls.
 
 ## Features
 
-- Display profiles, explicit TV pairing, and saved-token reuse.
+- Display profiles, guided certificate trust, explicit TV pairing, and saved-token reuse.
 - Six peer sections: Picture, 2pt WB, 20pt WB, Color, Sound, and System. Picture, Sound, and System support saved whole-box drag-and-drop layouts.
 - TV-queried current values with compact sliders, number fields, switches, and selections.
 - Staged Apply or remembered Apply immediately, per-setting readback, progress, and Stop.
@@ -41,7 +82,7 @@ Direct IP uses HTTPS, normally port **1516**; some older displays use **1515**. 
 
 ## Install and run from source
 
-Install [Git](https://git-scm.com/downloads) and the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0). Choose Arm64 for Apple silicon or Windows/Linux on Arm; choose x64 for Intel/AMD. Microsoft provides SDK instructions for [Windows](https://learn.microsoft.com/en-us/dotnet/core/install/windows), [macOS](https://learn.microsoft.com/en-us/dotnet/core/install/macos), and [Linux](https://learn.microsoft.com/en-us/dotnet/core/install/linux).
+Install [Git](https://git-scm.com/downloads) and the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0), not just the runtime. Check `dotnet --list-sdks`: it must include `10.0.xxx` (10.0.100 or later; see `global.json`). Choose Arm64 for Apple silicon or Windows/Linux on Arm; choose x64 for Intel/AMD. Microsoft provides SDK instructions for [Windows](https://learn.microsoft.com/en-us/dotnet/core/install/windows), [macOS](https://learn.microsoft.com/en-us/dotnet/core/install/macos), and [Linux](https://learn.microsoft.com/en-us/dotnet/core/install/linux). If using GitHub's source ZIP, extract it and open a terminal in its root; skip the clone and `cd` commands. Internet access is needed for the initial NuGet restore. A separate .NET/ASP.NET runtime install, Python, Node.js, and Visual Studio are not required.
 
 In macOS Terminal, Windows PowerShell, or a Linux terminal:
 
@@ -83,7 +124,7 @@ Platform notes:
 
 - **macOS:** Official release apps are Developer ID signed, notarized, and stapled. Allow Local Network access when prompted. CI artifacts are unsigned until the maintainer completes signing; use the published release for normal installation.
 - **Windows:** Use Extract All first. Windows binaries are not Authenticode-signed; SmartScreen may warn. Verify the official source before allowing execution.
-- **Linux:** Enable execution in file properties if needed. Run `./install-shortcut.sh` for an optional applications-menu entry. A graphical browser, `xdg-open`, and the normal [.NET native Linux dependencies](https://learn.microsoft.com/dotnet/core/install/linux) are required.
+- **Linux:** Enable execution in file properties if needed. Run `./install-shortcut.sh` for an optional applications-menu entry. A graphical browser and the normal [.NET native Linux dependencies](https://learn.microsoft.com/dotnet/core/install/linux) are required. `xdg-open` opens the browser automatically; otherwise enter the local URL yourself.
 
 Port 5050 is loopback-only. Stop any old foreground server occupying it before launching the app. Background logs and startup errors live under `desktop/` in the [private data folder](#private-data-command-line-and-updates). The launcher does not kill unrelated processes.
 
@@ -94,8 +135,8 @@ Releases include `SHA256SUMS.txt`. Optional integrity checks: macOS `shasum -a 2
 ## First connection
 
 1. On **Display**, choose a saved display. Existing IP Remote preview profiles and tokens are reused. For a new TV, choose **Add display**, enter its address/name and port, then **Save display**. Saving sends nothing to the TV.
-2. While editing, open **Certificate trust and timeouts** if needed. Prefer a trusted SHA-256 fingerprint. Alternatively, explicitly allow an untrusted certificate for this endpoint on your trusted LAN. That weakens server authentication; it is not global. An entered fingerprint must still match.
-3. Select **Pair with TV** for a new endpoint and accept its approval dialog. Successful pairing saves the token, reads the TV, and opens Menu.
+2. Select **Trust this display and pair**. This retrieves the certificate without sending an HTTP request, token, or TV command. Review the address and fingerprint, check the confirmation box, and select **Confirm trust and pair**.
+3. Accept the approval dialog **on the TV**. The certificate is pinned before pairing, Allow untrusted is turned Off, and successful pairing saves the token, reads the TV, and opens Menu. If pairing times out, the pin remains saved: use **Pair with TV** to retry.
 4. For an already paired endpoint select **Connect and open Menu**. Do not pair again merely to reconnect.
 5. The header shows TV-reported input and picture mode. Connect/Disconnect and Stop remain visible on every page.
 
@@ -104,6 +145,31 @@ Connect preloads every Menu section and the catalog's other documented read/list
 The app requests HTTPS keep-alive and retains one pooled TCP/TLS connection for the selected endpoint, including while idle. Requests reuse your saved token; they do not pair again. The TV can still close its connection, requiring a new TCP/TLS connection on the next request. “Connected” means the latest check succeeded, not continuous TV-state monitoring. The header status tooltip reports whether the last query reused TLS or the TV requested closure. Transport/authentication failures clear Connected; a failed Connect leaves the normal Connect button available.
 
 If the connection stalls, use **Reset connection (keep pairing)** on Display. Stop any running request first. Reset discards the local HTTPS pool and makes only two ordinary state queries with your saved token—no pairing prompt, batch, setting/selector write, or full calibration scan. It clears cached readings and unsent drafts but preserves unfinished-operation originals. After success, refresh Menu values when ready. Normal Connect also opens a fresh connection. A timeout does not prove a bad token; if Reset still fails, export the recent Communication log before requesting another pairing. This action cannot restart a wedged TV-side IP service or restore a permission the TV actually revoked.
+
+### Certificate trust and pairing
+
+These are separate: the **certificate pin** checks that the app is talking to
+the same display; the **pairing token** lets that display recognize the app.
+Both are saved privately per HTTPS address/port. You do not copy a token into
+the TV, install a certificate in the operating system, or disable system-wide
+certificate checking.
+
+The guided certificate check is **trust on first use**, not independent proof
+of the TV's identity. Confirm the IP belongs to your display on a trusted LAN;
+compare the SHA-256 fingerprint through an independent trusted source if one is
+available. The confirmation is tied to the checked profile and fingerprint and
+expires after five minutes. Canceling sends no pairing request and saves no pin.
+Confirmation closes any older permissive connection, saves the exact pin, then
+pairs/connects using strict pin checking on a fresh TLS connection.
+
+Already paired with **Allow untrusted**? Choose **Trust this display and connect**
+and confirm the certificate. It turns Allow untrusted Off and reuses your token;
+no TV approval is requested unless you explicitly pair again after a rejection.
+A saved pin mismatch stops requests. The review shows both old and new hashes
+and a separate replacement warning/confirmation. Investigate a changed address,
+reset, or untrusted network before approving it; there is no silent replacement.
+Manual pins and timeouts remain under **Edit display → Certificate trust and
+timeouts**. An entered pin takes precedence even if Allow untrusted is checked.
 
 ## Change settings
 

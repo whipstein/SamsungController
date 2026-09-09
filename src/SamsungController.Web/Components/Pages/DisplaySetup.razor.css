@@ -1,0 +1,6 @@
+.certificate-fingerprint {
+    display: block;
+    overflow-wrap: anywhere;
+    user-select: all;
+    margin-block: .5rem 1rem;
+}

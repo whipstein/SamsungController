@@ -38,6 +38,13 @@ public enum SamsungIpRemoteOutcome
     ProtocolError, TransportError, CertificateError, Timeout, Canceled, StorageError
 }
 
+// An observation, not an authenticated identity. No HTTP request or token is sent.
+public sealed record SamsungCertificateInspection(string Endpoint, SamsungIpRemoteOutcome Outcome,
+    string Message, string? CertificateSha256 = null)
+{
+    public bool IsSuccess => Outcome == SamsungIpRemoteOutcome.Success && CertificateSha256 is not null;
+}
+
 // No credential is ever returned in this model. Request, response, and Result
 // are sanitized before leaving the client, including createAccessToken replies.
 public sealed record SamsungIpRemoteExchange(
@@ -64,6 +71,8 @@ public sealed record SamsungIpRemoteExchange(
 public interface ISamsungIpRemoteClient
 {
     void CloseConnection() { }
+    Task<SamsungCertificateInspection> InspectCertificateAsync(SamsungIpRemoteOptions options, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This client does not implement certificate inspection.");
     Task<bool> HasTokenAsync(SamsungIpRemoteOptions options, CancellationToken cancellationToken = default);
     Task ForgetTokenAsync(SamsungIpRemoteOptions options, CancellationToken cancellationToken = default);
     Task<SamsungIpRemoteExchange> PairAsync(SamsungIpRemoteOptions options, CancellationToken cancellationToken = default);

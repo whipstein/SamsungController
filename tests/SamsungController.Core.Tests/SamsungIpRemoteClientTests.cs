@@ -434,7 +434,12 @@ public sealed class SamsungIpRemoteClientTests
     {
         public Dictionary<string, string> Values { get; } = [];
         public bool FailSave { get; init; }
-        public Task<string?> LoadAsync(string host, CancellationToken cancellationToken = default) => Task.FromResult(Values.GetValueOrDefault(host));
+        public int LoadCount { get; private set; }
+        public Task<string?> LoadAsync(string host, CancellationToken cancellationToken = default)
+        {
+            LoadCount++;
+            return Task.FromResult(Values.GetValueOrDefault(host));
+        }
         public Task SaveAsync(string host, string token, CancellationToken cancellationToken = default)
         {
             if (FailSave) throw new IOException("cannot save");
