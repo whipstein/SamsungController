@@ -140,7 +140,7 @@ public sealed class IpMenuSectionsTests
         await using var header = new IpRemotePageTests.IpPageRenderer(services, typeof(MainLayout));
         await menu.StartAsync();
         await header.StartAsync();
-        Assert.Equal(new[] { "Home", "Back", "Exit menu", "Refresh state", "Help" }, await header.ButtonTextsWithinAsync("div", "TV shortcuts"));
+        Assert.Equal(new[] { "Home", "Back", "Exit menu", "Refresh state", "Help", "Save settings", "Recall settings" }, await header.ButtonTextsWithinAsync("div", "TV shortcuts"));
         await menu.ChangeAsync("Contrast value", "40");
         await menu.AssertInputValueAsync("Contrast value", "40");
         fixture.Display.Contrast = 42;

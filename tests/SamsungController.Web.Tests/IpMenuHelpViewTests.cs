@@ -118,7 +118,7 @@ public sealed class IpMenuHelpViewTests
         await using var services = Services(fixture, new ViewJavaScript());
         await using var page = new IpRemotePageTests.IpPageRenderer(services, typeof(MainLayout));
         await page.StartAsync();
-        Assert.Equal(new[] { "Home", "Back", "Exit menu", "Refresh state", "Help" }, await page.ButtonTextsWithinAsync("div", "TV shortcuts"));
+        Assert.Equal(new[] { "Home", "Back", "Exit menu", "Refresh state", "Help", "Save settings", "Recall settings" }, await page.ButtonTextsWithinAsync("div", "TV shortcuts"));
         await page.AssertDisabledAsync("Refresh state", true);
         await page.AssertTextAbsentAsync("Refresh TV state");
         await using var htmlRenderer = new HtmlRenderer(services, services.GetRequiredService<ILoggerFactory>());
@@ -126,7 +126,30 @@ public sealed class IpMenuHelpViewTests
         var helpButton = System.Text.RegularExpressions.Regex.Match(html, "<button[^>]*popovertarget=\"page-help\"[^>]*>Help</button>").Value;
         Assert.NotEmpty(helpButton);
         Assert.DoesNotContain("disabled", helpButton);
+        foreach (var action in new[] { "save", "recall" })
+        {
+            var button = System.Text.RegularExpressions.Regex.Match(html, $"<button[^>]*popovertarget=\"{action}-settings\"[^>]*>").Value;
+            Assert.NotEmpty(button);
+            Assert.DoesNotContain("disabled", button);
+            Assert.Contains($"id=\"{action}-settings\"", html);
+            Assert.Contains($"aria-labelledby=\"{action}-settings-title\"", html);
+        }
+        Assert.DoesNotContain("<summary>Saved states", html);
         Assert.Empty(fixture.Display.Requests);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("menu")]
+    [InlineData("diagnostics")]
+    public async Task TroubleshootingAndGlobalSettingsInstructionsAreOnEveryPage(string route)
+    {
+        await using var services = new ServiceCollection().AddLogging().AddSingleton<NavigationManager>(new HelpNavigation(route)).BuildServiceProvider();
+        await using var renderer = new HtmlRenderer(services, services.GetRequiredService<ILoggerFactory>());
+        var html = await renderer.Dispatcher.InvokeAsync(async () => (await renderer.RenderComponentAsync<DirectHelp>()).ToHtmlString());
+        foreach (var text in new[] { "Troubleshooting", "getTVStates: ProtocolError", "-32700 Parse error", "Pair again (TV approval)", "reuse the old token", "does not prove the token is invalid", "Save settings", "Recall settings", "not just the current tab" })
+            Assert.Contains(text, html);
+        Assert.DoesNotContain("below the pinned Menu toolbar", html);
     }
 
     private static async Task<MenuFixture> ReadyAsync()

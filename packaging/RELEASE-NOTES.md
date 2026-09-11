@@ -4,10 +4,13 @@
 - Compact condenses every page, including navigation, calibration controls, saved states, log, help, and remote. 20pt WB shows all 20 percentage rows with RGB number fields, individual/group −/+ buttons, and per-row Apply in a narrow calibration window. Color uses the same format.
 - Reuse the existing controls and verified command paths: pending edits, coalesced updates, negative numbers, limits, readback, and Stop are unchanged. Switching layouts sends no TV commands. Layout and per-section scroll positions are remembered in the browser.
 - Local Mac evaluation only, on `feature/compact-layout`. No merge, tag, or public release.
+- Put separate **Save settings** and **Recall settings** popups beside Home/Back on every page. Save covers all usable settings across every tab; recall includes review and confirmed deletion.
+- Extend Compact's single-row − / value / +, dropdown, and switch formatting to Picture, 2pt WB, Sound, and System. Standard is unchanged.
+- Add **Help → Troubleshooting** on every page, including explicit re-pairing recovery for the observed getTVStates protocol-reply error. Connect reuses the saved token; Pair again requests new approval.
 
 ### Included from the v1.0.7 saved-states evaluation
 
-- Add **Menu → Saved states**: name/save last-read TV settings, review and recall a saved state, and confirm deletion without changing the TV.
+- Name/save last-read TV settings, review and recall a saved state, and confirm deletion without changing the TV. Now accessed through the global Save settings / Recall settings buttons.
 - Include loaded indexed 20pt white-balance and Custom color values. Never substitute defaults for missing values. Files remain private and survive app updates.
 - Recall checks display/input/picture-mode context and requires physical-signal confirmation. Prerequisite controls are applied before dependent sliders; indexed rows use the existing readback-checked RGB path. Saved calibration modes are restored after row recall.
 - Show skipped settings and interrupted-recall recovery. Stop cancels later requests; startup never resumes a recall.

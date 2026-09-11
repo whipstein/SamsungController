@@ -11,6 +11,31 @@ public sealed class IpMenuSavedStateTests
     private const string Contrast = "contrastControl/contrast";
 
     [Fact]
+    public async Task SavedSettingsSpanEveryTabAndEveryLoadedCalibrationRowWithoutSendingCommands()
+    {
+        using var fixture = await MenuFixture.CreateAsync();
+        foreach (var grid in IpMenuGrids.All)
+        {
+            fixture.Values[grid.ModeField] = grid.RequiredMode;
+            fixture.Values[grid.SelectorField] = grid.Values[0];
+            foreach (var value in grid.Values)
+                fixture.GridValues[grid.Section + "/" + value] = new JsonObject(grid.Fields.Select(field =>
+                    KeyValuePair.Create<string, JsonNode?>(field, JsonValue.Create(grid.Section == "white20" ? -5 : 50))));
+        }
+        await fixture.Service.ConnectMenuAsync();
+        fixture.Display.Requests.Clear();
+        await fixture.Service.SaveMenuStateAsync("Whole display");
+        var saved = Assert.Single(fixture.Service.GetSnapshot().SavedStates);
+        foreach (var section in IpMenuCatalog.Sections)
+            Assert.Contains(saved.Values.Keys, id => IpMenuCatalog.Get(id).Section == section.Id);
+        foreach (var grid in IpMenuGrids.All)
+            foreach (var control in grid.Values.SelectMany(grid.Row))
+                Assert.Equal(grid.Section == "white20" ? "-5" : "50", saved.Values[control.Id]);
+        Assert.Equal(IpMenuSavedStates.Controls.Select(control => control.Id).Order(), saved.Values.Keys.Concat(saved.Missing.Keys).Order());
+        Assert.Empty(fixture.Display.Requests);
+    }
+
+    [Fact]
     public async Task SaveAndDeleteAreLocalPrivateAndSurviveRestart()
     {
         using var fixture = await ReadyAsync();

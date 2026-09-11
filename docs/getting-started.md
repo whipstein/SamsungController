@@ -190,8 +190,8 @@ For a narrow calibration window, select **Standard** at the very top to switch t
 ### Save a calibration and recall it later
 
 1. Finish applying your changes. Use **Refresh state** if anything was changed outside this app.
-2. Open **Saved states** below the Menu toolbar, enter a name, and click **Save current settings**. No TV commands are sent by Save.
-3. Later, select the state from the dropdown. Review its saved values and missing values, and use the same display/input/picture mode/physical signal.
+2. Click **Save settings** beside Home and Back, enter a name in the popup, and click **Save current settings**. This includes all loaded settings across all tabs, not just the current page. Expand **Settings included across all tabs** to check coverage. No TV commands are sent by Save.
+3. Later, click **Recall settings** in the same header and select the state from the dropdown. Review its saved values and missing values, and use the same display/input/picture mode/physical signal.
 4. Click **Recall settings…**, confirm the conditions, then **Apply saved state now**. The app restores available values and reports any it could not apply. This sends changes even when ordinary edits use On Apply.
 5. Use **Stop** if anything goes wrong. Earlier changes stay on the TV; check the display and follow the recall-review instructions before continuing.
 6. To delete a saved calibration, select it, click **Delete state**, and confirm. This only removes the file, never the TV's current settings.

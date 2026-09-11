@@ -40,7 +40,6 @@
     @if (ResetFeedback is not null) { <p class="direct-reset-feedback" role="status">@ResetFeedback</p> }
 </section>
 @if (Error is not null) { <div class="notice danger" role="alert">@Error</div> }
-<SavedSettingsStates Snapshot="@Snapshot" />
 @if (!Snapshot.Menu.Connected) { <div class="notice"><strong>Display disconnected</strong><span>Connect to read current settings.</span><a href="/">Choose display →</a></div> }
 @if (Snapshot.PictureTest?.RequiresRecovery == true || Snapshot.CommandTrial?.RequiresReview == true)
 { <div class="notice danger">An earlier diagnostic write needs attention. <a href="diagnostics#recovery">Open its saved recovery details</a>.</div> }
@@ -233,7 +232,7 @@
     private string? DisplayReason(IpMenuControl control) => SamsungIpRemoteService.MenuValueDisabledReason(DisplayMenu, control);
     private string ControlStatus(IpMenuControl control) => Snapshot.Menu.NudgeQueue?.Values.Count(value => value.ControlId == control.Id) is > 0 and var count
         ? $"{count} adjustment(s) queued / running" : Dirty(control) ? "Pending · not sent" : "";
-    private RenderFragment ControlCard(IpMenuControl control) => @<article @key="control.Id" data-channel="@(control.IsIndexed ? control.Field.Split('.').Last() : null)" title="@(control.IsIndexed ? $"{control.Name} · TV: {Snapshot.Menu.Value(control)?.ToString() ?? "not reported"} · {control.Parameter.Minimum} to {control.Parameter.Maximum}. {DisplayReason(control)}" : null)" class="direct-control @(Dirty(control) ? "pending" : "") @(DisplayReason(control) is not null ? "unavailable" : "")" aria-disabled="@((control.Parameter.Kind == IpRemoteParameterKind.Integer ? NudgeDisabledReason(control) : DisabledReason(control)) is not null ? "true" : "false")">
+    private RenderFragment ControlCard(IpMenuControl control) => @<article @key="control.Id" data-indexed="@(control.IsIndexed ? "true" : "false")" data-channel="@(control.IsIndexed ? control.Field.Split('.').Last() : null)" title="@($"{control.Name} · TV: {Snapshot.Menu.Value(control)?.ToString() ?? "not reported"} · {(control.Parameter.Kind == IpRemoteParameterKind.Integer ? $"{control.Parameter.Minimum} to {control.Parameter.Maximum}" : string.Join(", ", control.Parameter.Choices))}. {DisplayReason(control)} {ControlStatus(control)}")" class="direct-control @(Dirty(control) ? "pending" : "") @(DisplayReason(control) is not null ? "unavailable" : "")" aria-disabled="@((control.Parameter.Kind == IpRemoteParameterKind.Integer ? NudgeDisabledReason(control) : DisabledReason(control)) is not null ? "true" : "false")">
         <div class="direct-control-heading"><h3>@(control.IsIndexed ? control.Field.Split('.').Last() : control.Name)</h3><span class="direct-read-value">TV: @(Snapshot.Menu.Value(control)?.ToString() ?? "Not reported")</span></div>
         @if (control.IsSwitch)
         {
@@ -268,7 +267,7 @@
         <small class="direct-control-status direct-pending" role="status">@ControlStatus(control)</small>
         @if ((!control.IsIndexed || GridModeEnabled) && DisplayReason(control) is { } reason) { <p class="direct-unavailable">@reason</p> }
         @if (!control.IsIndexed)
-        { <details class="direct-control-help"><summary>About this setting</summary><p>@(control.Command.ManagedPictureControl is not null ? "Applies your target directly, then queries the result. Query before changes controls whether a fresh baseline is read first." : control.Command.Notes.Replace("Experimental; display/input/mode support must be tested. ", "", StringComparison.Ordinal))</p><code>@control.Method</code><p>@control.RangeSource</p></details> }
+        { <details class="direct-control-help"><summary aria-label="@($"About {control.Name}")" title="@($"About {control.Name}")">About this setting</summary><p class="compact-only">TV: @(Snapshot.Menu.Value(control)?.ToString() ?? "Not reported"). @DisplayReason(control) @ControlStatus(control)</p><p>@(control.Command.ManagedPictureControl is not null ? "Applies your target directly, then queries the result. Query before changes controls whether a fresh baseline is read first." : control.Command.Notes.Replace("Experimental; display/input/mode support must be tested. ", "", StringComparison.Ordinal))</p><code>@control.Method</code><p>@control.RangeSource</p></details> }
     </article>;
     private void Preview(IpMenuControl control, ChangeEventArgs args) { ResetFeedback = null; ResetSection = null; Edits[control.Id] = args.Value?.ToString() ?? ""; }
     private Task CommitAsync(IpMenuControl control, string text)

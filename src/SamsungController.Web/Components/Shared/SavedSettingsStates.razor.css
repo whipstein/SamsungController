@@ -1,10 +1,6 @@
-.saved-settings { padding: .75rem 1rem; margin-bottom: 1rem; }
-.saved-settings > summary { font-weight: 700; cursor: pointer; font-size: 1.05rem; }
-.saved-settings > summary span { margin-left: .5rem; font-weight: 400; }
-.saved-settings-content { padding-top: .6rem; }
 .saved-settings-save, .saved-settings-select, .saved-settings-buttons { display: flex; flex-wrap: wrap; align-items: end; gap: .65rem; margin: .75rem 0; }
 .saved-settings-save label, .saved-settings-select label { display: grid; gap: .3rem; flex: 1 1 17rem; }
-input[type="text"], select { width: 100%; min-width: 0; font: inherit; padding: .55rem; border: 1px solid var(--line-strong); border-radius: .5rem; color: var(--ink); background: var(--surface-control); }
+input[type="text"], select { box-sizing: border-box; width: 100%; min-width: 0; font: inherit; padding: .55rem; border: 1px solid var(--line-strong); border-radius: .5rem; color: var(--ink); background: var(--surface-control); }
 .saved-settings-confirm, .saved-settings-result { border: 1px solid var(--line-strong); border-radius: .65rem; padding: .8rem; margin: .8rem 0; }
 .saved-settings-confirm label { display: flex; gap: .55rem; align-items: start; font-weight: 650; }
 .saved-settings-confirm input { flex: 0 0 auto; margin-top: .3rem; }
