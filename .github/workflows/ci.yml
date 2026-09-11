@@ -27,7 +27,7 @@ jobs:
       - name: Packaging identity tests
         run: python -m unittest discover -s packaging/tests
       - name: Browser presentation logic tests
-        run: node --test tests/browser-layout/*.test.cjs
+        run: node --test tests/browser/*.test.cjs tests/browser-layout/*.test.cjs
       - name: Restore
         run: dotnet restore SamsungController.sln
       - name: Build
