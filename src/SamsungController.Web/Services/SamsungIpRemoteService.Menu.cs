@@ -91,6 +91,7 @@ public sealed partial class SamsungIpRemoteService
         var snapshot = GetSnapshot(); var menu = snapshot.Menu;
         if (!menu.Connected) return "Connect to the TV first.";
         if (snapshot.IsBusy) return "A TV request is running.";
+        if (snapshot.StateRecall?.NeedsReview == true) return "Check and close the interrupted saved-state recall first.";
         if (snapshot.RgbProbe?.NeedsRecovery == true) return "Restore/end the RGB experiment on Batch / RGB test first.";
         if (menu.Update?.NeedsReview == true) return "Review the interrupted update before applying more changes.";
         if (menu.WhiteBalanceRead?.NeedsRestore == true) return "Restore/check the interrupted 20-point white-balance read before applying changes.";
@@ -394,6 +395,8 @@ public sealed partial class SamsungIpRemoteService
 
     private void EnsureMenuWritesAllowed(bool allowTemporaryWhiteBalanceRead = false)
     {
+        if (!_recallingState && GetSnapshot().StateRecall?.NeedsReview == true)
+            throw new InvalidOperationException("Check and close the interrupted saved-state recall first.");
         EnsureNoPendingPictureTest(allowTemporaryWhiteBalanceRead);
         if (GetSnapshot().Menu.Update?.NeedsReview == true) throw new InvalidOperationException("Check the interrupted update before sending more commands.");
     }

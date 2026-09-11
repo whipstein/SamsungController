@@ -63,6 +63,7 @@ public sealed partial class SamsungIpRemoteService : IDisposable
             var menu = await LoadMenuStateAsync().ConfigureAwait(false);
             var rgbProbe = await LoadRgbProbeAsync().ConfigureAwait(false);
             var batchFailures = await LoadBatchFailuresAsync().ConfigureAwait(false);
+            await LoadSavedStatesAsync().ConfigureAwait(false);
             Update(state => state with
             {
                 Initialized = true,

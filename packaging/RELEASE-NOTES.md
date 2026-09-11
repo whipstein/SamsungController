@@ -1,4 +1,12 @@
-## SamsungController v1.0.6
+## SamsungController v1.0.7 — local evaluation build (not published)
+
+- Add **Menu → Saved states**: name/save last-read TV settings, review and recall a saved state, and confirm deletion without changing the TV.
+- Include loaded indexed 20pt white-balance and Custom color values. Never substitute defaults for missing values. Files remain private and survive app updates.
+- Recall checks display/input/picture-mode context and requires physical-signal confirmation. Prerequisite controls are applied before dependent sliders; indexed rows use the existing readback-checked RGB path. Saved calibration modes are restored after row recall.
+- Show skipped settings and interrupted-recall recovery. Stop cancels later requests; startup never resumes a recall.
+- This build is for local user evaluation only. No GitHub tag or release is created.
+
+### Included from v1.0.6
 
 ### Changes in this patch
 

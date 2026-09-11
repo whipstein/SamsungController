@@ -254,6 +254,22 @@ If a temporary WB read is stopped or fails, it may leave WB On. **Stop sends no 
 
 Direct settings do not navigate TV menus, so there is no return-to-video script or “stay on last adjusted item” option. Header Home, Back, and Exit menu buttons are explicit single keys, not a guaranteed video anchor.
 
+## Save, recall, and delete settings
+
+Open **Menu → Saved states**, just below the pinned toolbar (v1.0.7 onward).
+
+1. Connect and let the readings finish. If settings changed outside the app, use **Refresh state** first. Apply or discard pending edits.
+2. Enter a **State name** and choose **Save current settings**. This saves last-read TV values locally without sending any commands. Use different names to keep several calibrations.
+3. To recall, choose a **Saved state** from the list and review its values and omissions. Select the matching display, HDMI input, picture mode and signal first, then refresh. Recall does not change input or picture-mode/calibration-bank selectors.
+4. Choose **Recall settings…**, confirm the physical HDMI signal/bit depth and display context, then **Apply saved state now**. This explicit action sends changes regardless of the On Apply / Immediately preference. It queries current values and uses the normal readback-checked updates. Unavailable settings are skipped and listed, not filled with defaults.
+5. To remove a state, select it, choose **Delete state**, then confirm **Delete saved state permanently**. Cancel leaves it intact. Deletion never changes the TV.
+
+States include usable reported Picture, Sound, System, 2pt WB, and loaded 20pt WB/Custom color rows. Missing rows are listed as omissions. Before saving, **Refresh state** can load 20pt WB while Off; Custom color must be enabled and its rows loaded to include them. Raw interval/color selector positions and reset actions are not saved. Recall can temporarily enable a calibration mode to restore its RGB rows, then returns the mode to its saved value. Controls unavailable in the resulting context remain unchanged and are listed in the recall result.
+
+**Stop** cancels remaining commands, not changes already sent. If recall is interrupted, check the display, including the requested calibration modes shown in Saved states. Close any interrupted **Last update** review, then close the recall review. Nothing resumes automatically at startup.
+
+States are private JSON files in `ip-remote/saved-states` under the [data folder](#private-data-command-line-and-updates). They survive app updates, contain no pairing token, and are not included in the repository or installers. Back up this folder if you want a separate copy; deleting a state is permanent. Names do not become file paths. Duplicate names in the same context are rejected to avoid silently replacing a calibration.
+
 ## Slide-out remote
 
 Select the small **double-chevron** button on the right edge of any page (tooltip: **Open the TV remote without leaving this page**). The remote fills the window height, with a fixed close header and a scrolling button area, without navigating away; **Menu** remains a normal page. Use the directional pad, Home/Menu/Back/Exit, volume buttons, or the **More keys** selector. Close with **Close ×**, **Escape**, or a click outside the panel. Opening/closing sends no TV commands. **Remote key presses retain loaded settings and pending edits**—they do not refresh or invalidate them. Use **Refresh state** in the global header or Menu's section/row refresh buttons when you want to reread the TV; displayed values may otherwise be stale. Apply still checks a fresh baseline before writing. Remote keys are disabled while disconnected, while another request is running, or when an interrupted operation requires review. **Stop** is available inside the panel too.

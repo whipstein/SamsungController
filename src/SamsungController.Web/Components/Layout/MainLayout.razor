@@ -43,6 +43,7 @@
             </div>
             @if (Error is not null) { <p class="topbar-feedback danger" role="alert">@Error</p> }
             @if (Snapshot.StorageWarning is not null) { <p class="topbar-feedback danger" role="alert">@Snapshot.StorageWarning</p> }
+            @if (Snapshot.StateRecall?.NeedsReview == true && !Snapshot.IsBusy) { <p class="topbar-feedback danger" role="alert">Saved-state recall was interrupted. <a href="menu">Check the TV and close its review in Saved states</a>.</p> }
             @if (Snapshot.RgbProbe?.NeedsRecovery == true) { <p class="topbar-feedback danger" role="alert">RGB experiment active — saved originals need recovery. <a href="diagnostics/batch-rgb">Open Batch / RGB test</a>.</p> }
             @if (Snapshot.Menu.WhiteBalanceRead?.NeedsRestore == true && !Snapshot.IsBusy) { <p class="topbar-feedback danger" role="alert">20-point WB was temporarily enabled for reading. <a href="menu">Check/restore its original Off mode in Menu</a>.</p> }
             <p class="topbar-feedback direct-live-status" role="status" title="@(Snapshot.IsBusy ? Snapshot.Menu.Status : null)">@(Snapshot.IsBusy ? Snapshot.Menu.Status : "")</p>

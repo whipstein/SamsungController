@@ -424,10 +424,10 @@ public sealed class IpRemotePageTests
         private int _root;
         public override Dispatcher Dispatcher { get; } = Dispatcher.CreateDefault();
         private RenderTreeFrame[] Frames => GetCurrentRenderTreeFrames(_root).Array.Take(GetCurrentRenderTreeFrames(_root).Count).ToArray();
-        public Task StartAsync() => Dispatcher.InvokeAsync(async () =>
+        public Task StartAsync(Dictionary<string, object?>? parameters = null) => Dispatcher.InvokeAsync(async () =>
         {
             _root = AssignRootComponentId(InstantiateComponent(componentType ?? typeof(IpRemote)));
-            await RenderRootComponentAsync(_root, ParameterView.Empty);
+            await RenderRootComponentAsync(_root, parameters is null ? ParameterView.Empty : ParameterView.FromDictionary(parameters));
         });
         private RenderTreeFrame[] Button(string label)
         {

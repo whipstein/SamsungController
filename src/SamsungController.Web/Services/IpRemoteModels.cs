@@ -35,6 +35,9 @@ public sealed record IpRemoteObservation(IpRemoteProfile UserEnteredContext, str
 
 public sealed record IpRemoteSnapshot
 {
+    public IReadOnlyList<IpMenuSavedState> SavedStates { get; init; } = [];
+    public string? SavedStatesWarning { get; init; }
+    public IpMenuStateRecall? StateRecall { get; init; }
     public IpCertificateReview? CertificateReview { get; init; }
     public IpReadBatchProbe? ReadBatchProbe { get; init; }
     public IReadOnlyDictionary<string, IpBatchFailure> BatchFailures { get; init; } = new Dictionary<string, IpBatchFailure>();

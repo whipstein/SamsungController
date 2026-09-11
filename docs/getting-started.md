@@ -185,6 +185,17 @@ Choose **Picture**, **2pt WB**, **20pt WB**, **Color**, **Sound**, or **System**
 - **Reset all** resets every RGB value in the selected calibration section to nominal: **0** for 20pt WB or **50** for Custom color. Confirm **Stage reset** to review before Apply, or **Reset now** in Immediately mode. All rows must be loaded and enabled. It replaces this section's unsent edits but leaves other settings and the WB/color-space mode unchanged; it is not a picture/factory reset.
 - Do not apply an input/picture-mode change together with dependent calibration changes.
 
+### Save a calibration and recall it later
+
+1. Finish applying your changes. Use **Refresh state** if anything was changed outside this app.
+2. Open **Saved states** below the Menu toolbar, enter a name, and click **Save current settings**. No TV commands are sent by Save.
+3. Later, select the state from the dropdown. Review its saved values and missing values, and use the same display/input/picture mode/physical signal.
+4. Click **Recall settings…**, confirm the conditions, then **Apply saved state now**. The app restores available values and reports any it could not apply. This sends changes even when ordinary edits use On Apply.
+5. Use **Stop** if anything goes wrong. Earlier changes stay on the TV; check the display and follow the recall-review instructions before continuing.
+6. To delete a saved calibration, select it, click **Delete state**, and confirm. This only removes the file, never the TV's current settings.
+
+Save captures loaded TV readings—not unsent edits or guessed defaults. Load the calibration rows before saving if you want them included. Recall can temporarily enable 20pt WB or Custom color to restore saved RGB rows, then restores the saved mode. Your saved files stay in the private data folder across app updates. The current app's states are not the old menu-traversal calibration-file format.
+
 ## 8. Refresh deliberately
 
 - **Refresh state** reads all settings for the current signal and discards unsent targets.

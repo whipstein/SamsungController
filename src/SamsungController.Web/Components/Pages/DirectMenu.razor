@@ -2,6 +2,7 @@
 @page "/ip-controls"
 @implements IAsyncDisposable
 @using SamsungController.Core.IpRemote
+@using SamsungController.Web.Components.Shared
 @inject SamsungIpRemoteService Controller
 
 <PageTitle>Menu · SamsungController</PageTitle>
@@ -39,6 +40,7 @@
     @if (ResetFeedback is not null) { <p class="direct-reset-feedback" role="status">@ResetFeedback</p> }
 </section>
 @if (Error is not null) { <div class="notice danger" role="alert">@Error</div> }
+<SavedSettingsStates Snapshot="@Snapshot" />
 @if (!Snapshot.Menu.Connected) { <div class="notice"><strong>Display disconnected</strong><span>Connect to read current settings.</span><a href="/">Choose display →</a></div> }
 @if (Snapshot.PictureTest?.RequiresRecovery == true || Snapshot.CommandTrial?.RequiresReview == true)
 { <div class="notice danger">An earlier diagnostic write needs attention. <a href="diagnostics#recovery">Open its saved recovery details</a>.</div> }
@@ -209,7 +211,8 @@
         { ResetSection = null; ResetFeedback = null; }
         if (next.Menu.NudgeQueue is not null) QueueView ??= Snapshot.Menu.Connected ? Snapshot.Menu : next.Menu;
         else QueueView = null;
-        if (Snapshot.Menu.SessionId != next.Menu.SessionId || Snapshot.Menu.ValuesRevision != next.Menu.ValuesRevision) Edits.Clear();
+        if (Snapshot.Menu.SessionId != next.Menu.SessionId || Snapshot.Menu.ValuesRevision != next.Menu.ValuesRevision
+            || (next.StateRecall?.Status == "Running" && next.StateRecall != Snapshot.StateRecall)) Edits.Clear();
         Snapshot = next; StateHasChanged();
     });
     private static string SectionLabel(IpMenuSection section) => section.Id switch { "white2" => "2pt WB", "white20" => "20pt WB", _ => section.Name };
