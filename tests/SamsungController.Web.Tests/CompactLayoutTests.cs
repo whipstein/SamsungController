@@ -60,6 +60,8 @@ public sealed class CompactLayoutTests
     public async Task DenseRowsReuseAllOriginalAccessibleInputsWithReadbackHints(string section, int count)
     {
         using var fixture = await IpMenuRgbGroupTests.ReadyAsync(section);
+        // Avoid racing the initial Picture tab's asynchronous first-render read.
+        await fixture.Service.RefreshMenuSectionAsync("expert");
         await using var services = Services(fixture, new LayoutJs());
         await using var page = new IpRemotePageTests.IpPageRenderer(services, typeof(DirectMenu));
         await page.StartAsync();
