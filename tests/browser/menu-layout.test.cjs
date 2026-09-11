@@ -60,7 +60,7 @@ test('Help uses a native dismissible popover with independent scrolling and a fi
 });
 test('Menu keeps one section heading with no duplicate RGB headings or usage blocks', () => {
     const menu = fs.readFileSync(path.join(root, 'Components/Pages/DirectMenu.razor'), 'utf8');
-    assert.match(menu, /<h1>@SectionName<\/h1>/);
+    assert.match(menu, /<h1(?:\s[^>]*?)?>@SectionName<\/h1>/);
     assert.doesNotMatch(menu, /20-point RGB adjustments|Custom color RGB adjustments|Adjustment details|After changing HDMI signal/);
     assert.match(rule('.direct-discard-empty'), /visibility:hidden/); // Reserving space avoids moving sliders during edits.
     assert.doesNotMatch(rule('.direct-discard-empty'), /display:none/);

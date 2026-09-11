@@ -14,10 +14,11 @@ function setup({ hasHeader = true, storage = new Map(), blockedStorage = false }
         scrollY: 1000,
         sessionStorage: { getItem: key => { if (blockedStorage) throw Error('denied'); return storage.get(key) ?? null; }, setItem: (key, value) => { if (blockedStorage) throw Error('denied'); storage.set(key, value); } },
         addEventListener: (event, fn) => listeners.set(event, fn), removeEventListener: event => listeners.delete(event),
+        dispatchEvent: event => listeners.get(event.type)?.(event),
         scrollTo: value => { scrolls.push(value); window.scrollY = Math.min(value.top, maxScroll); listeners.get('scroll')?.(); },
         requestAnimationFrame: fn => { frames.set(++frameId, fn); return frameId; }, cancelAnimationFrame: id => frames.delete(id)
     };
-    const context = { window, document: { querySelector: () => hasHeader ? header : null }, ResizeObserver: class { constructor(fn) { callback = fn; observers++; } observe() {} disconnect() { disconnected++; } } };
+    const context = { window, document: { documentElement: { dataset: { layout: 'standard' } }, querySelector: () => hasHeader ? header : null }, CustomEvent: class { constructor(type) { this.type = type; } }, ResizeObserver: class { constructor(fn) { callback = fn; observers++; } observe() {} disconnect() { disconnected++; } } };
     vm.runInNewContext(script, context);
     const api = window.samsungMenuToolbar;
     const flush = () => { while (frames.size) { const batch = [...frames.values()]; frames.clear(); batch.forEach(fn => fn()); } };

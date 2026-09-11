@@ -13,13 +13,17 @@
             <NavLink href="menu"><span class="nav-glyph">02</span>Menu</NavLink>
             <NavLink href="diagnostics"><span class="nav-glyph">03</span>Communication log</NavLink>
         </nav>
+        <small class="compact-only compact-version">v@(SamsungIpRemoteService.Version)</small>
         <div class="sidebar-foot"><span class="local-dot"></span>Local control<small>v@SamsungIpRemoteService.Version</small></div>
     </aside>
     <main class="main-stage">
         <header class="topbar">
             <div class="topbar-primary">
-                <div class="topbar-context"><span class="eyebrow">SAMSUNG · DIRECT IP</span><strong>@(Snapshot.ActiveProfile?.Model is { Length: > 0 } model ? model : Snapshot.ActiveProfile?.Connection.Host ?? "Choose a display")</strong></div>
+                <div class="topbar-context"><span class="eyebrow">SAMSUNG · DIRECT IP</span><strong title="@(Snapshot.ActiveProfile?.Model)">@(Snapshot.ActiveProfile?.Model is { Length: > 0 } model ? model : Snapshot.ActiveProfile?.Connection.Host ?? "Choose a display")</strong></div>
                 <div class="topbar-connection-control">
+                    <button type="button" class="layout-toggle" title="Switch layout: Standard keeps the original cards; Compact fits a narrow calibration window. Saved for this browser only." aria-label="Switch between Standard and Compact layout" @onclick="ToggleLayoutAsync" disabled="@LayoutBusy">
+                        <span class="layout-toggle-standard">Standard</span><span class="layout-toggle-compact">Compact</span>
+                    </button>
                     <button type="button" class="theme-toggle" title="Switch between light and dark mode" aria-label="Switch between light and dark mode" @onclick="ToggleThemeAsync" disabled="@ThemeBusy">
                         <span class="theme-toggle-state light" aria-hidden="true"><i>☀</i> Light</span><span class="theme-toggle-state dark" aria-hidden="true"><i>☾</i> Dark</span>
                     </button>
@@ -38,11 +42,14 @@
                     <button class="toolbar-button" @onclick='() => KeyAsync("exit")' disabled="@(!CanSend)">Exit menu</button>
                     <button type="button" class="toolbar-button" title="Reload every section and available calibration row for the current signal; discards unsent edits" @onclick="RefreshAllAsync" disabled="@(!CanRefreshAll)">Refresh state</button>
                     <button type="button" class="toolbar-button" popovertarget="page-help" aria-controls="page-help" aria-haspopup="dialog" title="Help for this page">Help</button>
+                    <button type="button" class="toolbar-button saved-settings-shortcut" popovertarget="save-settings" aria-controls="save-settings" aria-haspopup="dialog" title="Name and save all loaded display settings across every Menu tab">Save settings</button>
+                    <button type="button" class="toolbar-button saved-settings-shortcut" popovertarget="recall-settings" aria-controls="recall-settings" aria-haspopup="dialog" title="Choose saved display settings to recall or delete">Recall settings</button>
                     <a class="toolbar-button" href="readme" target="_blank" rel="noopener" title="Open the included README in a new tab; works offline">README</a>
                 </div>
             </div>
             @if (Error is not null) { <p class="topbar-feedback danger" role="alert">@Error</p> }
             @if (Snapshot.StorageWarning is not null) { <p class="topbar-feedback danger" role="alert">@Snapshot.StorageWarning</p> }
+            @if (Snapshot.StateRecall?.NeedsReview == true && !Snapshot.IsBusy) { <p class="topbar-feedback danger" role="alert">Saved-state recall was interrupted. Check the TV, then <button type="button" class="toolbar-button" popovertarget="recall-settings" aria-controls="recall-settings" aria-haspopup="dialog">Review saved-state recall</button>.</p> }
             @if (Snapshot.RgbProbe?.NeedsRecovery == true) { <p class="topbar-feedback danger" role="alert">RGB experiment active — saved originals need recovery. <a href="diagnostics/batch-rgb">Open Batch / RGB test</a>.</p> }
             @if (Snapshot.Menu.WhiteBalanceRead?.NeedsRestore == true && !Snapshot.IsBusy) { <p class="topbar-feedback danger" role="alert">20-point WB was temporarily enabled for reading. <a href="menu">Check/restore its original Off mode in Menu</a>.</p> }
             <p class="topbar-feedback direct-live-status" role="status" title="@(Snapshot.IsBusy ? Snapshot.Menu.Status : null)">@(Snapshot.IsBusy ? Snapshot.Menu.Status : "")</p>
@@ -52,6 +59,7 @@
 </div>
 
 <DirectHelp Section="@MenuHelpSection" />
+<SavedSettingsStates Snapshot="@Snapshot" />
 
 <button type="button" class="remote-drawer-tab" popovertarget="remote-drawer" aria-controls="remote-drawer" aria-label="Open remote" title="Open the TV remote without leaving this page"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m11 6-6 6 6 6m8-12-6 6 6 6" /></svg></button>
 <aside id="remote-drawer" class="remote-drawer" popover="auto" role="dialog" aria-modal="false" aria-labelledby="remote-drawer-title">
@@ -65,7 +73,7 @@
 @code {
     private IpRemoteSnapshot Snapshot = new();
     private string? Error;
-    private bool ThemeBusy;
+    private bool ThemeBusy, LayoutBusy;
     private string MenuHelpSection = "expert";
     public void SetMenuHelpSection(string section)
     {
@@ -92,6 +100,13 @@
         try { await JavaScript.InvokeVoidAsync("samsungTheme.toggle"); }
         catch (JSException) { }
         finally { ThemeBusy = false; }
+    }
+    private async Task ToggleLayoutAsync()
+    {
+        LayoutBusy = true;
+        try { await JavaScript.InvokeVoidAsync("samsungLayout.toggle"); }
+        catch (JSException) { Error = "The layout switch could not load. Refresh the webpage and try again."; }
+        finally { LayoutBusy = false; }
     }
     private async Task GuardAsync(Func<Task> action)
     {

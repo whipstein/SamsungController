@@ -1,0 +1,12 @@
+.saved-settings-save, .saved-settings-select, .saved-settings-buttons { display: flex; flex-wrap: wrap; align-items: end; gap: .65rem; margin: .75rem 0; }
+.saved-settings-save label, .saved-settings-select label { display: grid; gap: .3rem; flex: 1 1 17rem; }
+input[type="text"], select { box-sizing: border-box; width: 100%; min-width: 0; font: inherit; padding: .55rem; border: 1px solid var(--line-strong); border-radius: .5rem; color: var(--ink); background: var(--surface-control); }
+.saved-settings-confirm, .saved-settings-result { border: 1px solid var(--line-strong); border-radius: .65rem; padding: .8rem; margin: .8rem 0; }
+.saved-settings-confirm label { display: flex; gap: .55rem; align-items: start; font-weight: 650; }
+.saved-settings-confirm input { flex: 0 0 auto; margin-top: .3rem; }
+.saved-settings-values { margin: .75rem 0; }
+.saved-value-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: .25rem 1.25rem; }
+.saved-value-list > div { display: flex; justify-content: space-between; gap: 1rem; padding: .25rem 0; border-bottom: 1px solid var(--line); }
+.saved-settings-context, code { overflow-wrap: anywhere; }
+.saved-settings-help { margin-top: 1rem; }
+@media (max-width: 540px) { .saved-value-list { grid-template-columns: 1fr; } }

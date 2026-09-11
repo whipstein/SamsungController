@@ -19,6 +19,7 @@ html { scrollbar-gutter:stable; }
 .direct-header-context > div > span { display:block; color:var(--muted); font-size:11px; letter-spacing:.06em; margin-bottom:4px; }
 .direct-header-context strong { font-size:21px; font-weight:650; }
 .direct-header-keys { margin-left:auto; display:flex; flex-wrap:wrap; gap:8px; }
+.saved-settings-shortcut { color:var(--cyan); border-color:var(--cyan); font-weight:700; white-space:nowrap; }
 .remote-drawer-tab { position:fixed; right:0; top:50%; transform:translateY(-50%); z-index:30; display:grid; place-items:center; box-sizing:border-box; width:24px; height:44px; padding:0; border:1px solid var(--cyan); border-right:0; border-radius:6px 0 0 6px; background:var(--surface); color:var(--cyan); box-shadow:0 2px 8px rgba(0,0,0,.15); cursor:pointer; }
 .remote-drawer-tab svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
 .remote-drawer-tab:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; }

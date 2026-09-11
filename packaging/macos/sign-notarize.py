@@ -27,11 +27,13 @@ with (app / "Contents/Info.plist").open("rb") as file:
 for item in sorted(app.rglob("*")):
     if not item.is_file() or item.is_symlink() or item == entrypoint:
         continue
-    kind = subprocess.check_output(["file", "-b", str(item)], text=True)
-    if "Mach-O" not in kind:
+    # `file` can echo non-UTF-8 metadata from compressed web assets. The
+    # classification markers we need are ASCII; do not decode arbitrary output.
+    kind = subprocess.check_output(["file", "-b", str(item)])
+    if b"Mach-O" not in kind:
         continue
     command = ["codesign", "--force", "--timestamp", "--options", "runtime", "--sign", options.identity]
-    if "executable" in kind:
+    if b"executable" in kind:
         command += ["--entitlements", str(entitlements)]
     subprocess.run(command + [str(item)], check=True)
 subprocess.run(["codesign", "--force", "--timestamp", "--options", "runtime", "--sign", options.identity, str(app)], check=True)

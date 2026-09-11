@@ -254,12 +254,39 @@ If a temporary WB read is stopped or fails, it may leave WB On. **Stop sends no 
 
 Direct settings do not navigate TV menus, so there is no return-to-video script or “stay on last adjusted item” option. Header Home, Back, and Exit menu buttons are explicit single keys, not a guaranteed video anchor.
 
+### Optional Compact layout
+
+Select **Standard / Compact** at the top beside the light/dark button. **Standard is the default** and keeps the original slider cards. Compact reduces navigation, cards, dialogs, and spacing throughout the app. The choice is remembered in this browser only; it does not change the TV, pending edits, or theme.
+
+In Compact, **20pt WB** is a table of all 20 percentages: Red/Green/Blue number fields with −/+ buttons, **RGB ±** for grouped changes, and a per-row **✓** Apply button in On Apply mode. **Color** uses the same arrangement. Hover over a channel for its last-read TV value, limits, and availability. Number entry, negative values, queued adjustments, Stop, and readback checks work exactly as in Standard. Switch back for full slider tracks.
+
+**Picture, 2pt WB, Sound, and System** use matching compact rows: a label with **− / number / +**, a dropdown, or a switch. Click **?** for setting details and disabled reasons. Linked controls still move together; 2pt gains and offsets remain grouped in two columns. Standard keeps the original slider cards.
+
+Aim for a window around **480–640 pixels wide**, with at least **800 pixels of browser page height at 100% zoom**, and leave optional details closed to see all 20 rows together. Smaller heights, larger text/zoom, or expanded warnings remain scrollable; no controls are clipped. Menu sections remember their scroll positions separately for each layout.
+
+## Save, recall, and delete settings
+
+Use **Save settings** or **Recall settings** in the top header, beside Home and Back. Both are available on every page and stay visible while scrolling (v1.1.0 onward).
+
+1. Connect and let the readings finish. If settings changed outside the app, use **Refresh state** first. Apply or discard pending edits.
+2. Click **Save settings**, enter a **State name** in the popup, and choose **Save current settings**. This saves last-read TV values across **all tabs**, not just the visible section, locally without sending any commands. Expand **Settings included across all tabs** to see coverage and unread/unavailable values. Use different names to keep several calibrations.
+3. Click **Recall settings**, choose a **Saved state** from its dropdown, and review its values and omissions. Select the matching display, HDMI input, picture mode and signal first, then refresh. Recall does not change input or picture-mode/calibration-bank selectors.
+4. Choose **Recall settings…**, confirm the physical HDMI signal/bit depth and display context, then **Apply saved state now**. This explicit action sends changes regardless of the On Apply / Immediately preference. It queries current values and uses the normal readback-checked updates. Unavailable settings are skipped and listed, not filled with defaults.
+5. To remove a state, select it, choose **Delete state**, then confirm **Delete saved state permanently**. Cancel leaves it intact. Deletion never changes the TV.
+
+States include usable reported Picture, Sound, System, 2pt WB, and loaded 20pt WB/Custom color rows. Missing rows are listed as omissions. Before saving, **Refresh state** can load 20pt WB while Off; Custom color must be enabled and its rows loaded to include them. Raw interval/color selector positions and reset actions are not saved. Recall can temporarily enable a calibration mode to restore its RGB rows, then returns the mode to its saved value. Controls unavailable in the resulting context remain unchanged and are listed in the recall result.
+
+**Stop** cancels remaining commands, not changes already sent. If recall is interrupted, check the display, including the requested calibration modes shown in Saved states. Close any interrupted **Last update** review, then close the recall review. Nothing resumes automatically at startup.
+
+States are private JSON files in `ip-remote/saved-states` under the [data folder](#private-data-command-line-and-updates). They survive app updates, contain no pairing token, and are not included in the repository or installers. Back up this folder if you want a separate copy; deleting a state is permanent. Names do not become file paths. Duplicate names in the same context are rejected to avoid silently replacing a calibration.
+
 ## Slide-out remote
 
 Select the small **double-chevron** button on the right edge of any page (tooltip: **Open the TV remote without leaving this page**). The remote fills the window height, with a fixed close header and a scrolling button area, without navigating away; **Menu** remains a normal page. Use the directional pad, Home/Menu/Back/Exit, volume buttons, or the **More keys** selector. Close with **Close ×**, **Escape**, or a click outside the panel. Opening/closing sends no TV commands. **Remote key presses retain loaded settings and pending edits**—they do not refresh or invalidate them. Use **Refresh state** in the global header or Menu's section/row refresh buttons when you want to reread the TV; displayed values may otherwise be stale. Apply still checks a fresh baseline before writing. Remote keys are disabled while disconnected, while another request is running, or when an interrupted operation requires review. **Stop** is available inside the panel too.
 
 ## Diagnostics and troubleshooting
 
+- **Previously paired display reports `getTVStates: ProtocolError` / “not a matching JSON-RPC 2.0 reply”:** a confirmed case with a `-32700 Parse error` response was resolved by fresh pairing. Open **Display**, select the saved TV, then under **Pairing saved** click **Pair again (TV approval)** and choose **Allow** on the TV if prompted. If the editor is open, click **Cancel** first to reveal pairing. **Connect and open Menu**, app restarts, and **Reset connection (keep pairing)** retain the old token; they do not request fresh approval. Re-pairing does not reset calibration settings. This error alone does not prove a bad token: if actual pairing also fails, export the Communication log and note whether the TV showed a prompt. These steps are also under **Help → Troubleshooting** on every page.
 - **All-settings load incomplete / changed signal:** let the external signal settle, then select **Refresh state**. This starts a fresh all-settings read, even if the TV reports the same HDMI port and picture-mode name. Keep the signal unchanged while loading. Stop cancels it; tab visits never resume it automatically.
 - **Connection fails:** try **Reset connection (keep pairing)**, then check TV power, IP Remote, address/port, certificate policy, LAN permissions, VPN/firewall restrictions, and the actual error. No automatic re-pairing occurs. Even after an authorization rejection, Reset can explicitly recheck the saved token on fresh TLS; only successful state replies clear the rejection. If the TV genuinely rejects that token again, renewed approval may still be needed.
 - **macOS receives no response:** for the installed desktop app, check System Settings → Privacy & Security → Local Network for **SamsungController**. For source execution, check its hosting Terminal/editor instead. A correct IP and a working browser do not prove the server process has permission. Quit and reopen the affected app/server after changing permission. If the v1.0.0 app never appears in the list, install v1.0.1 or newer: it corrects the native app lifetime and duplicate .NET executable UUIDs used for permission attribution. Install one copy in Applications, launch it there, and attempt Connect/Pair to request access. You must approve the macOS prompt yourself; signing/notarization does not grant permission. This is separate from the TV's pairing approval.

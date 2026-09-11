@@ -1,0 +1,138 @@
+@inject SamsungIpRemoteService Controller
+
+<aside id="save-settings" class="saved-settings direct-page-help" popover="auto" role="dialog" aria-modal="false" aria-labelledby="save-settings-title">
+    <header><h2 id="save-settings-title">Save settings</h2><button type="button" class="toolbar-button" popovertarget="save-settings" popovertargetaction="hide" aria-label="Close save settings" autofocus>Close ×</button></header>
+    <div class="saved-settings-content direct-page-help-content">
+        <p><strong>All settings, not just the current tab:</strong> Picture, 2pt WB, all 20pt WB percentages, all Custom colors, Sound, and System, for the current display/input/picture-mode context.</p>
+        <p>Saves last-read TV values, not unsent edits. Use <strong>Refresh state</strong> first after outside changes. Unsupported or unread values are listed as missing, never filled with defaults. Input and picture mode identify the saved context; recall does not switch them.</p>
+        @if (Snapshot.SavedStatesWarning is { } warning) { <p class="direct-error" role="alert">@warning</p> }
+        @if (Error is not null) { <p class="direct-error" role="alert">@Error</p> }
+        @if (Feedback is not null) { <p role="status">@Feedback</p> }
+        <div class="saved-settings-save">
+            <label>State name<input aria-label="State name" type="text" maxlength="80" placeholder="e.g. Evening calibration" @bind="Name" @bind:event="oninput" disabled="@Busy" /></label>
+            <button type="button" class="toolbar-button" title="@Controller.SaveMenuStateDisabledReason()" disabled="@(Busy || string.IsNullOrWhiteSpace(Name) || Controller.SaveMenuStateDisabledReason() is not null)" @onclick="SaveAsync">Save current settings</button>
+        </div>
+        @if (Controller.SaveMenuStateDisabledReason() is { } saveReason) { <p class="direct-hint">@saveReason</p> }
+        <details class="saved-settings-values"><summary>Settings included across all tabs</summary>
+            <ul>@foreach (var section in IpMenuCatalog.Sections)
+            {
+                var controls = IpMenuSavedStates.Controls.Where(control => control.Section == section.Id).ToArray();
+                var available = controls.Count(CanCapture);
+                <li>@section.Name: @available values ready to save · @(controls.Length - available) unavailable or unread</li>
+            }</ul>
+            <p>Refresh state can read 20pt WB while Off. To include Custom color rows, enable Custom and load its rows before saving. Resets and temporary row selector positions are not settings to recall.</p>
+        </details>
+    </div>
+</aside>
+
+<aside id="recall-settings" class="saved-settings direct-page-help" popover="auto" role="dialog" aria-modal="false" aria-labelledby="recall-settings-title">
+    <header><h2 id="recall-settings-title">Recall settings</h2><button type="button" class="toolbar-button" popovertarget="recall-settings" popovertargetaction="hide" aria-label="Close recall settings" autofocus>Close ×</button></header>
+    <div class="saved-settings-content direct-page-help-content">
+        <p>Choose a saved set of display settings to review, recall, or delete. Selecting a name does not send anything to the TV.</p>
+        @if (Snapshot.SavedStatesWarning is { } recallWarning) { <p class="direct-error" role="alert">@recallWarning</p> }
+        @if (Error is not null) { <p class="direct-error" role="alert">@Error</p> }
+        @if (Feedback is not null) { <p role="status">@Feedback</p> }
+        @if (Snapshot.SavedStates.Count == 0) { <p>No saved settings yet. Use <strong>Save settings</strong> beside Home and Back to create a named set.</p> }
+        <div class="saved-settings-select">
+            <label>Saved state<select aria-label="Saved state" value="@SelectedId" @onchange="Select" disabled="@Busy">
+                <option value="">Choose a saved state…</option>
+                @foreach (var state in Snapshot.SavedStates)
+                { <option value="@state.Id">@state.Name · @state.Context.Model · @state.Context.PictureMode · @state.SavedAt.ToLocalTime().ToString("g")</option> }
+            </select></label>
+            <button type="button" class="toolbar-button" disabled="@(Busy || Selected is null)" @onclick="AskDelete">Delete state</button>
+        </div>
+        @if (Selected is { } selected)
+        {
+            <p><strong>@selected.Values.Count saved values</strong> · @selected.Missing.Count missing when saved · @selected.SavedAt.ToLocalTime().ToString("g")</p>
+            <p class="saved-settings-context">@selected.Context.Model · @selected.Context.Firmware · @selected.Context.Input · @selected.Context.PictureMode · @(string.IsNullOrEmpty(selected.Context.Signal) ? "signal not annotated" : selected.Context.Signal)</p>
+            <details class="saved-settings-values"><summary>Review saved values and omissions</summary>
+                @foreach (var section in IpMenuCatalog.Sections)
+                {
+                    var values = selected.Values.Where(pair => IpMenuCatalog.Get(pair.Key).Section == section.Id).ToArray();
+                    if (values.Length == 0) { continue; }
+                    <h3>@section.Name</h3>
+                    <div class="saved-value-list">@foreach (var pair in values) { <div><span>@IpMenuCatalog.Get(pair.Key).Name</span><strong>@pair.Value</strong></div> }</div>
+                }
+                @if (selected.Missing.Count > 0)
+                { <h3>Not saved — left unchanged on recall</h3><ul>@foreach (var pair in selected.Missing) { <li>@IpMenuCatalog.Get(pair.Key).Name: @pair.Value</li> }</ul> }
+            </details>
+            @if (Controller.RecallMenuStateDisabledReason(selected) is { } recallReason) { <p class="direct-unavailable">@recallReason</p> }
+            <button type="button" class="primary-action" disabled="@(Busy || Controller.RecallMenuStateDisabledReason(selected) is not null)" @onclick="AskRecall">Recall settings…</button>
+            @if (Confirm == "recall")
+            {
+                <section class="saved-settings-confirm" aria-label="Confirm saved state recall">
+                    <strong>Apply “@selected.Name” to this display?</strong>
+                    <p>This sends saved values now, regardless of On Apply / Immediately. Recall may enable 20pt WB or Custom color while restoring RGB rows, then restores their saved modes. Unavailable settings are skipped and listed. Input, picture mode and other calibration-bank selectors are not changed.</p>
+                    <label><input type="checkbox" aria-label="Confirm saved state conditions" checked="@ConditionsConfirmed" @onchange="args => ConditionsConfirmed = args.Value is true" disabled="@Busy" /> I confirmed the display, input, picture mode and physical HDMI signal/bit depth match this state.</label>
+                    <p>Stop prevents further commands; it does not undo changes already sent.</p>
+                    <div class="saved-settings-buttons"><button type="button" class="primary-action" disabled="@(Busy || !ConditionsConfirmed || Controller.RecallMenuStateDisabledReason(selected) is not null)" @onclick="RecallAsync">Apply saved state now</button><button type="button" class="toolbar-button" disabled="@Busy" @onclick="Cancel">Cancel recall</button></div>
+                </section>
+            }
+            @if (Confirm == "delete")
+            {
+                <section class="saved-settings-confirm" aria-label="Confirm saved state deletion">
+                    <p>Delete “<strong>@selected.Name</strong>”? This removes only its saved file, not the current TV settings. This cannot be undone.</p>
+                    <div class="saved-settings-buttons"><button type="button" class="toolbar-button danger-action" disabled="@Busy" @onclick="DeleteAsync">Delete saved state permanently</button><button type="button" class="toolbar-button" disabled="@Busy" @onclick="Cancel">Cancel delete</button></div>
+                </section>
+            }
+        }
+        @if (Snapshot.StateRecall is { } recall)
+        {
+            <section class="saved-settings-result" aria-label="Saved state recall result">
+                <h3>@recall.Name · @recall.Status</h3><p role="status">@recall.Message</p>
+                @if (Snapshot.IsBusy && recall.Status == "Running") { <p role="status">@recall.Confirmed saved values confirmed. @Snapshot.Menu.Status</p><button type="button" class="toolbar-button danger-action" @onclick="Controller.Cancel">Stop recall</button> }
+                @if (recall.Skipped.Count > 0) { <details><summary>@recall.Skipped.Count values could not be recalled</summary><ul>@foreach (var pair in recall.Skipped) { <li>@IpMenuCatalog.Get(pair.Key).Name: @pair.Value</li> }</ul></details> }
+                @if (recall.NeedsReview && !Snapshot.IsBusy)
+                {
+                    <p class="direct-error">Check the display before continuing. Calibration modes requested by this state: @string.Join(" · ", recall.FinalModes.Select(pair => pair.Key + " = " + pair.Value)). Use the physical remote if you need to restore a mode.</p>
+                    <button type="button" class="toolbar-button" @onclick="CloseReviewAsync" disabled="@Busy">I checked the TV — close recall review</button>
+                }
+            </section>
+        }
+        <details class="saved-settings-help"><summary>Where are my states saved?</summary><p>Private JSON files: <code>@Controller.SavedStatesDirectory</code>. They survive app updates and are not included in the repository or installers. They contain values and display context, never pairing tokens. Save another name to keep multiple versions. Recall is explicit and is never automatic at startup.</p><p>All usable reported Picture, Sound, System, 2pt WB, 20pt WB and Color values are included. Rows not loaded before saving are listed as missing. Refresh state can read inactive 20pt WB; Custom color must be enabled and its rows loaded before they can be saved. Reset actions, raw selector positions and controls that change calibration banks are excluded.</p></details>
+    </div>
+</aside>
+
+@code {
+    [Parameter] public IpRemoteSnapshot Snapshot { get; set; } = new();
+    private string Name = "", SelectedId = "";
+    private string? Error, Feedback, Confirm;
+    private bool Running, ConditionsConfirmed;
+    private bool Busy => Running || Snapshot.IsBusy;
+    private bool CanCapture(IpMenuControl control)
+    {
+        var value = Snapshot.Menu.Value(control)?.ToString();
+        if (value is null) return false;
+        try { _ = IpMenuCatalog.ParseTarget(control, value); return true; }
+        catch (ArgumentException) { return false; }
+    }
+    private IpMenuSavedState? Selected => Guid.TryParse(SelectedId, out var id) ? Snapshot.SavedStates.FirstOrDefault(state => state.Id == id) : null;
+    private void Select(ChangeEventArgs args) { SelectedId = args.Value?.ToString() ?? ""; Cancel(); Error = null; Feedback = null; }
+    private void AskRecall() { Confirm = "recall"; ConditionsConfirmed = false; Feedback = null; }
+    private void AskDelete() { Confirm = "delete"; ConditionsConfirmed = false; Feedback = null; }
+    private void Cancel() { Confirm = null; ConditionsConfirmed = false; }
+    private Task SaveAsync() => GuardAsync(async () =>
+    {
+        SelectedId = (await Controller.SaveMenuStateAsync(Name)).ToString();
+        Name = ""; Cancel(); Feedback = "Settings saved locally. Nothing was sent to the TV.";
+    });
+    private Task DeleteAsync() => GuardAsync(async () =>
+    {
+        if (Confirm != "delete" || Selected is not { } selected) return;
+        await Controller.DeleteMenuStateAsync(selected.Id, true);
+        SelectedId = ""; Cancel(); Feedback = "Saved state deleted. TV settings are unchanged.";
+    });
+    private Task RecallAsync() => GuardAsync(async () =>
+    {
+        if (Confirm != "recall" || !ConditionsConfirmed || Selected is not { } selected) return;
+        Cancel(); await Controller.RecallMenuStateAsync(selected.Id, true);
+    });
+    private Task CloseReviewAsync() => GuardAsync(Controller.CloseStateRecallReviewAsync);
+    private async Task GuardAsync(Func<Task> action)
+    {
+        Running = true; Error = null; Feedback = null;
+        try { await action(); }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException or JsonException or OperationCanceledException) { Error = error.Message; }
+        finally { Running = false; Snapshot = Controller.GetSnapshot(); }
+    }
+}

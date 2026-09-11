@@ -1,4 +1,21 @@
-## SamsungController v1.0.6
+## SamsungController v1.1.0 — Compact layout and saved settings
+
+- Add an optional **Standard / Compact** layout button, separate from light/dark mode. Standard remains the default and retains the original slider cards.
+- Compact condenses every page, including navigation, calibration controls, saved states, log, help, and remote. 20pt WB shows all 20 percentage rows with RGB number fields, individual/group −/+ buttons, and per-row Apply in a narrow calibration window. Color uses the same format.
+- Reuse the existing controls and verified command paths: pending edits, coalesced updates, negative numbers, limits, readback, and Stop are unchanged. Switching layouts sends no TV commands. Layout and per-section scroll positions are remembered in the browser.
+- The approved compact layout and saved-settings workflow are now part of the default interface on `main`, with self-contained packages for macOS, Windows, and Linux on x64 and Arm64. Standard remains the default layout.
+- Put separate **Save settings** and **Recall settings** popups beside Home/Back on every page. Save covers all usable settings across every tab; recall includes review and confirmed deletion.
+- Extend Compact's single-row − / value / +, dropdown, and switch formatting to Picture, 2pt WB, Sound, and System. Standard is unchanged.
+- Add **Help → Troubleshooting** on every page, including explicit re-pairing recovery for the observed getTVStates protocol-reply error. Connect reuses the saved token; Pair again requests new approval.
+
+### Save and recall settings
+
+- Name/save last-read TV settings, review and recall a saved state, and confirm deletion without changing the TV. Now accessed through the global Save settings / Recall settings buttons.
+- Include loaded indexed 20pt white-balance and Custom color values. Never substitute defaults for missing values. Files remain private and survive app updates.
+- Recall checks display/input/picture-mode context and requires physical-signal confirmation. Prerequisite controls are applied before dependent sliders; indexed rows use the existing readback-checked RGB path. Saved calibration modes are restored after row recall.
+- Show skipped settings and interrupted-recall recovery. Stop cancels later requests; startup never resumes a recall.
+
+### Included from v1.0.6
 
 ### Changes in this patch
 
@@ -53,7 +70,7 @@ Direct IP control is now the default interface on **main**, replacing the v0 men
 - Native launchable, self-contained apps for Windows, macOS, and Linux on x64 and Arm64. The local server runs in the background, without a terminal window. Reopen the app to reuse it; **Quit app** at the top stops it.
 - Official macOS release apps are Developer ID signed, notarized, and stapled. Windows binaries are unsigned. Linux packages include an optional desktop-shortcut installer.
 
-Start with the [beginner tutorial](https://github.com/whipstein/SamsungController/blob/v1.0.6/docs/getting-started.md).
+Start with the [beginner tutorial](https://github.com/whipstein/SamsungController/blob/v1.1.0/docs/getting-started.md).
 
 ### Upgrade notes
 

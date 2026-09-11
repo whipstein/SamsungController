@@ -167,6 +167,8 @@ Choose **Picture**, **2pt WB**, **20pt WB**, **Color**, **Sound**, or **System**
 
 ### Safest first adjustment
 
+For a narrow calibration window, select **Standard** at the very top to switch to **Compact**. This applies across all pages and is independent of light/dark mode. The original Standard layout remains available. In Compact, 20pt WB shows one percentage per row with RGB number fields and −/+ buttons instead of slider tracks; RGB ± adjusts the whole row and ✓ applies that row's staged edits. Hover over a value for the TV reading and bounds. Allow roughly 480–640 pixels of width and 800 pixels of page height at 100% zoom to see all 20 rows with optional details closed. Shorter windows scroll. Switching layouts never changes the TV or discards pending edits.
+
 1. Leave **On Apply** selected and **Query first** checked.
 2. Change a slider or type a number. Finish the number and leave the field to commit it locally.
 3. Review the pending target. **TV:** shows the last queried value.
@@ -184,6 +186,17 @@ Choose **Picture**, **2pt WB**, **20pt WB**, **Color**, **Sound**, or **System**
 - Apply leaves the last used percentage/color selected. Loading rows restores the original selector.
 - **Reset all** resets every RGB value in the selected calibration section to nominal: **0** for 20pt WB or **50** for Custom color. Confirm **Stage reset** to review before Apply, or **Reset now** in Immediately mode. All rows must be loaded and enabled. It replaces this section's unsent edits but leaves other settings and the WB/color-space mode unchanged; it is not a picture/factory reset.
 - Do not apply an input/picture-mode change together with dependent calibration changes.
+
+### Save a calibration and recall it later
+
+1. Finish applying your changes. Use **Refresh state** if anything was changed outside this app.
+2. Click **Save settings** beside Home and Back, enter a name in the popup, and click **Save current settings**. This includes all loaded settings across all tabs, not just the current page. Expand **Settings included across all tabs** to check coverage. No TV commands are sent by Save.
+3. Later, click **Recall settings** in the same header and select the state from the dropdown. Review its saved values and missing values, and use the same display/input/picture mode/physical signal.
+4. Click **Recall settings…**, confirm the conditions, then **Apply saved state now**. The app restores available values and reports any it could not apply. This sends changes even when ordinary edits use On Apply.
+5. Use **Stop** if anything goes wrong. Earlier changes stay on the TV; check the display and follow the recall-review instructions before continuing.
+6. To delete a saved calibration, select it, click **Delete state**, and confirm. This only removes the file, never the TV's current settings.
+
+Save captures loaded TV readings—not unsent edits or guessed defaults. Load the calibration rows before saving if you want them included. Recall can temporarily enable 20pt WB or Custom color to restore saved RGB rows, then restores the saved mode. Your saved files stay in the private data folder across app updates. The current app's states are not the old menu-traversal calibration-file format.
 
 ## 8. Refresh deliberately
 

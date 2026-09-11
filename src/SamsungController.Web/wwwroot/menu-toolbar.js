@@ -3,12 +3,19 @@
 window.samsungMenuToolbar = (() => {
     const attached = new WeakMap();
     const sections = new Set(['expert', 'white2', 'white20', 'color', 'sound', 'system']);
-    const storageKey = 'samsung-menu-view-v1';
-    const positions = Object.create(null);
-    let lastSection = 'expert', loaded = false, persistFrame;
+    const memories = Object.create(null);
+    let positions, storageKey, lastSection = 'expert', persistFrame;
     function load() {
-        if (loaded) return;
-        loaded = true;
+        const key = document.documentElement.dataset.layout === 'compact' ? 'samsung-menu-view-compact-v1' : 'samsung-menu-view-v1';
+        if (storageKey === key) return;
+        storageKey = key;
+        if (memories[key]) {
+            positions = memories[key].positions;
+            lastSection = memories[key].section;
+            return;
+        }
+        positions = Object.create(null);
+        lastSection = 'expert';
         try {
             const saved = JSON.parse(window.sessionStorage.getItem(storageKey));
             if (sections.has(saved?.section)) lastSection = saved.section;
@@ -17,10 +24,13 @@ window.samsungMenuToolbar = (() => {
                 if (Number.isFinite(position) && position >= 0 && position <= 10000000) positions[section] = position;
             }
         } catch { /* Blocked/corrupt storage falls back to memory for this page session. */ }
+        memories[key] = { section: lastSection, positions };
     }
     function persist() {
         if (persistFrame) window.cancelAnimationFrame(persistFrame);
         persistFrame = undefined;
+        if (!storageKey) return;
+        memories[storageKey] = { section: lastSection, positions };
         try { window.sessionStorage.setItem(storageKey, JSON.stringify({ section: lastSection, positions })); } catch { }
     }
     function schedulePersist() { persistFrame ??= window.requestAnimationFrame(persist); }
@@ -39,11 +49,25 @@ window.samsungMenuToolbar = (() => {
         const update = () => toolbar.style.setProperty('--menu-sticky-offset', `${header?.getBoundingClientRect().height ?? 0}px`);
         const observer = new ResizeObserver(update);
         const state = { observer, update, header, toolbar, content, section: null, restoring: false, restoreFrame: null };
+        state.resize = () => {
+            update();
+            if (document.documentElement.dataset.layout === 'compact' && state.section)
+                restorePosition(toolbar, state.content, state.section);
+        };
         state.scroll = () => capture(state);
+        state.layoutChanging = () => { capture(state); persist(); state.restoring = true; };
+        state.layoutChanged = () => {
+            load();
+            update();
+            // Keep the selected section. Only its remembered position changes with layout.
+            if (state.section) restorePosition(toolbar, state.content, state.section);
+        };
         if (header) observer.observe(header);
-        window.addEventListener('resize', update);
+        window.addEventListener('resize', state.resize);
         window.addEventListener('scroll', state.scroll, { passive: true });
         window.addEventListener('pagehide', persist);
+        window.addEventListener('samsung-layout-changing', state.layoutChanging);
+        window.addEventListener('samsung-layout-changed', state.layoutChanged);
         attached.set(toolbar, state);
         update();
         return sections.has(lastSection) ? lastSection : section;
@@ -68,7 +92,11 @@ window.samsungMenuToolbar = (() => {
         window.scrollTo({ top: Math.max(0, start + (positions[section] ?? 0)), behavior: 'instant' });
         // Programmatic scroll/height clamping must not replace the remembered position.
         state.restoreFrame = window.requestAnimationFrame(() => {
-            state.restoreFrame = window.requestAnimationFrame(() => { state.restoring = false; state.restoreFrame = null; });
+            state.restoreFrame = window.requestAnimationFrame(() => {
+                state.restoring = false;
+                state.restoreFrame = null;
+                window.dispatchEvent(new CustomEvent('samsung-menu-view-restored'));
+            });
         });
         persist();
     }
@@ -79,9 +107,11 @@ window.samsungMenuToolbar = (() => {
         persist();
         if (state.restoreFrame) window.cancelAnimationFrame(state.restoreFrame);
         state.observer.disconnect();
-        window.removeEventListener('resize', state.update);
+        window.removeEventListener('resize', state.resize);
         window.removeEventListener('scroll', state.scroll);
         window.removeEventListener('pagehide', persist);
+        window.removeEventListener('samsung-layout-changing', state.layoutChanging);
+        window.removeEventListener('samsung-layout-changed', state.layoutChanged);
         attached.delete(toolbar);
     }
     return { attach, detach, savePosition, restorePosition };
