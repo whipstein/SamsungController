@@ -14,8 +14,8 @@
         </fieldset>
         <label class="direct-query-option" title="Query before changes: On rechecks current values; Off is faster and uses last known values. Refresh after outside changes. Post-change readback remains enabled."><input type="checkbox" aria-label="Query before changes" checked="@Snapshot.Menu.Preferences.QueryBeforeChange" @onchange="SetQueryBeforeChangeAsync" disabled="@Snapshot.IsBusy" /> Query first <span class="@(!Snapshot.Menu.Preferences.QueryBeforeChange ? "direct-fast-warning" : "")">@(Snapshot.Menu.Preferences.QueryBeforeChange ? "On" : "Cached")</span></label>
         <div class="direct-actions">
-            <button type="button" class="toolbar-button" @onclick="RefreshAsync" disabled="@(!(Grid is null ? CanWork : CanLoadGrid))">Refresh section</button>
-            <button type="button" class="toolbar-button" title="@(Grid is null ? "Available only in 20pt WB and Color" : "Reload all values in this section's fixed RGB rows")" @onclick="ReloadRowsAsync" disabled="@(Grid is null || !CanLoadGrid)">Reload all rows</button>
+            <button type="button" class="toolbar-button" aria-label="Refresh section" data-compact-label="Refresh" @onclick="RefreshAsync" disabled="@(!(Grid is null ? CanWork : CanLoadGrid))">Refresh section</button>
+            <button type="button" class="toolbar-button" aria-label="Reload all rows" data-compact-label="Rows" title="@(Grid is null ? "Available only in 20pt WB and Color" : "Reload all values in this section's fixed RGB rows")" @onclick="ReloadRowsAsync" disabled="@(Grid is null || !CanLoadGrid)">Reload all rows</button>
             @if (Grid is { } resetGrid)
             { <button type="button" class="toolbar-button danger-action" title="@(ResetDisabledReason ?? $"Reset all RGB values in this section to {resetGrid.NominalValue}")" @onclick="AskReset" disabled="@(ResetDisabledReason is not null)">Reset all</button> }
             <button type="button" class="primary-action" aria-label="@($"Apply {Snapshot.Menu.Pending.Count} pending")" @onclick="ApplyAsync" disabled="@(!CanApply)">Apply (@Snapshot.Menu.Pending.Count)</button>
@@ -54,7 +54,7 @@
     </section>
 }
 
-<section class="panel direct-panel" @ref="MenuContentElement">
+<section class="panel direct-panel direct-menu-content" data-control-section="@Section" @ref="MenuContentElement">
     @if (Snapshot.Menu.Connected && Snapshot.Menu.ConnectionLoadAttempted && Snapshot.Menu.SettingsLoadedAt is null && !Snapshot.IsBusy)
     { <p class="direct-unavailable" role="status">All-settings load is incomplete or the TV context changed. Select Refresh state in the top header to reload all settings for the current signal—no reconnect needed. Opening a tab does not resume a stopped load.</p> }
     @if (Snapshot.Menu.SettingsLoadedAt is { } loadedAt)
@@ -66,7 +66,7 @@
         </details>
     }
     <div class="direct-toolbar">
-        <div><h1>@SectionName</h1><p>@(Snapshot.Menu.SectionsRead.TryGetValue(Section, out var readAt) ? "Read from TV " + readAt.ToLocalTime().ToString("HH:mm:ss") : "Not yet read")</p></div>
+        <div><h1 title="@(Snapshot.Menu.SectionsRead.TryGetValue(Section, out var titleReadAt) ? "Read from TV " + titleReadAt.ToLocalTime().ToString("HH:mm:ss") : "Not yet read")">@SectionName</h1><p>@(Snapshot.Menu.SectionsRead.TryGetValue(Section, out var readAt) ? "Read from TV " + readAt.ToLocalTime().ToString("HH:mm:ss") : "Not yet read")</p></div>
         <div class="direct-actions">
             @if (HasArrangedLayout) { <button class="toolbar-button" @onclick="ResetExpertLayoutAsync" disabled="@LayoutLocked">Reset layout</button> }
             <button class="toolbar-button @(Snapshot.Menu.Pending.Count == 0 ? "direct-discard-empty" : "")" aria-label="Discard pending changes" title="Discard unsent edits without changing the TV" @onclick="Discard" disabled="@(Snapshot.IsBusy || Snapshot.Menu.Pending.Count == 0)">Discard</button>
@@ -102,16 +102,17 @@
     { <p class="direct-hint">@HiddenControls.Count() controls hidden because their queries were rejected or their values were absent. <a href="diagnostics">See communication log</a>. Refresh reevaluates availability.</p> }
     @if (Grid is { } grid)
     {
-        <section class="direct-indexed" aria-label="@(grid.Section == "white20" ? "All white balance intervals" : "All custom colors")">
+        <section class="direct-indexed" data-grid-section="@grid.Section" aria-label="@(grid.Section == "white20" ? "All white balance intervals" : "All custom colors")">
             @if (!Snapshot.Menu.GridsRead.ContainsKey(Section))
             { <p class="direct-unavailable">@(GridModeEnabled ? "Use Reload all rows in the pinned toolbar to read their current values." : grid.Section == "white20" ? "Reload all rows reads the values while Off, restoring Off afterward. Turn on 20-point white balance above and Apply to enable these controls." : "Choose Custom in Color space above and Apply to enable these controls.")</p> }
             @if (grid.Section == "white20" && Snapshot.Menu.GridsRead.ContainsKey(Section) && !GridModeEnabled)
             { <p class="direct-hint">All 20-point values are loaded. The original Off mode was preserved; enable 20-point WB to edit them.</p> }
             <p class="direct-hint direct-grid-status" role="status" title="@GridStatus">@GridStatus</p>
+            <div class="compact-indexed-head compact-only" aria-hidden="true"><span>@(grid.Section == "white20" ? "%" : "Color")</span><span class="rgb-red">Red</span><span class="rgb-green">Green</span><span class="rgb-blue">Blue</span><span title="Adjust RGB together">RGB ±</span><span title="Apply only this percentage">@(grid.Section == "white20" && !Snapshot.Menu.Preferences.ApplyImmediately ? "Apply" : "")</span></div>
             <div class="direct-indexed-rows">
                 @foreach (var value in grid.Values)
                 {
-                    <section class="direct-indexed-row" @key="value">
+                    <section class="direct-indexed-row" data-grid-value="@value" @key="value">
                         <div class="direct-indexed-heading"><h3>@value</h3>
                             <div class="direct-indexed-actions">
                                 <div class="direct-rgb-nudge" role="group" aria-label="@($"Adjust {value} RGB together")">
@@ -123,7 +124,7 @@
                                     }
                                 </div>
                             @if (grid.Section == "white20" && !Snapshot.Menu.Preferences.ApplyImmediately)
-                            { <button class="toolbar-button" aria-label="@($"Apply {value} white balance")" @onclick="() => ApplyRowAsync(grid, value)" disabled="@(!CanApplyRow(grid, value))">Apply @RowPendingCount(grid, value) pending</button> }
+                            { <button class="toolbar-button" data-compact-label="✓" title="@($"Apply {value} white balance: {RowPendingCount(grid, value)} pending")" aria-label="@($"Apply {value} white balance")" @onclick="() => ApplyRowAsync(grid, value)" disabled="@(!CanApplyRow(grid, value))">Apply @RowPendingCount(grid, value) pending</button> }
                             </div>
                         </div>
                         <div class="direct-indexed-channels">@foreach (var control in grid.Row(value).Where(IsVisible)) { @ControlCard(control) }</div>
@@ -222,13 +223,17 @@
     // A text draft such as "-" is valid while typing, but not a slider position.
     private string RangeTarget(IpMenuControl control) => int.TryParse(Target(control), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var value)
         && value >= control.Parameter.Minimum && value <= control.Parameter.Maximum ? value.ToString(CultureInfo.InvariantCulture) : StoredTarget(control);
+    private bool InvalidNumber(IpMenuControl control) => Edits.TryGetValue(control.Id, out var text)
+        && (!int.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var value) || value < control.Parameter.Minimum || value > control.Parameter.Maximum);
+    private string NumberHint(IpMenuControl control) => $"Whole number from {control.Parameter.Minimum} to {control.Parameter.Maximum}"
+        + (control.IsIndexed ? $" · TV: {Snapshot.Menu.Value(control)?.ToString() ?? "not reported"}. {DisplayReason(control)} {ControlStatus(control)}" : "");
     private bool Dirty(IpMenuControl control) => Snapshot.Menu.Pending.ContainsKey(control.Id);
     private string? DisabledReason(IpMenuControl control) => ActionRunning ? "A TV request is running." : Controller.MenuControlDisabledReason(control);
     private string? NudgeDisabledReason(IpMenuControl control) => ActionRunning ? "A TV request is running." : Controller.MenuNudgeDisabledReason(control);
     private string? DisplayReason(IpMenuControl control) => SamsungIpRemoteService.MenuValueDisabledReason(DisplayMenu, control);
     private string ControlStatus(IpMenuControl control) => Snapshot.Menu.NudgeQueue?.Values.Count(value => value.ControlId == control.Id) is > 0 and var count
         ? $"{count} adjustment(s) queued / running" : Dirty(control) ? "Pending · not sent" : "";
-    private RenderFragment ControlCard(IpMenuControl control) => @<article @key="control.Id" class="direct-control @(Dirty(control) ? "pending" : "") @(DisplayReason(control) is not null ? "unavailable" : "")" aria-disabled="@((control.Parameter.Kind == IpRemoteParameterKind.Integer ? NudgeDisabledReason(control) : DisabledReason(control)) is not null ? "true" : "false")">
+    private RenderFragment ControlCard(IpMenuControl control) => @<article @key="control.Id" data-channel="@(control.IsIndexed ? control.Field.Split('.').Last() : null)" title="@(control.IsIndexed ? $"{control.Name} · TV: {Snapshot.Menu.Value(control)?.ToString() ?? "not reported"} · {control.Parameter.Minimum} to {control.Parameter.Maximum}. {DisplayReason(control)}" : null)" class="direct-control @(Dirty(control) ? "pending" : "") @(DisplayReason(control) is not null ? "unavailable" : "")" aria-disabled="@((control.Parameter.Kind == IpRemoteParameterKind.Integer ? NudgeDisabledReason(control) : DisabledReason(control)) is not null ? "true" : "false")">
         <div class="direct-control-heading"><h3>@(control.IsIndexed ? control.Field.Split('.').Last() : control.Name)</h3><span class="direct-read-value">TV: @(Snapshot.Menu.Value(control)?.ToString() ?? "Not reported")</span></div>
         @if (control.IsSwitch)
         {
@@ -250,7 +255,7 @@
                 </div>
                 <button aria-label="@($"Increase {control.Name}")" @onclick="() => NudgeAsync(control, 1)" disabled="@(NudgeDisabledReason(control) is not null || Target(control) == "" || Target(control) == control.Parameter.Maximum.ToString(CultureInfo.InvariantCulture))">+</button>
                 @* Native number inputs sanitize a partial minus to empty before Blazor sees it. Keep raw text until commit; the service validates integer bounds. *@
-                <input class="picture-compact-number direct-number-value" aria-label="@($"{control.Name} value")" type="text" inputmode="@(control.Parameter.Minimum < 0 ? "text" : "numeric")" autocomplete="off" spellcheck="false" title="@($"Whole number from {control.Parameter.Minimum} to {control.Parameter.Maximum}")" value="@Target(control)" @oninput="args => Preview(control, args)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" disabled="@(NudgeDisabledReason(control) is not null)" />
+                <input class="picture-compact-number direct-number-value" aria-label="@($"{control.Name} value")" aria-invalid="@(InvalidNumber(control) ? "true" : "false")" type="text" inputmode="@(control.Parameter.Minimum < 0 ? "text" : "numeric")" autocomplete="off" spellcheck="false" title="@NumberHint(control)" value="@Target(control)" @oninput="args => Preview(control, args)" @onchange="args => CommitAsync(control, args.Value?.ToString() ?? string.Empty)" disabled="@(NudgeDisabledReason(control) is not null)" />
             </div></fieldset>
         }
         else

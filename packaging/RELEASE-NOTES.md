@@ -1,4 +1,11 @@
-## SamsungController v1.0.7 — local evaluation build (not published)
+## SamsungController v1.1.0 — Compact layout evaluation (not published)
+
+- Add an optional **Standard / Compact** layout button, separate from light/dark mode. Standard remains the default and retains the original slider cards.
+- Compact condenses every page, including navigation, calibration controls, saved states, log, help, and remote. 20pt WB shows all 20 percentage rows with RGB number fields, individual/group −/+ buttons, and per-row Apply in a narrow calibration window. Color uses the same format.
+- Reuse the existing controls and verified command paths: pending edits, coalesced updates, negative numbers, limits, readback, and Stop are unchanged. Switching layouts sends no TV commands. Layout and per-section scroll positions are remembered in the browser.
+- Local Mac evaluation only, on `feature/compact-layout`. No merge, tag, or public release.
+
+### Included from the v1.0.7 saved-states evaluation
 
 - Add **Menu → Saved states**: name/save last-read TV settings, review and recall a saved state, and confirm deletion without changing the TV.
 - Include loaded indexed 20pt white-balance and Custom color values. Never substitute defaults for missing values. Files remain private and survive app updates.

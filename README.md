@@ -254,6 +254,14 @@ If a temporary WB read is stopped or fails, it may leave WB On. **Stop sends no 
 
 Direct settings do not navigate TV menus, so there is no return-to-video script or “stay on last adjusted item” option. Header Home, Back, and Exit menu buttons are explicit single keys, not a guaranteed video anchor.
 
+### Optional Compact layout
+
+Select **Standard / Compact** at the top beside the light/dark button. **Standard is the default** and keeps the original slider cards. Compact reduces navigation, cards, dialogs, and spacing throughout the app. The choice is remembered in this browser only; it does not change the TV, pending edits, or theme.
+
+In Compact, **20pt WB** is a table of all 20 percentages: Red/Green/Blue number fields with −/+ buttons, **RGB ±** for grouped changes, and a per-row **✓** Apply button in On Apply mode. **Color** uses the same arrangement. Hover over a channel for its last-read TV value, limits, and availability. Number entry, negative values, queued adjustments, Stop, and readback checks work exactly as in Standard. Switch back for full slider tracks.
+
+Aim for a window around **480–640 pixels wide**, with at least **800 pixels of browser page height at 100% zoom**, and leave optional details closed to see all 20 rows together. Smaller heights, larger text/zoom, or expanded warnings remain scrollable; no controls are clipped. Menu sections remember their scroll positions separately for each layout.
+
 ## Save, recall, and delete settings
 
 Open **Menu → Saved states**, just below the pinned toolbar (v1.0.7 onward).

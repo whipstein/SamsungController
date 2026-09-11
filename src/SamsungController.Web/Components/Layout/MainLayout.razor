@@ -13,13 +13,17 @@
             <NavLink href="menu"><span class="nav-glyph">02</span>Menu</NavLink>
             <NavLink href="diagnostics"><span class="nav-glyph">03</span>Communication log</NavLink>
         </nav>
+        <small class="compact-only compact-version">v@(SamsungIpRemoteService.Version)</small>
         <div class="sidebar-foot"><span class="local-dot"></span>Local control<small>v@SamsungIpRemoteService.Version</small></div>
     </aside>
     <main class="main-stage">
         <header class="topbar">
             <div class="topbar-primary">
-                <div class="topbar-context"><span class="eyebrow">SAMSUNG · DIRECT IP</span><strong>@(Snapshot.ActiveProfile?.Model is { Length: > 0 } model ? model : Snapshot.ActiveProfile?.Connection.Host ?? "Choose a display")</strong></div>
+                <div class="topbar-context"><span class="eyebrow">SAMSUNG · DIRECT IP</span><strong title="@(Snapshot.ActiveProfile?.Model)">@(Snapshot.ActiveProfile?.Model is { Length: > 0 } model ? model : Snapshot.ActiveProfile?.Connection.Host ?? "Choose a display")</strong></div>
                 <div class="topbar-connection-control">
+                    <button type="button" class="layout-toggle" title="Switch layout: Standard keeps the original cards; Compact fits a narrow calibration window. Saved for this browser only." aria-label="Switch between Standard and Compact layout" @onclick="ToggleLayoutAsync" disabled="@LayoutBusy">
+                        <span class="layout-toggle-standard">Standard</span><span class="layout-toggle-compact">Compact</span>
+                    </button>
                     <button type="button" class="theme-toggle" title="Switch between light and dark mode" aria-label="Switch between light and dark mode" @onclick="ToggleThemeAsync" disabled="@ThemeBusy">
                         <span class="theme-toggle-state light" aria-hidden="true"><i>☀</i> Light</span><span class="theme-toggle-state dark" aria-hidden="true"><i>☾</i> Dark</span>
                     </button>
@@ -66,7 +70,7 @@
 @code {
     private IpRemoteSnapshot Snapshot = new();
     private string? Error;
-    private bool ThemeBusy;
+    private bool ThemeBusy, LayoutBusy;
     private string MenuHelpSection = "expert";
     public void SetMenuHelpSection(string section)
     {
@@ -93,6 +97,13 @@
         try { await JavaScript.InvokeVoidAsync("samsungTheme.toggle"); }
         catch (JSException) { }
         finally { ThemeBusy = false; }
+    }
+    private async Task ToggleLayoutAsync()
+    {
+        LayoutBusy = true;
+        try { await JavaScript.InvokeVoidAsync("samsungLayout.toggle"); }
+        catch (JSException) { Error = "The layout switch could not load. Refresh the webpage and try again."; }
+        finally { LayoutBusy = false; }
     }
     private async Task GuardAsync(Func<Task> action)
     {

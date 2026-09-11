@@ -167,6 +167,8 @@ Choose **Picture**, **2pt WB**, **20pt WB**, **Color**, **Sound**, or **System**
 
 ### Safest first adjustment
 
+For a narrow calibration window, select **Standard** at the very top to switch to **Compact**. This applies across all pages and is independent of light/dark mode. The original Standard layout remains available. In Compact, 20pt WB shows one percentage per row with RGB number fields and −/+ buttons instead of slider tracks; RGB ± adjusts the whole row and ✓ applies that row's staged edits. Hover over a value for the TV reading and bounds. Allow roughly 480–640 pixels of width and 800 pixels of page height at 100% zoom to see all 20 rows with optional details closed. Shorter windows scroll. Switching layouts never changes the TV or discards pending edits.
+
 1. Leave **On Apply** selected and **Query first** checked.
 2. Change a slider or type a number. Finish the number and leave the field to commit it locally.
 3. Review the pending target. **TV:** shows the last queried value.
