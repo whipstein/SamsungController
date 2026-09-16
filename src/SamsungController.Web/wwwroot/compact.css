@@ -65,6 +65,7 @@ html[data-layout="compact"] .saved-settings h3 { font-size:13px; }
 
 /* Pinned settings toolbar. All six section tabs fit a narrow window. */
 html[data-layout="compact"] .direct-menu-toolbar { padding:3px 5px; margin-bottom:5px; border-radius:5px; }
+html[data-layout="compact"] .direct-power-warning { margin-top:3px; padding:3px 5px; font-size:11px; }
 html[data-layout="compact"] .direct-menu-behavior { gap:2px 8px; }
 html[data-layout="compact"] .direct-apply-mode { gap:6px; }
 html[data-layout="compact"] :is(.direct-apply-mode label,.direct-query-option) { min-height:23px; font-size:11px; gap:3px; }

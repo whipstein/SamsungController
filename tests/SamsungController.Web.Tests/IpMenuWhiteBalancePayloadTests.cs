@@ -34,7 +34,8 @@ public sealed class IpMenuWhiteBalancePayloadTests
             Assert.Equal(expected, write["params"]![name]!.GetValue<int>());
             Assert.Equal(expected, fixture.Value("WB2PointControl/" + name)!.GetValue<int>());
         }
-        Assert.Equal(7, fixture.Display.Requests.Count);
+        Assert.Equal(8, fixture.Display.Requests.Count); // One power query before the existing preflight/write/readback.
+        Assert.Single(fixture.Display.Requests, request => request["method"]!.ToString() == "powerControl");
         var menu = fixture.Service.GetSnapshot().Menu;
         Assert.Equal("Completed", menu.Update!.Status);
         Assert.Equal("Applied", menu.Update.Steps.Single().Status);

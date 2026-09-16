@@ -32,6 +32,12 @@ public sealed partial class SamsungIpRemoteService
         var original = GetSnapshot().Menu;
         var warnings = new List<string>();
         UpdateMenu(menu => menu with { SettingsLoadedAt = null, LoadWarnings = [] });
+        await ReadMenuPowerAsync(profile, cancellation).ConfigureAwait(false);
+        if (GetSnapshot().Menu.PowerDisabledReason is { } powerReason)
+        {
+            UpdateMenu(menu => menu with { Status = powerReason, LoadWarnings = [powerReason] });
+            return; // Standby can answer base reads, but must not trigger selector/mode writes.
+        }
         foreach (var section in IpMenuCatalog.Sections)
         {
             UpdateMenu(menu => menu with { Status = (refreshing ? "Refreshing" : "Connecting") + " · reading " + section.Name + "…" });

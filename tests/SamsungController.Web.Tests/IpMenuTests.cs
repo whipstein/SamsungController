@@ -403,6 +403,7 @@ internal sealed class MenuFixture(ContrastFixture inner) : IDisposable
         var fixture = new MenuFixture(await ContrastFixture.CreateAsync());
         foreach (var control in IpMenuCatalog.Controls)
             fixture.Values[control.Field] = control.Parameter.Kind == IpRemoteParameterKind.Integer ? JsonValue.Create(0) : JsonValue.Create(control.Parameter.Choices[0]);
+        fixture.Values["power"] = "powerOn";
         fixture.Display.Override = fixture.ReplyAsync;
         return fixture;
     }

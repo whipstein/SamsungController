@@ -18,7 +18,8 @@ public sealed class IpMenuRgbGroupTests
         var row = grid.Row(grid.Values[0]).ToArray();
         for (var i = 0; i < row.Length; i++) fixture.Service.StageMenuValue(row[i].Id, (11 + i).ToString());
         await fixture.Service.ApplyMenuAsync();
-        Assert.Equal(36, fixture.Display.Requests.Count);
+        Assert.Equal(37, fixture.Display.Requests.Count); // One power query for the entire RGB group.
+        Assert.Single(fixture.Display.Requests, request => request["method"]!.ToString() == "powerControl");
         Assert.Equal(2, fixture.Display.Methods.Count(method => method == "getTVStates"));
         Assert.Equal(2, fixture.Display.Methods.Count(method => method == "getVideoStates"));
         Assert.Equal(3, RgbWrites(fixture, grid).Count());

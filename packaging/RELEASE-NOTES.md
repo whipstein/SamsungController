@@ -1,3 +1,12 @@
+## SamsungController v1.1.2 — TV power check and top-toolbar review (local evaluation)
+
+- Put **Verify settings** beside Apply and Stop in the pinned Menu toolbar after an interrupted update, including one restored from a previous session.
+- Review affected values and RGB originals in a popup, then acknowledge the manual check without sending commands, retries, or undo. Show a top-toolbar reminder to refresh afterward.
+- Route interrupted recalls to their combined review. Normal in-progress writes do not flash the review button or move the toolbar controls.
+- Check power before each apply group, recall, and explicit calibration-row read, even with Query first Off. Standby or unconfirmed power blocks settings changes before setters are sent; no wake-up or retries occur. Show a top-toolbar warning and read-only **Check power** button. Initial full loading stops before selector/mode changes when the TV is off.
+- Samsung setter names and payloads are unchanged. A rejected setter does not hide a control whose value was successfully queried.
+- This build is for local evaluation; it has not been published as a release.
+
 ## SamsungController v1.1.1 — Recall review fix
 
 - Show interrupted-update details inside **Recall settings**, including uncertain values and incomplete RGB checks.

@@ -82,13 +82,15 @@ public sealed class IpMenuAvailabilityTests
         Assert.Equal("autoMotionPlusControl", Assert.Single(fixture.Writes)["method"]!.ToString());
     }
 
-    [Fact]
-    public async Task ARejectedSetterDoesNotHideTheControlOrInvalidateItsQueriedValue()
+    [Theory]
+    [InlineData(-32002)]
+    [InlineData(-32601)]
+    public async Task ARejectedSetterDoesNotHideTheControlOrInvalidateItsQueriedValue(int code)
     {
         using var fixture = await MenuFixture.CreateAsync();
         await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
         fixture.Service.StageMenuValue("contrastControl/contrast", "44");
-        fixture.Override = (request, _) => Task.FromResult<HttpResponseMessage?>(request["method"]!.ToString() == "contrastControl" ? MenuFixture.Reject(request, -32002) : null);
+        fixture.Override = (request, _) => Task.FromResult<HttpResponseMessage?>(request["method"]!.ToString() == "contrastControl" ? MenuFixture.Reject(request, code) : null);
         await Assert.ThrowsAsync<InvalidOperationException>(fixture.Service.ApplyMenuAsync);
         Assert.True(IpMenuAvailability.For(fixture.Service.GetSnapshot().Menu, IpMenuCatalog.Get("contrastControl/contrast")).Visible);
         Assert.Equal(45, fixture.Value("contrastControl/contrast")!.GetValue<int>());

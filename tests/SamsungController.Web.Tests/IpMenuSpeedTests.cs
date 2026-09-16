@@ -25,7 +25,8 @@ public sealed class IpMenuSpeedTests
             var start = fixture.Display.Requests.Count;
             await fixture.Service.ApplyMenuAsync();
             Assert.Equal(grid.Values[0], fixture.Values[grid.SelectorField]!.ToString());
-            if (i > 0 && !preQuery) Assert.Equal(first[i].Method, fixture.Display.Requests[start]["method"]!.ToString());
+            Assert.Equal("powerControl", fixture.Display.Requests[start]["method"]!.ToString());
+            if (i > 0 && !preQuery) Assert.Equal(first[i].Method, fixture.Display.Requests[start + 1]["method"]!.ToString());
         }
         fixture.Service.StageMenuValue(grid.Row(grid.Values[1]).First().Id, "12");
         await fixture.Service.ApplyMenuAsync();
@@ -52,7 +53,8 @@ public sealed class IpMenuSpeedTests
         var grid = IpMenuGrids.ForSection(section)!;
         foreach (var control in grid.Row(grid.Values[0])) fixture.Service.StageMenuValue(control.Id, "11");
         await fixture.Service.ApplyMenuAsync();
-        Assert.Equal(count, fixture.Display.Requests.Count);
+        Assert.Equal(count + 1, fixture.Display.Requests.Count); // The power check is independent of optional value preflight.
+        Assert.Single(fixture.Display.Requests, request => request["method"]!.ToString() == "powerControl");
         Assert.Single(fixture.Writes, request => IsWrite(request, grid.SelectorMethod));
         Assert.Empty(fixture.Display.Batches);
         var update = fixture.Service.GetSnapshot().Menu.Update!;
@@ -69,7 +71,7 @@ public sealed class IpMenuSpeedTests
     [Theory]
     [InlineData("contrastControl/contrast", "44")]
     [InlineData("WB2PointControl/B-Gain", "-2")]
-    public async Task FastOrdinaryAndTwoPointEditsSendFirstButStillReadBack(string id, string target)
+    public async Task FastOrdinaryAndTwoPointEditsOnlyCheckPowerBeforeWriteAndStillReadBack(string id, string target)
     {
         using var fixture = await MenuFixture.CreateAsync();
         await fixture.Service.ConnectMenuAsync(false);
@@ -79,11 +81,13 @@ public sealed class IpMenuSpeedTests
         fixture.Display.Requests.Clear();
         var control = IpMenuCatalog.Get(id);
         await fixture.Service.ApplyMenuAsync();
-        Assert.True(IsWrite(fixture.Display.Requests[0], control.Method));
-        Assert.Equal(control.Method == "WB2PointControl" ? 4 : 3, fixture.Display.Requests.Count);
+        Assert.Equal("powerControl", fixture.Display.Methods.First());
+        Assert.True(IsWrite(fixture.Display.Requests[1], control.Method));
+        Assert.Equal(control.Method == "WB2PointControl" ? 5 : 4, fixture.Display.Requests.Count);
+        Assert.Single(fixture.Display.Requests, request => request["method"]!.ToString() == "powerControl");
         Assert.Equal(target, fixture.Service.GetSnapshot().Menu.Value(control)!.ToString());
         Assert.Contains(fixture.Display.Methods, method => method == "getTVStates");
-        if (control.Method == "WB2PointControl") Assert.Equal(7, fixture.Display.Requests[0]["params"]!.AsObject().Count);
+        if (control.Method == "WB2PointControl") Assert.Equal(7, Assert.Single(fixture.Writes)["params"]!.AsObject().Count);
     }
 
     [Theory]
@@ -120,7 +124,8 @@ public sealed class IpMenuSpeedTests
         fixture.Service.StageMenuValue("colorSpace.RedControl/colorSpace.Red/Red", "11");
         fixture.Display.Requests.Clear();
         await Assert.ThrowsAsync<InvalidOperationException>(fixture.Service.ApplyMenuAsync);
-        Assert.Empty(fixture.Display.Requests);
+        Assert.Equal(new[] { "powerControl" }, fixture.Display.Methods);
+        Assert.Empty(fixture.Writes);
         Assert.False(fixture.Service.GetSnapshot().Menu.Update!.NeedsReview);
     }
 
@@ -239,7 +244,8 @@ public sealed class IpMenuSpeedTests
             await Task.WhenAll(red, green, blue).WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Equal(new[] { 11, 13, 14 }, grid.Fields.Select(field => fixture.GridValues[section + "/" + grid.Values[0]][field]!.GetValue<int>()));
             Assert.Single(fixture.Writes, request => IsWrite(request, grid.SelectorMethod));
-            Assert.Equal(21, fixture.Display.Requests.Count);
+            Assert.Equal(22, fixture.Display.Requests.Count);
+            Assert.Single(fixture.Display.Requests, request => request["method"]!.ToString() == "powerControl");
             Assert.False(fixture.Service.GetSnapshot().Menu.Update!.QueryBeforeChange);
         }
         finally { release.TrySetResult(); }
@@ -268,7 +274,8 @@ public sealed class IpMenuSpeedTests
         else
         {
             await Assert.ThrowsAsync<InvalidOperationException>(fixture.Service.ApplyMenuAsync);
-            Assert.True(IsWrite(fixture.Display.Requests[0], "WB20P.RedControl"));
+            Assert.Equal("powerControl", fixture.Display.Methods.First());
+            Assert.True(IsWrite(fixture.Display.Requests[1], "WB20P.RedControl"));
             Assert.True(fixture.Service.GetSnapshot().Menu.Update!.NeedsReview);
             Assert.Single(fixture.Writes); // A post-write mismatch stops without a blind retry/restore.
         }

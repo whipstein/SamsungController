@@ -39,7 +39,8 @@ public sealed class IpMenuWhiteBalanceWarningTests
         var write = Assert.Single(fixture.Writes);
         Assert.Equal(Fields.Append("AccessToken").Order(), write["params"]!.AsObject().Select(pair => pair.Key).Order());
         foreach (var other in Fields.Where(name => name != field)) Assert.Equal(before[other], write["params"]![other]!.GetValue<int>());
-        Assert.Equal(7, fixture.Display.Requests.Count); // Preflight x3, one write, readback x3; no second scan.
+        Assert.Equal(8, fixture.Display.Requests.Count); // Power x1, preflight x3, one write, readback x3; no second scan.
+        Assert.Single(fixture.Display.Requests, request => request["method"]!.ToString() == "powerControl");
         Assert.Contains(fixture.Service.GetSnapshot().Observations, observation => observation.Exchange.Method == "WB2PointControl"
             && observation.Exchange.Outcome == SamsungIpRemoteOutcome.RpcError && observation.Exchange.RpcErrorCode == -32002);
         var warning = menu.Update.Steps.Single().Warning;

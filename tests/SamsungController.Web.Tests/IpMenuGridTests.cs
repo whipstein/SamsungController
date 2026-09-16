@@ -110,7 +110,8 @@ public sealed class IpMenuGridTests
         var grid = IpMenuGrids.ForSection(section)!;
         // Previously 176 / 67 with full context after every row. Bounded
         // four-row groups retain independent selector checks on every row.
-        Assert.Equal(expectedRequests, fixture.Display.Requests.Count);
+        Assert.Equal(expectedRequests + 1, fixture.Display.Requests.Count); // One fresh power check per scan.
+        Assert.Single(fixture.Display.Requests, request => request["method"]!.ToString() == "powerControl");
         foreach (var field in grid.Fields)
             Assert.Equal(grid.Values.Count, fixture.Display.Methods.Count(method => method == field + "Control"));
         Assert.All(fixture.Writes, request => Assert.Equal(grid.SelectorMethod, request["method"]!.ToString()));

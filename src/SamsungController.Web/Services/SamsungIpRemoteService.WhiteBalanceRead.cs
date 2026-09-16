@@ -12,6 +12,7 @@ public sealed partial class SamsungIpRemoteService
     private async Task RefreshWhiteBalanceIncludingInactiveCoreAsync(IpRemoteProfile profile, CancellationToken cancellation, bool sectionAlreadyRead = false)
     {
         EnsureMenuWritesAllowed();
+        if (!sectionAlreadyRead) await RequireMenuPowerOnAsync(profile, cancellation).ConfigureAwait(false);
         if (!sectionAlreadyRead) await RefreshMenuSectionCoreAsync(profile, "white20", cancellation, loadingGrid: true).ConfigureAwait(false);
         if (GetSnapshot().Menu.Readings.GetValueOrDefault("WB20PointModeControl")?.Values?["WB20PointMode"]?.ToString() != "Off")
         {
@@ -50,6 +51,7 @@ public sealed partial class SamsungIpRemoteService
         EnsureMenuWritesAllowed(allowTemporaryWhiteBalanceRead: true);
         var read = GetSnapshot().Menu.WhiteBalanceRead;
         if (read?.NeedsRestore != true) throw new InvalidOperationException("No temporary white-balance mode needs restoration.");
+        await RequireMenuPowerOnAsync(profile, cancellation).ConfigureAwait(false);
         try { await RestoreWhiteBalanceReadCoreAsync(profile, read, cancellation, restoreInterval: true, preserveValues: false).ConfigureAwait(false); }
         catch (Exception error) when (IsMenuGridError(error))
         {

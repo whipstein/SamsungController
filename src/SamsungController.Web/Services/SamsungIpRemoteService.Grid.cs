@@ -23,6 +23,7 @@ public sealed partial class SamsungIpRemoteService
         var started = Stopwatch.GetTimestamp();
         EnsureMenuWritesAllowed(temporaryWhiteBalanceRead); // Reading all rows moves a selector; an unresolved RGB write must be handled first.
         var grid = IpMenuGrids.ForSection(section) ?? throw new ArgumentException("Unknown calibration grid.");
+        if (!sectionAlreadyRead) await RequireMenuPowerOnAsync(profile, cancellation).ConfigureAwait(false);
         UpdateMenu(menu => ClearMenuGridCache(menu, section));
         if (!sectionAlreadyRead) await RefreshMenuSectionCoreAsync(profile, section, cancellation, loadingGrid: true).ConfigureAwait(false);
         if (GetSnapshot().Menu.Readings.GetValueOrDefault(grid.ModeMethod)?.Values?[grid.ModeField]?.ToString() != grid.RequiredMode)

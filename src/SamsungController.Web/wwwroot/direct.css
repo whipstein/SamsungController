@@ -77,6 +77,9 @@ html { scrollbar-gutter:stable; }
 .direct-menu-toolbar .direct-actions { flex-wrap:wrap; max-width:100%; gap:6px; margin:0 0 0 auto; }
 .direct-menu-toolbar .direct-actions button { width:auto; min-height:32px; padding:5px 9px; font-size:14px; line-height:20px; white-space:nowrap; }
 .direct-menu-navigation { display:flex; align-items:center; gap:5px 10px; flex-wrap:wrap; margin-top:5px; }
+.direct-power-warning { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:6px; padding:6px 8px; border:1px solid var(--amber); border-radius:5px; color:var(--amber); font-size:13px; }
+.direct-power-warning strong { flex:1 1 220px; }
+.direct-power-warning button { width:auto; min-height:28px; padding:3px 8px; font-size:inherit; }
 .direct-menu-toolbar .direct-tabs { flex-wrap:nowrap; overflow-x:auto; min-width:0; max-width:100%; margin:0; gap:4px; padding:1px 0; border:0; }
 .direct-menu-toolbar .direct-tabs button { flex-shrink:0; min-height:32px; padding:5px 8px; font-size:14px; line-height:20px; white-space:nowrap; }
 @media(max-width:800px) { .direct-menu-toolbar { padding:6px 8px; } .direct-menu-navigation { gap:5px 8px; } }

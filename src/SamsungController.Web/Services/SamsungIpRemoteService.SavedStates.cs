@@ -68,6 +68,7 @@ public sealed partial class SamsungIpRemoteService
     {
         if (SaveMenuStateDisabledReason() is { } reason) return reason;
         var current = GetSnapshot();
+        if (current.Menu.PowerDisabledReason is { } powerReason) return powerReason;
         return saved.Context != IpMenuSavedContext.From(current.ActiveProfile!, current.Menu)
             ? "Select the saved display, input, picture mode and signal context, then Refresh state. Recall will not switch calibration banks for you."
             : null;
@@ -82,6 +83,7 @@ public sealed partial class SamsungIpRemoteService
         var saved = await ReadSavedStateAsync(SavedStatePath(id)).ConfigureAwait(false);
         if (saved.Id != id) throw new InvalidOperationException("The saved state ID does not match its filename.");
         RequireContext();
+        await RequireMenuPowerOnAsync(profile, cancellation).ConfigureAwait(false);
         await ReadMenuBaseAsync(profile, cancellation).ConfigureAwait(false);
         RequireContext();
         var recall = new IpMenuStateRecall(id, saved.Name, saved.Context, _timeProvider.GetUtcNow())

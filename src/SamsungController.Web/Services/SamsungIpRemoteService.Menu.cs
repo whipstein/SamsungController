@@ -52,7 +52,11 @@ public sealed partial class SamsungIpRemoteService
         finally { _gate.Release(); }
     }
 
-    public Task RefreshMenuSectionAsync(string section) => RunMenuOperationAsync((profile, cancellation) => RefreshMenuSectionCoreAsync(profile, section, cancellation));
+    public Task RefreshMenuSectionAsync(string section) => RunMenuOperationAsync(async (profile, cancellation) =>
+    {
+        await RequireMenuPowerOnAsync(profile, cancellation).ConfigureAwait(false);
+        await RefreshMenuSectionCoreAsync(profile, section, cancellation).ConfigureAwait(false);
+    });
 
     private async Task RefreshMenuSectionCoreAsync(IpRemoteProfile profile, string section, CancellationToken cancellation, bool loadingGrid = false, bool refreshBase = true)
     {
@@ -100,6 +104,7 @@ public sealed partial class SamsungIpRemoteService
 
     public static string? MenuValueDisabledReason(IpMenuSnapshot menu, IpMenuControl control)
     {
+        if (menu.PowerDisabledReason is { } powerReason) return powerReason;
         if (IpMenuAvailability.For(menu, control) is { Reason: { } unavailable }) return unavailable;
         if (menu.Value(control) is not { } value) return (control.IsIndexed ? menu.IndexedReadings.GetValueOrDefault(control.Id) : menu.Readings.GetValueOrDefault(control.Method)) is { } reading
             ? reading.Outcome == SamsungIpRemoteOutcome.Success ? "Not reported in the TV reply for this display/state." : reading.Message
@@ -168,6 +173,9 @@ public sealed partial class SamsungIpRemoteService
             .ThenBy(draft => IpMenuCatalog.Get(draft.ControlId).IsIndexed ? Array.IndexOf(IpMenuGrids.ForSection(IpMenuCatalog.Get(draft.ControlId).Section)!.Values.ToArray(), IpMenuCatalog.Get(draft.ControlId).IndexValue) : 0).ToArray();
         if (drafts.Length == 0) throw new InvalidOperationException("No pending settings to apply.");
         foreach (var draft in drafts) _ = IpMenuCatalog.ParseTarget(IpMenuCatalog.Get(draft.ControlId), draft.Target.ToString());
+        // Check once per apply group, not per RGB channel. Off/unknown power
+        // stops before creating an uncertain-write journal or sending a setter.
+        await RequireMenuPowerOnAsync(profile, cancellation).ConfigureAwait(false);
         var update = new IpMenuUpdate
         {
             QueryBeforeChange = GetSnapshot().Menu.Preferences.QueryBeforeChange,
