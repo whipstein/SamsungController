@@ -11,10 +11,11 @@ function harness(denied = false) {
     const button = { disabled:false, addEventListener(name, fn) { this[name] = fn; } };
     const notice = { hidden:true }, status = { textContent:'' };
     const popup = { open:true, hidePopover() { this.open = false; } }, previousDialog = { open:true, close() { this.open = false; } };
-    let closes = 0, reloads = 0, timerId = 0;
+    let closes = 0, reloads = 0, timerId = 0, disconnects = 0;
     let reply = async () => { throw Error('server has stopped'); };
     const window = { close() { closes++; if (denied) throw Error('browser blocked close'); }, addEventListener(name, fn) { pageEvents[name] = fn; },
         location: { reload() { reloads++; } },
+        Blazor: { disconnect() { disconnects++; } },
         fetch(url, options) { requests.push({url, options}); return reply(url, options); },
         setTimeout(fn, delay) { assert.equal(delay, 2000); timers.set(++timerId, fn); return timerId; }, clearTimeout(id) { timers.delete(id); },
         EventSource: class { constructor(url) { this.url = url; this.events = {}; streams.push(this); } addEventListener(name, fn) { this.events[name] = fn; } close() { this.closed = true; } } };
@@ -23,15 +24,15 @@ function harness(denied = false) {
         getElementById: id => ({'desktop-app-stopped':notice, 'desktop-return-to-app':button, 'desktop-return-status':status})[id] };
     vm.runInNewContext(source, { window, document, encodeURIComponent, AbortController });
     return { window, streams, notice, button, status, pageEvents, classes, timers, requests, popup, previousDialog,
-        setReply(fn) { reply = fn; }, get closes() { return closes; }, get reloads() { return reloads; } };
+        setReply(fn) { reply = fn; }, get closes() { return closes; }, get reloads() { return reloads; }, get disconnects() { return disconnects; } };
 }
 test('only explicit matching quit closes this tab; network errors and other instances do not', () => {
     const h = harness(); h.window.samsungDesktop.watch(instance);
     const stream = h.streams[0];
     assert.equal(stream.url, '/_app/events?instance=' + instance);
-    stream.events.error?.({}); assert.equal(h.closes, 0);
-    stream.events.quit({data: 'other-server'}); assert.equal(h.closes, 0);
-    stream.events.quit({data: instance}); assert.equal(h.closes, 1);
+    stream.events.error?.({}); assert.equal(h.closes, 0); assert.equal(h.disconnects, 0);
+    stream.events.quit({data: 'other-server'}); assert.equal(h.closes, 0); assert.equal(h.disconnects, 0);
+    stream.events.quit({data: instance}); assert.equal(h.closes, 1); assert.equal(h.disconnects, 1);
     assert(!h.notice.hidden); assert(stream.closed); assert(h.classes.has('desktop-app-quit'));
     assert(!h.popup.open); assert(!h.previousDialog.open); assert.equal(h.requests.length, 0);
     stream.events.quit({data: instance}); assert.equal(h.closes, 1);

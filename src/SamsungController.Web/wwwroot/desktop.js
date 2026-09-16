@@ -47,6 +47,9 @@
                 const notice = document.getElementById('desktop-app-stopped');
                 if (notice) notice.hidden = false;
                 document.getElementById('desktop-return-to-app')?.addEventListener('click', returnToApp);
+                // Release this tab's circuit even if the browser refuses to close it.
+                // Otherwise its live connection can hold up graceful server shutdown.
+                try { window.Blazor?.disconnect?.(); } catch { /* The stopped page does not depend on Blazor. */ }
                 // Never enumerate browser tabs or close the browser process.
                 // Browsers can silently refuse this. Do not offer a retry button
                 // that repeats the same prohibited operation or trap focus in a modal.
