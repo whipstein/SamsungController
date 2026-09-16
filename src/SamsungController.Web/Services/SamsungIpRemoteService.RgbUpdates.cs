@@ -101,7 +101,7 @@ public sealed partial class SamsungIpRemoteService
                             await FinishGroupAsync().ConfigureAwait(false);
                             update = MenuStep(update, index, "Rejected unchanged");
                             await SaveMenuUpdateAsync(update).ConfigureAwait(false);
-                            throw new MenuChangeRejectedException($"{control.Name}: the TV rejected {draft.Target} (error {exchange.RpcErrorCode}). The RGB row was checked; the rejected control is back at {draft.Original}. You can continue adjusting settings.");
+                            throw new MenuChangeRejectedException($"{control.Name}: the TV rejected {draft.Target} (error {exchange.RpcErrorCode}). The RGB row was checked; the rejected control is back at {draft.Original}. You can continue adjusting settings.", control.Id);
                         }
                         RequireSuccess(exchange);
                     }

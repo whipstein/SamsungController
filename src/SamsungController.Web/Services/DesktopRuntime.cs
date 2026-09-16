@@ -12,7 +12,9 @@ public sealed class DesktopRuntime : IDisposable
     private readonly string _directory;
     private readonly IHostApplicationLifetime _lifetime;
     private volatile bool _ready;
+    private readonly TaskCompletionSource _quitRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public bool Enabled { get; }
+    public string Instance => _instance.Instance;
     public DesktopRuntime(bool enabled, int port, string directory, IHostApplicationLifetime lifetime)
     {
         Enabled = enabled; _instance = DesktopFiles.CreateInstance(port); _directory = directory; _lifetime = lifetime;
@@ -57,12 +59,13 @@ public sealed class DesktopRuntime : IDisposable
         app.MapGet(DesktopFiles.StatusRoute, () => Enabled && !_ready ? Results.StatusCode(503) : Results.Json(
             new DesktopStatus(DesktopFiles.Product, DesktopFiles.Version, Enabled, _instance.Instance, Environment.ProcessId)));
         if (!Enabled) return;
+        app.MapGet("/_app/events", NotifyBrowserOnQuitAsync);
         app.MapPost(DesktopFiles.StopRoute, (HttpContext context, SamsungIpRemoteService controller) =>
         {
             if (context.Connection.RemoteIpAddress is not { } remote || !IPAddress.IsLoopback(remote) ||
                 context.Request.Headers.ContainsKey("Origin") || !CanAuthorizeStop(context.Request.Headers.Authorization)) return Results.StatusCode(403);
             if (controller.GetSnapshot().IsBusy) return Results.Conflict("Stop the running TV operation first.");
-            context.Response.OnCompleted(() => { _lifetime.StopApplication(); return Task.CompletedTask; });
+            context.Response.OnCompleted(StopWithBrowserNotificationAsync);
             return Results.Ok(new { stopped = true });
         });
     }
@@ -70,7 +73,37 @@ public sealed class DesktopRuntime : IDisposable
     {
         if (!Enabled) throw new InvalidOperationException("This is a foreground server; stop it in its terminal.");
         if (controller.GetSnapshot().IsBusy) throw new InvalidOperationException("Stop the running TV operation before quitting the app.");
-        await Task.Delay(250); // Allow the circuit's shutdown message to render before disconnecting.
+        await StopWithBrowserNotificationAsync();
+    }
+    // This read-only stream is scoped to this local server instance. It contains
+    // no credentials and cannot initiate shutdown. Only an explicit authorized
+    // Quit (UI, native app, or launcher --stop) emits an event, never a crash.
+    public async Task NotifyBrowserOnQuitAsync(HttpContext context)
+    {
+        if (!Enabled || context.Connection.RemoteIpAddress is not { } remote || !IPAddress.IsLoopback(remote)
+            || context.Request.Query["instance"] != Instance
+            || context.Request.Headers.Origin is { Count: > 0 } origin && origin != $"{context.Request.Scheme}://{context.Request.Host}")
+        { context.Response.StatusCode = 403; return; }
+        context.Response.ContentType = "text/event-stream";
+        context.Response.Headers.CacheControl = "no-store";
+        using var canceled = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, _lifetime.ApplicationStopping);
+        try
+        {
+            await context.Response.StartAsync(canceled.Token);
+            await context.Response.WriteAsync(": SamsungController quit notification\n\n", canceled.Token);
+            await context.Response.Body.FlushAsync(canceled.Token);
+            await _quitRequested.Task.WaitAsync(canceled.Token);
+            await context.Response.WriteAsync($"event: quit\ndata: {Instance}\n\n", canceled.Token);
+            await context.Response.Body.FlushAsync(canceled.Token);
+        }
+        catch (OperationCanceledException) when (canceled.IsCancellationRequested) { }
+    }
+    private async Task StopWithBrowserNotificationAsync()
+    {
+        _quitRequested.TrySetResult();
+        // Give active tabs time to receive the explicit quit event before the
+        // server/circuit disconnects. A blocked tab close never blocks quitting.
+        await Task.Delay(300);
         _lifetime.StopApplication();
     }
     public void Dispose()

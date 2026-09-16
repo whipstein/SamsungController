@@ -58,7 +58,7 @@ html[data-layout="compact"] .direct-details { padding:4px 6px; margin:5px 0; }
 html[data-layout="compact"] .direct-details summary { font-size:11px; }
 html[data-layout="compact"] .direct-details[open] summary { margin-bottom:4px; }
 html[data-layout="compact"] :is(.notice,.saved-settings-confirm,.saved-settings-result) { padding:7px; margin:5px 0; font-size:12px; }
-html[data-layout="compact"] .saved-settings :is(input,select) { font-size:12px; padding:4px 5px; }
+html[data-layout="compact"] .saved-settings :is(input:not([type=checkbox]),select) { font-size:12px; padding:4px 5px; }
 html[data-layout="compact"] :is(.saved-settings-save,.saved-settings-select,.saved-settings-buttons) { gap:5px; margin:5px 0; }
 html[data-layout="compact"] .saved-settings :is(p,li) { font-size:12px; line-height:1.4; }
 html[data-layout="compact"] .saved-settings h3 { font-size:13px; }

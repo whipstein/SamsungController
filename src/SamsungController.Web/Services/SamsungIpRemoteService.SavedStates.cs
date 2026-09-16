@@ -163,7 +163,18 @@ public sealed partial class SamsungIpRemoteService
                 }
                 recall = recall with { FinalModes = new(recall.FinalModes) { [grid.ModeField] = finalMode } };
                 await SaveStateRecallAsync(recall).ConfigureAwait(false);
-                await ApplyTargetAsync(modeControl, rows.Length > 0 ? grid.RequiredMode : finalMode);
+                if (await ApplyTargetAsync(modeControl, rows.Length > 0 ? grid.RequiredMode : finalMode) is { } modeRejection)
+                {
+                    foreach (var control in rows.Concat(auxiliary)) Skip(control, "Required calibration mode was rejected: " + modeRejection);
+                    if (saved.Values.ContainsKey(modeControl.Id))
+                    {
+                        if (EquivalentCommandValue(GetSnapshot().Menu.Value(modeControl), IpMenuCatalog.ParseTarget(modeControl, finalMode)))
+                            recall = recall with { Confirmed = recall.Confirmed + 1 };
+                        else Skip(modeControl, modeRejection);
+                    }
+                    await SaveStateRecallAsync(recall).ConfigureAwait(false);
+                    continue; // Never send dependent RGB writes or retry the rejected mode.
+                }
                 if (!GetSnapshot().Menu.SectionsRead.ContainsKey(grid.Section))
                     await RefreshMenuSectionCoreAsync(profile, grid.Section, cancellation, loadingGrid: true).ConfigureAwait(false);
                 foreach (var control in IpMenuSavedStates.DependencyOrder(auxiliary))
@@ -186,8 +197,9 @@ public sealed partial class SamsungIpRemoteService
                     }).ToArray();
                     await ApplyValuesAsync(availableRows);
                 }
-                await ApplyTargetAsync(modeControl, finalMode);
-                if (saved.Values.ContainsKey(modeControl.Id)) recall = recall with { Confirmed = recall.Confirmed + 1 };
+                var finalModeRejection = await ApplyTargetAsync(modeControl, finalMode);
+                if (finalModeRejection is not null) Skip(modeControl, finalModeRejection);
+                else if (saved.Values.ContainsKey(modeControl.Id)) recall = recall with { Confirmed = recall.Confirmed + 1 };
                 // Refresh the final mode without losing the final RGB values we just confirmed.
                 // A switch back to Off/Auto intentionally invalidates its grid; reload on demand.
                 if (!GetSnapshot().Menu.SectionsRead.ContainsKey(grid.Section))
@@ -195,8 +207,10 @@ public sealed partial class SamsungIpRemoteService
             }
             cancellation.ThrowIfCancellationRequested();
             RequireContext();
-            recall = recall with { Status = "Completed", Message = $"Recalled ‘{saved.Name}’: {recall.Confirmed} saved values confirmed; {recall.Skipped.Count} unavailable values skipped. Values missing when saved were not changed." };
+            recall = recall with { Status = "Completed", Message = $"Recalled ‘{saved.Name}’: {recall.Confirmed} saved values confirmed; {recall.Skipped.Count} unavailable or rejected values skipped. Values missing when saved were not changed." };
             await SaveStateRecallAsync(recall).ConfigureAwait(false);
+            if (recall.Skipped.Count > 0)
+                UpdateMenu(menu => menu with { ActionWarning = $"Recall completed with {recall.Skipped.Count} skipped settings. Open Recall settings for details; rejected values were not retried or substituted." });
         }
         catch (Exception error) when (IsMenuGridError(error))
         {
@@ -220,22 +234,54 @@ public sealed partial class SamsungIpRemoteService
         void Skip(IpMenuControl control, string reason) => recall = recall with { Skipped = new(recall.Skipped) { [control.Id] = reason } };
         async Task ApplyValuesAsync(IpMenuControl[] values)
         {
-            RequireContext();
-            var menu = GetSnapshot().Menu;
-            var drafts = values.Where(control => !EquivalentCommandValue(menu.Value(control), IpMenuCatalog.ParseTarget(control, saved.Values[control.Id])))
-                .Select(control => Draft(control, saved.Values[control.Id], menu)).ToArray();
-            if (drafts.Length > 0) await ApplyMenuCoreAsync(profile, cancellation, drafts).ConfigureAwait(false);
-            recall = recall with { Confirmed = recall.Confirmed + values.Length };
-            await SaveStateRecallAsync(recall).ConfigureAwait(false);
+            var remaining = values;
+            while (remaining.Length > 0)
+            {
+                cancellation.ThrowIfCancellationRequested(); RequireContext();
+                var menu = GetSnapshot().Menu;
+                var drafts = remaining.Where(control => !EquivalentCommandValue(menu.Value(control), IpMenuCatalog.ParseTarget(control, saved.Values[control.Id])))
+                    .Select(control => Draft(control, saved.Values[control.Id], menu)).ToArray();
+                recall = recall with { Confirmed = recall.Confirmed + remaining.Length - drafts.Length };
+                if (drafts.Length == 0) { await SaveStateRecallAsync(recall).ConfigureAwait(false); return; }
+                try
+                {
+                    await ApplyMenuCoreAsync(profile, cancellation, drafts).ConfigureAwait(false);
+                    recall = recall with { Confirmed = recall.Confirmed + drafts.Length };
+                    await SaveStateRecallAsync(recall).ConfigureAwait(false);
+                    return;
+                }
+                catch (MenuChangeRejectedException error) when (CanSkipRejection(error, menu.Update?.Id, drafts.Select(draft => draft.ControlId)))
+                {
+                    cancellation.ThrowIfCancellationRequested(); RequireContext();
+                    var completed = GetSnapshot().Menu.Update!.Steps.Where(step => step.Status is "Applied" or "Applied with TV warning" or "Already at target").Select(step => step.ControlId).ToHashSet(StringComparer.Ordinal);
+                    recall = recall with { Confirmed = recall.Confirmed + completed.Count };
+                    Skip(IpMenuCatalog.Get(error.RejectedControlId!), error.Message);
+                    completed.Add(error.RejectedControlId!);
+                    // Continue only unsent settings. Never replay an applied or rejected
+                    // channel, and keep the normal grouped RGB fast path for the rest.
+                    remaining = drafts.Where(draft => !completed.Contains(draft.ControlId)).Select(draft => IpMenuCatalog.Get(draft.ControlId)).ToArray();
+                    await SaveStateRecallAsync(recall).ConfigureAwait(false);
+                }
+            }
         }
-        async Task ApplyTargetAsync(IpMenuControl control, string target)
+        async Task<string?> ApplyTargetAsync(IpMenuControl control, string target)
         {
             cancellation.ThrowIfCancellationRequested(); RequireContext();
             var menu = GetSnapshot().Menu;
-            if (EquivalentCommandValue(menu.Value(control), IpMenuCatalog.ParseTarget(control, target))) return;
+            if (EquivalentCommandValue(menu.Value(control), IpMenuCatalog.ParseTarget(control, target))) return null;
             if (MenuValueDisabledReason(menu, control) is { } reason) throw new InvalidOperationException(reason);
-            await ApplyMenuCoreAsync(profile, cancellation, [Draft(control, target, menu)]).ConfigureAwait(false);
+            try { await ApplyMenuCoreAsync(profile, cancellation, [Draft(control, target, menu)]).ConfigureAwait(false); }
+            catch (MenuChangeRejectedException error) when (CanSkipRejection(error, menu.Update?.Id, [control.Id]))
+            {
+                cancellation.ThrowIfCancellationRequested(); RequireContext();
+                return error.Message;
+            }
+            return null;
         }
+        bool CanSkipRejection(MenuChangeRejectedException error, Guid? previousUpdate, IEnumerable<string> attempted) =>
+            error.RejectedControlId is { } id && attempted.Contains(id)
+            && GetSnapshot().Menu.Update is { NeedsReview: false } update && update.Id != previousUpdate
+            && update.Steps.Any(step => step.ControlId == id && step.Status == "Rejected unchanged");
         static IpMenuDraft Draft(IpMenuControl control, string target, IpMenuSnapshot menu) => new(control.Id,
             IpMenuCatalog.ParseTarget(control, target), menu.Value(control)!.DeepClone(), MenuPrerequisites(menu, control, forEditing: true), menu.Input!, menu.PictureMode!);
     });

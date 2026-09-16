@@ -273,7 +273,7 @@ public sealed partial class SamsungIpRemoteService
                     if (after is null)
                     {
                         if (update.Steps[index].Status == "Rejected unchanged")
-                            throw new MenuChangeRejectedException($"{control.Name}: the TV rejected the requested value {draft.Target} (error {exchange.RpcErrorCode}). Restored the control to {draft.Original}, confirmed by readback. You can continue adjusting settings; no reset is required.");
+                            throw new MenuChangeRejectedException($"{control.Name}: the TV rejected the requested value {draft.Target} (error {exchange.RpcErrorCode}). Restored the control to {draft.Original}, confirmed by readback. You can continue adjusting settings; no reset is required.", control.Id);
                         RequireSuccess(exchange);
                     }
                 }

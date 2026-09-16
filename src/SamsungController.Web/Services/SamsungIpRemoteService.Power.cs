@@ -29,7 +29,12 @@ public sealed partial class SamsungIpRemoteService
         }
     }
 
-    private sealed class MenuChangeRejectedException(string message) : InvalidOperationException(message);
+    // Only a setting setter with independently confirmed unchanged readback identifies
+    // a skippable control. Power-off and selector failures must still stop recall.
+    private sealed class MenuChangeRejectedException(string message, string? rejectedControlId = null) : InvalidOperationException(message)
+    {
+        public string? RejectedControlId { get; } = rejectedControlId;
+    }
     private static bool IsMenuRejection(SamsungIpRemoteExchange exchange) => exchange.RpcErrorCode is not null
         && exchange.Outcome is SamsungIpRemoteOutcome.RpcError or SamsungIpRemoteOutcome.Unsupported;
 

@@ -93,6 +93,7 @@ For all platforms, the interface is **http://127.0.0.1:5050**. The server runs i
 - Closing a browser tab does **not** stop the server.
 - Open SamsungController again to return to the interface.
 - To stop the server, use **Quit app** at the very top, beside **Stop**, on any page.
+- Quit also asks the app's browser tabs to close. If your browser prevents it, an **App stopped** screen remains: close the tab with **⌘W** (Mac) or **Ctrl+W** (Windows/Linux). Other websites are not affected.
 - If a TV operation is running, press **Stop** and review any unfinished-operation notice before quitting.
 - The app does not start automatically at login. Your saved data is retained when you quit.
 - An old foreground server may already occupy port 5050. Stop it in its original terminal before starting the packaged app; the launcher will not kill unrelated processes.
@@ -191,8 +192,8 @@ For a narrow calibration window, select **Standard** at the very top to switch t
 
 1. Finish applying your changes. Use **Refresh state** if anything was changed outside this app.
 2. Click **Save settings** beside Home and Back, enter a name in the popup, and click **Save current settings**. This includes all loaded settings across all tabs, not just the current page. Expand **Settings included across all tabs** to check coverage. No TV commands are sent by Save.
-3. Later, click **Recall settings** in the same header and select the state from the dropdown. Review its saved values and missing values, and use the same display/input/picture mode/physical signal.
-4. Click **Recall settings…**, confirm the conditions, then **Apply saved state now**. The app restores available values and reports any it could not apply. This sends changes even when ordinary edits use On Apply.
+3. Later, click **Recall settings** in the same header and select the state from the dropdown. Review its saved values and missing values, and use the same display/picture mode/physical signal. Any input can be used; recall keeps the current input.
+4. Click **Recall settings…**, confirm the conditions, then **Apply saved state now**. The app restores available values and reports any it could not apply. A TV rejection with confirmed unchanged readback skips just that value and continues; no alternative value is guessed. An uncertain write, power-off or connection loss still stops recall. This sends changes even when ordinary edits use On Apply.
 5. Use **Stop** if anything goes wrong. Earlier changes stay on the TV; check the display and follow the recall-review instructions before continuing.
 6. To delete a saved calibration, select it, click **Delete state**, and confirm. This only removes the file, never the TV's current settings.
 

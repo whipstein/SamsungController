@@ -66,7 +66,7 @@
                 <section class="saved-settings-confirm" aria-label="Confirm saved state recall">
                     <strong>Apply “@selected.Name” to this display?</strong>
                     <p>This sends saved values now, regardless of On Apply / Immediately. Recall may enable 20pt WB or Custom color while restoring RGB rows, then restores their saved modes. Unavailable settings are skipped and listed. Input, picture mode and other calibration-bank selectors are not changed.</p>
-                    <label><input type="checkbox" aria-label="Confirm saved state conditions" checked="@ConditionsConfirmed" @onchange="args => ConditionsConfirmed = args.Value is true" disabled="@Busy" /> I confirmed the display, picture mode and physical HDMI signal/bit depth match this state. Apply to the current input.</label>
+                    <label class="saved-settings-conditions"><input type="checkbox" aria-label="Confirm saved state conditions" checked="@ConditionsConfirmed" @onchange="args => ConditionsConfirmed = args.Value is true" disabled="@Busy" /><span>I confirmed the display, picture mode and physical HDMI signal/bit depth match this state. Apply to the current input.</span></label>
                     <p>Stop prevents further commands; it does not undo changes already sent.</p>
                     <div class="saved-settings-buttons"><button type="button" class="primary-action" disabled="@(Busy || !ConditionsConfirmed || Controller.RecallMenuStateDisabledReason(selected) is not null)" @onclick="RecallAsync">Apply saved state now</button><button type="button" class="toolbar-button" disabled="@Busy" @onclick="Cancel">Cancel recall</button></div>
                 </section>

@@ -8,6 +8,9 @@
 - Automatically check power before each apply group, recall, and explicit calibration-row read, even with Query first Off. Known standby stops the attempted operation and reverts its targets locally, with a top warning but no Check power button or latched lockout. Turn the TV on and adjust again normally. Unknown/unsupported power does not lock usable controls. No wake-up or retry is sent.
 - On confirmed TV rejection, restore the affected control to its read-back value, keep unrelated edits and loaded RGB rows, and show a warning in the pinned toolbar. Include invalid input choices and unsupported-setting replies. Keep manual review for genuinely uncertain delivered writes.
 - Samsung setter names and payloads are unchanged. A rejected setter does not hide a control whose value was successfully queried.
+- Keep recall confirmation text inside its approval box and use a larger checkbox in Standard and Compact layouts.
+- Continue recall after a setting rejection only when independent readback confirms it stayed unchanged. List skipped settings, preserve successful changes, and never retry or substitute rejected values. Skip dependent RGB rows if their required mode is rejected; retain stop/review protections for uncertain writes and power/connection failures.
+- Notify app tabs on explicit Quit, including native Mac app quit. Close each tab where permitted; otherwise show an **App stopped** screen with manual-close guidance. Unrelated tabs and normal reconnects are not affected.
 - This build is for local evaluation; it has not been published as a release.
 
 ## SamsungController v1.1.1 — Recall review fix

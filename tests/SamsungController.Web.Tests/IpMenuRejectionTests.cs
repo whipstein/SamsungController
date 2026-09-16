@@ -85,7 +85,7 @@ public sealed class IpMenuRejectionTests
     }
 
     [Fact]
-    public async Task RejectedRecallDoesNotRequireClosingAReview()
+    public async Task RejectedRecallSkipsTheUnchangedSettingWithoutRequiringReview()
     {
         using var fixture = await MenuFixture.CreateAsync();
         await fixture.Service.ConnectMenuAsync(false);
@@ -93,8 +93,9 @@ public sealed class IpMenuRejectionTests
         fixture.Display.Contrast = 40;
         fixture.Override = (request, _) => Task.FromResult<HttpResponseMessage?>(request["params"]?["contrast"] is not null
             ? MenuFixture.Reject(request, -32601) : null);
-        await Assert.ThrowsAnyAsync<InvalidOperationException>(() => fixture.Service.RecallMenuStateAsync(id, true));
-        Assert.Equal("Rejected", fixture.Service.GetSnapshot().StateRecall!.Status);
+        await fixture.Service.RecallMenuStateAsync(id, true);
+        Assert.Equal("Completed", fixture.Service.GetSnapshot().StateRecall!.Status);
+        Assert.Contains("contrastControl/contrast", fixture.Service.GetSnapshot().StateRecall!.Skipped.Keys);
         Assert.False(fixture.Service.GetSnapshot().StateRecall!.NeedsReview);
         Assert.False(fixture.Service.GetSnapshot().Menu.Update!.NeedsReview);
         Assert.Null(fixture.Service.RecallMenuStateDisabledReason(fixture.Service.GetSnapshot().SavedStates.Single()));

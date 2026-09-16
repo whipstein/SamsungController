@@ -1,4 +1,7 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Http;
+using System.Net;
+using System.Text;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -152,6 +155,76 @@ public sealed class DesktopRuntimeTests
     private static ServiceProvider PageServices(MenuFixture fixture, DesktopRuntime runtime, string route) => new ServiceCollection()
         .AddLogging().AddSingleton(fixture.Service).AddSingleton(runtime).AddSingleton<IJSRuntime>(new NoJavaScript())
         .AddSingleton<NavigationManager>(new PageNavigation(route)).BuildServiceProvider();
+
+    [Fact]
+    public async Task ExplicitQuitNotifiesOnlyTheMatchingAppInstanceBeforeStopping()
+    {
+        using var folder = new TemporaryFolder();
+        using var lifetime = new TestLifetime();
+        using var fixture = await MenuFixture.CreateAsync();
+        using var runtime = new DesktopRuntime(true, 55123, folder.Path, lifetime);
+        var context = EventContext(runtime);
+        var listening = runtime.NotifyBrowserOnQuitAsync(context);
+        Assert.False(listening.IsCompleted);
+        var quitting = runtime.QuitAsync(fixture.Service);
+        await listening.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("text/event-stream", context.Response.ContentType);
+        Assert.Equal("no-store", context.Response.Headers.CacheControl.ToString());
+        var message = Encoding.UTF8.GetString(((MemoryStream)context.Response.Body).ToArray());
+        Assert.Contains($"event: quit\ndata: {runtime.Instance}\n\n", message);
+        await quitting;
+        Assert.True(lifetime.ApplicationStopping.IsCancellationRequested);
+        Assert.Empty(fixture.Display.Requests);
+    }
+
+    [Theory]
+    [InlineData("foreground")]
+    [InlineData("remote")]
+    [InlineData("origin")]
+    [InlineData("wrong-instance")]
+    public async Task QuitNotificationsRejectUnrelatedCallers(string problem)
+    {
+        using var folder = new TemporaryFolder();
+        using var lifetime = new TestLifetime();
+        using var runtime = new DesktopRuntime(problem != "foreground", 55123, folder.Path, lifetime);
+        var context = EventContext(runtime);
+        if (problem == "remote") context.Connection.RemoteIpAddress = IPAddress.Parse("192.0.2.1");
+        if (problem == "origin") context.Request.Headers.Origin = "https://unrelated.example";
+        if (problem == "wrong-instance") context.Request.QueryString = new("?instance=another-server");
+        await runtime.NotifyBrowserOnQuitAsync(context);
+        Assert.Equal(403, context.Response.StatusCode);
+        Assert.Equal(0, context.Response.Body.Length);
+        Assert.False(lifetime.ApplicationStopping.IsCancellationRequested);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LostBrowserOrNonQuitShutdownDoesNotEmitQuit(bool browserGone)
+    {
+        using var folder = new TemporaryFolder();
+        using var lifetime = new TestLifetime();
+        using var runtime = new DesktopRuntime(true, 55123, folder.Path, lifetime);
+        using var canceled = new CancellationTokenSource();
+        var context = EventContext(runtime);
+        context.RequestAborted = canceled.Token;
+        var listening = runtime.NotifyBrowserOnQuitAsync(context);
+        if (browserGone) canceled.Cancel(); else lifetime.StopApplication();
+        await listening.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.DoesNotContain("event: quit", Encoding.UTF8.GetString(((MemoryStream)context.Response.Body).ToArray()));
+    }
+
+    private static DefaultHttpContext EventContext(DesktopRuntime runtime)
+    {
+        var context = new DefaultHttpContext();
+        context.Connection.RemoteIpAddress = IPAddress.Loopback;
+        context.Request.Scheme = "http";
+        context.Request.Host = new("127.0.0.1:55123");
+        context.Request.Headers.Origin = "http://127.0.0.1:55123";
+        context.Request.QueryString = new("?instance=" + runtime.Instance);
+        context.Response.Body = new MemoryStream();
+        return context;
+    }
     private sealed class PageNavigation : NavigationManager
     {
         public PageNavigation(string route) => Initialize("http://localhost/", "http://localhost/" + route);
