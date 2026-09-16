@@ -25,7 +25,7 @@ class StagingArchiveTests(unittest.TestCase):
         with zipfile.ZipFile(destination, "w") as saved:
             for item in source.rglob("*"):
                 if item.is_file():
-                    saved.write(item, str(item.relative_to(source.parent)))
+                    saved.write(item, item.relative_to(source.parent).as_posix())
 
     def test_archive_is_verified_and_keeps_recoverable_app_bytes(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -67,7 +67,7 @@ class StagingArchiveTests(unittest.TestCase):
                 with zipfile.ZipFile(command[-1], "w") as saved:
                     for item in app.rglob("*"):
                         if item.is_file():
-                            saved.writestr(str(item.relative_to(app.parent)), b"different bytes")
+                            saved.writestr(item.relative_to(app.parent).as_posix(), b"different bytes")
             with patch.object(staging.subprocess, "run", side_effect=corrupt), self.assertRaises(ValueError):
                 staging.archive_staging_app(app, root)
             self.assertEqual(b"preserve me", (app / "Contents/payload").read_bytes())

@@ -41,7 +41,9 @@ def _archive_verified_bundle(app):
         if archive.testzip() is not None:
             raise ValueError("The recovery ZIP did not pass its integrity check.")
         for item in app.rglob("*"):
-            name = str(item.relative_to(app.parent))
+            # ZIP member names always use forward slashes, including when these
+            # safety checks run on a Windows CI host.
+            name = item.relative_to(app.parent).as_posix()
             if item.is_symlink():
                 if archive.read(name).decode() != str(item.readlink()):
                     raise ValueError("Archived symlink differs: " + name)
