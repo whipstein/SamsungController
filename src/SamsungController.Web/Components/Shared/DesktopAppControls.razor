@@ -8,12 +8,6 @@
         <button type="button" class="toolbar-button" title="Stop the background server and close this app tab if your browser permits. Closing the browser alone leaves the server running." @onclick="QuitAsync" disabled="@(Quitting || Controller.GetSnapshot().IsBusy)">Quit app</button>
         @if (Message is not null) { <span class="desktop-app-controls-message" role="status">@Message</span> }
     </div>
-    <dialog id="desktop-app-stopped" class="desktop-stopped-dialog" aria-labelledby="desktop-stopped-title">
-        <h2 id="desktop-stopped-title">App stopped</h2>
-        <p>Your saved settings are kept. Reopen SamsungController to start it again.</p>
-        <p>If this tab stays open, your browser blocked automatic closing. Close it with ⌘W on Mac or Ctrl+W on Windows/Linux.</p>
-        <button type="button" class="toolbar-button" id="desktop-close-tab" autofocus>Close this tab</button>
-    </dialog>
 }
 
 @code {

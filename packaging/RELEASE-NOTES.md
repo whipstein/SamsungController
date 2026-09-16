@@ -11,6 +11,7 @@
 - Keep recall confirmation text inside its approval box and use a larger checkbox in Standard and Compact layouts.
 - Continue recall after a setting rejection only when independent readback confirms it stayed unchanged. List skipped settings, preserve successful changes, and never retry or substitute rejected values. Skip dependent RGB rows if their required mode is rejected; retain stop/review protections for uncertain writes and power/connection failures.
 - Notify app tabs on explicit Quit, including native Mac app quit. Close each tab where permitted; otherwise show an **App stopped** screen with manual-close guidance. Unrelated tabs and normal reconnects are not affected.
+- Fix the blocked-close fallback: remove the modal dialog and ineffective Close this tab button. Show a non-modal stopped page outside the server circuit, with **Return to app** after reopening SamsungController. Offline checks time out, remain retryable, and never reload a still-quitting or unrelated server.
 - This build is for local evaluation; it has not been published as a release.
 
 ## SamsungController v1.1.1 — Recall review fix

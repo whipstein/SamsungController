@@ -148,7 +148,7 @@ Windows installers and the clearly named portable launcher are available startin
 1. Download the correct package. On Mac, open the DMG, drag **SamsungController.app** onto the **Applications** shortcut, and eject the DMG. Launch from Applications, not the mounted image. On Windows, run **setup.exe** or extract the portable ZIP completely. On Linux, extract completely. Keep portable-package files together.
 2. Double-click the app. It starts the local server **in the background**, waits for it, and opens the browser. No terminal window is needed.
 3. If the browser does not open, visit `http://127.0.0.1:5050`. Reopening the app reuses the running instance.
-4. **Closing the browser leaves the server running.** Use **Quit app** at the very top, beside **Stop**, on any page; stop any active TV operation first. Quit also asks SamsungController tabs to close (including when quitting the native Mac app). If your browser blocks automatic tab closure, an **App stopped** message remains; close that tab with **⌘W** on Mac or **Ctrl+W** on Windows/Linux. Unrelated tabs stay open. No login/startup service is installed.
+4. **Closing the browser leaves the server running.** Use **Quit app** at the very top, beside **Stop**, on any page; stop any active TV operation first. Quit also asks SamsungController tabs to close (including when quitting the native Mac app). If your browser blocks automatic tab closure, a non-blocking **App stopped** page remains; close that tab with **⌘W** on Mac or **Ctrl+W** on Windows/Linux. To continue, reopen SamsungController, then click **Return to app**. This checks that the new server is ready; it does not start the server or send TV commands. Unrelated tabs stay open. No login/startup service is installed.
 
 Platform notes:
 
