@@ -1,4 +1,4 @@
-## SamsungController v1.1.2 — Saved-settings usability and non-blocking rejections (local evaluation)
+## SamsungController v1.1.2 — Saved-settings reliability and browser tab reuse
 
 - Harden Mac update identity: stable, distinct executable signing identifiers and optional mutual upgrade-requirement verification against the installed app. Archive completed staging apps after verifying their recovery ZIPs, and keep local smoke tests from launching/registering extra GUI app copies. Preserve existing TV credentials and OS consent; no privacy reset or automatic re-pairing.
 - Put **Verify settings** beside Apply and Stop in the pinned Menu toolbar after an interrupted update, including one restored from a previous session.
@@ -15,7 +15,7 @@
 - Fix the blocked-close fallback: remove the modal dialog and ineffective Close this tab button. Show a non-modal stopped page outside the server circuit, with **Return to app** after reopening SamsungController. Offline checks time out, remain retryable, and never reload a still-quitting or unrelated server.
 - Release the browser's server connection on explicit Quit, so a blocked tab close does not hold up graceful shutdown. Ordinary network interruptions still leave the app open.
 - Reuse a responsive app tab on launcher reopen, including an App stopped tab left after blocked auto-close. Require a fresh, same-origin acknowledgement; only one tab wins. Preserve running-session edits, reload the same URL after restart, and open a new tab if none responds promptly. No browser automation permissions, history changes, TV commands, or persistent tab flags.
-- This build is for local evaluation; it has not been published as a release.
+- Self-contained packages for macOS, Windows, and Linux on x64 and Arm64. Mac DMGs are signed, notarized, and stapled; Windows includes installers and portable ZIPs. Quit before upgrading and replace the Mac app in Applications. Refresh or close old-version browser tabs once to enable tab reuse.
 
 ## SamsungController v1.1.1 — Recall review fix
 
