@@ -7,21 +7,7 @@ import subprocess
 import sys
 import tempfile
 
-LSREGISTER = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
-
-
-def unregister_test_copy(app, temporary_root):
-    # Only the exact temporary app paths created by this test. Never reset the
-    # database, touch the installed app, or change any privacy preference.
-    relative = app.relative_to(temporary_root)
-    if relative.parts not in (("mounted", "SamsungController.app"), ("installed", "SamsungController.app")):
-        raise ValueError("Refusing to unregister a path outside this test.")
-    result = subprocess.run([LSREGISTER, "-u", str(app)], capture_output=True, text=True)
-    # macOS can already have discarded the registration when the volume was
-    # detached. -10814 means no application was found, not a cleanup failure.
-    already_gone = not (app / "Contents/Info.plist").exists() and "-10814" in result.stdout + result.stderr
-    if result.returncode and not already_gone:
-        raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
+from registration import unregister_test_copy
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--manifest", type=Path, required=True)
@@ -38,7 +24,7 @@ if options.require_notarization:
     subprocess.run(["xcrun", "stapler", "validate", str(image)], check=True)
     subprocess.run(["spctl", "--assess", "--type", "open", "--context", "context:primary-signature", "--verbose=2", str(image)], check=True)
 with tempfile.TemporaryDirectory(prefix="samsung-dmg-test-") as temporary:
-    root = Path(temporary)
+    root = Path(temporary).resolve()
     mount = root / "mounted"
     mount.mkdir()
     subprocess.run(["hdiutil", "attach", "-readonly", "-nobrowse", "-mountpoint", str(mount), str(image)], check=True)
