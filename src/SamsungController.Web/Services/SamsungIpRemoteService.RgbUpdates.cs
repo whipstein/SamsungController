@@ -94,13 +94,14 @@ public sealed partial class SamsungIpRemoteService
                     cancellation.ThrowIfCancellationRequested();
                     if (!exchange.IsSuccess)
                     {
-                        if (exchange.Outcome == SamsungIpRemoteOutcome.RpcError && exchange.RpcErrorCode is -32002 or -32003 or -32602)
+                        if (IsMenuRejection(exchange))
                         {
                             // No retry: only an independently unchanged whole
                             // row/context can resolve a correlated rejection.
                             await FinishGroupAsync().ConfigureAwait(false);
                             update = MenuStep(update, index, "Rejected unchanged");
                             await SaveMenuUpdateAsync(update).ConfigureAwait(false);
+                            throw new MenuChangeRejectedException($"{control.Name}: the TV rejected {draft.Target} (error {exchange.RpcErrorCode}). The RGB row was checked; the rejected control is back at {draft.Original}. You can continue adjusting settings.");
                         }
                         RequireSuccess(exchange);
                     }
@@ -127,13 +128,20 @@ public sealed partial class SamsungIpRemoteService
         }
         catch (Exception error) when (IsMenuGridError(error))
         {
-            if (selector is not null) await StopMenuSelectorSessionAsync(error.Message).ConfigureAwait(false);
+            if (error is MenuChangeRejectedException)
+            {
+                var attempted = update.Steps.Where(step => step.Status == "Rejected unchanged").Select(step => step.ControlId)
+                    .Append(update.Steps[Math.Min(activeIndex, update.Steps.Count - 1)].ControlId);
+                RevertMenuTargets(attempted, error.Message);
+                if (selector is not null) await SaveMenuSelectorSessionAsync(GetSnapshot().Menu.SelectorSession! with { Status = "Retained", Message = error.Message }).ConfigureAwait(false);
+            }
+            else if (selector is not null) await StopMenuSelectorSessionAsync(error.Message).ConfigureAwait(false);
             var failedIndex = Math.Min(activeIndex, update.Steps.Count - 1);
             if (failedIndex >= 0)
                 update = MenuStep(update, failedIndex, update.Steps[failedIndex].Status == "Sending" ? "Uncertain"
                     : update.Steps[failedIndex].Status == "Pending" ? "Not sent" : update.Steps[failedIndex].Status);
             update = update with { Status = "Stopped", Message = error.Message + " No retry, rollback, or automatic selector restoration was sent. Earlier delivered changes may remain on the TV; check the saved RGB originals." };
-            UpdateMenu(menu => ClearMenuGridCache(menu, grid.Section) with { Update = update, Status = update.Message });
+            UpdateMenu(menu => (error is MenuChangeRejectedException ? menu : ClearMenuGridCache(menu, grid.Section)) with { Update = update, Status = update.Message });
             try { await SaveMenuUpdateAsync(update).ConfigureAwait(false); }
             catch (Exception storageError) when (storageError is IOException or UnauthorizedAccessException)
             { Update(state => state with { StorageWarning = "Could not save the RGB update result. Preserve the displayed originals and check the TV before continuing." }); }

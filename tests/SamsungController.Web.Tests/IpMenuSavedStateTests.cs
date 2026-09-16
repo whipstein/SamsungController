@@ -45,7 +45,8 @@ public sealed class IpMenuSavedStateTests
         Assert.Equal("45", state.Values[Contrast]);
         Assert.Contains(IpMenuCatalog.IndexedControls[0].Id, state.Missing.Keys);
         Assert.DoesNotContain(state.Values.Keys, key => IpMenuCatalog.Get(key).ChangesContext || IpMenuCatalog.Get(key).IsSelector);
-        var file = Path.Combine(fixture.Service.SavedStatesDirectory, id.ToString("N") + ".json");
+        var file = fixture.Service.SavedStatePath(id);
+        Assert.StartsWith("Evening settings - ", Path.GetFileName(file));
         var text = await File.ReadAllTextAsync(file);
         Assert.DoesNotContain(ContrastFixture.Token, text, StringComparison.Ordinal);
         Assert.DoesNotContain("AccessToken", text, StringComparison.Ordinal);
@@ -124,7 +125,6 @@ public sealed class IpMenuSavedStateTests
     [Theory]
     [InlineData("unconfirmed")]
     [InlineData("pending")]
-    [InlineData("input")]
     [InlineData("mode")]
     [InlineData("profile")]
     public async Task WrongContextOrUnconfirmedRecallSendsNoWrites(string problem)
@@ -132,7 +132,6 @@ public sealed class IpMenuSavedStateTests
         using var fixture = await ReadyAsync();
         var id = await fixture.Service.SaveMenuStateAsync("Baseline");
         if (problem == "pending") fixture.Service.StageMenuValue(Contrast, "42");
-        if (problem == "input") fixture.Display.Input = "HDMI1";
         if (problem == "mode") fixture.Display.Mode = "Standard";
         if (problem == "profile")
         {
@@ -149,7 +148,7 @@ public sealed class IpMenuSavedStateTests
     {
         using var fixture = await ReadyAsync();
         var id = await fixture.Service.SaveMenuStateAsync("Good");
-        var file = Path.Combine(fixture.Service.SavedStatesDirectory, id.ToString("N") + ".json");
+        var file = fixture.Service.SavedStatePath(id);
         var original = await File.ReadAllTextAsync(file);
         await File.WriteAllTextAsync(file, original.Replace("\"45\"", "\"999\"", StringComparison.Ordinal));
         await Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RecallMenuStateAsync(id, true));
@@ -392,7 +391,7 @@ public sealed class IpMenuSavedStateTests
     {
         using var fixture = await ReadyAsync();
         var id = await fixture.Service.SaveMenuStateAsync("Baseline");
-        var file = Path.Combine(fixture.Service.SavedStatesDirectory, id.ToString("N") + ".json");
+        var file = fixture.Service.SavedStatePath(id);
         var text = await File.ReadAllTextAsync(file);
         text = problem switch
         {

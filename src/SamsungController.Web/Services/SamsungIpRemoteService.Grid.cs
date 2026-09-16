@@ -137,6 +137,12 @@ public sealed partial class SamsungIpRemoteService
         cancellation.ThrowIfCancellationRequested();
         var exchange = await _client.ExecuteCommandAsync(profile.Connection, grid.SelectorMethod, new() { [grid.SelectorField] = target }, cancellationToken: cancellation).ConfigureAwait(false);
         await RecordExchangeAsync(profile, "Calibration · select " + target, exchange).ConfigureAwait(false);
+        if (IsMenuRejection(exchange)
+            && await ReadMenuGridContextAsync(profile, grid, session, cancellation).ConfigureAwait(false) == current)
+        {
+            await SaveMenuSelectorSessionAsync(session with { LastConfirmed = current, Status = "Retained" }).ConfigureAwait(false);
+            throw new MenuChangeRejectedException($"The TV rejected selecting {target} (error {exchange.RpcErrorCode}). The selector remains at {current}; no RGB setting was sent for that row. You can continue adjusting settings.");
+        }
         RequireSuccess(exchange);
         // A setter acknowledgment is not evidence that the selector changed.
         var selected = await MenuQueryAsync(profile, grid.SelectorMethod, cancellation).ConfigureAwait(false);

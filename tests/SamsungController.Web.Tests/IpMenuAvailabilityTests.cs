@@ -91,7 +91,9 @@ public sealed class IpMenuAvailabilityTests
         await fixture.Service.ConnectMenuAsync(loadAllSettings: false);
         fixture.Service.StageMenuValue("contrastControl/contrast", "44");
         fixture.Override = (request, _) => Task.FromResult<HttpResponseMessage?>(request["method"]!.ToString() == "contrastControl" ? MenuFixture.Reject(request, code) : null);
-        await Assert.ThrowsAsync<InvalidOperationException>(fixture.Service.ApplyMenuAsync);
+        await Assert.ThrowsAnyAsync<InvalidOperationException>(fixture.Service.ApplyMenuAsync);
+        Assert.False(fixture.Service.GetSnapshot().Menu.Update!.NeedsReview);
+        Assert.Empty(fixture.Service.GetSnapshot().Menu.Pending);
         Assert.True(IpMenuAvailability.For(fixture.Service.GetSnapshot().Menu, IpMenuCatalog.Get("contrastControl/contrast")).Visible);
         Assert.Equal(45, fixture.Value("contrastControl/contrast")!.GetValue<int>());
     }

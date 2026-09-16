@@ -13,8 +13,36 @@ public sealed partial class SamsungIpRemoteService
     public string SavedStatesDirectory => Path.Combine(_directory, "saved-states");
     private string StateRecallPath => Path.Combine(_directory, "state-recall.json");
     private bool _recallingState;
-    private string SavedStatePath(Guid id) => id == Guid.Empty ? throw new ArgumentException("Choose a saved state.")
-        : Path.Combine(SavedStatesDirectory, id.ToString("N") + ".json");
+    private readonly Dictionary<Guid, string> _savedStateFiles = new();
+    public string SavedStatePath(Guid id)
+    {
+        lock (_sync) return _savedStateFiles.TryGetValue(id, out var path) ? path
+            : throw new InvalidOperationException("That saved state is no longer available.");
+    }
+    public static string SavedStateFileName(IpMenuSavedState saved)
+    {
+        static string Safe(string value)
+        {
+            var safe = new string(value.Where(character => char.IsLetterOrDigit(character) || character is ' ' or '-' or '_').Take(60).ToArray()).Trim();
+            while (System.Text.Encoding.UTF8.GetByteCount(safe) > 60) safe = safe[..^1];
+            return safe.Trim();
+        }
+        var name = Safe(saved.Name);
+        var model = Safe(saved.Context.Model);
+        return $"{(name.Length == 0 ? "Settings" : name)}{(model.Length == 0 ? "" : " - " + model)} - {saved.SavedAt.UtcDateTime:yyyy-MM-dd_HHmmss}Z - {saved.Id:N}.json";
+    }
+    public async Task RevealMenuStateAsync(Guid id)
+    {
+        await EnterAsync().ConfigureAwait(false);
+        try
+        {
+            var path = SavedStatePath(id);
+            var saved = await ReadSavedStateAsync(path).ConfigureAwait(false);
+            if (saved.Id != id) throw new InvalidOperationException("The saved state file changed. Reload the library first.");
+            SavedStateFileReveal.Open(path);
+        }
+        finally { _gate.Release(); }
+    }
 
     public string? SaveMenuStateDisabledReason()
     {
@@ -41,10 +69,12 @@ public sealed partial class SamsungIpRemoteService
             }
             var snapshot = GetSnapshot();
             var saved = IpMenuSavedStates.Capture(name, snapshot.ActiveProfile!, snapshot.Menu, _timeProvider.GetUtcNow());
-            if (snapshot.SavedStates.Any(item => item.Name.Equals(saved.Name, StringComparison.OrdinalIgnoreCase) && item.Context == saved.Context))
+            if (snapshot.SavedStates.Any(item => item.Name.Equals(saved.Name, StringComparison.OrdinalIgnoreCase) && item.Context.Matches(saved.Context)))
                 throw new InvalidOperationException("A state with this name already exists for this context. Choose another name, or delete the old state first.");
             PrivateIpRemoteTokenStore.EnsurePrivateDirectory(SavedStatesDirectory);
-            await SaveMenuFileAsync(SavedStatePath(saved.Id), saved).ConfigureAwait(false);
+            var path = Path.Combine(SavedStatesDirectory, SavedStateFileName(saved));
+            await SaveMenuFileAsync(path, saved).ConfigureAwait(false);
+            lock (_sync) _savedStateFiles.Add(saved.Id, path);
             Update(state => state with { SavedStates = state.SavedStates.Append(saved).OrderByDescending(item => item.SavedAt).ToArray() });
             return saved.Id;
         }
@@ -58,7 +88,8 @@ public sealed partial class SamsungIpRemoteService
         try
         {
             if (!GetSnapshot().SavedStates.Any(state => state.Id == id)) throw new InvalidOperationException("That saved state is no longer available.");
-            File.Delete(SavedStatePath(id)); // Exact GUID filename, never a user-supplied path or name.
+            File.Delete(SavedStatePath(id)); // Exact validated library entry, never a user-supplied path.
+            lock (_sync) _savedStateFiles.Remove(id);
             Update(state => state with { SavedStates = state.SavedStates.Where(item => item.Id != id).ToArray() });
         }
         finally { _gate.Release(); }
@@ -68,24 +99,25 @@ public sealed partial class SamsungIpRemoteService
     {
         if (SaveMenuStateDisabledReason() is { } reason) return reason;
         var current = GetSnapshot();
-        if (current.Menu.PowerDisabledReason is { } powerReason) return powerReason;
-        return saved.Context != IpMenuSavedContext.From(current.ActiveProfile!, current.Menu)
-            ? "Select the saved display, input, picture mode and signal context, then Refresh state. Recall will not switch calibration banks for you."
+        return !saved.Context.Matches(IpMenuSavedContext.From(current.ActiveProfile!, current.Menu))
+            ? "Select the saved display, picture mode and signal context, then Refresh state. Any input can be used; recall will not change the input or picture mode."
             : null;
     }
 
     public Task RecallMenuStateAsync(Guid id, bool conditionsConfirmed) => RunMenuOperationAsync(async (profile, cancellation) =>
     {
         EnsureMenuWritesAllowed();
-        if (!conditionsConfirmed) throw new InvalidOperationException("Confirm the saved display/input/picture mode and physical HDMI signal before recall.");
+        if (!conditionsConfirmed) throw new InvalidOperationException("Confirm the saved display/picture mode and physical HDMI signal before recall. The current input will be kept.");
         if (GetSnapshot().Menu.Pending.Count > 0) throw new InvalidOperationException("Apply or discard pending edits before recalling a state.");
         // Reload and validate the file before sending anything, not the UI's possibly stale copy.
         var saved = await ReadSavedStateAsync(SavedStatePath(id)).ConfigureAwait(false);
         if (saved.Id != id) throw new InvalidOperationException("The saved state ID does not match its filename.");
+        string? recallInput = null;
         RequireContext();
         await RequireMenuPowerOnAsync(profile, cancellation).ConfigureAwait(false);
         await ReadMenuBaseAsync(profile, cancellation).ConfigureAwait(false);
         RequireContext();
+        recallInput = GetSnapshot().Menu.Input;
         var recall = new IpMenuStateRecall(id, saved.Name, saved.Context, _timeProvider.GetUtcNow())
         {
             FinalModes = IpMenuGrids.All.Where(grid => saved.Values.ContainsKey(grid.ModeMethod + "/" + grid.ModeField))
@@ -168,7 +200,8 @@ public sealed partial class SamsungIpRemoteService
         }
         catch (Exception error) when (IsMenuGridError(error))
         {
-            recall = recall with { Status = "Stopped", Message = $"Recall stopped: {error.Message} Earlier confirmed changes remain. Check the TV and the final calibration modes below; no retry, rollback, or automatic resume was sent." };
+            var rejected = error is MenuChangeRejectedException && GetSnapshot().Menu.Update?.NeedsReview != true;
+            recall = recall with { Status = rejected ? "Rejected" : "Stopped", Message = $"Recall stopped: {error.Message} Earlier confirmed changes remain. Calibration modes may not have reached their saved final values; no retry, rollback, or automatic resume was sent." };
             Update(state => state with { StateRecall = recall });
             try { await SaveStateRecallAsync(recall).ConfigureAwait(false); }
             catch (Exception storage) when (storage is IOException or UnauthorizedAccessException)
@@ -179,8 +212,10 @@ public sealed partial class SamsungIpRemoteService
 
         void RequireContext()
         {
-            if (saved.Context != IpMenuSavedContext.From(profile, GetSnapshot().Menu))
-                throw new InvalidOperationException("The saved display/input/picture mode or signal context does not match. Select the matching context and refresh first; no further settings were sent.");
+            if (recallInput is not null && GetSnapshot().Menu.Input != recallInput)
+                throw new InvalidOperationException("The input changed during recall. No further settings were sent.");
+            if (!saved.Context.Matches(IpMenuSavedContext.From(profile, GetSnapshot().Menu)))
+                throw new InvalidOperationException("The saved display/picture mode or signal context does not match. Select the matching context and refresh first; no further settings were sent.");
         }
         void Skip(IpMenuControl control, string reason) => recall = recall with { Skipped = new(recall.Skipped) { [control.Id] = reason } };
         async Task ApplyValuesAsync(IpMenuControl[] values)
@@ -255,22 +290,32 @@ public sealed partial class SamsungIpRemoteService
     private async Task LoadSavedStatesAsync()
     {
         var saved = new List<IpMenuSavedState>();
+        var files = new Dictionary<Guid, string>();
         var invalid = 0;
+        var renameWarnings = 0;
         if (Directory.Exists(SavedStatesDirectory))
-            foreach (var path in Directory.EnumerateFiles(SavedStatesDirectory, "*.json"))
+            foreach (var path in Directory.GetFiles(SavedStatesDirectory, "*.json"))
             {
                 try
                 {
                     var state = await ReadSavedStateAsync(path).ConfigureAwait(false);
-                    if (Path.GetFileNameWithoutExtension(path) != state.Id.ToString("N") || saved.Any(item => item.Id == state.Id))
-                        throw new InvalidOperationException("Invalid saved-state filename.");
+                    if (saved.Any(item => item.Id == state.Id)) throw new InvalidOperationException("Duplicate saved-state ID.");
+                    var actual = path;
+                    if (Path.GetFileNameWithoutExtension(path) == state.Id.ToString("N"))
+                    {
+                        var readable = Path.Combine(SavedStatesDirectory, SavedStateFileName(state));
+                        try { File.Move(path, readable, overwrite: false); actual = readable; }
+                        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { renameWarnings++; }
+                    }
                     saved.Add(state);
+                    files.Add(state.Id, actual);
                 }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or ArgumentException or InvalidOperationException) { invalid++; }
             }
         var recall = File.Exists(StateRecallPath) ? JsonSerializer.Deserialize<IpMenuStateRecall>(await File.ReadAllTextAsync(StateRecallPath).ConfigureAwait(false), StateJson) : null;
+        lock (_sync) { _savedStateFiles.Clear(); foreach (var file in files) _savedStateFiles.Add(file.Key, file.Value); }
         if (recall?.Status == "Running") recall = recall with { Status = "Stopped", Message = "Recall was interrupted in a previous session. Check the TV and calibration modes. Nothing was resumed on startup." };
         Update(state => state with { SavedStates = saved.OrderByDescending(item => item.SavedAt).ToArray(), StateRecall = recall,
-            SavedStatesWarning = invalid == 0 ? null : $"{invalid} invalid saved-state file(s) were ignored. No files were changed; check the saved-states folder." });
+            SavedStatesWarning = invalid == 0 && renameWarnings == 0 ? null : $"{invalid} invalid/duplicate saved-state file(s) were ignored; {renameWarnings} legacy filename(s) could not be renamed. Their contents were not changed; check the saved-states folder." });
     }
 }

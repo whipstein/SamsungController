@@ -70,7 +70,7 @@ public sealed class IpMenuRgbGroupTests
             if (failure == "selector changed") fixture.Values[grid.SelectorField] = grid.Values[1];
             return Task.FromResult<HttpResponseMessage?>(failure == "acknowledged only" ? ContrastDisplay.Reply(request, new JsonObject { [row[0].Field] = 11 }) : null);
         };
-        await Assert.ThrowsAsync<InvalidOperationException>(fixture.Service.ApplyMenuAsync);
+        await Assert.ThrowsAnyAsync<InvalidOperationException>(fixture.Service.ApplyMenuAsync);
         Assert.Single(RgbWrites(fixture, grid));
         Assert.Single(fixture.Writes, request => IsWrite(request, grid.SelectorMethod)); // No blind restoration.
         var update = fixture.Service.GetSnapshot().Menu.Update!;

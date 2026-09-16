@@ -3,8 +3,8 @@
 <aside id="save-settings" class="saved-settings direct-page-help" popover="auto" role="dialog" aria-modal="false" aria-labelledby="save-settings-title">
     <header><h2 id="save-settings-title">Save settings</h2><button type="button" class="toolbar-button" popovertarget="save-settings" popovertargetaction="hide" aria-label="Close save settings" autofocus>Close ×</button></header>
     <div class="saved-settings-content direct-page-help-content">
-        <p><strong>All settings, not just the current tab:</strong> Picture, 2pt WB, all 20pt WB percentages, all Custom colors, Sound, and System, for the current display/input/picture-mode context.</p>
-        <p>Saves last-read TV values, not unsent edits. Use <strong>Refresh state</strong> first after outside changes. Unsupported or unread values are listed as missing, never filled with defaults. Input and picture mode identify the saved context; recall does not switch them.</p>
+        <p><strong>All settings, not just the current tab:</strong> Picture, 2pt WB, all 20pt WB percentages, all Custom colors, Sound, and System, for the current display/picture-mode context.</p>
+        <p>Saves last-read TV values, not unsent edits. Use <strong>Refresh state</strong> first after outside changes. Unsupported or unread values are listed as missing, never filled with defaults. Input is not saved or changed: recall applies to your current input.</p>
         @if (Snapshot.SavedStatesWarning is { } warning) { <p class="direct-error" role="alert">@warning</p> }
         @if (Error is not null) { <p class="direct-error" role="alert">@Error</p> }
         @if (Feedback is not null) { <p role="status">@Feedback</p> }
@@ -44,7 +44,10 @@
         @if (Selected is { } selected)
         {
             <p><strong>@selected.Values.Count saved values</strong> · @selected.Missing.Count missing when saved · @selected.SavedAt.ToLocalTime().ToString("g")</p>
-            <p class="saved-settings-context">@selected.Context.Model · @selected.Context.Firmware · @selected.Context.Input · @selected.Context.PictureMode · @(string.IsNullOrEmpty(selected.Context.Signal) ? "signal not annotated" : selected.Context.Signal)</p>
+            <p class="saved-settings-context">@selected.Context.Model · @selected.Context.Firmware · @selected.Context.PictureMode · @(string.IsNullOrEmpty(selected.Context.Signal) ? "signal not annotated" : selected.Context.Signal) · Any input</p>
+            <p class="saved-settings-file"><code>@System.IO.Path.GetFileName(Controller.SavedStatePath(selected.Id))</code></p>
+            <button type="button" class="toolbar-button" disabled="@Busy" @onclick="RevealAsync">@SavedStateFileReveal.Label</button>
+            <p class="direct-hint">Opens the file location on the computer running SamsungController.</p>
             <details class="saved-settings-values"><summary>Review saved values and omissions</summary>
                 @foreach (var section in IpMenuCatalog.Sections)
                 {
@@ -63,7 +66,7 @@
                 <section class="saved-settings-confirm" aria-label="Confirm saved state recall">
                     <strong>Apply “@selected.Name” to this display?</strong>
                     <p>This sends saved values now, regardless of On Apply / Immediately. Recall may enable 20pt WB or Custom color while restoring RGB rows, then restores their saved modes. Unavailable settings are skipped and listed. Input, picture mode and other calibration-bank selectors are not changed.</p>
-                    <label><input type="checkbox" aria-label="Confirm saved state conditions" checked="@ConditionsConfirmed" @onchange="args => ConditionsConfirmed = args.Value is true" disabled="@Busy" /> I confirmed the display, input, picture mode and physical HDMI signal/bit depth match this state.</label>
+                    <label><input type="checkbox" aria-label="Confirm saved state conditions" checked="@ConditionsConfirmed" @onchange="args => ConditionsConfirmed = args.Value is true" disabled="@Busy" /> I confirmed the display, picture mode and physical HDMI signal/bit depth match this state. Apply to the current input.</label>
                     <p>Stop prevents further commands; it does not undo changes already sent.</p>
                     <div class="saved-settings-buttons"><button type="button" class="primary-action" disabled="@(Busy || !ConditionsConfirmed || Controller.RecallMenuStateDisabledReason(selected) is not null)" @onclick="RecallAsync">Apply saved state now</button><button type="button" class="toolbar-button" disabled="@Busy" @onclick="Cancel">Cancel recall</button></div>
                 </section>
@@ -80,6 +83,8 @@
         {
             <section class="saved-settings-result" aria-label="Saved state recall result">
                 <h3>@recall.Name · @recall.Status</h3><p role="status">@recall.Message</p>
+                @if (recall.Status == "Rejected")
+                { <p>Saved final modes: @string.Join(" · ", recall.FinalModes.Select(pair => pair.Key + " = " + pair.Value)). You can adjust modes and settings normally; no review needs to be cleared.</p> }
                 @if (Snapshot.IsBusy && recall.Status == "Running") { <p role="status">@recall.Confirmed saved values confirmed. @Snapshot.Menu.Status</p><button type="button" class="toolbar-button danger-action" @onclick="Controller.Cancel">Stop recall</button> }
                 @if (recall.Skipped.Count > 0) { <details><summary>@recall.Skipped.Count values could not be recalled</summary><ul>@foreach (var pair in recall.Skipped) { <li>@IpMenuCatalog.Get(pair.Key).Name: @pair.Value</li> }</ul></details> }
                 @if (recall.NeedsReview && !Snapshot.IsBusy)
@@ -142,6 +147,11 @@
         if (Confirm != "delete" || Selected is not { } selected) return;
         await Controller.DeleteMenuStateAsync(selected.Id, true);
         SelectedId = ""; Cancel(); Feedback = "Saved state deleted. TV settings are unchanged.";
+    });
+    private Task RevealAsync() => GuardAsync(async () =>
+    {
+        if (Selected is not { } selected) return;
+        await Controller.RevealMenuStateAsync(selected.Id);
     });
     private Task RecallAsync() => GuardAsync(async () =>
     {

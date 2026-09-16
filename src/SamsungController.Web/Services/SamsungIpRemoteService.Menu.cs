@@ -104,7 +104,6 @@ public sealed partial class SamsungIpRemoteService
 
     public static string? MenuValueDisabledReason(IpMenuSnapshot menu, IpMenuControl control)
     {
-        if (menu.PowerDisabledReason is { } powerReason) return powerReason;
         if (IpMenuAvailability.For(menu, control) is { Reason: { } unavailable }) return unavailable;
         if (menu.Value(control) is not { } value) return (control.IsIndexed ? menu.IndexedReadings.GetValueOrDefault(control.Id) : menu.Readings.GetValueOrDefault(control.Method)) is { } reading
             ? reading.Outcome == SamsungIpRemoteOutcome.Success ? "Not reported in the TV reply for this display/state." : reading.Message
@@ -173,9 +172,15 @@ public sealed partial class SamsungIpRemoteService
             .ThenBy(draft => IpMenuCatalog.Get(draft.ControlId).IsIndexed ? Array.IndexOf(IpMenuGrids.ForSection(IpMenuCatalog.Get(draft.ControlId).Section)!.Values.ToArray(), IpMenuCatalog.Get(draft.ControlId).IndexValue) : 0).ToArray();
         if (drafts.Length == 0) throw new InvalidOperationException("No pending settings to apply.");
         foreach (var draft in drafts) _ = IpMenuCatalog.ParseTarget(IpMenuCatalog.Get(draft.ControlId), draft.Target.ToString());
-        // Check once per apply group, not per RGB channel. Off/unknown power
-        // stops before creating an uncertain-write journal or sending a setter.
-        await RequireMenuPowerOnAsync(profile, cancellation).ConfigureAwait(false);
+        UpdateMenu(menu => menu with { ActionWarning = null });
+        // A standby rejection discards this attempted group, never latching the controls off.
+        try { await RequireMenuPowerOnAsync(profile, cancellation).ConfigureAwait(false); }
+        catch (MenuChangeRejectedException error)
+        {
+            RevertMenuTargets(queuedBatch is null ? drafts.Select(draft => draft.ControlId)
+                : GetSnapshot().Menu.NudgeQueue?.Values.Select(value => value.ControlId) ?? [], error.Message);
+            throw;
+        }
         var update = new IpMenuUpdate
         {
             QueryBeforeChange = GetSnapshot().Menu.Preferences.QueryBeforeChange,
@@ -243,7 +248,7 @@ public sealed partial class SamsungIpRemoteService
                 if (!exchange.IsSuccess)
                 {
                     // A correlated rejection permits a read-only check, never a blind retry or rollback.
-                    if (!cancellation.IsCancellationRequested && exchange.Outcome == SamsungIpRemoteOutcome.RpcError && exchange.RpcErrorCode is -32002 or -32003 or -32602)
+                    if (!cancellation.IsCancellationRequested && IsMenuRejection(exchange))
                     {
                         await ReadMenuBaseAsync(profile, cancellation).ConfigureAwait(false);
                         await ReadMenuPrerequisitesAsync(profile, control, cancellation).ConfigureAwait(false);
@@ -268,7 +273,7 @@ public sealed partial class SamsungIpRemoteService
                     if (after is null)
                     {
                         if (update.Steps[index].Status == "Rejected unchanged")
-                            throw new InvalidOperationException($"{control.Name}: the TV rejected the requested value {draft.Target} (error {exchange.RpcErrorCode}). Readback confirmed it is still {draft.Original}, with the checked settings/context unchanged. The controls remain available; correct or discard the pending change before applying again.");
+                            throw new MenuChangeRejectedException($"{control.Name}: the TV rejected the requested value {draft.Target} (error {exchange.RpcErrorCode}). Restored the control to {draft.Original}, confirmed by readback. You can continue adjusting settings; no reset is required.");
                         RequireSuccess(exchange);
                     }
                 }
@@ -301,6 +306,7 @@ public sealed partial class SamsungIpRemoteService
             }
             catch (Exception error) when (error is InvalidOperationException or ArgumentException or OperationCanceledException or IOException or UnauthorizedAccessException or JsonException)
             {
+                if (error is MenuChangeRejectedException) RevertMenuTargets([draft.ControlId], error.Message);
                 update = MenuStep(update, index, update.Steps[index].Status == "Sending" ? "Uncertain" : update.Steps[index].Status == "Pending" ? "Not sent" : update.Steps[index].Status)
                     with
                 { Status = "Stopped", Message = error.Message + " No retry or rollback was sent. Earlier confirmed changes remain on the TV." };
@@ -425,11 +431,11 @@ public sealed partial class SamsungIpRemoteService
             if (state.AuthorizationRejected && !allowAuthorizationRetry) throw new InvalidOperationException("The TV rejected the last authorization attempt. Use Reset connection (keep pairing) to explicitly check the saved token on a fresh connection.");
             if (needsConnection && !state.Menu.Connected) throw new InvalidOperationException("Connect to the display first.");
             var cancellation = new CancellationTokenSource(); lock (_sync) _operation = cancellation;
-            Update(snapshot => snapshot with { IsBusy = true });
+            Update(snapshot => snapshot with { IsBusy = true, Menu = snapshot.Menu with { ActionWarning = null } });
             await action(profile, cancellation.Token).ConfigureAwait(false);
         }
         catch (Exception error) when (error is InvalidOperationException or ArgumentException or OperationCanceledException or IOException or UnauthorizedAccessException or JsonException)
-        { UpdateMenu(menu => menu with { Status = error is OperationCanceledException ? "Stopped. No further command was sent." : error.Message }); throw; }
+        { UpdateMenu(menu => menu with { ActionWarning = error.Message, Status = error is OperationCanceledException ? "Stopped. No further command was sent." : error.Message }); throw; }
         finally
         {
             lock (_sync) { _operation?.Dispose(); _operation = null; }

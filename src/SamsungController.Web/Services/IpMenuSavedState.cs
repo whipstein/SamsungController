@@ -4,10 +4,13 @@ using System.Text.Json.Serialization;
 namespace SamsungController.Web.Services;
 
 // Private settings only. Never serialize a profile/connection, token, certificate or response payload.
-public sealed record IpMenuSavedContext(string Endpoint, string Model, string Firmware, string Signal, string Input, string PictureMode)
+public sealed record IpMenuSavedContext(string Endpoint, string Model, string Firmware, string Signal,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Input, string PictureMode)
 {
     public static IpMenuSavedContext From(IpRemoteProfile profile, IpMenuSnapshot menu) =>
-        new(profile.Endpoint, profile.Model, profile.Firmware, profile.Signal, menu.Input ?? "", menu.PictureMode ?? "");
+        new(profile.Endpoint, profile.Model, profile.Firmware, profile.Signal, null, menu.PictureMode ?? "");
+    // Input is read only for old files. New saves omit it; recall never selects an input.
+    public bool Matches(IpMenuSavedContext other) => this with { Input = null } == other with { Input = null };
 }
 
 public sealed record IpMenuSavedState
@@ -61,10 +64,10 @@ public static class IpMenuSavedStates
             throw new InvalidOperationException("This is not a valid saved settings state.");
         if (string.IsNullOrWhiteSpace(state.Name) || state.Name.Length > 80 || state.Name.Any(char.IsControl))
             throw new InvalidOperationException("State names must contain 1–80 characters without control characters.");
-        if (state.Context is null || new[] { state.Context.Endpoint, state.Context.Model, state.Context.Firmware, state.Context.Signal, state.Context.Input, state.Context.PictureMode }
-            .Any(value => value is null || value.Length > 512) || string.IsNullOrWhiteSpace(state.Context.Input) || string.IsNullOrWhiteSpace(state.Context.PictureMode)
+        if (state.Context is null || new[] { state.Context.Endpoint, state.Context.Model, state.Context.Firmware, state.Context.Signal, state.Context.PictureMode }
+            .Any(value => value is null || value.Length > 512) || state.Context.Input?.Length > 512 || string.IsNullOrWhiteSpace(state.Context.PictureMode)
             || !Uri.TryCreate(state.Context.Endpoint, UriKind.Absolute, out var endpoint) || endpoint.Scheme != "https" || endpoint.UserInfo.Length > 0)
-            throw new InvalidOperationException("The saved state's display/input/picture-mode context is invalid.");
+            throw new InvalidOperationException("The saved state's display/picture-mode context is invalid.");
         var allowed = Controls.ToDictionary(control => control.Id, StringComparer.Ordinal);
         if (state.Values is null || state.Values.Count == 0 || state.Values.Count > allowed.Count || state.Missing is null || state.Missing.Count > allowed.Count)
             throw new InvalidOperationException("There are no usable TV values to save, or the saved values are invalid. Refresh state first.");

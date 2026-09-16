@@ -369,7 +369,7 @@ public sealed class IpMenuNudgeTests
         fixture.Override = (request, _) => Task.FromResult<HttpResponseMessage?>(request["method"]!.ToString() == "contrastControl"
             ? MenuFixture.Reject(request, -32002) : null);
         hold.Release.TrySetResult(); // The already-held first write uses its original successful handler.
-        await Assert.ThrowsAsync<InvalidOperationException>(() => Task.WhenAll(first, second, third).WaitAsync(Timeout));
+        await Assert.ThrowsAnyAsync<InvalidOperationException>(() => Task.WhenAll(first, second, third).WaitAsync(Timeout));
         await IdleAsync(fixture.Service);
         Assert.True(first.IsCompletedSuccessfully);
         Assert.True(second.IsFaulted && third.IsFaulted);

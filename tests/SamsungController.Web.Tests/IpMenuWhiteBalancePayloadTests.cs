@@ -164,13 +164,14 @@ public sealed class IpMenuWhiteBalancePayloadTests
         await renderer.ChangeAsync("B Gain value", "2", "onchange");
         await renderer.ClickAsync("Apply 1 pending");
         await renderer.AssertTextAsync("B Gain: the TV rejected the requested value 2");
-        await renderer.AssertTextAsync("The controls remain available");
+        await renderer.AssertTextAsync("You can continue adjusting settings");
+        await renderer.AssertInputValueAsync("B Gain value", fixture.Value("WB2PointControl/B-Gain")!.ToString());
         await renderer.AssertTextAbsentAsync("I checked the TV — close interrupted update");
         await renderer.AssertDisabledAsync("Refresh section", false);
         await renderer.AssertDisabledAsync("Picture", false);
         Assert.False(fixture.Service.GetSnapshot().IsBusy);
         Assert.Null(fixture.Service.MenuControlDisabledReason(IpMenuCatalog.Get("WB2PointControl/G-Gain")));
-        await renderer.ClickAsync("Discard pending changes");
+        Assert.Empty(fixture.Service.GetSnapshot().Menu.Pending);
         await renderer.ChangeAsync("G Gain value", "5", "onchange");
         await renderer.AssertDisabledAsync("Apply 1 pending", false);
         Assert.Single(fixture.Writes);

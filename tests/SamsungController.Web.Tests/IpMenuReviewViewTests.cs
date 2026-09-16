@@ -15,7 +15,7 @@ public sealed class IpMenuReviewViewTests
     [InlineData("contrastControl/contrast", "44")]
     [InlineData("sharpnessControl/sharpness", "5")]
     [InlineData("brightnessControl/brightness", "2")]
-    public async Task RejectedWriteShowsReviewInPinnedToolbarAndClearsWithoutRetry(string controlId, string target)
+    public async Task UncertainWriteShowsReviewInPinnedToolbarAndClearsWithoutRetry(string controlId, string target)
     {
         using var fixture = await MenuFixture.CreateAsync();
         await fixture.Service.ConnectMenuAsync();
@@ -24,8 +24,12 @@ public sealed class IpMenuReviewViewTests
         await using var page = new IpRemotePageTests.IpPageRenderer(services, typeof(DirectMenu));
         await page.StartAsync();
         await page.AssertAriaButtonPresentAsync("Verify settings", false);
-        fixture.Override = (request, _) => Task.FromResult<HttpResponseMessage?>(request["method"]!.ToString() == control.Method
-            && request["params"]?[control.Field] is not null ? MenuFixture.Reject(request, -32601) : null);
+        fixture.Override = (request, _) =>
+        {
+            if (request["method"]!.ToString() != control.Method || request["params"]?[control.Field] is null) return Task.FromResult<HttpResponseMessage?>(null);
+            fixture.Display.Color++; // A changed peer makes this reply uncertain, unlike a clean rejection.
+            return Task.FromResult<HttpResponseMessage?>(MenuFixture.Reject(request, -32601));
+        };
         await page.ChangeAsync(control.Name + " value", target, "onchange");
         fixture.Display.Requests.Clear();
         await page.ClickAsync("Apply 1 pending");

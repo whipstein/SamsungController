@@ -41,10 +41,11 @@
     }
     @if (ResetFeedback is not null) { <p class="direct-reset-feedback" role="status">@ResetFeedback</p> }
     @if (ReviewFeedback is not null && Snapshot.Menu.SectionsRead.Count == 0) { <p class="direct-reset-feedback" role="status">@ReviewFeedback</p> }
-    @if (Snapshot.Menu.PowerDisabledReason is { } powerReason)
+    @if ((Snapshot.Menu.ActionWarning ?? Snapshot.Menu.PowerWarning) is { } actionWarning)
     {
-        <div class="direct-power-warning" role="status"><strong>@powerReason</strong> <button type="button" class="toolbar-button" @onclick="CheckPowerAsync" disabled="@(!CanWork)">Check power</button></div>
+        <div class="direct-power-warning" role="status"><strong>@actionWarning</strong></div>
     }
+    @if (Error is not null && Error != Snapshot.Menu.ActionWarning) { <div class="notice danger" role="alert">@Error</div> }
 </section>
 @if (!Snapshot.IsBusy && Snapshot.Menu.Update is { NeedsReview: true } review && Snapshot.StateRecall?.NeedsReview != true)
 {
@@ -59,7 +60,6 @@
         </div>
     </aside>
 }
-@if (Error is not null) { <div class="notice danger" role="alert">@Error</div> }
 @if (!Snapshot.Menu.Connected) { <div class="notice"><strong>Display disconnected</strong><span>Connect to read current settings.</span><a href="/">Choose display →</a></div> }
 @if (Snapshot.PictureTest?.RequiresRecovery == true || Snapshot.CommandTrial?.RequiresReview == true)
 { <div class="notice danger">An earlier diagnostic write needs attention. <a href="diagnostics#recovery">Open its saved recovery details</a>.</div> }
@@ -74,7 +74,7 @@
 }
 
 <section class="panel direct-panel direct-menu-content" data-control-section="@Section" @ref="MenuContentElement">
-    @if (Snapshot.Menu.Connected && Snapshot.Menu.ConnectionLoadAttempted && Snapshot.Menu.SettingsLoadedAt is null && !Snapshot.IsBusy && Snapshot.Menu.PowerDisabledReason is null)
+    @if (Snapshot.Menu.Connected && Snapshot.Menu.ConnectionLoadAttempted && Snapshot.Menu.SettingsLoadedAt is null && !Snapshot.IsBusy && Snapshot.Menu.PowerWarning is null)
     { <p class="direct-unavailable" role="status">All-settings load is incomplete or the TV context changed. Select Refresh state in the top header to reload all settings for the current signal—no reconnect needed. Opening a tab does not resume a stopped load.</p> }
     @if (Snapshot.Menu.SettingsLoadedAt is { } loadedAt)
     {
@@ -199,7 +199,7 @@
     private bool CanWork => Snapshot.Menu.Connected && !Snapshot.IsBusy && !ActionRunning && Snapshot.RgbProbe?.NeedsRecovery != true;
     private bool CanLoadGrid => CanWork && Snapshot.Menu.Update?.NeedsReview != true && Snapshot.Menu.WhiteBalanceRead?.NeedsRestore != true
         && Snapshot.PictureTest?.RequiresRecovery != true && Snapshot.CommandTrial?.RequiresReview != true;
-    private bool CanApply => CanWork && Snapshot.Menu.PowerDisabledReason is null && Snapshot.Menu.Pending.Count > 0 && Snapshot.Menu.Update?.NeedsReview != true && Snapshot.Menu.WhiteBalanceRead?.NeedsRestore != true;
+    private bool CanApply => CanWork && Snapshot.Menu.Pending.Count > 0 && Snapshot.Menu.Update?.NeedsReview != true && Snapshot.Menu.WhiteBalanceRead?.NeedsRestore != true;
     private int RowPendingCount(IpMenuGrid grid, string value) => grid.Row(value).Count(Dirty);
     private bool CanApplyRow(IpMenuGrid grid, string value) => CanApply && RowPendingCount(grid, value) > 0
         && grid.Row(value).Where(Dirty).All(control => DisabledReason(control) is null);
@@ -224,6 +224,8 @@
     private void Refresh() => _ = InvokeAsync(() =>
     {
         var next = Controller.GetSnapshot();
+        if (Snapshot.Menu.RejectionRevision != next.Menu.RejectionRevision)
+            foreach (var id in next.Menu.RejectedControls) Edits.Remove(id);
         if (next.IsBusy || Snapshot.Menu.SessionId != next.Menu.SessionId || Snapshot.Menu.ValuesRevision != next.Menu.ValuesRevision
             || Snapshot.Menu.Preferences.ApplyImmediately != next.Menu.Preferences.ApplyImmediately)
         { ResetSection = null; ResetFeedback = null; }
@@ -375,7 +377,6 @@
         Edits.Clear();
         ReviewFeedback = "Review cleared. Select Refresh state before further adjustments.";
     });
-    private Task CheckPowerAsync() => GuardAsync(Controller.CheckMenuPowerAsync);
     private async Task GuardAsync(Func<Task> action)
     {
         Error = null; ActionRunning = true;

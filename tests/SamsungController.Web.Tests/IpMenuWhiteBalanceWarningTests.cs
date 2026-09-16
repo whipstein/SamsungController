@@ -188,7 +188,7 @@ public sealed class IpMenuWhiteBalanceWarningTests
             if (changedPeer) fixture.Values["G-Gain"] = 5;
             return Task.FromResult<HttpResponseMessage?>(MenuFixture.Reject(request, -32002));
         };
-        await Assert.ThrowsAsync<InvalidOperationException>(fixture.Service.ApplyMenuAsync);
+        await Assert.ThrowsAnyAsync<InvalidOperationException>(fixture.Service.ApplyMenuAsync);
         var update = fixture.Service.GetSnapshot().Menu.Update!;
         Assert.Equal(changedPeer ? "Uncertain" : "Rejected unchanged", update.Steps.Single().Status);
         Assert.Equal(changedPeer, update.NeedsReview);

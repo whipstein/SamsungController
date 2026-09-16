@@ -139,13 +139,14 @@ public sealed record IpMenuSnapshot
     public IpMenuUpdate? Update { get; init; }
     public IpMenuNudgeQueue? NudgeQueue { get; init; }
     public string Status { get; init; } = "Connect to read current TV settings.";
+    public string? ActionWarning { get; init; }
+    public long RejectionRevision { get; init; }
+    public IReadOnlyList<string> RejectedControls { get; init; } = [];
     public string? Input => Tv["inputSource"]?.ToString();
     public string? PictureMode => Tv["pictureMode"]?.ToString();
-    public string? PowerDisabledReason => !Readings.TryGetValue("powerControl", out var power) ? null
-        : power.Outcome == SamsungIpRemoteOutcome.Success && power.Values?["power"]?.ToString() == "powerOn" ? null
-        : power.Outcome == SamsungIpRemoteOutcome.Success && power.Values?["power"]?.ToString() == "powerOff"
-            ? "TV is off. Turn it on, then select Check power or Refresh state. Settings changes are blocked."
-            : "TV power could not be confirmed. Turn the TV on, then select Check power or Refresh state. Settings changes are blocked.";
+    public string? PowerWarning => Readings.GetValueOrDefault("powerControl") is { Outcome: SamsungIpRemoteOutcome.Success, Values: { } values }
+        && values["power"]?.ToString() == "powerOff"
+            ? "TV is off. The TV must be on to change settings. Turn it on and try again; no manual check or reset is required." : null;
     public JsonNode? Value(IpMenuControl control) => (control.IsIndexed ? IndexedReadings.GetValueOrDefault(control.Id) : Readings.GetValueOrDefault(control.Method))
         is { Outcome: SamsungIpRemoteOutcome.Success, Values: { } values } ? values[control.Field] : null;
 }

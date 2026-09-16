@@ -9,7 +9,7 @@ public sealed partial class SamsungIpRemoteService
     public Task CheckMenuPowerAsync() => RunMenuOperationAsync(async (profile, cancellation) =>
     {
         await ReadMenuPowerAsync(profile, cancellation).ConfigureAwait(false);
-        UpdateMenu(menu => menu with { Status = menu.PowerDisabledReason ?? "TV is on. Refresh state after outside changes before adjusting settings." });
+        UpdateMenu(menu => menu with { Status = menu.PowerWarning ?? "Power read completed. Refresh state after outside changes before adjusting settings." });
     });
 
     private async Task ReadMenuPowerAsync(IpRemoteProfile profile, CancellationToken cancellation)
@@ -22,6 +22,22 @@ public sealed partial class SamsungIpRemoteService
     private async Task RequireMenuPowerOnAsync(IpRemoteProfile profile, CancellationToken cancellation)
     {
         await ReadMenuPowerAsync(profile, cancellation).ConfigureAwait(false);
-        if (GetSnapshot().Menu.PowerDisabledReason is { } reason) throw new InvalidOperationException(reason);
+        if (GetSnapshot().Menu.PowerWarning is { } reason)
+        {
+            UpdateMenu(menu => menu with { ActionWarning = reason });
+            throw new MenuChangeRejectedException(reason);
+        }
+    }
+
+    private sealed class MenuChangeRejectedException(string message) : InvalidOperationException(message);
+    private static bool IsMenuRejection(SamsungIpRemoteExchange exchange) => exchange.RpcErrorCode is not null
+        && exchange.Outcome is SamsungIpRemoteOutcome.RpcError or SamsungIpRemoteOutcome.Unsupported;
+
+    // Restore only local targets. Never send rollback commands or discard unrelated edits.
+    private void RevertMenuTargets(IEnumerable<string> controls, string message)
+    {
+        var ids = controls.Distinct(StringComparer.Ordinal).ToArray();
+        UpdateMenu(menu => menu with { Pending = menu.Pending.Where(pair => !ids.Contains(pair.Key)).ToDictionary(),
+            RejectedControls = ids, RejectionRevision = menu.RejectionRevision + 1, ActionWarning = message });
     }
 }

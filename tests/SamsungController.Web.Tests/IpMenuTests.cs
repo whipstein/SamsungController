@@ -135,8 +135,9 @@ public sealed class IpMenuTests
         fixture.Service.StageMenuValue("colorControl/color", "27");
         fixture.Service.StageMenuValue("sharpnessControl/sharpness", "3");
         fixture.Override = (request, _) => Task.FromResult(request["method"]!.ToString() == "colorControl" ? MenuFixture.Reject(request, -32002) : null);
-        await Assert.ThrowsAsync<InvalidOperationException>(fixture.Service.ApplyMenuAsync);
+        await Assert.ThrowsAnyAsync<InvalidOperationException>(fixture.Service.ApplyMenuAsync);
         var menu = fixture.Service.GetSnapshot().Menu;
+        Assert.Equal("sharpnessControl/sharpness", Assert.Single(menu.Pending).Key);
         Assert.Equal(new[] { "Applied", "Rejected unchanged", "Pending" }, menu.Update!.Steps.Select(step => step.Status));
         Assert.False(menu.Update.NeedsReview);
         Assert.Equal(44, fixture.Display.Contrast);

@@ -1,9 +1,12 @@
-## SamsungController v1.1.2 — TV power check and top-toolbar review (local evaluation)
+## SamsungController v1.1.2 — Saved-settings usability and non-blocking rejections (local evaluation)
 
 - Put **Verify settings** beside Apply and Stop in the pinned Menu toolbar after an interrupted update, including one restored from a previous session.
 - Review affected values and RGB originals in a popup, then acknowledge the manual check without sending commands, retries, or undo. Show a top-toolbar reminder to refresh afterward.
 - Route interrupted recalls to their combined review. Normal in-progress writes do not flash the review button or move the toolbar controls.
-- Check power before each apply group, recall, and explicit calibration-row read, even with Query first Off. Standby or unconfirmed power blocks settings changes before setters are sent; no wake-up or retries occur. Show a top-toolbar warning and read-only **Check power** button. Initial full loading stops before selector/mode changes when the TV is off.
+- Save settings using readable name/model/date filenames. Rename old GUID-only filenames without rewriting their contents. Add **Show in Finder / File Explorer / file manager** beside the selected saved state.
+- Exclude input from new saved states and ignore it in older files. Recall onto the current input while still checking the display, picture mode and signal. Never switch inputs as part of recall.
+- Automatically check power before each apply group, recall, and explicit calibration-row read, even with Query first Off. Known standby stops the attempted operation and reverts its targets locally, with a top warning but no Check power button or latched lockout. Turn the TV on and adjust again normally. Unknown/unsupported power does not lock usable controls. No wake-up or retry is sent.
+- On confirmed TV rejection, restore the affected control to its read-back value, keep unrelated edits and loaded RGB rows, and show a warning in the pinned toolbar. Include invalid input choices and unsupported-setting replies. Keep manual review for genuinely uncertain delivered writes.
 - Samsung setter names and payloads are unchanged. A rejected setter does not hide a control whose value was successfully queried.
 - This build is for local evaluation; it has not been published as a release.
 

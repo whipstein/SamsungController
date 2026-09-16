@@ -329,7 +329,7 @@ public sealed class IpMenuGridTests
         if (failure == "mode changed") fixture.Values[grid.ModeField] = "Off";
         else fixture.Override = (request, _) => Task.FromResult(request["method"]!.ToString() == grid.SelectorMethod && request["params"]!.AsObject().Count > 1
             ? failure == "selector rejection" ? MenuFixture.Reject(request, -32002) : ContrastDisplay.Reply(request, new JsonObject { [grid.SelectorField] = "10%" }) : null);
-        await Assert.ThrowsAsync<InvalidOperationException>(fixture.Service.ApplyMenuAsync);
+        await Assert.ThrowsAnyAsync<InvalidOperationException>(fixture.Service.ApplyMenuAsync);
         Assert.Empty(RgbWrites(fixture));
         Assert.False(fixture.Service.GetSnapshot().Menu.Update!.NeedsReview);
         Assert.Equal("Not sent", fixture.Service.GetSnapshot().Menu.Update!.Steps[0].Status);
