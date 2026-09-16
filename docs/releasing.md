@@ -10,7 +10,7 @@ python3 packaging/build.py --rid osx-arm64
 python3 packaging/smoke-test.py --manifest artifacts/dist/build-osx-arm64.json
 ```
 
-Use `osx-x64`, `win-x64`, `win-arm64`, `linux-x64`, or `linux-arm64` for other packages. Smoke tests require a matching OS/architecture. They start only an isolated loopback server with temporary configuration, check static assets, duplicate launch, unauthorized shutdown, CLI, quit, and restart; they never contact a TV or open the browser.
+Use `osx-x64`, `win-x64`, `win-arm64`, `linux-x64`, or `linux-arm64` for other packages. Smoke tests require a matching OS/architecture. They start only an isolated loopback server with temporary configuration, check static assets, duplicate launch, unauthorized shutdown, CLI, quit, and restart; they never contact a TV or open the browser. On a development Mac they run the managed launcher directly to avoid registering another GUI app copy. Add `--native-app` only on a disposable CI runner/VM to test the native Mac host lifetime too; the release workflow does this.
 
 The **Release packages** GitHub workflow builds and smoke-tests on native runners. A tag run creates an **unpublished draft**. Its macOS artifacts are not yet signed/notarized; CI never publishes them automatically. Private Apple credentials remain on the signing Mac, not in the repository or GitHub artifacts.
 
@@ -63,6 +63,7 @@ For each Mac architecture:
 python3 packaging/macos/sign-notarize.py \
   --manifest artifacts/dist/build-osx-arm64.json \
   --identity 'Developer ID Application: Your Name (TEAMID)' \
+  --previous-app /Applications/SamsungController.app \
   --keychain-profile SamsungController
 ```
 
@@ -87,7 +88,7 @@ Finder automation permission, administrator installer, or Python package is need
 The README/tutorial and approval illustration are embedded in the web assembly,
 so moving only the app to Applications does not lose its offline documentation.
 
-Run the smoke test again on the signed/stapled package and, where available, test opening a quarantined download in Finder. Keep the notarization submission IDs for audit/troubleshooting. Do not remove quarantine as a substitute for notarization.
+Run `verify-dmg.py` on the final signed/stapled image; it checks and tests a temporary copy even after the staging app has been archived. It removes only its own temporary app registrations afterward. On a disposable test Mac, also test opening a quarantined download in Finder. Keep the notarization submission IDs for audit/troubleshooting. Do not remove quarantine as a substitute for notarization.
 
 References: [Microsoft's macOS deployment requirements](https://learn.microsoft.com/dotnet/core/deploying/macos), [Apple's notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow), and [GitHub native runner labels](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
 
@@ -100,6 +101,16 @@ The native AppKit entry point must remain the bundle's running process. It launc
 This is a hardened-runtime app, **not an App Sandbox app**. `com.apple.security.network.client`/`server` are sandbox entitlements, not Local Network consent. Keep `NSLocalNetworkUsageDescription` in the main bundle and a stable Developer ID signing identity. Do not enable App Sandbox or add unrelated entitlements as a workaround. See [Apple TN3179](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy).
 
 Local-network permission is **not covered by loopback smoke tests**. Test a Finder-launched installation on a real LAN, preferably in a fresh macOS user account, and verify that SamsungController is named in the consent prompt/System Settings. Do not reset system privacy databases or bypass consent. Multiple installed copies can confuse permission testing; close old builds and use one installation in Applications.
+
+#### Keep permission identity stable across updates
+
+- Keep the app identifier `com.whipstein.samsungcontroller` and Developer ID team `EESHX57W67`. The signer checks both, assigns distinct stable identifiers to the managed launcher/server/CLI, and records the result in the build manifest. Fork maintainers must explicitly set `--expected-team` to their own team. Neither a version, architecture, staging path nor certificate fingerprint belongs in an executable's signing identifier.
+- Pass `--previous-app /Applications/SamsungController.app` when evaluating an upgrade. The signer checks the old and new designated requirements **in both directions** before notarization. Certificate renewal within the same team is supported; no CDHash or build UUID is pinned. The three managed apphosts still have their own content-derived UUIDs; do not freeze UUIDs across different binaries to imitate permission continuity.
+- Mac staging lives in `artifacts/package-builds.noindex`. After a successful notarization/package pass, the unpacked app is archived to `SamsungController.app.zip` beside its former location. Every file/symlink is checked against the ZIP before removing that disposable copy. The manifest records `stagedAppArchive`; the DMG is unchanged. Use `verify-dmg.py` for post-signing tests, not the now-archived staging path. `--keep-staging-app` is only for disposable CI/VMs or an explicit debugging need. Failed builds and signing-only runs retain a staging bundle for diagnosis or later notarization.
+- Do not repeatedly launch native copies from build directories or temporary DMG installs on a signing/development Mac that is also used to control a TV. Use the default loopback smoke test locally and `--native-app` on disposable CI. Merely deleting a temporary test folder does not necessarily remove its Launch Services registration.
+- Upgrade in place: quit, replace the app in Applications, eject the DMG, and launch from Applications. Retain archived DMGs/ZIPs, not multiple unpacked app versions. No script changes privacy preferences or pairing tokens. If cleaning an affected development machine, inventory and unregister **only confirmed old SamsungController paths**; never reset the entire Launch Services or privacy database.
+
+Release acceptance: approve the old installed version once, connect, quit, replace it with the signed update, eject the image, and connect with the existing token **without toggling Local Network or re-pairing**. Repeat after relaunch/reboot. Record the result separately from loopback tests. macOS has documented duplicate-installation/cache issues ([TN3179](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy)); signing checks cannot prove that an existing OS privacy cache is healthy.
 
 The approved icon source and generated platform assets are in `packaging/icons`. Regenerate with `python3 packaging/icons/generate.py` on macOS; CI uses the committed assets.
 

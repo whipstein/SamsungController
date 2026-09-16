@@ -18,7 +18,7 @@ def create_dmg(app: Path, destination: Path):
         (staging / "INSTALL.txt").write_text(
             "SamsungController\n\n"
             "1. Quit any running SamsungController app.\n"
-            "2. Drag SamsungController.app onto Applications.\n"
+            "2. Drag SamsungController.app onto Applications; choose Replace for an update.\n"
             "3. Eject this disk image.\n"
             "4. Open SamsungController from Applications. Allow Local Network access.\n"
             "5. Enable IP Remote and Power On with Mobile on your display, then pair.\n\n"

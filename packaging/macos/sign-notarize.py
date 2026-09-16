@@ -11,11 +11,16 @@ import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from build import archive
 from macos.dmg import create_dmg
+from macos.signing_identity import BUNDLE_ID, TEAM_ID, identifier_for, verify_identity
+from macos.staging_archive import archive_staging_app
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--manifest", type=Path, required=True)
 parser.add_argument("--identity", required=True, help="Developer ID Application identity name or SHA-1 fingerprint (not a private key)")
 parser.add_argument("--keychain-profile", help="Existing notarytool Keychain profile; never pass passwords to this script")
+parser.add_argument("--previous-app", type=Path, help="Check upgrade identity against the currently installed signed app")
+parser.add_argument("--expected-team", default=TEAM_ID, help="Expected public Developer ID team; forks must explicitly choose their own")
+parser.add_argument("--keep-staging-app", action="store_true", help="Keep the unpacked build bundle (use only on disposable test machines)")
 options = parser.parse_args()
 manifest = json.loads(options.manifest.read_text())
 app = Path(manifest["app"])
@@ -32,12 +37,15 @@ for item in sorted(app.rglob("*")):
     kind = subprocess.check_output(["file", "-b", str(item)])
     if b"Mach-O" not in kind:
         continue
-    command = ["codesign", "--force", "--timestamp", "--options", "runtime", "--sign", options.identity]
+    command = ["codesign", "--force", "--timestamp", "--options", "runtime", "--sign", options.identity,
+               "--identifier", identifier_for(item, app)]
     if b"executable" in kind:
         command += ["--entitlements", str(entitlements)]
     subprocess.run(command + [str(item)], check=True)
-subprocess.run(["codesign", "--force", "--timestamp", "--options", "runtime", "--sign", options.identity, str(app)], check=True)
+subprocess.run(["codesign", "--force", "--timestamp", "--options", "runtime", "--sign", options.identity,
+                "--identifier", BUNDLE_ID, str(app)], check=True)
 subprocess.run(["codesign", "--verify", "--deep", "--strict", "--verbose=2", str(app)], check=True)
+manifest["signingIdentity"] = verify_identity(app, options.expected_team, options.previous_app)
 if options.keychain_profile:
     with tempfile.TemporaryDirectory(prefix="samsung-notarize-") as temporary:
         upload = Path(temporary) / "SamsungController.zip"
@@ -76,4 +84,8 @@ if destination.suffix == ".dmg":
         subprocess.run(["spctl", "--assess", "--type", "open", "--context", "context:primary-signature", "--verbose=2", str(destination)], check=True)
 else:
     archive(Path(manifest["folder"]), destination)
+if options.keychain_profile and not options.keep_staging_app:
+    manifest["stagedAppArchive"] = str(archive_staging_app(app, Path(__file__).resolve().parents[2]))
+    print("Archived unpacked build app (recoverable): " + manifest["stagedAppArchive"], flush=True)
+options.manifest.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 print("Signed" + (", notarized and stapled" if options.keychain_profile else " only — notarization is still required") + ": " + manifest["archive"])

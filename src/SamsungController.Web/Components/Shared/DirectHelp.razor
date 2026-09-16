@@ -86,6 +86,7 @@
         </details>
         <details><summary>No response or connection interrupted</summary>
             <p>Check TV power, IP Remote, address/port, and local network access. On macOS, check System Settings → Privacy &amp; Security → Local Network for SamsungController (or its hosting Terminal/editor for source builds); quit and reopen after permission changes. Reset connection (keep pairing) checks the existing token on a fresh connection without changing settings. A timeout alone does not prove new pairing is needed.</p>
+            <p><strong>Network error after a Mac app update:</strong> quit before installing, replace the existing SamsungController in Applications, eject the DMG, and open that one copy. Keep older downloads as DMGs/ZIPs, not extra unpacked apps: macOS can confuse their network permissions. Updates retain the same app/signing identity; they do not require a new TV token. If Local Network is already enabled but access still fails, the OS permission cache may need repair—re-pairing the display will not fix that.</p>
             <p>After changing the signal or when an all-settings load is incomplete, use Refresh state and keep the signal stable. Stop cancels remaining commands but cannot undo changes already delivered.</p>
         </details>
         <h3>Standard or Compact layout</h3>

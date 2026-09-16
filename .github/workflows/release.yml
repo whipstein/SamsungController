@@ -39,10 +39,10 @@ jobs:
       - name: Build self-contained application
         run: python packaging/build.py --rid ${{ matrix.rid }}
       - name: Smoke-test native packaged application
-        run: python packaging/smoke-test.py --manifest artifacts/dist/build-${{ matrix.rid }}.json
+        run: python packaging/smoke-test.py --manifest artifacts/dist/build-${{ matrix.rid }}.json --native-app
       - name: Test Mac disk image and isolated installation
         if: runner.os == 'macOS'
-        run: python packaging/macos/verify-dmg.py --manifest artifacts/dist/build-${{ matrix.rid }}.json
+        run: python packaging/macos/verify-dmg.py --manifest artifacts/dist/build-${{ matrix.rid }}.json --native-app
       - name: Test Windows install, upgrade, and uninstall
         if: runner.os == 'Windows'
         run: python packaging/windows/verify-installer.py --manifest artifacts/dist/build-${{ matrix.rid }}.json

@@ -16,11 +16,13 @@ from windows.installer import LAUNCHER
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--manifest", type=Path, required=True)
+parser.add_argument("--native-app", action="store_true", help="Run the Mac GUI host; only use on disposable CI/VMs (registers an app copy)")
 options = parser.parse_args()
 manifest = json.loads(options.manifest.read_text())
 payload = Path(manifest["payload"])
 app = payload / (LAUNCHER if os.name == "nt" else "SamsungController.App")
-if manifest.get("app"):
+native_app = bool(manifest.get("app") and options.native_app)
+if native_app:
     app = Path(manifest["app"]) / "Contents/MacOS/SamsungController"
 cli = payload / ("samsungctl.exe" if os.name == "nt" else "samsungctl")
 with socket.socket() as reservation:
@@ -35,7 +37,7 @@ if manifest.get("app"):
     assert (bundle / "Contents/Resources" / info["CFBundleIconFile"]).stat().st_size > 1000
     from macos.apphost_identity import uuid_offset
     identifiers = []
-    for executable in [app, payload / "SamsungController.App", payload / "SamsungController.Web", cli]:
+    for executable in [bundle / "Contents/MacOS/SamsungController", payload / "SamsungController.App", payload / "SamsungController.Web", cli]:
         data = executable.read_bytes()
         offset = uuid_offset(data)
         identifiers.append(data[offset:offset + 16])
@@ -62,7 +64,7 @@ with tempfile.TemporaryDirectory(prefix="samsung-desktop-smoke-") as temporary:
     owner = None
 
     def start():
-        if not manifest.get("app"):
+        if not native_app:
             subprocess.run(command, env=env, check=True, timeout=75, cwd=temporary)
             return None
         process = subprocess.Popen(command, env=env, cwd=temporary)
@@ -152,4 +154,5 @@ with tempfile.TemporaryDirectory(prefix="samsung-desktop-smoke-") as temporary:
             assert json.load(response)["instance"] != status["instance"]
     finally:
         stop()
-print("PASS: packaged startup, icons/identity, app lifetime, assets, duplicate launch, shutdown authorization, CLI, quit, and restart; no TV requests.")
+print("PASS: packaged startup, icons/identity, assets, duplicate launch, shutdown authorization, CLI, quit, and restart; no TV requests. "
+      + ("Native Mac app lifetime tested." if native_app else "No native Mac GUI app was registered/launched."))

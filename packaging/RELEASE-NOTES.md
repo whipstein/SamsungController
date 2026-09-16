@@ -1,5 +1,6 @@
 ## SamsungController v1.1.2 — Saved-settings usability and non-blocking rejections (local evaluation)
 
+- Harden Mac update identity: stable, distinct executable signing identifiers and optional mutual upgrade-requirement verification against the installed app. Archive completed staging apps after verifying their recovery ZIPs, and keep local smoke tests from launching/registering extra GUI app copies. Preserve existing TV credentials and OS consent; no privacy reset or automatic re-pairing.
 - Put **Verify settings** beside Apply and Stop in the pinned Menu toolbar after an interrupted update, including one restored from a previous session.
 - Review affected values and RGB originals in a popup, then acknowledge the manual check without sending commands, retries, or undo. Show a top-toolbar reminder to refresh afterward.
 - Route interrupted recalls to their combined review. Normal in-progress writes do not flash the review button or move the toolbar controls.

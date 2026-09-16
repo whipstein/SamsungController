@@ -35,7 +35,7 @@ def archive(folder, destination):
 
 def build(rid, output, portable_only=False):
     version = ET.parse(ROOT / "Directory.Build.props").findtext(".//Version")
-    staging = ROOT / "artifacts" / "package-builds"
+    staging = ROOT / "artifacts" / ("package-builds.noindex" if rid.startswith("osx-") else "package-builds")
     staging.mkdir(parents=True, exist_ok=True)
     folder = Path(tempfile.mkdtemp(prefix=rid + "-", dir=staging)) / "SamsungController"
     folder.mkdir()
