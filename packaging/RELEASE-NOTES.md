@@ -1,3 +1,10 @@
+## SamsungController v1.1.1 — Recall review fix (local evaluation)
+
+- Show interrupted-update details inside **Recall settings**, including uncertain values and incomplete RGB checks.
+- **I checked the TV — close recall review** now acknowledges both the displayed update and the recall in one action. No retries, undo, or other TV commands are sent. Refresh state afterward before further adjustments.
+- Preserve saved states and manual-review results across restart. Reject acknowledgments for a different, unseen update.
+- This build is for local evaluation; it has not been published as a release.
+
 ## SamsungController v1.1.0 — Compact layout and saved settings
 
 - Add an optional **Standard / Compact** layout button, separate from light/dark mode. Standard remains the default and retains the original slider cards.

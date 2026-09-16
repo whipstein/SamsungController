@@ -85,6 +85,27 @@
                 @if (recall.NeedsReview && !Snapshot.IsBusy)
                 {
                     <p class="direct-error">Check the display before continuing. Calibration modes requested by this state: @string.Join(" · ", recall.FinalModes.Select(pair => pair.Key + " = " + pair.Value)). Use the physical remote if you need to restore a mode.</p>
+                    @if (Snapshot.Menu.Update is { NeedsReview: true } update)
+                    {
+                        <section aria-label="Interrupted update to review">
+                            <h4>Interrupted update</h4>
+                            <p>@update.Message</p>
+                            <p>@update.Input · @update.PictureMode</p>
+                            <ul>@foreach (var step in update.Steps)
+                            {
+                                <li><strong>@IpMenuCatalog.Get(step.ControlId).Name</strong>: @step.Original → @step.Target · @step.Status</li>
+                            }</ul>
+                            @foreach (var group in update.RgbGroups.Where(group => group.WriteAttempted && !group.Verified && !group.ReviewClosed))
+                            {
+                                <p><strong>@(group.Section == "white20" ? "20-point white balance" : "Custom color") · @group.Value</strong>: check all three colors; the final row check did not complete.</p>
+                                <ul>@foreach (var control in IpMenuGrids.ForSection(group.Section)!.Row(group.Value))
+                                { <li>@control.Name: original @group.Originals[control.Field]</li> }</ul>
+                            }
+                            <p>The TV may have changed even where confirmation failed. The button below acknowledges <strong>both this interrupted update and the recall</strong>.</p>
+                        </section>
+                    }
+                    <p>Closing review sends no commands, retries, or undo. Refresh state afterward before making further adjustments.</p>
+                    @if (Error is not null) { <p class="direct-error" role="alert">@Error</p> }
                     <button type="button" class="toolbar-button" @onclick="CloseReviewAsync" disabled="@Busy">I checked the TV — close recall review</button>
                 }
             </section>
@@ -127,7 +148,8 @@
         if (Confirm != "recall" || !ConditionsConfirmed || Selected is not { } selected) return;
         Cancel(); await Controller.RecallMenuStateAsync(selected.Id, true);
     });
-    private Task CloseReviewAsync() => GuardAsync(Controller.CloseStateRecallReviewAsync);
+    private Task CloseReviewAsync() => GuardAsync(() => Controller.CloseStateRecallReviewAsync(
+        Snapshot.Menu.Update is { NeedsReview: true } update ? update.Id : null));
     private async Task GuardAsync(Func<Task> action)
     {
         Running = true; Error = null; Feedback = null;

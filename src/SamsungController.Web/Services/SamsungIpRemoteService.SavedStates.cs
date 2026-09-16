@@ -203,14 +203,18 @@ public sealed partial class SamsungIpRemoteService
             IpMenuCatalog.ParseTarget(control, target), menu.Value(control)!.DeepClone(), MenuPrerequisites(menu, control, forEditing: true), menu.Input!, menu.PictureMode!);
     });
 
-    public async Task CloseStateRecallReviewAsync()
+    public async Task CloseStateRecallReviewAsync(Guid? reviewedUpdateId = null)
     {
         await EnterAsync().ConfigureAwait(false);
         try
         {
             if (GetSnapshot().StateRecall is not { NeedsReview: true } recall) return;
-            if (GetSnapshot().Menu.Update?.NeedsReview == true)
-                throw new InvalidOperationException("Check and close the interrupted Last update below first, then close this recall review.");
+            if (GetSnapshot().Menu.Update is { NeedsReview: true } update)
+            {
+                if (reviewedUpdateId != update.Id)
+                    throw new InvalidOperationException("Check the interrupted update shown in Recall settings before closing this review. If it changed, review the current details and try again.");
+                await CloseMenuUpdateReviewCoreAsync(update).ConfigureAwait(false);
+            }
             await SaveStateRecallAsync(recall with { Status = "Reviewed", Message = "Recall checked manually. No automatic resume or restoration was sent. Refresh state before further adjustments." }).ConfigureAwait(false);
         }
         finally { _gate.Release(); }

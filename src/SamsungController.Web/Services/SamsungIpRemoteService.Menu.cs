@@ -356,16 +356,22 @@ public sealed partial class SamsungIpRemoteService
         {
             var update = GetSnapshot().Menu.Update;
             if (update?.NeedsReview != true) throw new InvalidOperationException("No interrupted menu update needs review.");
-            await SaveMenuUpdateAsync(update with
-            {
-                Steps = update.Steps.Select(step => step.Status is "Sending" or "Uncertain" ? step with { Status = "Checked manually" } : step).ToArray(),
-                RgbGroups = update.RgbGroups.Select(group => group with { ReviewClosed = true }).ToArray(),
-                Status = "Closed",
-                Message = "User checked the TV. No command, restoration or verification was sent. Refresh before more edits."
-            }).ConfigureAwait(false);
-            UpdateMenu(menu => ClearMenuGridCache(menu) with { Readings = new Dictionary<string, IpMenuRead>(), SectionsRead = new Dictionary<string, DateTimeOffset>(), Pending = new Dictionary<string, IpMenuDraft>() });
+            await CloseMenuUpdateReviewCoreAsync(update).ConfigureAwait(false);
         }
         finally { _gate.Release(); }
+    }
+
+    // Caller holds _gate. Acknowledges a manual check only; never sends TV commands.
+    private async Task CloseMenuUpdateReviewCoreAsync(IpMenuUpdate update)
+    {
+        await SaveMenuUpdateAsync(update with
+        {
+            Steps = update.Steps.Select(step => step.Status is "Sending" or "Uncertain" ? step with { Status = "Checked manually" } : step).ToArray(),
+            RgbGroups = update.RgbGroups.Select(group => group with { ReviewClosed = true }).ToArray(),
+            Status = "Closed",
+            Message = "User checked the TV. No command, restoration or verification was sent. Refresh before more edits."
+        }).ConfigureAwait(false);
+        UpdateMenu(menu => ClearMenuGridCache(menu) with { Readings = new Dictionary<string, IpMenuRead>(), SectionsRead = new Dictionary<string, DateTimeOffset>(), Pending = new Dictionary<string, IpMenuDraft>() });
     }
 
     public async Task SaveMenuPreferencesAsync(bool applyImmediately, bool? queryBeforeChange = null)

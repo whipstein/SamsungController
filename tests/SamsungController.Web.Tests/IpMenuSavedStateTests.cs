@@ -209,8 +209,10 @@ public sealed class IpMenuSavedStateTests
         Assert.Empty(fixture.Display.Batches);
     }
 
-    [Fact]
-    public async Task InterruptedRecallStopsLaterWritesAndNeverResumesAfterRestart()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InterruptedRecallStopsLaterWritesAndNeverResumesAfterRestart(bool closeFromPopup)
     {
         using var fixture = await IpMenuRgbGroupTests.ReadyAsync("white20");
         var id = await fixture.Service.SaveMenuStateAsync("Baseline");
@@ -234,9 +236,75 @@ public sealed class IpMenuSavedStateTests
         Assert.Empty(fixture.Display.Requests);
         Assert.True(fixture.Service.GetSnapshot().StateRecall!.NeedsReview);
         await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.CloseStateRecallReviewAsync());
-        await fixture.Service.CloseMenuUpdateReviewAsync();
-        await fixture.Service.CloseStateRecallReviewAsync();
+        if (closeFromPopup)
+        {
+            await using var services = new ServiceCollection().AddLogging().AddSingleton(fixture.Service).BuildServiceProvider();
+            await using var page = new IpRemotePageTests.IpPageRenderer(services, typeof(SavedSettingsStates));
+            await page.StartAsync(new() { [nameof(SavedSettingsStates.Snapshot)] = fixture.Service.GetSnapshot() });
+            await page.AssertTextAsync("Interrupted update");
+            await page.AssertTextAsync("check all three colors");
+            await page.AssertTextAsync("original 20");
+            await page.ClickAsync("I checked the TV — close recall review");
+            await page.AssertTextAsync("Recall checked manually");
+            Assert.All(fixture.Service.GetSnapshot().Menu.Update!.RgbGroups, group => Assert.True(group.ReviewClosed));
+        }
+        else
+        {
+            await fixture.Service.CloseMenuUpdateReviewAsync();
+            await fixture.Service.CloseStateRecallReviewAsync();
+        }
+        Assert.False(fixture.Service.GetSnapshot().Menu.Update!.NeedsReview);
         Assert.False(fixture.Service.GetSnapshot().StateRecall!.NeedsReview);
+        await fixture.RestartAsync();
+        Assert.False(fixture.Service.GetSnapshot().Menu.Update!.NeedsReview);
+        Assert.False(fixture.Service.GetSnapshot().StateRecall!.NeedsReview);
+        Assert.Empty(fixture.Display.Requests);
+    }
+
+    [Fact]
+    public async Task RecallPopupClosesMuteMismatchAndRecallTogetherWithoutSendingOrDeletingAnything()
+    {
+        using var fixture = await ReadyAsync();
+        var snapshot = fixture.Service.GetSnapshot();
+        var saved = new IpMenuSavedState
+        {
+            Name = "Muted baseline", SavedAt = DateTimeOffset.UtcNow,
+            Context = IpMenuSavedContext.From(snapshot.ActiveProfile!, snapshot.Menu),
+            Values = new() { ["muteControl/mute"] = "muteOn" }
+        };
+        await WriteStateAsync(fixture, saved);
+        var id = saved.Id;
+        fixture.Values["mute"] = "muteOff";
+        fixture.Override = (request, _) => Task.FromResult(request["method"]!.ToString() == "muteControl"
+            ? ContrastDisplay.Reply(request, new JsonObject { ["mute"] = "muteOff" }) : null);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.RecallMenuStateAsync(id, true));
+        var stopped = fixture.Service.GetSnapshot();
+        Assert.True(stopped.StateRecall!.NeedsReview);
+        Assert.True(stopped.Menu.Update!.NeedsReview);
+        Assert.Equal("muteControl/mute", Assert.Single(stopped.Menu.Update.Steps).ControlId);
+        fixture.Display.Requests.Clear();
+        // A stale page must not acknowledge a different update the user has not reviewed.
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.CloseStateRecallReviewAsync(Guid.NewGuid()));
+        Assert.True(fixture.Service.GetSnapshot().StateRecall!.NeedsReview);
+        Assert.True(fixture.Service.GetSnapshot().Menu.Update!.NeedsReview);
+        await using var services = new ServiceCollection().AddLogging().AddSingleton(fixture.Service).BuildServiceProvider();
+        await using var page = new IpRemotePageTests.IpPageRenderer(services, typeof(SavedSettingsStates));
+        await page.StartAsync(new() { [nameof(SavedSettingsStates.Snapshot)] = fixture.Service.GetSnapshot() });
+        await page.AssertTextAsync("Interrupted update");
+        await page.AssertTextAsync("Mute");
+        await page.AssertTextAsync("muteOff → muteOn");
+        await page.AssertTextAsync("both this interrupted update and the recall");
+        await page.ClickAsync("I checked the TV — close recall review");
+        await page.AssertTextAsync("Recall checked manually");
+        await page.AssertTextAsync("Refresh state before further adjustments");
+        await page.AssertTextAbsentAsync("I checked the TV — close recall review");
+        Assert.Equal("Checked manually", Assert.Single(fixture.Service.GetSnapshot().Menu.Update!.Steps).Status);
+        Assert.Empty(fixture.Service.GetSnapshot().Menu.Readings);
+        Assert.Empty(fixture.Service.GetSnapshot().Menu.Pending);
+        await fixture.RestartAsync();
+        Assert.False(fixture.Service.GetSnapshot().Menu.Update!.NeedsReview);
+        Assert.False(fixture.Service.GetSnapshot().StateRecall!.NeedsReview);
+        Assert.Equal(id, Assert.Single(fixture.Service.GetSnapshot().SavedStates).Id);
         Assert.Empty(fixture.Display.Requests);
     }
 
