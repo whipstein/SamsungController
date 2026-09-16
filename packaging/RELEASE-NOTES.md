@@ -1,9 +1,9 @@
-## SamsungController v1.1.1 — Recall review fix (local evaluation)
+## SamsungController v1.1.1 — Recall review fix
 
 - Show interrupted-update details inside **Recall settings**, including uncertain values and incomplete RGB checks.
 - **I checked the TV — close recall review** now acknowledges both the displayed update and the recall in one action. No retries, undo, or other TV commands are sent. Refresh state afterward before further adjustments.
 - Preserve saved states and manual-review results across restart. Reject acknowledgments for a different, unseen update.
-- This build is for local evaluation; it has not been published as a release.
+- Self-contained packages for macOS, Windows, and Linux on x64 and Arm64. Mac DMGs are signed, notarized, and stapled; Windows includes installers and portable ZIPs.
 
 ## SamsungController v1.1.0 — Compact layout and saved settings
 
@@ -77,7 +77,7 @@ Direct IP control is now the default interface on **main**, replacing the v0 men
 - Native launchable, self-contained apps for Windows, macOS, and Linux on x64 and Arm64. The local server runs in the background, without a terminal window. Reopen the app to reuse it; **Quit app** at the top stops it.
 - Official macOS release apps are Developer ID signed, notarized, and stapled. Windows binaries are unsigned. Linux packages include an optional desktop-shortcut installer.
 
-Start with the [beginner tutorial](https://github.com/whipstein/SamsungController/blob/v1.1.0/docs/getting-started.md).
+Start with the [beginner tutorial](https://github.com/whipstein/SamsungController/blob/v1.1.1/docs/getting-started.md).
 
 ### Upgrade notes
 
