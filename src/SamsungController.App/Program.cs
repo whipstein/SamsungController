@@ -28,7 +28,8 @@ internal static class DesktopLauncher
             var existing = await ProbeAsync(client);
             if (existing is not null)
             {
-                DesktopBrowser.OpenReady(existing, address, showBrowser, Open);
+                await DesktopBrowser.OpenReadyAsync(existing, address, showBrowser, Open,
+                    () => DesktopBrowser.TryReuseAsync(client, existing, DesktopFiles.ReadInstance(port)));
                 return 0;
             }
             var executable = Path.Combine(AppContext.BaseDirectory, "SamsungController.Web" + (OperatingSystem.IsWindows() ? ".exe" : ""));
@@ -45,7 +46,8 @@ internal static class DesktopLauncher
                 var status = await ProbeAsync(client);
                 if (status is not null)
                 {
-                    DesktopBrowser.OpenReady(status, address, showBrowser, Open, server.Id);
+                    await DesktopBrowser.OpenReadyAsync(status, address, showBrowser, Open,
+                        () => DesktopBrowser.TryReuseAsync(client, status, DesktopFiles.ReadInstance(port)), server.Id);
                     // The native Mac bundle stays alive as the server's responsible
                     // application. Release the startup lock before waiting so reopen
                     // and --stop can proceed. Other platforms retain detached startup.

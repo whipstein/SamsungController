@@ -86,14 +86,14 @@ Both options include .NET and reuse the same saved settings. Windows binaries an
 3. For an applications-menu entry, run `./install-shortcut.sh` once from that folder. It creates only a per-user shortcut, with no root access or login service.
 4. A graphical browser and `xdg-open` are used to open the interface. You can also type the local URL manually.
 
-For all platforms, the interface is **http://127.0.0.1:5050**. The server runs in the background, without a terminal window. Reopening the app reuses the existing instance.
+For all platforms, the interface is **http://127.0.0.1:5050**. The server runs in the background, without a terminal window. Reopening the app reuses a responsive app tab. An active session keeps its page and unsent edits; after a server restart, the existing tab reloads instead. A new tab opens only when none responds promptly. Your browser may require you to select the reused tab yourself.
 
 ## 3. Understand start, close, and quit
 
 - Closing a browser tab does **not** stop the server.
 - Open SamsungController again to return to the interface.
 - To stop the server, use **Quit app** at the very top, beside **Stop**, on any page.
-- Quit also asks the app's browser tabs to close. If your browser prevents it, an **App stopped** page remains: close the tab with **⌘W** (Mac) or **Ctrl+W** (Windows/Linux). To continue, reopen SamsungController and click **Return to app**. That button works without the old server and checks that the reopened app is ready. Other websites are not affected.
+- Quit also asks the app's browser tabs to close. If your browser prevents it, an **App stopped** page remains and will be reused when you reopen SamsungController. If the browser suspended it, select it and click **Return to app**, or close it with **⌘W** (Mac) / **Ctrl+W** (Windows/Linux). Reuse needs a tab loaded from v1.1.2 or newer: refresh an older tab once after upgrading. No extra browser permission is needed, and other websites are not affected.
 - If a TV operation is running, press **Stop** and review any unfinished-operation notice before quitting.
 - The app does not start automatically at login. Your saved data is retained when you quit.
 - An old foreground server may already occupy port 5050. Stop it in its original terminal before starting the packaged app; the launcher will not kill unrelated processes.

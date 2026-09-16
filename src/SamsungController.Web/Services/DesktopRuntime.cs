@@ -6,7 +6,7 @@ using SamsungController.Desktop;
 
 namespace SamsungController.Web.Services;
 
-public sealed class DesktopRuntime : IDisposable
+public sealed partial class DesktopRuntime : IDisposable
 {
     private readonly DesktopInstance _instance;
     private readonly string _directory;
@@ -59,6 +59,7 @@ public sealed class DesktopRuntime : IDisposable
         app.MapGet(DesktopFiles.StatusRoute, () => Enabled && !_ready ? Results.StatusCode(503) : Results.Json(
             new DesktopStatus(DesktopFiles.Product, DesktopFiles.Version, Enabled, _instance.Instance, Environment.ProcessId)));
         if (!Enabled) return;
+        MapBrowserEndpoints(app);
         app.MapGet("/_app/events", NotifyBrowserOnQuitAsync);
         app.MapPost(DesktopFiles.StopRoute, (HttpContext context, SamsungIpRemoteService controller) =>
         {
@@ -108,6 +109,7 @@ public sealed class DesktopRuntime : IDisposable
     }
     public void Dispose()
     {
+        _browserTabs.Dispose();
         if (!Enabled || !_ready) return;
         try { DesktopFiles.RemoveInstance(_instance, _directory); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }

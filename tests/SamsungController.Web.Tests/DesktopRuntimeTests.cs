@@ -214,6 +214,93 @@ public sealed class DesktopRuntimeTests
         Assert.DoesNotContain("event: quit", Encoding.UTF8.GetString(((MemoryStream)context.Response.Body).ToArray()));
     }
 
+    [Theory]
+    [InlineData("foreground", 403)]
+    [InlineData("remote", 403)]
+    [InlineData("origin", 403)]
+    [InlineData("invalid-tab", 400)]
+    public async Task BrowserReuseStreamRejectsUnrelatedCallers(string problem, int status)
+    {
+        using var folder = new TemporaryFolder();
+        using var lifetime = new TestLifetime();
+        using var runtime = new DesktopRuntime(problem != "foreground", 55123, folder.Path, lifetime);
+        var context = EventContext(runtime);
+        context.Request.QueryString = new("?tab=" + (problem == "invalid-tab" ? "invalid" : Guid.NewGuid().ToString("N")));
+        if (problem == "remote") context.Connection.RemoteIpAddress = IPAddress.Parse("192.0.2.1");
+        if (problem == "origin") context.Request.Headers.Origin = "https://unrelated.example";
+        await runtime.ListenForBrowserReopenAsync(context);
+        Assert.Equal(status, context.Response.StatusCode);
+        Assert.Equal(0, context.Response.Body.Length);
+    }
+
+    [Theory]
+    [InlineData("no-token", 403)]
+    [InlineData("wrong-token", 403)]
+    [InlineData("origin", 403)]
+    [InlineData("remote", 403)]
+    [InlineData("quit", 503)]
+    public async Task OnlyReadyLocalNativeLauncherCanRequestReuse(string problem, int status)
+    {
+        using var folder = new TemporaryFolder();
+        using var lifetime = new TestLifetime();
+        using var runtime = new DesktopRuntime(true, 55123, folder.Path, lifetime);
+        lifetime.Started.Cancel();
+        var credential = DesktopFiles.ReadInstance(55123, folder.Path)!;
+        var context = EventContext(runtime);
+        context.Request.Headers.Remove("Origin");
+        context.Request.Headers.Authorization = "Bearer " + credential.Token;
+        if (problem == "no-token") context.Request.Headers.Remove("Authorization");
+        if (problem == "wrong-token") context.Request.Headers.Authorization = "Bearer invalid";
+        if (problem == "origin") context.Request.Headers.Origin = "http://127.0.0.1:55123";
+        if (problem == "remote") context.Connection.RemoteIpAddress = IPAddress.Parse("192.0.2.1");
+        if (problem == "quit")
+        {
+            using var fixture = await MenuFixture.CreateAsync();
+            await runtime.QuitAsync(fixture.Service);
+            Assert.Empty(fixture.Display.Requests);
+        }
+        await runtime.RequestBrowserReopenAsync(context);
+        Assert.Equal(status, context.Response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("no-origin", 403)]
+    [InlineData("other-origin", 403)]
+    [InlineData("remote", 403)]
+    [InlineData("instance", 403)]
+    [InlineData("stale-request", 409)]
+    public void ReuseAcknowledgementRequiresSameOriginAndMatchingInstance(string problem, int status)
+    {
+        using var folder = new TemporaryFolder();
+        using var lifetime = new TestLifetime();
+        using var runtime = new DesktopRuntime(true, 55123, folder.Path, lifetime);
+        var context = EventContext(runtime);
+        if (problem == "no-origin") context.Request.Headers.Remove("Origin");
+        if (problem == "other-origin") context.Request.Headers.Origin = "https://unrelated.example";
+        if (problem == "remote") context.Connection.RemoteIpAddress = IPAddress.Parse("192.0.2.1");
+        if (problem == "instance") context.Request.QueryString = new("?instance=old-server");
+        var result = Assert.IsAssignableFrom<IStatusCodeHttpResult>(runtime.AcknowledgeBrowserReopen(context));
+        Assert.Equal(status, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task ReuseStreamEndsOnHostShutdownWithoutEmittingQuitOrPreventingExit()
+    {
+        using var folder = new TemporaryFolder();
+        using var lifetime = new TestLifetime();
+        using var runtime = new DesktopRuntime(true, 55123, folder.Path, lifetime);
+        var context = EventContext(runtime);
+        context.Request.Headers.Remove("Origin"); // Same-origin EventSource may omit it.
+        context.Request.QueryString = new("?tab=" + Guid.NewGuid().ToString("N"));
+        var listening = runtime.ListenForBrowserReopenAsync(context);
+        Assert.False(listening.IsCompleted);
+        lifetime.StopApplication();
+        await listening.WaitAsync(TimeSpan.FromSeconds(5));
+        var message = Encoding.UTF8.GetString(((MemoryStream)context.Response.Body).ToArray());
+        Assert.Contains("retry: 500", message);
+        Assert.DoesNotContain("event:", message);
+    }
+
     private static DefaultHttpContext EventContext(DesktopRuntime runtime)
     {
         var context = new DefaultHttpContext();

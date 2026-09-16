@@ -7,23 +7,25 @@ const source = fs.readFileSync(path.join(__dirname, '../../src/SamsungController
 const instance = '0123456789abcdef0123456789abcdef';
 const reopenedInstance = 'fedcba9876543210fedcba9876543210';
 function harness(denied = false) {
-    const streams = [], pageEvents = {}, classes = new Set(), timers = new Map(), requests = [];
+    const streams = [], reuseStreams = [], pageEvents = {}, classes = new Set(), timers = new Map(), requests = [];
     const button = { disabled:false, addEventListener(name, fn) { this[name] = fn; } };
     const notice = { hidden:true }, status = { textContent:'' };
     const popup = { open:true, hidePopover() { this.open = false; } }, previousDialog = { open:true, close() { this.open = false; } };
-    let closes = 0, reloads = 0, timerId = 0, disconnects = 0;
+    let closes = 0, reloads = 0, timerId = 0, disconnects = 0, focuses = 0;
     let reply = async () => { throw Error('server has stopped'); };
     const window = { close() { closes++; if (denied) throw Error('browser blocked close'); }, addEventListener(name, fn) { pageEvents[name] = fn; },
+        crypto: { randomUUID: () => '11111111-1111-1111-1111-111111111111' }, focus() { focuses++; },
         location: { reload() { reloads++; } },
         Blazor: { disconnect() { disconnects++; } },
         fetch(url, options) { requests.push({url, options}); return reply(url, options); },
         setTimeout(fn, delay) { assert.equal(delay, 2000); timers.set(++timerId, fn); return timerId; }, clearTimeout(id) { timers.delete(id); },
-        EventSource: class { constructor(url) { this.url = url; this.events = {}; streams.push(this); } addEventListener(name, fn) { this.events[name] = fn; } close() { this.closed = true; } } };
+        EventSource: class { constructor(url) { this.url = url; this.events = {}; (url.startsWith('/_app/browser?') ? reuseStreams : streams).push(this); } addEventListener(name, fn) { this.events[name] = fn; } close() { this.closed = true; } } };
     const document = { documentElement: { classList: { add: name => classes.add(name) } },
         querySelectorAll: selector => selector === 'dialog[open]' ? [previousDialog] : [popup],
         getElementById: id => ({'desktop-app-stopped':notice, 'desktop-return-to-app':button, 'desktop-return-status':status})[id] };
     vm.runInNewContext(source, { window, document, encodeURIComponent, AbortController });
-    return { window, streams, notice, button, status, pageEvents, classes, timers, requests, popup, previousDialog,
+    return { window, streams, reuseStreams, notice, button, status, pageEvents, classes, timers, requests, popup, previousDialog,
+        get focuses() { return focuses; },
         setReply(fn) { reply = fn; }, get closes() { return closes; }, get reloads() { return reloads; }, get disconnects() { return disconnects; } };
 }
 test('only explicit matching quit closes this tab; network errors and other instances do not', () => {
@@ -91,4 +93,53 @@ test('subscription is reused, pagehide cleans up, and back-forward cache restore
     h.streams[0].events.quit({data: instance}); assert.equal(h.closes, 0);
     h.streams[1].events.quit({data: instance}); assert.equal(h.closes, 1);
     h.pageEvents.pagehide(); h.pageEvents.pageshow(); assert.equal(h.streams.length, 2);
+});
+const reopenEvent = id => ({data:JSON.stringify({instance:id, request:'22222222222222222222222222222222'})});
+test('reopening a running app acknowledges once without reloading, disconnecting, or discarding edits', async () => {
+    const h = harness(); h.window.samsungDesktop.watch(instance); h.window.samsungDesktop.watch(instance);
+    assert.equal(h.reuseStreams.length, 1);
+    h.setReply(async () => ({status:204}));
+    await h.reuseStreams[0].events.reopen(reopenEvent(instance));
+    assert.equal(h.focuses, 1); assert.equal(h.reloads, 0); assert.equal(h.disconnects, 0); assert.equal(h.closes, 0);
+    assert.equal(h.requests.length, 1); assert.match(h.requests[0].url, /^\/_app\/browser\/ack\?tab=[a-f0-9]{32}&instance=/);
+    assert.equal(h.requests[0].options.method, 'POST'); assert.equal(h.requests[0].options.credentials, 'same-origin');
+    assert.equal(h.timers.size, 0);
+});
+for (const quit of [false, true]) test(`restart reuses the same tab, including a browser-blocked-close tab (${quit})`, async () => {
+    const h = harness(true); h.window.samsungDesktop.watch(instance);
+    if (quit) h.streams[0].events.quit({data:instance});
+    assert(!h.reuseStreams[0].closed);
+    h.reuseStreams[0].events.error?.({}); assert.equal(h.reloads, 0);
+    h.setReply(async () => ({status:204}));
+    await h.reuseStreams[0].events.reopen(reopenEvent(reopenedInstance));
+    assert.equal(h.reloads, 1); assert.equal(h.focuses, 1); assert.equal(h.closes, quit ? 1 : 0);
+});
+test('losing tab, malformed event, or failed acknowledgement never reloads or focuses', async () => {
+    const h = harness(); h.window.samsungDesktop.watch(instance);
+    for (const data of ['invalid', 'null', '{}', JSON.stringify({instance:'wrong',request:instance})])
+        await h.reuseStreams[0].events.reopen({data});
+    assert.equal(h.requests.length, 0);
+    for (const status of [200, 403, 409, 500]) {
+        h.setReply(async () => ({status})); await h.reuseStreams[0].events.reopen(reopenEvent(reopenedInstance));
+    }
+    h.setReply(async () => { throw Error('offline'); }); await h.reuseStreams[0].events.reopen(reopenEvent(reopenedInstance));
+    assert.equal(h.reloads, 0); assert.equal(h.focuses, 0); assert.equal(h.timers.size, 0);
+});
+test('stalled acknowledgements time out and do not prevent a later reopen', async () => {
+    const h = harness(); h.window.samsungDesktop.watch(instance);
+    h.setReply((url, options) => new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(Error('aborted')))));
+    const waiting = h.reuseStreams[0].events.reopen(reopenEvent(reopenedInstance));
+    await h.reuseStreams[0].events.reopen(reopenEvent(reopenedInstance)); assert.equal(h.requests.length, 1);
+    for (const timeout of h.timers.values()) timeout(); await waiting;
+    assert.equal(h.reloads, 0); assert.equal(h.timers.size, 0);
+    h.setReply(async () => ({status:204})); await h.reuseStreams[0].events.reopen(reopenEvent(reopenedInstance));
+    assert.equal(h.reloads, 1);
+});
+test('page lifecycle closes stale subscriptions and restores reuse even for a stopped page', async () => {
+    const h = harness(); h.window.samsungDesktop.watch(instance);
+    h.streams[0].events.quit({data:instance}); h.pageEvents.pagehide(); assert(h.reuseStreams[0].closed);
+    h.pageEvents.pageshow(); assert.equal(h.reuseStreams.length, 2);
+    h.setReply(async () => ({status:204}));
+    await h.reuseStreams[0].events.reopen(reopenEvent(reopenedInstance)); assert.equal(h.requests.length, 0);
+    await h.reuseStreams[1].events.reopen(reopenEvent(reopenedInstance)); assert.equal(h.reloads, 1);
 });

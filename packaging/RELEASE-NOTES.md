@@ -14,6 +14,7 @@
 - Notify app tabs on explicit Quit, including native Mac app quit. Close each tab where permitted; otherwise show an **App stopped** screen with manual-close guidance. Unrelated tabs and normal reconnects are not affected.
 - Fix the blocked-close fallback: remove the modal dialog and ineffective Close this tab button. Show a non-modal stopped page outside the server circuit, with **Return to app** after reopening SamsungController. Offline checks time out, remain retryable, and never reload a still-quitting or unrelated server.
 - Release the browser's server connection on explicit Quit, so a blocked tab close does not hold up graceful shutdown. Ordinary network interruptions still leave the app open.
+- Reuse a responsive app tab on launcher reopen, including an App stopped tab left after blocked auto-close. Require a fresh, same-origin acknowledgement; only one tab wins. Preserve running-session edits, reload the same URL after restart, and open a new tab if none responds promptly. No browser automation permissions, history changes, TV commands, or persistent tab flags.
 - This build is for local evaluation; it has not been published as a release.
 
 ## SamsungController v1.1.1 — Recall review fix

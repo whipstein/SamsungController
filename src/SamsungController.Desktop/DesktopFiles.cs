@@ -6,12 +6,14 @@ namespace SamsungController.Desktop;
 
 public sealed record DesktopStatus(string Product, string Version, bool Managed, string Instance, int ProcessId);
 public sealed record DesktopInstance(string Instance, string Token, int ProcessId, int Port);
+public sealed record DesktopBrowserReuse(string Instance, bool Reused);
 
 public static class DesktopFiles
 {
     public const string Product = "SamsungController";
     public const string StatusRoute = "/_app/status";
     public const string StopRoute = "/_app/stop";
+    public const string ReopenRoute = "/_app/browser/reopen";
     public const string WindowsServerMutex = @"Local\SamsungController.Server.Running";
     // Merely hold a handle for the process lifetime; this is an installer guard,
     // not a lock preventing multiple servers on deliberately different ports.
